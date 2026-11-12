@@ -1,10 +1,12 @@
 import type { Product } from '@goltou/api-client';
 import { blockText, type ParsedContent } from '../convert';
+import { unicodeNumber } from './unicode-numbers';
 
 export interface PolishParagraph { id: string; original: string; polished: string; accepted: boolean; reasons: string[]; reverted: boolean }
 export interface PolishResult { paragraphs: PolishParagraph[]; notice: string; status: 'done' | 'unavailable' | 'login_required' | 'invalid_format' }
 export type PolishTransport = (prompt: string, check?: () => void) => Promise<string>;
-const numbers = (text: string) => text.match(/\p{N}+(?:[,.:/-]\p{N}+)*(?:\s*(?:원|만원|억원|년|월|일|박|홀|성급|%))?/gu)?.map(v => v.replace(/\s/g, '')) ?? [];
+const numberTokens = new RegExp(`${unicodeNumber.source}+(?:[,.:/-]${unicodeNumber.source}+)*(?:\\s*(?:원|만원|억원|년|월|일|박|홀|성급|%))?`, 'gu');
+const numbers = (text: string) => text.match(numberTokens)?.map(v => v.replace(/\s/g, '')) ?? [];
 const urls = (text: string) => text.match(/https?:\/\/[^\s<>"']+/gu) ?? [];
 const courses = (text: string) => text.match(/[가-힣A-Za-z0-9·.-]+(?:CC|골프장)/gu) ?? [];
 const same = (a: string[], b: string[]) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
@@ -34,8 +36,8 @@ export function parsePolishAnswer(answer: string, count: number): string[] | nul
   return result;
 }
 export async function polishContent(parsed: ParsedContent, product: Pick<Product, 'golfCourses' | 'productUrl'>, transport?: PolishTransport, check: () => void = () => {}): Promise<PolishResult> {
-  // Price/date lines and tables never leave the app for AI processing.
-  const eligible = parsed.blocks.filter(b => b.kind === 'paragraph' && !b.runs.some(r => r.href || r.bold) && !/\n|\d{4}(?:[-./]\d|년)|\d{1,2}월\s*\d{1,2}일|\d[\d,.\s]*(?:원|만\s*원|억\s*원|USD|KRW)|[₩$€¥]|출발|출국|귀국|가격|요금|금액|참가비/.test(blockText(b)));
+  // All Unicode numbers, price/date lines and tables stay outside AI processing.
+  const eligible = parsed.blocks.filter(b => b.kind === 'paragraph' && !b.runs.some(r => r.href || r.bold) && !unicodeNumber.test(blockText(b)) && !/\n|[₩$€¥]|출발|출국|귀국|가격|요금|금액|참가비/.test(blockText(b)));
   const paragraphs: PolishParagraph[] = eligible.map(b => ({ id: b.kind === 'paragraph' ? b.id : '', original: blockText(b), polished: blockText(b), accepted: false, reasons: [], reverted: false }));
   const fallback = (status: PolishResult['status'], notice: string): PolishResult => ({ paragraphs, status, notice });
   if (!paragraphs.length) return { paragraphs, status: 'done', notice: '다듬을 소개 문단이 없습니다.' };

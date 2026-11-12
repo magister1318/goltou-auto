@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { assemble, blockText, parseContents, runText } from '../src/convert';
-import { compareDocuments, observePlan, verifyPlan } from '../src/verify';
+import { compareDocuments, observePlan, observeSource, verifyPlan } from '../src/verify';
+import { makePreview } from '../src/preparation';
 import { fixtureCases, fixtureProduct } from './fixtures/catalog';
 
 describe('WP4 synthetic HTML conversion', () => {
@@ -62,11 +63,52 @@ describe('WP4 synthetic HTML conversion', () => {
     const product = fixtureProduct('<p>소개</p><img src="https://unlisted.invalid/a.png">', 0);
     expect(verifyPlan(product, assemble(product, 'blog'))).toMatchObject({ matches: false });
   });
-  it('expands inline link destinations for band and fails closed on photos inside table cells', () => {
+  it('expands inline link destinations for band', () => {
     const product = fixtureProduct('<p>앞 <a href="https://example.invalid/info">안내</a> 뒤</p>', 0);
     expect(observePlan(assemble(product, 'band')).text).toContain('앞 안내 (https://example.invalid/info) 뒤');
-    const tableProduct = fixtureProduct('<table><tr><td>앞<img src="http://127.0.0.1:19004/photo-1.png">뒤</td></tr></table>', 1);
-    expect(verifyPlan(tableProduct, assemble(tableProduct, 'blog'))).toMatchObject({ matches: false });
+  });
+  it.each(['blog', 'band'] as const)('flattens photo tables into text rows and photos in source order: %s', channel => {
+    const html = '<p>표 앞</p><table><caption>표 제목</caption><tr><td>첫 셀</td><td>사진 앞<img src="http://127.0.0.1:19004/photo-1.png">사진 뒤</td><td>옆 셀</td></tr><tr><td><table><tr><td>중첩 앞<img src="http://127.0.0.1:19004/photo-2.png">중첩 뒤</td></tr></table></td><td>끝 셀</td></tr><caption>표 끝</caption></table><p>표 뒤</p>';
+    const product = fixtureProduct(html, 2), parsed = parseContents(html);
+    const plan = assemble(product, channel, {}, parsed);
+    expect(plan.steps.filter(s => s.kind === 'text' && s.role === 'body' || s.kind === 'photos').map(s => s.kind === 'photos' ? s.urls : s.kind === 'text' ? s.text : '')).toEqual([
+      '표 앞', '표 제목', '첫 셀 | 사진 앞', ['http://127.0.0.1:19004/photo-1.png'], '사진 뒤 | 옆 셀', '중첩 앞', ['http://127.0.0.1:19004/photo-2.png'], '중첩 뒤 | 끝 셀', '표 끝', '표 뒤',
+    ]);
+    expect(plan.steps.some(s => s.kind === 'table' && s.role === 'body')).toBe(false);
+    const result = verifyPlan(product, plan);
+    expect(result).toMatchObject({ matches: true, differences: [] });
+    expect(result.notices).toHaveLength(1);
+    expect(result.message).toContain('안내: 사진이 든 표');
+    expect(parsed.discarded.some(d => d.reason.startsWith('unsupported-layout:'))).toBe(false);
+  });
+  it.each(['drop paragraph', 'drop run', 'reorder paragraphs', 'drop cell', 'reorder cells', 'move cell to paragraph', 'drop image', 'move image'] as const)('independently detects builder faults even with the same faulty parsed blocks: %s', fault => {
+    const html = '<p>첫 문단 <b>보존할 글자</b></p><table><tr><td>첫째 셀</td><td>둘째 셀</td></tr></table><img src="http://127.0.0.1:19004/photo-1.png"><p>마지막 문단</p>';
+    const product = fixtureProduct(html, 1), parsed = parseContents(html);
+    const table = parsed.blocks.find(b => b.kind === 'table');
+    if (fault === 'drop paragraph') parsed.blocks.shift();
+    if (fault === 'drop run' && parsed.blocks[0]?.kind === 'paragraph') parsed.blocks[0].runs.pop();
+    if (fault === 'reorder paragraphs') [parsed.blocks[0], parsed.blocks[3]] = [parsed.blocks[3]!, parsed.blocks[0]!];
+    if (fault === 'drop cell' && table?.kind === 'table') table.rows[0]!.pop();
+    if (fault === 'reorder cells' && table?.kind === 'table') table.rows[0]!.reverse();
+    if (fault === 'move cell to paragraph' && table?.kind === 'table' && parsed.blocks[0]?.kind === 'paragraph') parsed.blocks[0].runs.push({ text: table.rows[0]!.shift()! });
+    if (fault === 'drop image') parsed.blocks.splice(2, 1);
+    if (fault === 'move image') parsed.blocks.unshift(parsed.blocks.splice(2, 1)[0]!);
+    // A parser's own discard record must never waive the independent audit.
+    parsed.discarded.push({ reason: 'empty-paragraph', tag: 'p', offset: 0 });
+    for (const channel of ['blog', 'band'] as const) {
+      const plan = assemble(product, channel, {}, parsed);
+      expect(compareDocuments(observePlan(plan), observePlan(assemble(product, channel, {}, parsed))).matches).toBe(true);
+      const result = verifyPlan(product, plan, {}, parsed);
+      expect(result.matches).toBe(false);
+      expect(result.differences.some(d => d.field.startsWith('source'))).toBe(true);
+      expect(makePreview(product, {}, parsed).verification[channel].matches).toBe(false);
+    }
+  });
+  it('observes visible text, ordered original images and nested cell text directly from HTML', () => {
+    expect(observeSource('<script>버릴 코드</script><!-- 추적 --><p>A &amp; B</p><table><tr><td>C<table><tr><td>D</td></tr></table>E<img src="https://example.invalid/original.png"></td><td>F</td></tr></table><img width="1" height="1" src="https://example.invalid/pixel">')).toMatchObject({
+      text: 'A&BCDEF', photos: ['https://example.invalid/original.png'], tableCells: ['CDE', 'D', 'F'],
+      order: [{ kind: 'text', value: 'A&BCDE' }, { kind: 'image', value: 'https://example.invalid/original.png' }, { kind: 'text', value: 'F' }],
+    });
   });
   it('preserves table captions and nested table text without interpreting embedded scripts', () => {
     const parsed = parseContents('<table><caption>표 제목</caption><script>tracking()</script><tr><td>바깥<table><tr><td>안쪽</td></tr></table>마지막</td></tr></table>');

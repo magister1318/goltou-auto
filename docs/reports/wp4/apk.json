@@ -1,5 +1,7 @@
 {
   "file": "apps/android/app/build/outputs/apk/debug/app-debug.apk",
   "bytes": 64103014,
-  "sha256": "b8a77c164356df15b45502b5383451c87135c27a1e723a01dc72787fd8db045f"
+  "sha256": "7514c6edf0219a5b9a83d9965f5c8666a798cf58a1c961679542751c1ac5f3b8",
+  "engineBytes": 546233,
+  "engineMatchesDist": true
 }

@@ -27,8 +27,8 @@ export function assemble(product: Product, channel: InputPlan['channel'], option
     if (block.kind === 'link') text('body', channel === 'blog' || block.text === block.href ? block.text : `${block.text}\n${block.href}`, { runs: [{ text: block.text, href: block.href }] });
     if (block.kind === 'rule') text('body', '────────');
     if (block.kind === 'table') {
-      if (channel === 'blog') steps.push({ kind: 'table', role: 'body', rows: block.rows }, { kind: 'break' });
-      else for (const row of block.rows) text('body', row.join(' | '));
+      if (channel === 'blog' && !block.flattened) steps.push({ kind: 'table', role: 'body', rows: block.rows }, { kind: 'break' });
+      else for (const row of block.rows) text('body', row.join(' | '), { tableRow: row });
     }
   }
   const rows = product.departures.map(d => [d.date, `${d.price}원`]);
@@ -38,5 +38,5 @@ export function assemble(product: Product, channel: InputPlan['channel'], option
   if (options.closing && options.closingText) text('closing', options.closingText);
   if (options.linkCard) text('linkCard', product.productUrl);
   if (options.hashtags?.length) text('hashtags', options.hashtags.map(t => t.startsWith('#') ? t : `#${t}`).join(' '));
-  return { channel, steps, discarded: parsed.discarded };
+  return { channel, steps, discarded: parsed.discarded, notices: parsed.notices };
 }

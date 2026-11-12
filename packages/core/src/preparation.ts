@@ -1,6 +1,6 @@
 import type { Product } from '@goltou/api-client';
 import { assemble, parseContents, type ConvertOptions, type InputPlan, type ParsedContent } from './convert';
-import { compareDocuments, observePlan, verifyPlan, type Verification } from './verify';
+import { compact, compareDocuments, observePlan, verifyPlan, type Verification } from './verify';
 import { applyPolish, polishContent, type PolishResult, type PolishTransport } from './polish';
 import { downloadPhotos, type MediaBatch, type MediaDependencies } from './media';
 
@@ -18,12 +18,15 @@ export interface PreparationServices { media: MediaDependencies; polish?: Polish
 export function makePreview(product: Product, options: ConvertOptions, parsed: ParsedContent = parseContents(product.contentsHtml), polished?: PolishResult, reverted: readonly string[] = []): PreparedPreview {
   const approved = applyPolish(parsed, polished, reverted);
   const blog = assemble(product, 'blog', options, approved), band = assemble(product, 'band', options, approved);
-  const verification = { blog: verifyPlan(product, blog, options, approved), band: verifyPlan(product, band, options, approved) };
-  // Validate the untouched source first; an approved wording change cannot hide a missing photo.
+  const verification = {} as PreparedPreview['verification'];
+  // Audit unpolished content against HTML independently before applying validated wording changes.
   for (const plan of [blog, band]) {
-    const source = verifyPlan(product, assemble(product, plan.channel, options, parsed), options);
-    if (!source.matches) verification[plan.channel] = source;
-    else if (polished?.paragraphs.some(p => p.accepted && !reverted.includes(p.id))) verification[plan.channel].message += ' · 검증된 문장 다듬기 적용';
+    const source = verifyPlan(product, assemble(product, plan.channel, options, parsed), options, parsed);
+    verification[plan.channel] = source;
+    if (source.matches && polished?.paragraphs.some(p => p.accepted && !reverted.includes(p.id))) {
+      source.counts.characters = compact(observePlan(plan).text).length;
+      source.message += ' · 검증된 문장 다듬기 적용';
+    }
   }
   return { productNo: product.productNo, contentHash: product.contentHash, options: structuredClone(options), blog, band, verification, ...(polished ? { polish: { ...polished, paragraphs: polished.paragraphs.map(p => ({ ...p, reverted: reverted.includes(p.id) })) } } : {}) };
 }

@@ -8,7 +8,7 @@ const forbidden = new Set(['script', 'style', 'iframe', 'object', 'embed', 'nosc
 const attr = (node: Element, name: string) => node.attrs.find(a => a.name === name)?.value ?? '';
 export function parseContents(html: string): ParsedContent {
   const document = parseFragment(html, { sourceCodeLocationInfo: true });
-  const blocks: Block[] = [], discarded: Discard[] = [];
+  const blocks: Block[] = [], discarded: Discard[] = [], notices: string[] = [];
   let runs: Run[] = [], serial = 0;
   const discard = (node: Node, reason: string) => discarded.push({ reason, tag: 'tagName' in node ? node.tagName : node.nodeName, offset: node.sourceCodeLocation?.startOffset ?? null });
   function flush() {
@@ -38,26 +38,39 @@ export function parseContents(html: string): ParsedContent {
     if (tag === 'br') { runs.push({ text: '\n' }); return; }
     if (tag === 'hr') { flush(); blocks.push({ kind: 'rule' }); return; }
     if (tag === 'table') {
-      flush(); const rows: string[][] = [];
+      flush(); let rows: string[][] = [];
+      const hasImage = (n: Node): boolean => 'tagName' in n && !forbidden.has(n.tagName) && (n.tagName === 'img' || n.childNodes.some(hasImage));
+      const flatten = hasImage(node);
+      if (flatten) notices.push('사진이 든 표를 원문 순서의 글자 행과 사진으로 풀어 썼습니다.');
+      const flushRows = () => { if (rows.length) { blocks.push({ kind: 'table', rows, ...(flatten ? { flattened: true } : {}) }); rows = []; } };
       function tableWalk(n: Node) {
-        if ('tagName' in n && (n.tagName === 'caption' || forbidden.has(n.tagName))) { visit(n); flush(); return; }
+        if ('tagName' in n && (n.tagName === 'caption' || forbidden.has(n.tagName))) { flushRows(); visit(n); flush(); return; }
         if (n.nodeName === '#comment') { visit(n); return; }
         if ('tagName' in n && n.tagName === 'tr') {
-          const row: string[] = [];
+          let row: string[] = [];
           for (const cell of n.childNodes) if ('tagName' in cell && ['td', 'th'].includes(cell.tagName)) {
             const before = blocks.length;
             for (const child of cell.childNodes) visit(child);
             flush(); const cellBlocks = blocks.splice(before);
-            row.push(cellBlocks.map(blockText).filter(Boolean).join('\n'));
-            // Photos within cells cannot be faithfully represented by this minimal table model.
-            // Keep them visible in the plan; verification blocks a changed document order.
-            for (const b of cellBlocks) if (b.kind === 'image') { discard(cell, 'unsupported-layout:table-image'); blocks.push(b); }
+            if (!flatten) row.push(cellBlocks.map(blockText).filter(Boolean).join('\n'));
+            else {
+              let text: string[] = [];
+              const flushCell = () => { if (text.length) { row.push(text.join('\n')); text = []; } };
+              for (const block of cellBlocks) {
+                if (block.kind === 'image') {
+                  flushCell(); if (row.length) { rows.push(row); row = []; } flushRows(); blocks.push(block);
+                } else if (blockText(block)) text.push(blockText(block));
+              }
+              flushCell();
+            }
           }
-          rows.push(row); return;
+          if (row.length) rows.push(row);
+          if (flatten) flushRows();
+          return;
         }
         if ('childNodes' in n) for (const child of n.childNodes) tableWalk(child);
       }
-      tableWalk(node); blocks.push({ kind: 'table', rows }); return;
+      tableWalk(node); flushRows(); return;
     }
     const boundary = containers.has(tag);
     if (boundary) flush();
@@ -82,5 +95,5 @@ export function parseContents(html: string): ParsedContent {
     if (b.kind === 'paragraph' && b.runs[0]?.href && b.runs.every(r => r.href === b.runs[0]!.href) && !b.runs.some(r => r.bold))
       blocks[i] = { kind: 'link', text: runText(b.runs), href: b.runs[0].href };
   }
-  return { blocks, discarded };
+  return { blocks, discarded, notices: [...new Set(notices)] };
 }

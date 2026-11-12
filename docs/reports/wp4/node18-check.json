@@ -4,6 +4,7 @@
   "blog": true,
   "band": true,
   "polishValidator": true,
+  "polishNumericExclusion": true,
   "originalDownload": true,
   "cleanup": true
 }

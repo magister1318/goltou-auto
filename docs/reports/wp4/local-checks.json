@@ -1,5 +1,5 @@
 {
-  "at": "2026-11-12T15:02:18.908Z",
+  "at": "2026-11-12T15:45:02.163Z",
   "node": "v24.19.0",
   "fixtures": [
     {
@@ -12,7 +12,7 @@
       "prices": 2,
       "departures": 2,
       "characters": 95,
-      "elapsedMs": 3.298,
+      "elapsedMs": 1.532,
       "discarded": 0
     },
     {
@@ -25,7 +25,7 @@
       "prices": 2,
       "departures": 2,
       "characters": 49,
-      "elapsedMs": 0.483,
+      "elapsedMs": 0.454,
       "discarded": 0
     },
     {
@@ -38,7 +38,7 @@
       "prices": 2,
       "departures": 2,
       "characters": 75,
-      "elapsedMs": 0.577,
+      "elapsedMs": 0.75,
       "discarded": 0
     },
     {
@@ -51,7 +51,7 @@
       "prices": 2,
       "departures": 2,
       "characters": 84,
-      "elapsedMs": 2.997,
+      "elapsedMs": 4.821,
       "discarded": 8
     },
     {
@@ -64,7 +64,7 @@
       "prices": 2,
       "departures": 2,
       "characters": 13280,
-      "elapsedMs": 22.718,
+      "elapsedMs": 24.227,
       "discarded": 0
     },
     {
@@ -77,7 +77,7 @@
       "prices": 2,
       "departures": 2,
       "characters": 64,
-      "elapsedMs": 0.884,
+      "elapsedMs": 0.6,
       "discarded": 6
     },
     {
@@ -90,7 +90,7 @@
       "prices": 2,
       "departures": 2,
       "characters": 91,
-      "elapsedMs": 1.123,
+      "elapsedMs": 1.92,
       "discarded": 0
     },
     {
@@ -103,7 +103,7 @@
       "prices": 2,
       "departures": 2,
       "characters": 77,
-      "elapsedMs": 1.146,
+      "elapsedMs": 0.763,
       "discarded": 0
     }
   ],
@@ -111,11 +111,14 @@
     "viewport": "390x844",
     "polishParagraphs": 3,
     "unsafeParagraphsKeptOriginal": 1,
+    "numberParagraphExcluded": true,
     "revert": true,
-    "polishCalls": 2,
+    "polishCalls": 3,
     "run": "real-local-photos-and-body-then-simulated-blog",
     "mediaCleanup": true,
     "mismatchBlocksAction": true,
+    "tableLayoutNotice": true,
+    "tableLayoutAllowsRun": true,
     "pageErrors": [],
     "externalRequests": []
   }

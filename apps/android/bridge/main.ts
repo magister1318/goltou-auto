@@ -18,7 +18,7 @@ const host = new AndroidSurfaceHost(native, argument('devtools'));
 const experiments = argument('debug') === 'true' ? new Experiments({
   host, directory: argument('data'),
   photoPaths: Array.from({ length: 5 }, (_, i) => path.join(argument('bundle'), 'fixtures', `sample-${i + 1}.png`)),
-  info: async () => ({ ...await native.call<Record<string, unknown>>('debug.info'), node: process.version, coreUptimeMs: Math.round(process.uptime() * 1000) }),
+  info: async () => ({ ...await native.call<Record<string, unknown>>('debug.info'), node: process.version, coreUptimeMs: Math.round(process.uptime() * 1000), unicodeNumberProperties: (() => { try { return new RegExp('\\p{N}', 'u').test('18'); } catch { return false; } })() }),
   lifecycle: async mode => { await native.call('debug.lifecycle', { mode }); },
   capture: (surface, name) => host.capture(surface, name),
 }) : undefined;

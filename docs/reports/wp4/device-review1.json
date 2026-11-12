@@ -1,0 +1,39 @@
+{
+  "model": "SM-S928N",
+  "package": "kr.goltou.auto",
+  "at": "2026-11-12T15:44:11.190Z",
+  "attempts": 2,
+  "wallMs": 85574,
+  "result": "안 됨 · 원문 유지",
+  "steps": [
+    {
+      "at": "2026-11-12T15:44:10.790Z",
+      "action": "ai-polish-three-example-paragraphs",
+      "result": "ok",
+      "elapsedMs": 85268,
+      "detail": {
+        "status": "unavailable",
+        "paragraphs": 3,
+        "accepted": 0
+      }
+    }
+  ],
+  "googleObservations": [
+    {
+      "login": false,
+      "consent": false,
+      "captcha": false,
+      "labels": []
+    },
+    {
+      "login": false,
+      "consent": false,
+      "captcha": false,
+      "labels": [
+        "AI 모드",
+        "로그인"
+      ]
+    }
+  ],
+  "appLeftInstalled": true
+}
