@@ -160,3 +160,14 @@ progress::-webkit-progress-value { background:var(--green); }
 @media (min-width:760px) { .app { max-width:600px; margin:auto; } .bottom-nav,.action-bar { max-width:600px; margin-inline:auto; } }
 @media (max-width:350px) { .login-strip { flex-wrap:wrap; } .tabs { gap:12px; } .thumbnail { width:44px; height:44px; } .option-row { flex-wrap:wrap; } .preview-top { flex-wrap:wrap; } }
 @media (prefers-reduced-motion:reduce) { * { scroll-behavior:auto !important; } }
+/* WP0 follows the existing flat settings list and typography. */
+.experiment-actions { display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.experiment-actions button { text-align: left; }
+.experiment-info { font-size: 13px; }
+.experiment-info > div { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 8px 0; border-bottom: 1px solid var(--line, #E2E2E2); }
+.experiment-info dt { font-weight: 700; }
+.experiment-info dd { margin: 0; overflow-wrap: anywhere; }
+.experiment-steps { padding-left: 20px; }
+.experiment-steps li { padding: 8px 0; border-bottom: 1px solid #E2E2E2; }
+.experiment-steps span { display: block; font-size: 13px; }
+.experiment-steps pre { font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }

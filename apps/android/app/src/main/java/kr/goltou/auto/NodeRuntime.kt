@@ -25,7 +25,8 @@ object NodeRuntime {
         port = ServerSocket(0).use { it.localPort }
         token = ByteArray(32).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
         val args = arrayOf("node", File(bundle, "core.cjs").absolutePath,
-            "--port", port.toString(), "--token", token, "--devtools", devtools.absolutePath, "--bundle", bundle.absolutePath)
+            "--port", port.toString(), "--token", token, "--devtools", devtools.absolutePath, "--bundle", bundle.absolutePath,
+            "--debug", BuildConfig.DEBUG.toString(), "--data", File(context.filesDir, "wp0").absolutePath)
         started = true
         Thread(null, {
             exitCode = startNode(args)

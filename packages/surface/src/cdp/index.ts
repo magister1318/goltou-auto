@@ -14,13 +14,16 @@ const keys: Record<string, { code: string; vk: number; text?: string }> = {
   Escape: { code: 'Escape', vk: 27 }, ArrowLeft: { code: 'ArrowLeft', vk: 37 },
   ArrowUp: { code: 'ArrowUp', vk: 38 }, ArrowRight: { code: 'ArrowRight', vk: 39 },
   ArrowDown: { code: 'ArrowDown', vk: 40 }, Home: { code: 'Home', vk: 36 }, End: { code: 'End', vk: 35 },
+  PageUp: { code: 'PageUp', vk: 33 }, PageDown: { code: 'PageDown', vk: 34 },
 };
 
 /** Shared WebSocket CDP implementation; lifecycle belongs to the device shell. */
 export class CdpSurface implements Surface {
   private closed = false;
   private navigationError: string | undefined;
+  private metrics: { width: number; height: number; deviceScaleFactor: number; mobile: boolean } | undefined;
   private readonly loaded = new Set<string>();
+  private mainLoader: string | undefined;
 
   constructor(
     readonly session: SurfaceSession,
@@ -28,6 +31,10 @@ export class CdpSurface implements Surface {
     private readonly lifecycle: SurfaceLifecycle,
     private readonly inputDelayMs = 60,
   ) {
+    cdp.on('Page.frameNavigated', params => {
+      const frame = params.frame as { parentId?: string; loaderId?: string } | undefined;
+      if (frame && !frame.parentId && frame.loaderId) this.mainLoader = frame.loaderId;
+    });
     cdp.on('Page.lifecycleEvent', params => {
       if (params.name === 'load' && typeof params.loaderId === 'string') {
         if (this.loaded.size > 32) this.loaded.clear();
@@ -43,16 +50,19 @@ export class CdpSurface implements Surface {
     await this.cdp.send('Page.enable');
     await this.cdp.send('Page.setLifecycleEventsEnabled', { enabled: true });
     await this.cdp.send('Network.setUserAgentOverride', { userAgent: options.userAgent });
-    await this.cdp.send('Emulation.setDeviceMetricsOverride', {
+    this.metrics = {
       width: options.width, height: options.height, deviceScaleFactor: 1, mobile: false,
-    });
+    };
+    await this.cdp.send('Emulation.setDeviceMetricsOverride', this.metrics);
+    await this.cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true });
     // Page.navigate acknowledges navigation start; wait for the requested document, not the old page.
+    const previousMainLoader = this.mainLoader;
     const result = await this.cdp.send<{ errorText?: string; loaderId?: string }>('Page.navigate', { url: options.url });
     this.navigationError = result.errorText;
     if (this.navigationError) throw new Error(this.navigationError);
     if (result.loaderId) {
       const deadline = Date.now() + 30000;
-      while (!this.loaded.has(result.loaderId)) {
+      while (!this.loaded.has(result.loaderId) && !(this.mainLoader && this.mainLoader !== previousMainLoader && this.loaded.has(this.mainLoader))) {
         if (!this.cdp.isOpen) throw new Error('CDP_CLOSED');
         if (Date.now() >= deadline) throw new Error('SURFACE_NAVIGATION_TIMEOUT');
         await pause(50);
@@ -115,14 +125,34 @@ export class CdpSurface implements Surface {
   }
 
   async attachFiles(selector: string, absolutePaths: readonly string[]): Promise<void> {
-    const { root } = await this.cdp.send<{ root: { nodeId: number } }>('DOM.getDocument');
-    const { nodeId } = await this.cdp.send<{ nodeId: number }>('DOM.querySelector', { nodeId: root.nodeId, selector });
+    type Node = { nodeId: number; contentDocument?: Node; children?: Node[] };
+    const { root } = await this.cdp.send<{ root: Node }>('DOM.getDocument', { depth: -1, pierce: true });
+    const documents = [root];
+    const visit = (node: Node) => {
+      if (node.contentDocument) { documents.push(node.contentDocument); visit(node.contentDocument); }
+      node.children?.forEach(visit);
+    };
+    visit(root);
+    let nodeId = 0;
+    for (const document of documents) {
+      const result = await this.cdp.send<{ nodeId: number }>('DOM.querySelector', { nodeId: document.nodeId, selector });
+      if (result.nodeId) { nodeId = result.nodeId; break; }
+    }
     if (!nodeId) throw new Error('SURFACE_FILE_INPUT_NOT_FOUND');
     await this.cdp.send('DOM.setFileInputFiles', { nodeId, files: [...absolutePaths] });
   }
 
-  show(): Promise<void> { return this.lifecycle.setVisible(true); }
-  hide(): Promise<void> { return this.lifecycle.setVisible(false); }
+  async show(): Promise<void> {
+    // A native phone viewport and a fixed desktop emulation must not compete.
+    await this.cdp.send('Emulation.clearDeviceMetricsOverride');
+    await this.cdp.send('Emulation.setFocusEmulationEnabled', { enabled: false });
+    await this.lifecycle.setVisible(true);
+  }
+  async hide(): Promise<void> {
+    await this.lifecycle.setVisible(false);
+    if (this.metrics) await this.cdp.send('Emulation.setDeviceMetricsOverride', this.metrics);
+    await this.cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+  }
   async close(): Promise<void> {
     if (this.closed) return;
     this.closed = true;

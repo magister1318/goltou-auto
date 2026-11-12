@@ -62,6 +62,17 @@ describe('CDP Surface', () => {
     expect(loaded).toBe(true);
   });
 
+  it('accepts the loaded main document after a client-side redirect', async () => {
+    const f = await fixture((command, socket) => {
+      if (command.method !== 'Page.navigate') return false;
+      socket.send(JSON.stringify({ id: command.id, result: { loaderId: 'redirect-start' } }));
+      socket.send(JSON.stringify({ method: 'Page.frameNavigated', params: { frame: { id: 'main', loaderId: 'redirect-final' } } }));
+      socket.send(JSON.stringify({ method: 'Page.lifecycleEvent', params: { name: 'load', loaderId: 'redirect-final' } }));
+      return true;
+    });
+    await expect(f.surface.open({ url: 'https://example.com/', width: 1280, height: 900, userAgent: 'test', session: 'naver' })).resolves.toBeUndefined();
+  });
+
   it('uses mouse, text and key input commands, preserving Unicode characters', async () => {
     const f = await fixture();
     await f.surface.click(20, 30);
@@ -80,6 +91,29 @@ describe('CDP Surface', () => {
     const f = await fixture();
     await f.surface.attachFiles('input[type=file]', ['C:/test/photo.jpg']);
     expect(f.commands.at(-1)).toMatchObject({ method: 'DOM.setFileInputFiles', params: { nodeId: 2, files: ['C:/test/photo.jpg'] } });
+  });
+
+  it('finds a file input inside the editor frame', async () => {
+    const f = await fixture((command, socket) => {
+      if (command.method === 'DOM.getDocument') {
+        socket.send(JSON.stringify({ id: command.id, result: { root: { nodeId: 1, children: [{ nodeId: 2, contentDocument: { nodeId: 3 } }] } } })); return true;
+      }
+      if (command.method === 'DOM.querySelector') {
+        socket.send(JSON.stringify({ id: command.id, result: { nodeId: command.params.nodeId === 3 ? 4 : 0 } })); return true;
+      }
+      return false;
+    });
+    await f.surface.attachFiles('input[type=file]', ['/app/sample.png']);
+    expect(f.commands.at(-1)).toMatchObject({ method: 'DOM.setFileInputFiles', params: { nodeId: 4 } });
+  });
+
+  it('switches desktop metrics off when visible and restores them when hidden', async () => {
+    const f = await fixture();
+    await f.surface.open({ url: 'https://example.com/', width: 1280, height: 900, userAgent: 'desktop', session: 'naver' });
+    await f.surface.show();
+    expect(f.commands.at(-2)?.method).toBe('Emulation.clearDeviceMetricsOverride');
+    await f.surface.hide();
+    expect(f.commands.at(-2)).toMatchObject({ method: 'Emulation.setDeviceMetricsOverride', params: { width: 1280, height: 900 } });
   });
 
   it('fails when the file input is missing', async () => {

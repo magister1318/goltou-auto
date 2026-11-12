@@ -20,12 +20,31 @@ import androidx.webkit.WebViewCompat
 import androidx.webkit.WebViewFeature
 import androidx.webkit.WebStorageCompat
 import org.json.JSONObject
+import org.json.JSONArray
 
-class SurfaceHost(private val context: Context, private val hidden: FrameLayout, private val visible: FrameLayout) {
+class SurfaceHost(private val context: Context, private val hidden: FrameLayout, private val visible: FrameLayout,
+    private val onUserHidden: (String) -> Unit) {
     private data class Entry(val view: WebView, val session: String, var frame: View)
     private val entries = mutableMapOf<String, Entry>()
     private val sessions = setOf("naver", "band", "ai")
     private val clearing = mutableSetOf<String>()
+
+    fun view(id: String): WebView = entries[id]?.view ?: error("NO_SURFACE")
+
+    fun info(): JSONObject {
+        val multi = WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)
+        val profiles = if (multi) sessions.map { name ->
+            val probe = WebView(context)
+            try {
+                WebViewCompat.setProfile(probe, "goltou-$name")
+                WebViewCompat.getProfile(probe).name
+            } finally { probe.destroy() }
+        } else emptyList()
+        return JSONObject().put("webViewVersion", WebViewCompat.getCurrentWebViewPackage(context)?.versionName ?: "unknown")
+            .put("multiProfile", multi).put("deleteBrowsingData", WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA))
+            .put("profiles", JSONArray(profiles)).put("profilesDistinct", profiles.size == 3 && profiles.toSet().size == 3)
+            .put("surfaceCount", entries.size)
+    }
 
     fun handle(op: String, msg: JSONObject, reply: (JSONObject?, String?) -> Unit) {
         when (op) {
@@ -70,6 +89,9 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
         val view = WebView(context)
         // Never fall back to the default profile: all three sessions must remain separate.
         WebViewCompat.setProfile(view, "goltou-$session")
+        // CDP uses CSS pixels. Android's default density zoom otherwise paints the
+        // 1280px desktop layout outside the physical view on high-density phones.
+        view.setInitialScale(100)
         view.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -106,7 +128,12 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
         entry.view.isFocusableInTouchMode = show
         if (show) {
             val column = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.WHITE) }
-            column.addView(Button(context).apply { text = "진단 화면으로 돌아가기"; setOnClickListener { setVisible(id, false) } })
+            column.addView(Button(context).apply {
+                text = "골투오토로 돌아가기"; setTextColor(Color.rgb(15, 81, 50)); setBackgroundColor(Color.WHITE)
+                stateListAnimator = null; elevation = 0f
+                minHeight = (48 * context.resources.displayMetrics.density).toInt()
+                setOnClickListener { setVisible(id, false); onUserHidden(id) }
+            })
             column.addView(entry.view, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             entry.frame = column
             visible.addView(column, FrameLayout.LayoutParams(-1, -1))
@@ -123,6 +150,7 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
     fun hideTop(): Boolean {
         val id = entries.entries.lastOrNull { it.value.frame.parent === visible }?.key ?: return false
         setVisible(id, false)
+        onUserHidden(id)
         return true
     }
     private fun destroy(id: String) {

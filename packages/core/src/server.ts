@@ -8,6 +8,7 @@ import type { SurfaceHost, SurfaceState } from '@goltou/surface';
 import { NativeBridge } from './native';
 import { AppCore } from './app';
 import type { AppRequest } from './protocol';
+import type { Experiments } from './experiments';
 
 export interface CoreOptions {
   host: SurfaceHost;
@@ -17,6 +18,7 @@ export interface CoreOptions {
   token?: string;
   port?: number;
   app?: AppCore;
+  experiments?: Experiments;
 }
 
 const mime: Record<string, string> = {
@@ -91,7 +93,7 @@ export async function startCore(options: CoreOptions) {
     sockets.handleUpgrade(req, socket, head, ws => {
       ws.on('error', () => {});
       if (nativeRoute) { native.attach(ws); return; }
-      ws.send(JSON.stringify({ type: 'ready' }));
+      ws.send(JSON.stringify({ type: 'ready', ...(options.experiments ? { debug: true } : {}) }));
       const unsubscribe = app.subscribe(snapshot => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: 'snapshot', snapshot })); });
       ws.once('close', unsubscribe);
       ws.on('message', raw => {
@@ -99,8 +101,15 @@ export async function startCore(options: CoreOptions) {
           let id: unknown;
           let ownsDiagnostic = false;
           try {
-            const msg = JSON.parse(String(raw)) as { id?: unknown; type?: string; url?: unknown };
+            const msg = JSON.parse(String(raw)) as { id?: unknown; type?: string; url?: unknown; command?: string; input?: Record<string, unknown> };
             id = msg.id;
+            if (typeof id === 'number' && msg.type === 'experiment') {
+              if (!options.experiments) throw new Error('DEBUG_ONLY');
+              if (diagnosing) throw new Error('DIAGNOSTIC_BUSY');
+              const data = await options.experiments.handle(msg.command ?? '', msg.input);
+              if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ id, type: 'reply', data }));
+              return;
+            }
             if (typeof id === 'number' && msg.type === 'app') {
               const data = await app.handle(msg as unknown as AppRequest);
               if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ id, type: 'reply', data }));
@@ -109,7 +118,7 @@ export async function startCore(options: CoreOptions) {
             if (typeof id !== 'number' || msg.type !== 'diagnose' || typeof msg.url !== 'string') throw new Error('BAD_DIAGNOSTIC_REQUEST');
             const url = new URL(msg.url);
             if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('HTTP_URL_REQUIRED');
-            if (diagnosing) throw new Error('DIAGNOSTIC_BUSY');
+            if (diagnosing || options.experiments?.busy) throw new Error('DIAGNOSTIC_BUSY');
             diagnosing = true;
             ownsDiagnostic = true;
             const surface = await options.host.create('ai');
@@ -137,6 +146,7 @@ export async function startCore(options: CoreOptions) {
     origin, token, uiUrl: `${origin}/ui/?token=${token}`, native,
     close: async () => {
       app.dispose();
+      await options.experiments?.close();
       native.detach();
       for (const socket of sockets.clients) socket.terminate();
       await new Promise<void>(resolve => sockets.close(() => resolve()));

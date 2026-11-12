@@ -42,12 +42,17 @@ export class AndroidSurfaceHost implements SurfaceHost {
       }
       if (!endpoint) throw new Error('DEVTOOLS_TARGET_NOT_FOUND');
       const cdp = await CdpConnection.connect(endpoint, { socketPath: this.socketPath });
+      let unsubscribe = () => {};
       const surface = new CdpSurface(session, cdp, {
         setVisible: async visible => { await this.native.call('surface.visible', { surface: id, visible }); },
         close: async () => {
+          unsubscribe();
           this.surfaces.delete(surface);
           await this.native.call('surface.destroy', { surface: id });
         },
+      });
+      unsubscribe = this.native.onEvent('surface.hidden', data => {
+        if (data.surface === id) void surface.hide().catch(() => {});
       });
       this.surfaces.set(surface, id);
       return surface;
@@ -65,5 +70,23 @@ export class AndroidSurfaceHost implements SurfaceHost {
   async clearSession(session: SurfaceSession): Promise<void> {
     for (const surface of this.surfaces.keys()) if (surface.session === session) await this.destroy(surface);
     await this.native.call('profile.clear', { session }, 120000);
+  }
+
+  async capture(surface: Surface, name: string): Promise<Record<string, unknown>> {
+    const id = this.surfaces.get(surface);
+    if (!id) throw new Error('NO_SURFACE');
+    const geometry = await surface.evaluateReadOnly<{ sensitive: boolean; viewportWidth: number; masks: number[][] }>(`(() => {
+      const sensitive=location.hostname==='nid.naver.com'||location.hostname==='auth.band.us'||Boolean(document.querySelector('input[type="password"]'));
+      const masks=[];
+      for (const e of document.querySelectorAll('*')) {
+        const tag=e.tagName.toLowerCase();
+        if (['script','style','head','link','meta'].includes(tag)) continue;
+        if (['input','textarea','img','svg','canvas','video','iframe'].includes(tag) || Array.from(e.childNodes).some(n=>n.nodeType===3&&(n.textContent||'').trim())) {
+          const r=e.getBoundingClientRect(); if(r.width&&r.height) masks.push([r.left,r.top,r.right,r.bottom]);
+        }
+      }
+      return {sensitive,viewportWidth:innerWidth,masks};
+    })()`);
+    return this.native.call('debug.capture', { surface: id, name, ...geometry });
   }
 }
