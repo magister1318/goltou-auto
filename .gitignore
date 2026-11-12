@@ -13,3 +13,9 @@ var/
 tmp/
 *.log
 .DS_Store
+apps/android/app/libnode/
+apps/android/app/src/main/assets/bundle/
+apps/android/.cxx/
+**/.cxx/
+apps/android/.libnode-download/
+/.gradle-cache/
