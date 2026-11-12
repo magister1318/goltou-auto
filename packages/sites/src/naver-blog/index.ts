@@ -68,7 +68,8 @@ export async function prepareBlogEditor(surface: Surface, check: () => void, opt
   const help = await read<boolean>(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll('.se-help-panel-close-button')).some(visible));`);
   if (help) await click(surface, '.se-help-panel-close-button');
   const initial = await snapshot(surface);
-  if (initial.title || compact(initial.body) || initial.images) throw new Error('EDITOR_NOT_EMPTY');
+  const embedded = await read<boolean>(surface, `return docs.some(({d})=>d.querySelector('.se-component.se-table,.se-component.se-oglink,.se-component.se-quotation,.se-component.se-video,.se-component.se-sticker'));`);
+  if (initial.title || compact(initial.body) || initial.images || embedded) throw new Error('EDITOR_NOT_EMPTY');
   return { empty: true, autoRecoverDeclined: restore === 1 };
 }
 export async function confirmBlogPhotos(surface: Surface, count: number, check: () => void) {

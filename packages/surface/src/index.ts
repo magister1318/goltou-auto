@@ -15,6 +15,7 @@ export interface KeyInput {
   /** CDP bit mask: Alt=1, Control=2, Meta=4, Shift=8. */
   modifiers?: number;
 }
+export interface SurfaceDialog { id: string; kind: 'alert' | 'confirm'; message: string }
 
 export interface Surface {
   readonly session: SurfaceSession;
@@ -27,6 +28,8 @@ export interface Surface {
   typeText(text: string): Promise<void>;
   pressKey(input: KeyInput): Promise<void>;
   attachFiles(selector: string, absolutePaths: readonly string[]): Promise<void>;
+  readDialog?(): Promise<SurfaceDialog | null>;
+  respondDialog?(id: string, accept: boolean): Promise<void>;
   show(): Promise<void>;
   hide(): Promise<void>;
   close(): Promise<void>;

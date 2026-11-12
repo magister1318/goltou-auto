@@ -9,6 +9,7 @@ export interface PreparedPreview {
   verification: { blog: Verification; band: Verification }; polish?: PolishResult;
 }
 export interface PreparationWork {
+  readonly preview?: PreparedPreview;
   readonly prepared?: { preview: PreparedPreview; files: import('./media').MediaFile[] } | undefined;
   download(signal: AbortSignal, progress: (n: number) => void): Promise<void>;
   arrange(): Promise<void>;
@@ -38,6 +39,7 @@ export async function preparePreview(product: Product, options: ConvertOptions &
 export function preparationWork(product: Product, preview: PreparedPreview, services: PreparationServices): PreparationWork {
   let batch: MediaBatch | undefined;
   return {
+    preview,
     get prepared() { return batch ? { preview, files: batch.files } : undefined; },
     async download(signal, progress) {
       if (batch) { await batch.cleanup(); batch = undefined; }

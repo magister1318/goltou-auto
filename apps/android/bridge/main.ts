@@ -1,6 +1,6 @@
 // Reference: ../refs/DAF/daf3/apps/mobile/src/core/main.ts (embedded Node startup arguments).
 import path from 'node:path';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { NativeBridge, startCore, fileMediaStorage } from '../../../packages/core/src/index';
 import { aiModeTransport } from '../../../packages/sites/src/ai-mode';
 import { AndroidSurfaceHost } from './host';
@@ -24,6 +24,14 @@ const experiments = argument('debug') === 'true' ? new Experiments({
 }) : undefined;
 void startCore({
   native, host, ...(experiments ? { experiments } : {}),
+  blog: {
+    host, capture: (surface, name) => host.capture(surface, name),
+    recordFailure: async failure => {
+      const directory = path.join(path.dirname(argument('data')), 'wp5');
+      await mkdir(directory, { recursive: true });
+      await writeFile(path.join(directory, `job-${failure.jobId}-step-${failure.step}.json`), JSON.stringify({ at: new Date().toISOString(), ...failure }));
+    },
+  },
   preparation: {
     polish: aiModeTransport(host),
     media: {
@@ -32,7 +40,7 @@ void startCore({
       // Real HTTP downloading is covered against a local server; no Goltou endpoint is configured.
       fetcher: async (url, init) => {
         init.signal.throwIfAborted();
-        const match = /^https:\/\/example\.invalid\/images\/\d+\/([0-4])\.jpg$/.exec(url);
+        const match = /^https:\/\/example\.invalid\/images\/\d+\/([0-4])\.png$/.exec(url);
         if (!match) throw new Error('SYNTHETIC_PHOTO_REQUIRED');
         const bytes = await readFile(path.join(argument('bundle'), 'fixtures', `sample-${Number(match[1]) + 1}.png`));
         return { ok: true, arrayBuffer: async () => Uint8Array.from(bytes).buffer };

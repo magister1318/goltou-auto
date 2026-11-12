@@ -10,6 +10,8 @@ import { AppCore } from './app';
 import type { AppRequest } from './protocol';
 import type { Experiments } from './experiments';
 import type { PreparationServices } from './preparation';
+import { BlogRegistrationRunner } from './blog-runner';
+import type { BlogServices } from './blog';
 
 export interface CoreOptions {
   host: SurfaceHost;
@@ -21,6 +23,7 @@ export interface CoreOptions {
   app?: AppCore;
   experiments?: Experiments;
   preparation?: PreparationServices;
+  blog?: BlogServices;
 }
 
 const mime: Record<string, string> = {
@@ -36,7 +39,7 @@ export async function startCore(options: CoreOptions) {
   const uiDir = await realpath(options.uiDir);
   let origin = '';
   let diagnosing = false;
-  const app = options.app ?? new AppCore(undefined, undefined, undefined, options.preparation);
+  const app = options.app ?? new AppCore(undefined, undefined, options.blog ? (checkpoint, notify) => new BlogRegistrationRunner(options.blog!, checkpoint, notify) : undefined, options.preparation);
 
   function validToken(value: string | undefined | null): boolean {
     if (!value) return false;

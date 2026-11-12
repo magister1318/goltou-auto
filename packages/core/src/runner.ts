@@ -7,6 +7,12 @@ export interface RegistrationRunner {
   stop(): Promise<void>;
   resume(): Promise<void>;
   dispose(): void;
+  recover?(discard: boolean): Promise<void>;
+  answerDialog?(id: string, accept: boolean): Promise<void>;
+  showDraft?(title: string): Promise<void>;
+  checkLogin?(): Promise<'confirmed' | 'expired' | 'unknown'>;
+  showService?(service: import('./protocol').Service): Promise<void>;
+  hideService?(): Promise<void>;
 }
 export type Checkpoint = (job: Job) => Promise<void>;
 /** Site steps remain simulated. An injected preparation performs real media/body work. */

@@ -18,6 +18,7 @@ export class AppCore {
   constructor(private readonly api: ApiClient = createFakeApi(), private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: (job: Job) => Promise<void>, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices) {
     const notify = (job: Job) => { this.state.job = job; if (job.status === 'login_paused' && job.service) { this.state.services[job.service] = 'expired'; this.state.visibleService = job.service; } this.emit(); };
     this.runner = factory ? factory(job => this.record(job), notify) : new FakeRegistrationRunner(() => this.state.simulation, job => this.record(job), notify);
+    if (this.runner.checkLogin) { this.state.realBlog = true; this.state.services.naver = 'unknown'; }
   }
   subscribe(listener: (state: AppSnapshot) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   snapshot(): AppSnapshot { return structuredClone(this.state); }
@@ -63,9 +64,9 @@ export class AppCore {
       }
       case 'posts.list': return this.api.request('/auto/posts/list', request.input, token);
       case 'settings.save': await this.api.request('/auto/settings/save', request.input, token); this.state.settings = (await this.api.request('/auto/me', {}, token)).settings; break;
-      case 'service.check': this.state.services[request.input.service] = 'confirmed'; break;
-      case 'service.show': this.state.visibleService = request.input.service; break;
-      case 'service.hide': this.state.visibleService = null; break;
+      case 'service.check': this.state.services[request.input.service] = request.input.service === 'naver' && this.runner.checkLogin ? await this.runner.checkLogin() : 'confirmed'; break;
+      case 'service.show': await this.runner.showService?.(request.input.service); this.state.visibleService = request.input.service; break;
+      case 'service.hide': await this.runner.hideService?.(); this.state.visibleService = null; break;
       case 'service.clear': this.state.services[request.input.service] = 'unknown'; if (this.state.visibleService === request.input.service) this.state.visibleService = null; break;
       case 'simulation.configure': {
         const c = request.input;
@@ -74,6 +75,15 @@ export class AppCore {
       }
       case 'job.start': await this.start(request.input, token); return this.snapshot();
       case 'job.stop': await this.runner.stop(); return this.snapshot();
+      case 'job.recovery':
+        if (!this.runner.recover || typeof request.input.discard !== 'boolean') throw new ApiError('invalid', '자동복구 선택을 확인해 주세요.');
+        await this.runner.recover(request.input.discard); return this.snapshot();
+      case 'job.dialog':
+        if (!this.runner.answerDialog || typeof request.input.id !== 'string' || typeof request.input.accept !== 'boolean') throw new ApiError('invalid', '확인창 선택을 확인해 주세요.');
+        await this.runner.answerDialog(request.input.id, request.input.accept); return this.snapshot();
+      case 'draft.show':
+        if (!this.runner.showDraft) throw new ApiError('invalid', '이 실행기는 실제 임시글을 열 수 없습니다.');
+        await this.runner.showDraft(request.input.title); return this.snapshot();
       case 'job.resume':
         if (this.runner.job?.status === 'login_paused' && this.runner.job.service && this.state.services[this.runner.job.service] !== 'confirmed') throw new ApiError('auth', '로그인 상태를 먼저 확인해 주세요.');
         this.state.visibleService = null; await this.runner.resume(); return this.snapshot();
@@ -116,7 +126,7 @@ export class AppCore {
       if (['draft_saved', 'published'].includes(record.status)) continue;
       const saved = job.completedSteps.includes(record.channel === 'blog' ? 5 : 6);
       const status: PostStatus = saved ? (job.mode === 'draft' ? 'draft_saved' : 'published') : job.status === 'failed' ? 'failed' : job.status === 'user_paused' ? 'stopped' : 'running';
-      await this.api.request('/auto/posts/update', { postNo: record.postNo, status, step: job.step, failReason: job.message, postUrl: status === 'published' ? `https://example.invalid/posts/${record.postNo}` : '' }, token);
+      await this.api.request('/auto/posts/update', { postNo: record.postNo, status, step: job.step, failReason: ['failed', 'stopped'].includes(status) ? job.message : '', postUrl: status === 'published' ? (job.postUrl ?? `https://example.invalid/posts/${record.postNo}`) : '' }, token);
       record.status = status;
     }
   }

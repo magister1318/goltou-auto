@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.MutableContextWrapper
 import android.content.pm.ActivityInfo
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -11,6 +12,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.os.Build
+import android.util.Base64
 import android.webkit.WebView
 import android.widget.FrameLayout
 import androidx.lifecycle.AndroidViewModel
@@ -66,24 +68,33 @@ class AppSession(application: Application) : AndroidViewModel(application) {
                 val name = msg.getString("name")
                 require(name.matches(Regex("[a-zA-Z0-9-]{1,100}")))
                 val view = surfaces.view(msg.getString("surface"))
-                val bitmap = Bitmap.createBitmap(view.width.coerceAtLeast(1), view.height.coerceAtLeast(1), Bitmap.Config.ARGB_8888)
+                val width = msg.getInt("viewportWidth").also { require(it in 1..8192) }
+                val height = msg.getInt("viewportHeight").also { require(it in 1..8192) }
+                val sensitive = msg.optBoolean("sensitive", true)
+                // CDP paints and reads geometry in the same CSS viewport. WebView.scale is not
+                // the bitmap/CSS ratio under desktop emulation on a high-density phone.
+                val bitmap = if (sensitive) Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888) else {
+                    val bytes = Base64.decode(msg.getString("screenshot"), Base64.DEFAULT)
+                    val decoded = BitmapFactory.decodeByteArray(bytes, 0, bytes.size) ?: error("CAPTURE_DECODE_FAILED")
+                    decoded.copy(Bitmap.Config.ARGB_8888, true).also { decoded.recycle() }
+                }
                 val canvas = Canvas(bitmap)
-                canvas.drawColor(Color.WHITE)
-                if (!msg.optBoolean("sensitive", true)) view.draw(canvas)
+                if (sensitive) canvas.drawColor(Color.BLACK)
                 // Geometry only comes from a read-only DOM scan. Never store page text or input values.
                 val paint = Paint().apply { color = Color.BLACK }
                 val masks = msg.getJSONArray("masks")
-                @Suppress("DEPRECATION")
-                val scale = view.scale
+                val scaleX = bitmap.width.toFloat() / width
+                val scaleY = bitmap.height.toFloat() / height
                 for (index in 0 until masks.length()) {
                     val rect = masks.getJSONArray(index)
-                    canvas.drawRect(rect.getDouble(0).toFloat() * scale - 4, rect.getDouble(1).toFloat() * scale - 4,
-                        rect.getDouble(2).toFloat() * scale + 4, rect.getDouble(3).toFloat() * scale + 4, paint)
+                    canvas.drawRect(rect.getDouble(0).toFloat() * scaleX - 6, rect.getDouble(1).toFloat() * scaleY - 6,
+                        rect.getDouble(2).toFloat() * scaleX + 6, rect.getDouble(3).toFloat() * scaleY + 6, paint)
                 }
                 val dir = File(context.filesDir, "wp0").apply { mkdirs() }
                 File(dir, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
                 bitmap.recycle()
-                reply(JSONObject().put("file", "$name.png").put("redacted", true), null)
+                reply(JSONObject().put("file", "$name.png").put("redacted", true).put("cssWidth", width)
+                    .put("cssHeight", height).put("scaleX", scaleX).put("scaleY", scaleY), null)
             }
             else -> error("UNKNOWN_DEBUG_OP")
         }

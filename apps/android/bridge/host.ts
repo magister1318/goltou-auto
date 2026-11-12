@@ -44,6 +44,8 @@ export class AndroidSurfaceHost implements SurfaceHost {
       const cdp = await CdpConnection.connect(endpoint, { socketPath: this.socketPath });
       let unsubscribe = () => {};
       const surface = new CdpSurface(session, cdp, {
+        readDialog: async () => (await this.native.call<{ dialog: import('../../../packages/surface/src/index').SurfaceDialog | null }>('surface.dialog', { surface: id })).dialog,
+        respondDialog: async (dialog, accept) => { await this.native.call('surface.dialog.answer', { surface: id, dialog, accept }); },
         setVisible: async visible => { await this.native.call('surface.visible', { surface: id, visible }); },
         close: async () => {
           unsubscribe();
@@ -75,18 +77,20 @@ export class AndroidSurfaceHost implements SurfaceHost {
   async capture(surface: Surface, name: string): Promise<Record<string, unknown>> {
     const id = this.surfaces.get(surface);
     if (!id) throw new Error('NO_SURFACE');
-    const geometry = await surface.evaluateReadOnly<{ sensitive: boolean; viewportWidth: number; masks: number[][] }>(`(() => {
+    const geometry = await surface.evaluateReadOnly<{ sensitive: boolean; viewportWidth: number; viewportHeight: number; masks: number[][] }>(`(() => {
       const sensitive=location.hostname==='nid.naver.com'||location.hostname==='auth.band.us'||Boolean(document.querySelector('input[type="password"]'));
       const masks=[];
       for (const e of document.querySelectorAll('*')) {
         const tag=e.tagName.toLowerCase();
         if (['script','style','head','link','meta'].includes(tag)) continue;
-        if (['input','textarea','img','svg','canvas','video','iframe'].includes(tag) || Array.from(e.childNodes).some(n=>n.nodeType===3&&(n.textContent||'').trim())) {
+        if (['input','textarea','img','svg','canvas','video','iframe'].includes(tag) || getComputedStyle(e).backgroundImage!=='none' || Array.from(e.childNodes).some(n=>n.nodeType===3&&(n.textContent||'').trim())) {
           const r=e.getBoundingClientRect(); if(r.width&&r.height) masks.push([r.left,r.top,r.right,r.bottom]);
         }
       }
-      return {sensitive,viewportWidth:innerWidth,masks};
+      return {sensitive,viewportWidth:innerWidth,viewportHeight:innerHeight,masks};
     })()`);
-    return this.native.call('debug.capture', { surface: id, name, ...geometry });
+    if (!(surface instanceof CdpSurface)) throw new Error('CAPTURE_UNAVAILABLE');
+    const screenshot = geometry.sensitive ? '' : await surface.captureViewport();
+    return this.native.call('debug.capture', { surface: id, name, screenshot, ...geometry });
   }
 }
