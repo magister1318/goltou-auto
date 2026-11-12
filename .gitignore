@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+.gradle/
+*.apk
+*.aab
+*.keystore
+*.jks
+local.properties
+.env
+.env.*
+var/
+tmp/
+*.log
+.DS_Store
