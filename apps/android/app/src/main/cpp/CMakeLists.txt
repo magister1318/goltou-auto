@@ -1,0 +1,10 @@
+# Reference: ../refs/DAF/daf3/apps/mobile/android/app/src/main/cpp/CMakeLists.txt
+cmake_minimum_required(VERSION 3.22.1)
+project(goltounode)
+set(LIBNODE ${CMAKE_SOURCE_DIR}/../../../libnode)
+add_library(goltounode SHARED native-lib.cpp)
+include_directories(${LIBNODE}/include/node)
+add_library(libnode SHARED IMPORTED)
+set_target_properties(libnode PROPERTIES IMPORTED_LOCATION ${LIBNODE}/bin/${ANDROID_ABI}/libnode.so)
+find_library(log-lib log)
+target_link_libraries(goltounode libnode ${log-lib})
