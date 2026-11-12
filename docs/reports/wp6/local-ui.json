@@ -1,0 +1,17 @@
+{
+  "scope": "loopback fixture only; preseeded synthetic session; no credential input",
+  "stoppedBeforePostMs": 4019,
+  "elapsedMs": 7089,
+  "photos": 5,
+  "imageOrderVerified": true,
+  "status": "stopped",
+  "recordStatus": "stopped",
+  "counts": {
+    "opens": 1,
+    "posts": 0,
+    "discards": 1
+  },
+  "surfaceShown": 2,
+  "externalRequests": 0,
+  "pageErrors": []
+}

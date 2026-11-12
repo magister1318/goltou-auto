@@ -13,3 +13,5 @@ export * from './media/files';
 export * from './preparation';
 export * from './blog';
 export { BlogRegistrationRunner } from './blog-runner';
+export * from './band';
+export { ChannelRegistrationRunner } from './band-runner';

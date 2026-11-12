@@ -56,9 +56,10 @@ export async function fillBand(surface: Surface, article: ReturnType<typeof exam
   if (!result.bodyMatches || result.bodyChars !== compact(text).length) throw new Error('BAND_INPUT_MISMATCH');
   return { ...result, attachmentMethod: 'file-input', paste: 'not-tested', draftBehavior: 'not-tested', stoppedBeforePost: true };
 }
-export async function confirmBandPhotos(surface: Surface, count: number) {
+export async function confirmBandPhotos(surface: Surface, count: number, check: () => Promise<void> = async () => {}) {
   let confirmed = false;
   await waitFor(async () => {
+    await check();
     if ((await bandSnapshot(surface, '')).images === count) return true;
     if (!confirmed) {
       const control = await read<{ x: number; y: number } | null>(surface, `for(const {d,x,y} of docs) for(const dialog of d.querySelectorAll('section.lyWrap')) {

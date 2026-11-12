@@ -24,6 +24,7 @@ const experiments = argument('debug') === 'true' ? new Experiments({
 }) : undefined;
 void startCore({
   native, host, ...(experiments ? { experiments } : {}),
+  band: { host },
   blog: {
     host, capture: (surface, name) => host.capture(surface, name),
     recordFailure: async failure => {

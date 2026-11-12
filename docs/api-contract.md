@@ -84,7 +84,9 @@
 
 ### `POST /auto/posts/update`
 
-입력 `{ "postNo": 88, "status": "running" | "draft_saved" | "published" | "failed" | "stopped", "step": 4, "failReason": "", "postUrl": "" }`
+입력 `{ "postNo": 88, "status": "running" | "draft_saved" | "published" | "failed" | "stopped" | "stopped_before_post", "step": 4, "failReason": "", "postUrl": "" }`
+
+WP6 밴드의 `stopped_before_post`는 작성기 입력·대조 후 게시 전 멈춤이며 서버에 저장된 임시글이 아니다. 작성 취소를 확인하면 `stopped`, 사용자 게시 후 새 글 주소와 본문·사진 대조까지 확인하면 `published`로 갱신한다. 실제 서버의 새 상태 수용은 별도 반영이 필요하며 WP6은 가짜 API로만 확인한다.
 
 - 본인 기록만 고칠 수 있습니다. `published`와 `draft_saved`에서 `running`으로 되돌릴 수 없습니다.
 

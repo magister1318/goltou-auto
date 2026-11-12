@@ -30,7 +30,7 @@ export function createFakeApi(): ApiClient {
     const at = `2026-11-${product === 0 ? '12' : product === 1 ? '10' : product === 2 ? '08' : '07'}T09:00:00+09:00`;
     posts.push({ postNo: serial++, productNo: p.productNo, productTitle: p.title, channel, mode: status === 'published' ? 'publish' : 'draft', targetName: channel === 'blog' ? '해외골프' : '골투 여행', status, step: status === 'failed' ? 6 : 7, failReason: status === 'failed' ? '사진 올리기 응답 없음' : '', postUrl: status === 'published' ? `https://example.invalid/posts/${serial}` : '', userName: Object.values(fakeAccounts).find(u => u.userNo === owner)!.name, startedAt: at, finishedAt: at, productChanged: changed, owner, targetKey: 'travel', hash: changed ? 'old-hash' : p.contentHash });
   };
-  seed(0, 'blog', 'draft_saved'); seed(0, 'band', 'draft_saved'); seed(1, 'blog', 'published'); seed(1, 'band', 'failed'); seed(2, 'blog', 'published', 12, true); seed(2, 'band', 'published', 12, true); seed(4, 'blog', 'published', 13);
+  seed(0, 'blog', 'draft_saved'); seed(0, 'band', 'stopped_before_post'); seed(1, 'blog', 'published'); seed(1, 'band', 'failed'); seed(2, 'blog', 'published', 12, true); seed(2, 'band', 'published', 12, true); seed(4, 'blog', 'published', 13);
   return { async request<P extends keyof ApiRoutes>(path: P, input: ApiRoutes[P]['input'], token?: string): Promise<ApiRoutes[P]['output']> {
     const data = input as unknown as Record<string, unknown>;
     let output: unknown;
