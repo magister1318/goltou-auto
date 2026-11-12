@@ -9,6 +9,7 @@ export function ExperimentsScreen({ back }: { back(): void }) {
   const [bandKey, setBandKey] = useState('');
   const [ua, setUa] = useState('desktop');
   const [sending, setSending] = useState(false);
+  const [declineAutoRecover, setDeclineAutoRecover] = useState(false);
   const labels = { confirmed: '로그인됨', expired: '풀림', unknown: '모름' };
   useEffect(() => {
     let active = true;
@@ -17,6 +18,7 @@ export function ExperimentsScreen({ back }: { back(): void }) {
     return () => { active = false; clearInterval(timer); };
   }, []);
   async function run(command: string, input: Record<string, unknown> = {}) {
+    if (command === 'blog.run') setDeclineAutoRecover(false);
     setSending(true); setError('');
     try { setState(await experiment(command, input)); } catch (e) { setError(e instanceof Error ? e.message : '실험 요청 실패'); }
     finally { setSending(false); }
@@ -42,7 +44,9 @@ export function ExperimentsScreen({ back }: { back(): void }) {
       <button disabled={busy} onClick={() => void run('login.check', { channel: 'naver' })}>네이버 상태 확인</button>
       <button disabled={busy} onClick={() => void run('login.check', { channel: 'band' })}>밴드 상태 확인</button></div></section>
     <section><h2>사용자가 로그인한 뒤에만 실행</h2><p>예시 글 16문단·3,000자 이상, 예시 PNG 5장. 문자 입력은 글자당 60ms로 진행합니다.</p>
-      <button disabled={busy || state?.login.naver !== 'confirmed'} onClick={() => void run('blog.run')}>블로그 입력·임시저장·다시 읽기</button>
+      <div className="option-row"><span>작성 중인 글 복구 안내가 나오면 복구하지 않고 새로 시작하는 데 동의합니다.<small className="muted"> 저장된 임시글은 삭제하지 않습니다.</small></span>
+        <button className="switch" role="switch" aria-label="자동복구 거절에 동의" aria-checked={declineAutoRecover} disabled={busy} onClick={() => setDeclineAutoRecover(!declineAutoRecover)}><span/></button></div>
+      <button disabled={busy || state?.login.naver !== 'confirmed'} onClick={() => void run('blog.run', { declineAutoRecover })}>블로그 입력·임시저장·다시 읽기</button>
       <div className="experiment-actions"><button disabled={busy || state?.login.band !== 'confirmed'} onClick={() => void run('band.list')}>내 밴드 목록 읽기</button></div>
       <label>실험할 밴드<select value={bandKey} onChange={e => setBandKey(e.target.value)}><option value="">선택해 주세요</option>{state?.bands.map(b => <option key={b.key} value={b.key}>{b.name} · {b.key}</option>)}</select></label>
       <label>밴드 UA<select value={ua} onChange={e => setUa(e.target.value)}><option value="desktop">데스크톱</option><option value="mobile">모바일</option></select></label>

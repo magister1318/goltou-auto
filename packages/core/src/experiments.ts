@@ -121,10 +121,11 @@ export class Experiments {
         active = await this.get('naver', true);
         const article = exampleArticle(this.runId.slice(0, 8));
         await this.step('open-blog-desktop-1280x900', () => this.open(active!, probeUrls.naver));
-        await this.step('type-blog-and-five-photos', () => fillBlog(active!, article, this.options.photoPaths, this.check), v => ({ chars: v.body.length, paragraphs: v.paragraphs, images: v.images }));
+        const editorOptions = { autoRecover: input.declineAutoRecover === true ? 'decline-with-user-consent' as const : 'stop' as const };
+        await this.step('type-blog-and-five-photos', () => fillBlog(active!, article, this.options.photoPaths, this.check, editorOptions), v => ({ chars: v.body.length, paragraphs: v.paragraphs, images: v.images }));
         await this.step('save-and-reopen-blog-draft', () => saveAndReopen(active!, article, 5, this.check, async () => {
           active = await this.get('naver', true); await this.open(active, probeUrls.naver); return active;
-        }), v => v);
+        }, editorOptions), v => v);
       }
       if (command === 'band.run') {
         if (!this.state.bands.some(b => b.key === input.bandKey)) throw new Error('BAND_NOT_SELECTED_FROM_LIST');

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { existsSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 import type { Surface } from '@goltou/surface';
-import { bandSnapshot, closeComposer, domSummary, exampleArticle, fillBlog, listBands, loginState, point, snapshot } from '../src';
+import { bandSnapshot, blogImageLayout, closeComposer, domSummary, exampleArticle, fillBlog, listBands, loginState, point, prepareBlogEditor, saveAndReopen, snapshot } from '../src';
 
 const executablePath = [process.env.CHROMIUM, 'C:/Program Files/Google/Chrome/Application/chrome.exe',
   'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', '/usr/bin/chromium', '/usr/bin/google-chrome'].find(p => p && existsSync(p));
@@ -20,7 +20,9 @@ describe('WP0 readers in a fresh local browser fixture', () => {
         return route.fulfill({ contentType: 'text/html; charset=utf-8', body: fixture === 'cancel'
           ? '<section class="lyWrap"><div class="headingMsg">글 작성을 취소하시겠습니까?</div><button class="_btnConfirm">확인</button></section>'
           : fixture === 'restore'
-          ? '<div class="se-documentTitle"></div><div class="se-popup-alert-confirm">작성 중인 글이 있습니다. 이어서 작성하시겠습니까?<button class="se-popup-button-confirm">확인</button></div>'
+          ? '<div class="se-documentTitle"><p class="se-text-paragraph"><span class="se-placeholder">제목</span></p></div><div class="se-content"><div class="se-component se-text"><p class="se-text-paragraph"><span class="se-placeholder">본문</span></p></div></div><div class="se-popup-alert-confirm">작성 중인 글이 있습니다. 이어서 작성하시겠습니까?<button class="se-popup-button-confirm">확인</button><button class="se-popup-button-cancel" onclick="this.parentElement.remove()">취소</button></div>'
+          : fixture === 'layout'
+          ? '<div class="se-documentTitle"><p class="se-text-paragraph">연습 제목</p></div><div class="se-content"><div class="se-component se-text"><p class="se-text-paragraph">첫 문단</p><p class="se-text-paragraph"><span class="se-placeholder">본문</span></p></div><img class="se-image-resource" src="/sample-3.png"><div class="se-component se-text"><p class="se-text-paragraph">둘째 문단</p></div><img class="se-image-resource" src="/sample-1.png"><img class="se-image-resource" src="/unknown.png"></div>'
           : fixture === 'mobile'
           ? '<textarea class="_postTextArea" placeholder="새로운 소식을 남겨보세요.">연습 본문</textarea><div class="postAttachItem"><ul class="_mediaListWrap"><li class="mediaListItem"><img class="mediaImg"></li></ul></div><input type="file" accept="image/*" multiple>'
           : fixture === 'desktop'
@@ -52,8 +54,21 @@ describe('WP0 readers in a fresh local browser fixture', () => {
       expect(await snapshot(surface)).toEqual({ title: '', body: '', paragraphs: 0, images: 0 });
       fixture = 'restore'; await page.goto('https://blog.naver.com/GoBlogWrite.naver');
       const click = vi.fn(async () => {}), typeText = vi.fn(async () => {}), attachFiles = vi.fn(async () => {});
-      await expect(fillBlog({ ...surface, click, typeText, attachFiles }, exampleArticle('fixture'), [], () => {})).rejects.toThrow('EXISTING_DRAFT_REQUIRES_EMPTY_EDITOR');
-      expect(click).toHaveBeenCalledTimes(1); expect(typeText).not.toHaveBeenCalled(); expect(attachFiles).not.toHaveBeenCalled();
+      await expect(fillBlog({ ...surface, click, typeText, attachFiles }, exampleArticle('fixture'), [], () => {})).rejects.toThrow('AUTO_RECOVER_CONSENT_REQUIRED');
+      expect(click).not.toHaveBeenCalled(); expect(typeText).not.toHaveBeenCalled(); expect(attachFiles).not.toHaveBeenCalled();
+      // Only the explicit app consent permits declining this exact restore prompt.
+      const mouse = vi.fn(async (x: number, y: number) => { await page.mouse.click(x, y); });
+      expect(await prepareBlogEditor({ ...surface, click: mouse }, () => {}, { autoRecover: 'decline-with-user-consent' })).toEqual({ empty: true, autoRecoverDeclined: true });
+      expect(mouse).toHaveBeenCalledTimes(1);
+      fixture = 'naver'; await page.goto('https://blog.naver.com/GoBlogWrite.naver');
+      mouse.mockClear();
+      await expect(prepareBlogEditor({ ...surface, click: mouse }, () => {}, { autoRecover: 'decline-with-user-consent' })).rejects.toThrow('EDITOR_NOT_EMPTY');
+      expect(mouse).not.toHaveBeenCalled();
+      fixture = 'layout'; await page.goto('https://blog.naver.com/GoBlogWrite.naver');
+      expect(await blogImageLayout(surface)).toEqual([{ sample: 3, afterParagraph: 1 }, { sample: 1, afterParagraph: 2 }, { sample: null, afterParagraph: 2 }]);
+      const reopen = vi.fn();
+      await expect(saveAndReopen({ ...surface, click: mouse }, exampleArticle('fixture'), 3, () => {}, reopen)).rejects.toThrow('DRAFT_SAVE_INPUT_MISMATCH');
+      expect(mouse).not.toHaveBeenCalled(); expect(reopen).not.toHaveBeenCalled();
       fixture = 'cancel'; await page.goto('https://band.us/band/123/post'); click.mockClear();
       await closeComposer({ ...surface, click }); expect(click).toHaveBeenCalledTimes(1);
       await context.close();
