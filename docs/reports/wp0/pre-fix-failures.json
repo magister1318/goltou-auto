@@ -1,0 +1,129 @@
+[
+  {
+    "version": 1,
+    "runId": "2db1decd-e362-4294-9e1d-72adaa86e64a",
+    "action": "login.check",
+    "result": "SURFACE_NAVIGATION_TIMEOUT",
+    "steps": [
+      {
+        "at": "2026-11-12T11:49:50.218Z",
+        "action": "check-band",
+        "result": "failed",
+        "elapsedMs": 30402,
+        "detail": {
+          "code": "SURFACE_NAVIGATION_TIMEOUT"
+        }
+      },
+      {
+        "at": "2026-11-12T11:50:20.640Z",
+        "action": "failure-evidence",
+        "result": "captured",
+        "elapsedMs": 0,
+        "detail": {
+          "structure": {
+            "documents": 1,
+            "editables": 0,
+            "fileInputs": 0,
+            "images": 29,
+            "buttons": 5
+          },
+          "screenshot": {
+            "unavailable": true
+          }
+        }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "runId": "874d0766-c260-4a9f-9c14-0ff55607be7c",
+    "action": "login.check",
+    "result": "SURFACE_NAVIGATION_TIMEOUT",
+    "steps": [
+      {
+        "at": "2026-11-12T11:48:39.764Z",
+        "action": "check-band",
+        "result": "failed",
+        "elapsedMs": 30711,
+        "detail": {
+          "code": "SURFACE_NAVIGATION_TIMEOUT"
+        }
+      },
+      {
+        "at": "2026-11-12T11:49:10.499Z",
+        "action": "failure-evidence",
+        "result": "captured",
+        "elapsedMs": 0,
+        "detail": {
+          "structure": {
+            "documents": 1,
+            "editables": 0,
+            "fileInputs": 0,
+            "images": 29,
+            "buttons": 5
+          },
+          "screenshot": {
+            "unavailable": true
+          }
+        }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "runId": "e1262edd-cf25-4e6d-9d73-b7829b49acaf",
+    "action": "lifecycle",
+    "result": "LIFECYCLE_STATE_LOST",
+    "steps": [
+      {
+        "at": "2026-11-12T11:55:42.130Z",
+        "action": "before-lifecycle",
+        "result": "ok",
+        "elapsedMs": 31,
+        "detail": {
+          "activityCreations": 1,
+          "pauses": 0,
+          "resumes": 1
+        }
+      },
+      {
+        "at": "2026-11-12T11:55:42.162Z",
+        "action": "activity-background",
+        "result": "ok",
+        "elapsedMs": 2,
+        "detail": {}
+      },
+      {
+        "at": "2026-11-12T11:55:45.666Z",
+        "action": "after-lifecycle",
+        "result": "ok",
+        "elapsedMs": 47,
+        "detail": {
+          "activityCreations": 1,
+          "pauses": 1,
+          "resumes": 1,
+          "foreground": false,
+          "samePage": true
+        }
+      },
+      {
+        "at": "2026-11-12T11:55:45.715Z",
+        "action": "failure-evidence",
+        "result": "captured",
+        "elapsedMs": 15,
+        "detail": {
+          "structure": {
+            "documents": 1,
+            "editables": 0,
+            "fileInputs": 0,
+            "images": 0,
+            "buttons": 0
+          },
+          "screenshot": {
+            "unavailable": true
+          }
+        }
+      }
+    ]
+  }
+]

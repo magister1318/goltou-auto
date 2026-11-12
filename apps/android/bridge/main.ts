@@ -2,6 +2,7 @@
 import path from 'node:path';
 import { NativeBridge, startCore } from '../../../packages/core/src/index';
 import { AndroidSurfaceHost } from './host';
+import { Experiments } from '../../../packages/core/src/experiments';
 
 function argument(name: string): string {
   const index = process.argv.indexOf(`--${name}`);
@@ -11,8 +12,16 @@ function argument(name: string): string {
 }
 
 const native = new NativeBridge();
+const host = new AndroidSurfaceHost(native, argument('devtools'));
+const experiments = argument('debug') === 'true' ? new Experiments({
+  host, directory: argument('data'),
+  photoPaths: Array.from({ length: 5 }, (_, i) => path.join(argument('bundle'), 'fixtures', `sample-${i + 1}.png`)),
+  info: async () => ({ ...await native.call<Record<string, unknown>>('debug.info'), node: process.version, coreUptimeMs: Math.round(process.uptime() * 1000) }),
+  lifecycle: async mode => { await native.call('debug.lifecycle', { mode }); },
+  capture: (surface, name) => host.capture(surface, name),
+}) : undefined;
 void startCore({
-  native, host: new AndroidSurfaceHost(native, argument('devtools')),
+  native, host, ...(experiments ? { experiments } : {}),
   port: Number(argument('port')), token: argument('token'), uiDir: path.join(argument('bundle'), 'ui'),
 }).then(() => console.log('골투오토 코어 준비됨')).catch(error => {
   console.error('코어 시작 실패', error);

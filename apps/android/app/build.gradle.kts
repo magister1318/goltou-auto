@@ -6,6 +6,7 @@ plugins {
 
 android {
     namespace = "kr.goltou.auto"
+    buildFeatures { buildConfig = true }
     compileSdk = 36
     buildToolsVersion = "36.0.0"
     ndkVersion = "27.3.13750724"

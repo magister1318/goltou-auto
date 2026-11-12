@@ -8,6 +8,12 @@ export class NativeBridge {
   private socket: WebSocket | undefined;
   private nextId = 1;
   private readonly pending = new Map<number, Pending>();
+  private readonly events = new Map<string, Set<(data: Record<string, unknown>) => void>>();
+
+  onEvent(name: string, listener: (data: Record<string, unknown>) => void): () => void {
+    const listeners = this.events.get(name) ?? new Set(); this.events.set(name, listeners); listeners.add(listener);
+    return () => { listeners.delete(listener); if (!listeners.size) this.events.delete(name); };
+  }
 
   attach(socket: WebSocket): void {
     this.detach();
@@ -15,7 +21,8 @@ export class NativeBridge {
     socket.on('message', raw => {
       if (this.socket !== socket) return;
       try {
-        const msg = JSON.parse(String(raw)) as { id: number; ok: boolean; result?: unknown; error?: string };
+        const msg = JSON.parse(String(raw)) as { id: number; ok: boolean; result?: unknown; error?: string; event?: string; data?: Record<string, unknown> };
+        if (msg.event) { for (const listener of this.events.get(msg.event) ?? []) listener(msg.data ?? {}); return; }
         const item = this.pending.get(msg.id);
         if (!item) return;
         this.pending.delete(msg.id);

@@ -46,12 +46,21 @@ importers:
       '@goltou/api-client':
         specifier: workspace:*
         version: link:../api-client
+      '@goltou/sites':
+        specifier: workspace:*
+        version: link:../sites
       '@goltou/surface':
         specifier: workspace:*
         version: link:../surface
       ws:
         specifier: 8.18.3
         version: 8.18.3
+
+  packages/sites:
+    dependencies:
+      '@goltou/surface':
+        specifier: workspace:*
+        version: link:../surface
 
   packages/surface:
     dependencies:

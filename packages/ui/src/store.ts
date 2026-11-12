@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
 import type { AppSnapshot, Commands } from '@goltou/core/protocol';
-type State = { connected: boolean; snapshot: AppSnapshot | null; error: string };
-let state: State = { connected: false, snapshot: null, error: '' };
+type State = { connected: boolean; debug: boolean; snapshot: AppSnapshot | null; error: string };
+let state: State = { connected: false, debug: false, snapshot: null, error: '' };
 const listeners = new Set<() => void>();
 const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
 let socket: WebSocket;
@@ -14,8 +14,8 @@ export function connect() {
   history.replaceState({ screen: 'login' }, '', location.pathname);
   socket = new WebSocket(`${location.origin.replace('http:', 'ws:')}/ui-socket`);
   socket.onmessage = event => {
-    const message = JSON.parse(String(event.data)) as { type: string; id?: number; snapshot?: AppSnapshot; data?: unknown; state?: unknown; code?: string; message?: string };
-    if (message.type === 'ready') { update({ connected: true }); void request('session.get', {}).then(snapshot => update({ snapshot })).catch(() => {}); }
+    const message = JSON.parse(String(event.data)) as { type: string; id?: number; debug?: boolean; snapshot?: AppSnapshot; data?: unknown; state?: unknown; code?: string; message?: string };
+    if (message.type === 'ready') { update({ connected: true, debug: message.debug === true }); void request('session.get', {}).then(snapshot => update({ snapshot })).catch(() => {}); }
     if (message.type === 'snapshot' && message.snapshot) update({ snapshot: message.snapshot });
     const item = message.id === undefined ? undefined : pending.get(message.id);
     if (!item) return;
@@ -42,3 +42,6 @@ export function request<K extends keyof Commands>(command: K, input: Commands[K]
   return send({ type: 'app', command, input }) as Promise<Commands[K]['output']>;
 }
 export function diagnose(url: string) { return send({ type: 'diagnose', url }) as Promise<{ title: string; url: string }>; }
+export function experiment(command: string, input: Record<string, unknown> = {}) {
+  return send({ type: 'experiment', command, input }) as Promise<import('@goltou/core/experiments').ExperimentState>;
+}

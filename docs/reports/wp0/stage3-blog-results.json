@@ -1,0 +1,428 @@
+{
+  "version": 1,
+  "runId": "wp0-blog-20261112",
+  "action": "blog-only",
+  "saveAttempts": 1,
+  "steps": [
+    {
+      "at": "2026-11-12T14:02:25.415Z",
+      "action": "decline-authorized-auto-recover-and-confirm-empty",
+      "result": "ok",
+      "elapsedMs": 1813,
+      "detail": {
+        "empty": true,
+        "autoRecoverDeclined": true
+      }
+    },
+    {
+      "at": "2026-11-12T14:02:31.873Z",
+      "action": "human-input-and-five-files",
+      "result": "failed",
+      "elapsedMs": 398039,
+      "detail": {
+        "code": "OBSERVATION_TIMEOUT"
+      }
+    },
+    {
+      "at": "2026-11-12T14:09:19.152Z",
+      "action": "choose-individual-photo-layout",
+      "result": "ok",
+      "elapsedMs": 1435,
+      "detail": {
+        "images": 5,
+        "paragraphs": 16,
+        "bodyMatches": true
+      }
+    },
+    {
+      "at": "2026-11-12T14:09:20.988Z",
+      "action": "read-blog-counts",
+      "result": "ok",
+      "elapsedMs": 225,
+      "detail": {
+        "titleMatches": true,
+        "titleChars": 27,
+        "rawBodyChars": 4303,
+        "bodyChars": 3216,
+        "expectedChars": 3216,
+        "bodyMatches": true,
+        "paragraphs": 16,
+        "images": 5
+      }
+    },
+    {
+      "at": "2026-11-12T14:09:21.512Z",
+      "action": "read-image-order-and-paragraph-positions",
+      "result": "ok",
+      "elapsedMs": 194,
+      "detail": [
+        {
+          "sample": 1,
+          "afterParagraph": 16
+        },
+        {
+          "sample": 2,
+          "afterParagraph": 16
+        },
+        {
+          "sample": 3,
+          "afterParagraph": 16
+        },
+        {
+          "sample": 4,
+          "afterParagraph": 16
+        },
+        {
+          "sample": 5,
+          "afterParagraph": 16
+        }
+      ]
+    },
+    {
+      "at": "2026-11-12T14:09:26.170Z",
+      "action": "save-draft-only",
+      "result": "failed",
+      "elapsedMs": 15960,
+      "detail": {
+        "code": "OBSERVATION_TIMEOUT"
+      }
+    },
+    {
+      "at": "2026-11-12T14:10:19.556Z",
+      "action": "decline-authorized-auto-recover-and-confirm-empty",
+      "result": "ok",
+      "elapsedMs": 1142,
+      "detail": {
+        "empty": true,
+        "autoRecoverDeclined": false
+      }
+    },
+    {
+      "at": "2026-11-12T14:10:20.998Z",
+      "action": "open-saved-draft-list",
+      "result": "ok",
+      "elapsedMs": 743,
+      "detail": {
+        "opened": true
+      }
+    },
+    {
+      "at": "2026-11-12T14:11:04.970Z",
+      "action": "reopen-exact-title-and-verify",
+      "result": "failed",
+      "elapsedMs": 848,
+      "detail": {
+        "code": "DRAFT_IMAGE_ORDER_MISMATCH"
+      }
+    },
+    {
+      "at": "2026-11-12T14:11:10.731Z",
+      "action": "read-blog-counts",
+      "result": "ok",
+      "elapsedMs": 214,
+      "detail": {
+        "titleMatches": true,
+        "titleChars": 27,
+        "rawBodyChars": 4303,
+        "bodyChars": 3216,
+        "expectedChars": 3216,
+        "bodyMatches": true,
+        "paragraphs": 16,
+        "images": 5
+      }
+    },
+    {
+      "at": "2026-11-12T14:11:11.239Z",
+      "action": "read-image-order-and-paragraph-positions",
+      "result": "ok",
+      "elapsedMs": 218,
+      "detail": [
+        {
+          "sample": null,
+          "afterParagraph": 16
+        },
+        {
+          "sample": null,
+          "afterParagraph": 16
+        },
+        {
+          "sample": null,
+          "afterParagraph": 16
+        },
+        {
+          "sample": null,
+          "afterParagraph": 16
+        },
+        {
+          "sample": null,
+          "afterParagraph": 16
+        }
+      ]
+    },
+    {
+      "at": "2026-11-12T14:12:26.096Z",
+      "action": "navigate-to-attached-photos-with-keys",
+      "result": "partial",
+      "elapsedMs": 825,
+      "detail": {
+        "keysSent": true,
+        "scrollConfirmed": false
+      }
+    },
+    {
+      "at": "2026-11-12T14:12:27.262Z",
+      "action": "read-image-order-and-paragraph-positions",
+      "result": "ok",
+      "elapsedMs": 200,
+      "detail": [
+        {
+          "sample": null,
+          "afterParagraph": 16
+        },
+        {
+          "sample": null,
+          "afterParagraph": 16
+        },
+        {
+          "sample": null,
+          "afterParagraph": 16
+        },
+        {
+          "sample": null,
+          "afterParagraph": 16
+        },
+        {
+          "sample": null,
+          "afterParagraph": 16
+        }
+      ]
+    },
+    {
+      "at": "2026-11-12T14:12:58.807Z",
+      "action": "scroll-editor-with-page-down",
+      "result": "ok",
+      "elapsedMs": 771,
+      "detail": {
+        "keys": 8
+      }
+    },
+    {
+      "at": "2026-11-12T14:13:00.184Z",
+      "action": "read-image-order-and-paragraph-positions",
+      "result": "ok",
+      "elapsedMs": 212,
+      "detail": [
+        {
+          "sample": 1,
+          "afterParagraph": 16
+        },
+        {
+          "sample": 2,
+          "afterParagraph": 16
+        },
+        {
+          "sample": 3,
+          "afterParagraph": 16
+        },
+        {
+          "sample": 4,
+          "afterParagraph": 16
+        },
+        {
+          "sample": 5,
+          "afterParagraph": 16
+        }
+      ]
+    },
+    {
+      "at": "2026-11-12T14:13:38.828Z",
+      "action": "decline-authorized-auto-recover-and-confirm-empty",
+      "result": "ok",
+      "elapsedMs": 1676,
+      "detail": {
+        "empty": true,
+        "autoRecoverDeclined": true
+      }
+    },
+    {
+      "at": "2026-11-12T14:13:40.813Z",
+      "action": "reopen-exact-title-and-verify",
+      "result": "ok",
+      "elapsedMs": 5910,
+      "detail": {
+        "titleMatches": true,
+        "titleChars": 27,
+        "rawBodyChars": 4303,
+        "bodyChars": 3216,
+        "expectedChars": 3216,
+        "images": 5,
+        "paragraphs": 16,
+        "reopenedFromList": true,
+        "imageLayout": [
+          {
+            "sample": 1,
+            "afterParagraph": 16
+          },
+          {
+            "sample": 2,
+            "afterParagraph": 16
+          },
+          {
+            "sample": 3,
+            "afterParagraph": 16
+          },
+          {
+            "sample": 4,
+            "afterParagraph": 16
+          },
+          {
+            "sample": 5,
+            "afterParagraph": 16
+          }
+        ],
+        "imageOrderVerified": true
+      }
+    },
+    {
+      "at": "2026-11-12T14:14:46.494Z",
+      "action": "decline-authorized-auto-recover-and-confirm-empty",
+      "result": "ok",
+      "elapsedMs": 1745,
+      "detail": {
+        "empty": true,
+        "autoRecoverDeclined": true
+      }
+    },
+    {
+      "at": "2026-11-12T14:14:48.541Z",
+      "action": "reopen-exact-title-and-verify",
+      "result": "ok",
+      "elapsedMs": 5713,
+      "detail": {
+        "titleMatches": true,
+        "titleChars": 27,
+        "rawBodyChars": 4303,
+        "bodyChars": 3216,
+        "expectedChars": 3216,
+        "images": 5,
+        "paragraphs": 16,
+        "reopenedFromList": true,
+        "imageLayout": [
+          {
+            "sample": 1,
+            "afterParagraph": 16
+          },
+          {
+            "sample": 2,
+            "afterParagraph": 16
+          },
+          {
+            "sample": 3,
+            "afterParagraph": 16
+          },
+          {
+            "sample": 4,
+            "afterParagraph": 16
+          },
+          {
+            "sample": 5,
+            "afterParagraph": 16
+          }
+        ],
+        "imageOrderVerified": true
+      }
+    },
+    {
+      "at": "2026-11-12T14:15:13.246Z",
+      "action": "open-saved-draft-list",
+      "result": "ok",
+      "elapsedMs": 716,
+      "detail": {
+        "opened": true
+      }
+    },
+    {
+      "at": "2026-11-12T14:16:12.686Z",
+      "action": "decline-authorized-auto-recover-and-confirm-empty",
+      "result": "ok",
+      "elapsedMs": 1736,
+      "detail": {
+        "empty": true,
+        "autoRecoverDeclined": true
+      }
+    },
+    {
+      "at": "2026-11-12T14:16:14.752Z",
+      "action": "open-saved-draft-list",
+      "result": "ok",
+      "elapsedMs": 745,
+      "detail": {
+        "opened": true
+      }
+    },
+    {
+      "at": "2026-11-12T14:16:35.275Z",
+      "action": "delete-only-verified-experiment-draft",
+      "result": "failed",
+      "elapsedMs": 433,
+      "detail": {
+        "code": "DELETE_CONTROL_NOT_VISIBLE",
+        "inputClickAtZeroBounds": true,
+        "deleted": false,
+        "measurementCorrected": true
+      }
+    },
+    {
+      "at": "2026-11-12T14:17:21.239Z",
+      "action": "enable-list-editing-without-deleting",
+      "result": "ok",
+      "elapsedMs": 709,
+      "detail": {
+        "editing": true
+      }
+    },
+    {
+      "at": "2026-11-12T14:17:22.467Z",
+      "action": "delete-only-verified-experiment-draft",
+      "result": "failed",
+      "elapsedMs": 152,
+      "detail": {
+        "code": "DELETE_IDENTITY_OR_CONTROL_MISSING"
+      }
+    },
+    {
+      "at": "2026-11-12T14:17:39.874Z",
+      "action": "delete-exact-experiment-selection-only",
+      "result": "failed",
+      "elapsedMs": 10917,
+      "detail": {
+        "code": "EXPERIMENT_FAILED"
+      }
+    },
+    {
+      "at": "2026-11-12T14:22:32.003Z",
+      "action": "cleanup-native-confirm-requires-owner-input",
+      "result": "partial",
+      "elapsedMs": 0,
+      "detail": {
+        "exactExperimentTitleSelected": true,
+        "selectedDraftCount": 1,
+        "nativeConfirmationPending": true,
+        "cdpDialogResponseUnavailable": true,
+        "appUidInputPermissionDenied": true
+      }
+    }
+  ],
+  "result": "BLOG_READBACK_VERIFIED_CLEANUP_PENDING",
+  "experimentTitle": "[골투오토 실험] WP0 blog-20261112",
+  "summary": {
+    "saveAttempts": 1,
+    "publishActions": 0,
+    "bandComposerOpens": 0,
+    "firstCompleteReadbackTotalMs": 674850,
+    "inputAndAttachThroughLayoutMs": 408714,
+    "finalApkBuilt": true,
+    "finalApkInstalled": false,
+    "installedAppPreserved": true
+  }
+}

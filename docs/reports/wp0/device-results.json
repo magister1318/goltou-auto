@@ -1,0 +1,354 @@
+[
+  {
+    "version": 1,
+    "runId": "fb834ccc-7da7-41de-be8f-14231f86b7b9",
+    "action": "info",
+    "result": "완료",
+    "steps": [
+      {
+        "at": "2026-11-12T11:57:16.599Z",
+        "action": "runtime-and-profiles",
+        "result": "ok",
+        "elapsedMs": 41,
+        "detail": {
+          "webViewVersion": "156.0.8078.47",
+          "multiProfile": true,
+          "deleteBrowsingData": true,
+          "profiles": [
+            "goltou-naver",
+            "goltou-band",
+            "goltou-ai"
+          ],
+          "profilesDistinct": true,
+          "surfaceCount": 0,
+          "activityCreations": 1,
+          "resumes": 1,
+          "pauses": 0,
+          "foreground": true,
+          "uiReadyMs": 714,
+          "model": "SM-S928N",
+          "androidSdk": 37,
+          "shellElapsedMs": 7052,
+          "node": "v18.20.4",
+          "coreUptimeMs": 6726
+        }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "runId": "4413d40e-0bd8-4311-8725-bd4eb8ca77b0",
+    "action": "example",
+    "result": "완료",
+    "steps": [
+      {
+        "at": "2026-11-12T11:57:16.681Z",
+        "action": "open-example",
+        "result": "ok",
+        "elapsedMs": 149,
+        "detail": {}
+      },
+      {
+        "at": "2026-11-12T11:57:16.832Z",
+        "action": "read-example-title",
+        "result": "ok",
+        "elapsedMs": 3,
+        "detail": {
+          "titleMatches": true,
+          "node": "v18.20.4",
+          "uptimeMs": 6921
+        }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "runId": "4fc07349-ea5f-4b5c-a488-bba955de3eb1",
+    "action": "show",
+    "result": "완료",
+    "steps": [
+      {
+        "at": "2026-11-12T11:57:17.039Z",
+        "action": "show",
+        "result": "ok",
+        "elapsedMs": 19,
+        "detail": {}
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "runId": "9cb6a671-243c-4ea2-8538-1ad77d9376a4",
+    "action": "hide",
+    "result": "완료",
+    "steps": [
+      {
+        "at": "2026-11-12T11:57:17.384Z",
+        "action": "hide",
+        "result": "ok",
+        "elapsedMs": 13,
+        "detail": {}
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "runId": "bd9cdeaf-8115-4e1f-a070-972451a5da12",
+    "action": "evidence",
+    "result": "완료",
+    "steps": [
+      {
+        "at": "2026-11-12T11:57:17.453Z",
+        "action": "open-evidence-example",
+        "result": "ok",
+        "elapsedMs": 73,
+        "detail": {}
+      },
+      {
+        "at": "2026-11-12T11:57:17.529Z",
+        "action": "capture-and-dom-check",
+        "result": "ok",
+        "elapsedMs": 64,
+        "detail": {
+          "structure": {
+            "documents": 1,
+            "editables": 0,
+            "fileInputs": 0,
+            "images": 0,
+            "buttons": 0
+          },
+          "screenshot": {
+            "file": "bd9cdeaf-8115-4e1f-a070-972451a5da12-failure.png",
+            "redacted": true
+          }
+        }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "runId": "f9fe7ebc-9dc5-4b25-b327-e2b9ee987477",
+    "action": "lifecycle",
+    "result": "완료",
+    "steps": [
+      {
+        "at": "2026-11-12T11:57:17.832Z",
+        "action": "before-lifecycle",
+        "result": "ok",
+        "elapsedMs": 28,
+        "detail": {
+          "activityCreations": 1,
+          "pauses": 0,
+          "resumes": 1
+        }
+      },
+      {
+        "at": "2026-11-12T11:57:17.861Z",
+        "action": "activity-background",
+        "result": "ok",
+        "elapsedMs": 1,
+        "detail": {}
+      },
+      {
+        "at": "2026-11-12T11:57:19.994Z",
+        "action": "after-lifecycle",
+        "result": "ok",
+        "elapsedMs": 22,
+        "detail": {
+          "activityCreations": 1,
+          "pauses": 1,
+          "resumes": 2,
+          "foreground": true,
+          "samePage": true
+        }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "runId": "e6329e32-2d42-4f94-8dc9-4c82bc9617cf",
+    "action": "lifecycle",
+    "result": "완료",
+    "steps": [
+      {
+        "at": "2026-11-12T11:57:20.188Z",
+        "action": "before-lifecycle",
+        "result": "ok",
+        "elapsedMs": 24,
+        "detail": {
+          "activityCreations": 1,
+          "pauses": 1,
+          "resumes": 2
+        }
+      },
+      {
+        "at": "2026-11-12T11:57:20.214Z",
+        "action": "activity-rotate",
+        "result": "ok",
+        "elapsedMs": 2,
+        "detail": {}
+      },
+      {
+        "at": "2026-11-12T11:57:22.018Z",
+        "action": "after-lifecycle",
+        "result": "ok",
+        "elapsedMs": 29,
+        "detail": {
+          "activityCreations": 2,
+          "pauses": 2,
+          "resumes": 3,
+          "foreground": true,
+          "samePage": true
+        }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "runId": "88349de4-138f-47e3-9be1-21ba8e9a00ad",
+    "action": "lifecycle",
+    "result": "완료",
+    "steps": [
+      {
+        "at": "2026-11-12T11:57:22.324Z",
+        "action": "before-lifecycle",
+        "result": "ok",
+        "elapsedMs": 33,
+        "detail": {
+          "activityCreations": 2,
+          "pauses": 2,
+          "resumes": 3
+        }
+      },
+      {
+        "at": "2026-11-12T11:57:22.358Z",
+        "action": "activity-recreate",
+        "result": "ok",
+        "elapsedMs": 3,
+        "detail": {}
+      },
+      {
+        "at": "2026-11-12T11:57:24.162Z",
+        "action": "after-lifecycle",
+        "result": "ok",
+        "elapsedMs": 39,
+        "detail": {
+          "activityCreations": 3,
+          "pauses": 3,
+          "resumes": 4,
+          "foreground": true,
+          "samePage": true
+        }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "runId": "e6720e51-3a1d-454f-a1d2-a2adc9a0da95",
+    "action": "lifecycle",
+    "result": "완료",
+    "steps": [
+      {
+        "at": "2026-11-12T11:57:24.471Z",
+        "action": "before-lifecycle",
+        "result": "ok",
+        "elapsedMs": 23,
+        "detail": {
+          "activityCreations": 3,
+          "pauses": 3,
+          "resumes": 4
+        }
+      },
+      {
+        "at": "2026-11-12T11:57:24.495Z",
+        "action": "activity-rotate",
+        "result": "ok",
+        "elapsedMs": 6,
+        "detail": {}
+      },
+      {
+        "at": "2026-11-12T11:57:26.301Z",
+        "action": "after-lifecycle",
+        "result": "ok",
+        "elapsedMs": 30,
+        "detail": {
+          "activityCreations": 4,
+          "pauses": 4,
+          "resumes": 5,
+          "foreground": true,
+          "samePage": true
+        }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "runId": "4fd5a694-1d77-430d-b5cd-e31539403c51",
+    "action": "login.check",
+    "result": "완료",
+    "steps": [
+      {
+        "at": "2026-11-12T11:57:26.610Z",
+        "action": "check-naver",
+        "result": "ok",
+        "elapsedMs": 958,
+        "detail": {
+          "state": "expired"
+        }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "runId": "7bc9f89a-88e7-4c64-b5cc-b29424d8b42d",
+    "action": "login.check",
+    "result": "완료",
+    "steps": [
+      {
+        "at": "2026-11-12T11:57:27.689Z",
+        "action": "check-band",
+        "result": "ok",
+        "elapsedMs": 728,
+        "detail": {
+          "state": "expired"
+        }
+      }
+    ]
+  },
+  {
+    "version": 1,
+    "runId": "cf242f84-7f52-4679-bfce-b80e5cc22fb4",
+    "action": "info",
+    "result": "완료",
+    "steps": [
+      {
+        "at": "2026-11-12T11:57:28.770Z",
+        "action": "runtime-and-profiles",
+        "result": "ok",
+        "elapsedMs": 20,
+        "detail": {
+          "webViewVersion": "156.0.8078.47",
+          "multiProfile": true,
+          "deleteBrowsingData": true,
+          "profiles": [
+            "goltou-naver",
+            "goltou-band",
+            "goltou-ai"
+          ],
+          "profilesDistinct": true,
+          "surfaceCount": 3,
+          "activityCreations": 4,
+          "resumes": 5,
+          "pauses": 4,
+          "foreground": true,
+          "uiReadyMs": 714,
+          "model": "SM-S928N",
+          "androidSdk": 37,
+          "shellElapsedMs": 19203,
+          "node": "v18.20.4",
+          "coreUptimeMs": 18876
+        }
+      }
+    ]
+  }
+]

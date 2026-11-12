@@ -22,6 +22,7 @@ await build({ ...config, entryPoints: [path.join(root, 'apps/android/bridge/main
 writeFileSync(path.join(out, 'core.cjs'), `// Built-in embedded Node bootstrap. No downloaded code.\ntry { require('./engine.cjs'); } catch (error) { console.error('core load failed', error); setInterval(() => {}, 60000); }\n`);
 await viteBuild({ configFile: path.join(root, 'packages/ui/vite.config.ts'), logLevel: 'warn' });
 cpSync(path.join(root, 'packages/ui/dist'), path.join(out, 'ui'), { recursive: true });
+cpSync(path.join(root, 'packages/sites/fixtures'), path.join(out, 'fixtures'), { recursive: true });
 const hash = createHash('sha256');
 function digest(dir) {
   for (const name of readdirSync(dir).sort()) {
@@ -33,9 +34,10 @@ function digest(dir) {
 // Only files that ship on Android participate in the built-in asset identity.
 for (const file of ['core.cjs', 'engine.cjs']) hash.update(readFileSync(path.join(out, file)));
 digest(path.join(out, 'ui'));
+digest(path.join(out, 'fixtures'));
 writeFileSync(path.join(out, 'manifest.json'), JSON.stringify({ version: '0.1.0', sha256: hash.digest('hex') }, null, 2));
 const android = path.join(root, 'apps/android/app/src/main/assets/bundle');
 clearGenerated(android);
 mkdirSync(android, { recursive: true });
-for (const file of ['core.cjs', 'engine.cjs', 'manifest.json', 'ui']) cpSync(path.join(out, file), path.join(android, file), { recursive: true });
+for (const file of ['core.cjs', 'engine.cjs', 'manifest.json', 'ui', 'fixtures']) cpSync(path.join(out, file), path.join(android, file), { recursive: true });
 console.log('Node 18 core + React UI → dist, apps/android/app/src/main/assets/bundle');
