@@ -26,7 +26,7 @@ docs/
 
 기기별 폴더(`apps/*`)에는 브라우저를 띄우고 조작하는 껍데기만 둡니다. 나머지는 모두 `packages/`에 두고 기기가 같이 씁니다.
 
-## WP1 개발·확인
+## 개발·확인
 
 ```powershell
 pnpm install
@@ -34,10 +34,17 @@ pnpm typecheck
 pnpm test
 pnpm build
 pnpm sim
+pnpm sim:shots
 ```
 
-PC 시뮬레이션은 설치되어 있는 Chrome/Edge/Chromium을 새 임시 프로필의 headless 모드로
-실행합니다. 브라우저를 설치하거나 기존 사용자 프로필을 열지 않습니다. 필요하면 현재 프로세스의
-`CHROMIUM`에 실행 파일 경로를 지정합니다. 로컬 예제 주소로 진단을 실행하여 화면에 제목이
-표시되는지 확인하고 종료합니다. 화면 캡처는 `tmp/wp1-sim.png`입니다.
-Android 빌드 방법은 `apps/android/README.md`, 확인 결과는 `docs/reports/WP1.md`에 둡니다.
+PC 시뮬레이션은 설치되어 있는 Chrome/Edge/Chromium의 새 임시 프로필에서 390×844 앱을 엽니다.
+예시 계정은 manager / staff / admin, 비밀번호는 demo이며 member는 일반 회원 차단 안내입니다.
+실제 서버·서비스를 호출하지 않는 가짜 API와 실행기를 쓰며 Ctrl+C로 종료합니다.
+브라우저를 설치하거나 기존 사용자 프로필을 열지 않습니다. 필요하면 현재 프로세스의
+`CHROMIUM`에 실행 파일 경로를 지정합니다.
+
+`pnpm sim:check`는 headless로 로그인 → 상품 선택 → 임시저장 → 완료 → 기록,
+로그인 풀림 복구, 권한과 관리자 설정, 설정 아래의 로컬 WP1 진단을 확인하고 종료합니다.
+`pnpm sim:shots`는 같은 검사 후 `docs/reports/wp3/`에 PNG 11개를 저장합니다.
+Android 빌드 방법은 `apps/android/README.md`, 확인 결과는 `docs/reports/WP1.md`,
+`docs/reports/WP3.md`에 둡니다. 실기기 실행은 별도 확인이 필요합니다.

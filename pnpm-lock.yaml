@@ -39,8 +39,13 @@ importers:
         specifier: 8.18.3
         version: 8.18.3
 
+  packages/api-client: {}
+
   packages/core:
     dependencies:
+      '@goltou/api-client':
+        specifier: workspace:*
+        version: link:../api-client
       '@goltou/surface':
         specifier: workspace:*
         version: link:../surface
@@ -59,6 +64,12 @@ importers:
       '@fontsource/noto-sans-kr':
         specifier: 5.2.6
         version: 5.2.6
+      '@goltou/api-client':
+        specifier: workspace:*
+        version: link:../api-client
+      '@goltou/core':
+        specifier: workspace:*
+        version: link:../core
       react:
         specifier: 19.1.0
         version: 19.1.0

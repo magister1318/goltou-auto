@@ -1,57 +1,115 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
+import type { Mode, Page, Post, Product, ProductSummary, Settings } from '@goltou/api-client';
+import { steps, type JobInput, type Service } from '@goltou/core/protocol';
+import { clearError, connect, diagnose, request, useStore } from './store';
 import '@fontsource/noto-sans-kr/400.css';
 import '@fontsource/noto-sans-kr/500.css';
 import '@fontsource/noto-sans-kr/700.css';
 import '@fontsource/noto-sans-kr/900.css';
 import './style.css';
 
-function App() {
-  const [connected, setConnected] = useState(false);
-  const [url, setUrl] = useState('https://example.com/');
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<{ title: string; url: string }>();
-  const [error, setError] = useState('');
-  const socket = useRef<WebSocket | null>(null);
-  const requestId = useRef(0);
+type Screen = 'login' | 'blocked' | 'home' | 'preview' | 'progress' | 'relogin' | 'history' | 'settings' | 'service';
+const names: Record<Service, string> = { naver: '네이버', band: '밴드', ai: 'AI Mode' };
+const loginLabels = { confirmed: '확인됨', expired: '풀림', unknown: '모름' };
+const money = (n: number) => `${n.toLocaleString('ko-KR')}원`;
+const ignore = () => {};
+const dateLabel = (date: string) => new Date(`${date}T12:00:00+09:00`).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric', weekday: 'short' });
 
-  useEffect(() => {
-    // HTTP-only launch cookie authenticates assets and the socket. Remove the bootstrap token from history.
-    history.replaceState(null, '', location.pathname);
-    const ws = new WebSocket(`${location.origin.replace('http:', 'ws:')}/ui-socket`);
-    socket.current = ws;
-    ws.onmessage = event => {
-      const msg = JSON.parse(String(event.data)) as { type: string; id?: number; state?: { title: string; url: string }; message?: string };
-      if (msg.type === 'ready') setConnected(true);
-      if (msg.id !== requestId.current) return;
-      if (msg.type === 'result') { setResult(msg.state); setBusy(false); }
-      if (msg.type === 'error') { setError(msg.message ?? '진단에 실패했습니다.'); setBusy(false); }
-    };
-    ws.onclose = () => { setConnected(false); setBusy(false); setError('코어 연결이 끊겼습니다. 앱을 다시 열어 주세요.'); };
-    ws.onerror = () => setError('코어에 연결하지 못했습니다.');
-    return () => { ws.onclose = null; ws.close(); };
-  }, []);
-
-  return <>
-    <header><p>브라우저 진단</p><h1>골투오토</h1></header>
-    <main>
-      <p className="connection" role="status">{connected ? '코어 연결됨' : '코어 연결 대기'}</p>
-      <h2>숨김 브라우저 확인</h2>
-      <p>주소를 열고 페이지 제목을 읽습니다.</p>
-      <form onSubmit={event => {
-        event.preventDefault();
-        if (!connected || busy) return;
-        setBusy(true); setError(''); setResult(undefined);
-        socket.current?.send(JSON.stringify({ id: ++requestId.current, type: 'diagnose', url }));
-      }}>
-        <label htmlFor="address">예시 주소</label>
-        <input id="address" type="url" required value={url} disabled={busy} onChange={event => setUrl(event.target.value)} />
-        <button type="submit" disabled={!connected || busy}>{busy ? '제목 읽는 중…' : '진단 시작'}</button>
-      </form>
-      {result && <section aria-live="polite"><h2>읽은 제목</h2><p data-testid="diagnostic-title" className="result">{result.title || '(제목 없음)'}</p><p className="address">{result.url}</p></section>}
-      {error && <p role="alert">진단 실패: {error}</p>}
-    </main>
-  </>;
+function Toggle({ label, value, change }: { label: string; value: boolean; change(value: boolean): void }) {
+  return <button className="switch" role="switch" aria-label={label} aria-checked={value} onClick={() => change(!value)}><span /></button>;
 }
+function ServiceSpace({ service }: { service: Service }) {
+  return <section className="service-space"><div className="service-origin"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>{names[service]} · 가짜 로그인 화면</div><div className="service-placeholder"><strong>{names[service]} 로그인 화면이 여기에 열립니다</strong><p>실제 서비스는 열지 않는 시뮬레이션입니다. 실제 연결에서는 아이디, 비밀번호, 2단계 인증을 해당 서비스 화면에 직접 입력합니다.</p></div></section>;
+}
+function App() {
+  const { snapshot: app, connected, error } = useStore();
+  const [screen, setScreen] = useState<Screen>('login');
+  const [busy, setBusy] = useState(false);
+  const [loginId, setLoginId] = useState(''); const [password, setPassword] = useState('');
+  const [products, setProducts] = useState<Page<ProductSummary>>({ items: [], total: 0 });
+  const [q, setQ] = useState(''); const [filter, setFilter] = useState<'all' | 'unposted' | 'month'>('all'); const [month, setMonth] = useState('2026-12');
+  const [page, setPage] = useState(1); const [product, setProduct] = useState<Product | null>(null);
+  const [preview, setPreview] = useState<'blog' | 'band'>('blog'); const [expanded, setExpanded] = useState(false);
+  const [mode, setMode] = useState<Mode>('draft'); const [blog, setBlog] = useState(true); const [band, setBand] = useState(true);
+  const [bands, setBands] = useState(['travel', 'golf']); const [optionsOpen, setOptionsOpen] = useState(false); const [targetsOpen, setTargetsOpen] = useState(false);
+  const [options, setOptions] = useState({ polish: false, closing: false, linkCard: false }); const [confirmation, setConfirmation] = useState(false);
+  const [scope, setScope] = useState<'mine' | 'all'>('mine'); const [posts, setPosts] = useState<Page<Post>>({ items: [], total: 0 }); const [postPage, setPostPage] = useState(1);
+  const [settings, setSettings] = useState<Settings>({ closingText: '', defaultHashtags: [], bandDailyLimit: 3 });
+  const [notice, setNotice] = useState(''); const [diagnosticUrl, setDiagnosticUrl] = useState('http://127.0.0.1/'); const [diagnostic, setDiagnostic] = useState<{ title: string; url: string } | null>(null);
 
+  function go(next: Screen, replace = false) { clearError(); setNotice(''); setScreen(next); history[replace ? 'replaceState' : 'pushState']({ screen: next }, '', location.pathname); window.scrollTo(0, 0); }
+  function back() { if (history.state?.screen && screen !== 'home' && screen !== 'login') history.back(); else go(app?.user ? 'home' : 'login', true); }
+  useEffect(() => { const pop = () => { setScreen((history.state?.screen as Screen) ?? (app?.user ? 'home' : 'login')); clearError(); setConfirmation(false); if (app?.user) void request('service.hide', {}).catch(ignore); }; window.addEventListener('popstate', pop); return () => window.removeEventListener('popstate', pop); }, [app?.user?.userNo]);
+  useEffect(() => { if (screen === 'progress' && app?.job?.status === 'login_paused') go('relogin'); }, [screen, app?.job?.status]);
+  useEffect(() => { if (app?.user && screen === 'login') go('home', true); }, [app?.user?.userNo, screen]);
+
+  useEffect(() => { if (app?.settings) setSettings(app.settings); }, [app?.settings?.closingText, app?.settings?.bandDailyLimit, app?.settings?.defaultHashtags.join('|')]);
+  useEffect(() => {
+    if (screen !== 'home' || !app?.user) return;
+    let active = true;
+    const timer = setTimeout(() => { void request('products.list', { q, onlyUnposted: filter === 'unposted', ...(filter === 'month' ? { month } : {}), page, pageSize: 8 }).then(data => { if (active) setProducts(old => ({ ...data, items: page === 1 ? data.items : [...old.items, ...data.items] })); }).catch(ignore); }, 120);
+    return () => { active = false; clearTimeout(timer); };
+  }, [screen, q, filter, month, page, app?.user?.userNo]);
+  useEffect(() => { if (screen !== 'history' || !app?.user) return; let active = true; void request('posts.list', { scope, page: postPage, pageSize: 12 }).then(data => { if (active) setPosts(old => ({ ...data, items: postPage === 1 ? data.items : [...old.items, ...data.items] })); }).catch(ignore); return () => { active = false; }; }, [screen, scope, postPage, app?.user?.userNo, app?.job?.status]);
+  async function act(fn: () => Promise<void>) { if (busy) return; setBusy(true); clearError(); try { await fn(); } catch { /* Server errors are exposed by the store. */ } finally { setBusy(false); } }
+  async function choose(productNo: number, requestedMode: Mode = 'draft') { await act(async () => { setProduct(await request('products.get', { productNo })); setMode(requestedMode); setPreview('blog'); setExpanded(false); setConfirmation(false); go('preview'); }); }
+  function targetList(): JobInput['targets'] { return [...(blog ? [{ channel: 'blog' as const, name: '해외골프', key: 'overseas' }] : []), ...(band ? bands.map(key => ({ channel: 'band' as const, name: key === 'travel' ? '골투 여행' : '해외골프 모임', key })) : [])]; }
+  async function start(confirmed = false) {
+    if (!product) return;
+    if (mode === 'publish' && !confirmed) { setConfirmation(true); return; }
+    await act(async () => { await request('job.start', { productNo: product.productNo, mode, targets: targetList(), options, publishConfirmed: confirmed }); setConfirmation(false); go('progress'); });
+  }
+  async function showService(service: Service) { await act(async () => { await request('service.show', { service }); go('service'); }); }
+  async function resume() { await act(async () => { const service = app?.job?.service; if (service) await request('service.check', { service }); await request('service.hide', {}); await request('job.resume', {}); go('progress', true); }); }
+  const job = app?.job;
+  const terminal = job?.status === 'draft_saved' || job?.status === 'published';
+  const shownScreen = app?.user || ['login', 'blocked'].includes(screen) ? screen : 'login';
+  function header(title: React.ReactNode, home = false) { return <header><div className="brand-row"><span className="brand">골투오토</span>{home && <button onClick={() => go('settings')}>{app?.user?.name} · 설정</button>}</div><h1>{title}</h1></header>; }
+  function footer(selected: 'home' | 'history') { return <nav className="bottom-nav" aria-label="아래 탭"><button className={selected === 'home' ? 'selected' : ''} onClick={() => { setPage(1); go('home'); }}>상품</button><button className={selected === 'history' ? 'selected' : ''} onClick={() => { setPostPage(1); go('history'); }}>등록 기록</button></nav>; }
+  return <div className={`app screen-${shownScreen}`}>
+    {error && <div className="error" role="alert">{error}<button aria-label="오류 닫기" onClick={clearError}>닫기</button></div>}
+    {notice && <div className="notice" role="status">{notice}</div>}
+    {shownScreen === 'login' && <>{header('골투 로그인')}<main className="login-content"><p>골투 계정으로 로그인해 주세요.</p><form onSubmit={event => {
+      event.preventDefault(); void act(async () => { try { await request('login', { loginId, password, device: { kind: 'android', model: 'simulation', appVersion: '0.1.0' } }); setPassword(''); go('home', true); } catch (e) { setPassword(''); if ((e as { code?: string }).code === 'forbidden') go('blocked', true); else throw e; } });
+    }}><label>아이디<input autoComplete="off" required value={loginId} onChange={e => setLoginId(e.target.value)} /></label><label>비밀번호<input type="password" autoComplete="off" required value={password} onChange={e => setPassword(e.target.value)} /></label><p className="small">예시 계정: manager / staff / admin<br/>일반 회원 안내: member · 비밀번호: demo</p><button className="action-bar" type="submit" disabled={!connected || busy}>{busy ? '로그인 중…' : '로그인'}</button></form></main></>}
+    {shownScreen === 'blocked' && <>{header('사용 권한 안내')}<main><h2>매니저와 직원 전용입니다</h2><p>골투오토는 골투 매니저와 직원만 쓸 수 있습니다.</p><p className="muted">일반 회원(0~2등급)은 이용할 수 없습니다. 계정 등급을 확인해 주세요.</p></main><button className="action-bar" onClick={() => go('login', true)}>다른 계정으로 로그인</button></>}
+    {shownScreen === 'home' && <>{header(<>옮길 상품을<br/>고르세요</>, true)}<div className="login-strip" aria-label="서비스 로그인 상태">{(['naver', 'band', 'ai'] as const).map(service => <button key={service} className={app?.services[service] === 'expired' ? 'expired' : ''} onClick={() => void showService(service)}><span className={`dot ${app?.services[service]}`} />{service === 'naver' ? '블로그' : service === 'ai' ? 'AI' : '밴드'} {loginLabels[app?.services[service] ?? 'unknown']}</button>)}</div>
+      <main className="home-content"><label className="search"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg><input aria-label="상품 검색" placeholder="상품 이름, 골프장, 지역" value={q} onChange={e => { setQ(e.target.value); setPage(1); }} /></label>
+        <div className="tabs" role="tablist" aria-label="상품 필터">{(['all', 'unposted', 'month'] as const).map(f => <button role="tab" aria-selected={filter === f} key={f} onClick={() => { setFilter(f); setPage(1); }}>{f === 'all' ? `전체${filter === 'all' ? ` ${products.total}` : ''}` : f === 'unposted' ? `안 올린 상품${filter === 'unposted' ? ` ${products.total}` : ''}` : '출발 월'}</button>)}</div>
+        {filter === 'month' && <label className="month-row">출발 월<input type="month" value={month} onChange={e => { setMonth(e.target.value); setPage(1); }} /></label>}
+        <div className="product-list">{products.items.map((p, i) => <button className="product-row" key={p.productNo} onClick={() => void choose(p.productNo)} disabled={busy}><span className="number">{String(i + 1).padStart(2, '0')}</span><span className="product-copy"><strong>{p.title}</strong><span className="small muted">{p.country} {p.region} · 출발일 {p.departureCount}개 · {money(p.priceFrom)}부터</span><span className={`small ${p.myPosts.blog || p.myPosts.band ? 'green' : 'muted'}`}>{p.myPosts.blog || p.myPosts.band ? `블로그 ${p.myPosts.blog?.at.slice(5).replace('-', '.') ?? '아직'} · 밴드 ${p.myPosts.band?.at.slice(5).replace('-', '.') ?? '아직'}` : '아직 올리지 않음'}</span></span><span className="thumbnail">사진</span></button>)}</div>
+        {!products.items.length && <p role="status">조건에 맞는 상품이 없습니다.</p>}{products.items.length < products.total && <button className="more" onClick={() => setPage(n => n + 1)}>상품 더 보기</button>}{job && !terminal && <button className="more" onClick={() => go(job.status === 'login_paused' ? 'relogin' : 'progress')}>진행하던 작업 보기</button>}
+      </main>{footer('home')}</>}
+    {shownScreen === 'preview' && product && <><div className="preview-top"><button onClick={back}>← 상품 목록</button><div className="tabs" role="tablist" aria-label="미리보기 채널">{(['blog', 'band'] as const).map(c => <button key={c} role="tab" aria-selected={preview === c} onClick={() => setPreview(c)}>{c === 'blog' ? '블로그용' : '밴드용'}</button>)}</div></div>
+      <main className="preview-content"><div className="hero-photo">상품 사진 1 / {product.images.length} (원본 크기)</div><section className="preview-text"><h2>{product.title}{preview === 'blog' ? `, ${Number(product.departures[0]?.date.slice(5, 7))}월 출발 일정과 가격` : ''}</h2><p className="description">{product.contentsHtml.replace(/<[^>]*>/g, '')}</p>
+        <div className="departures">{product.departures.slice(0, expanded ? undefined : 2).map(d => <div key={d.date}><span>{dateLabel(d.date)}</span><strong>{money(d.price)}</strong></div>)}</div><div className="small muted detail-line">외 출발일 {Math.max(0, product.departures.length - 2)}개, 사진 {Math.max(0, product.images.length - 1)}장 · <button onClick={() => setExpanded(!expanded)}>{expanded ? '접기' : '전체 보기'}</button></div>
+        {expanded && <><p className="small">골프장: {product.golfCourses.join(', ')}</p><p className="small address">상품 주소: {product.productUrl}</p><p className="small">사진 {product.images.map(i => i.order).join(' · ')} (예시 자리)</p></>}
+        <p className="match">원문과 일치합니다. 가격 {product.departures.length}, 출발일 {product.departures.length}, 사진 {product.images.length}</p></section>
+        <section className="choices"><div className="choice-row"><span>등록 방식</span><button className={mode === 'draft' ? 'chosen' : ''} onClick={() => { setMode('draft'); setConfirmation(false); }}>임시저장</button><button className={mode === 'publish' ? 'chosen' : ''} onClick={() => setMode('publish')}>발행</button></div>
+          <div className="choice-row"><span>블로그 <span className="small muted">해외골프</span></span><Toggle label="블로그에 등록" value={blog} change={setBlog}/></div><div className="choice-row"><span>밴드 <button className="small muted" onClick={() => setTargetsOpen(!targetsOpen)}>{bands.length}곳 · 고르기</button></span><Toggle label="밴드에 등록" value={band} change={setBand}/></div>
+          {targetsOpen && <div className="suboptions">{[['travel', '골투 여행'], ['golf', '해외골프 모임']].map(([key, name]) => <div className="choice-row" key={key}><span>{name}</span><Toggle label={`${name} 선택`} value={bands.includes(key!)} change={value => setBands(old => value ? [...old, key!] : old.filter(k => k !== key))}/></div>)}</div>}
+          <div className="choice-row option-row"><span>선택 옵션 <span className="small muted">문장 다듬기 · 끝 문구 · 링크 카드</span></span><button className="small muted" onClick={() => setOptionsOpen(!optionsOpen)}>{Object.values(options).some(Boolean) ? '선택됨' : '모두 꺼짐'} →</button></div>
+          {optionsOpen && <div className="suboptions">{([['polish', '문장 다듬기'], ['closing', '끝 문구'], ['linkCard', '골투 링크 카드']] as const).map(([key, name]) => <div className="choice-row" key={key}><span>{name}</span><Toggle label={name} value={options[key]} change={value => setOptions(old => ({ ...old, [key]: value }))}/></div>)}</div>}
+        </section>{confirmation && <section className="publish-confirm" role="alertdialog" aria-labelledby="publish-title"><h2 id="publish-title">발행하면 글이 공개됩니다</h2><p>선택한 {targetList().length}곳에 이 상품을 발행할까요?</p><button onClick={() => setConfirmation(false)}>돌아가기</button><button className="chosen" disabled={busy} onClick={() => void start(true)}>확인하고 발행 시작</button></section>}
+      </main><button className="action-bar" disabled={busy || !targetList().length || confirmation} onClick={() => void start()}>{mode === 'draft' ? '임시저장으로 등록 시작' : '발행으로 등록 시작'}<span aria-hidden="true">→</span></button></>}
+    {shownScreen === 'progress' && job && <><main className="progress-content"><p className="progress-caption">{job.mode === 'draft' ? '임시저장' : '발행'} 방식 · {job.title}</p><div className="step-number"><strong>{job.step}</strong><span>/ 7</span></div>
+      <h2>{terminal ? (job.status === 'draft_saved' ? '임시저장됨' : '발행됨') : job.status === 'user_paused' ? '사용자가 멈췄습니다' : job.status === 'failed' ? '등록에 실패했습니다' : job.step === 4 ? '블로그에 쓰는 중' : `${steps[job.step - 1]} 중`}</h2><p className="progress-description">{job.message || (terminal ? '가짜 등록을 마쳤습니다. 기록에서 확인해 주세요.' : `${[2, 4].includes(job.step) ? '사진 ' : '단계 안 진행 '}${job.current} / ${job.total}${job.status === 'running' ? ' · 화면을 켜 두세요' : '에서 멈춤'}`)}</p><progress aria-label="등록 진행률" max="7" value={terminal ? 7 : job.step - 1 + job.current / (job.total + 1)} />
+      <ol className="steps">{steps.map((step, i) => <li key={step} className={`${job.completedSteps.includes(i + 1) ? 'done' : i + 1 === job.step ? 'current' : ''}`}><span className="step-dot"/><span>{i === 4 && job.mode === 'publish' ? '블로그 발행과 확인' : step}</span><small>{job.completedSteps.includes(i + 1) ? '완료' : i + 1 === job.step ? (job.status === 'running' ? '진행 중' : '멈춤') : '대기'}</small></li>)}</ol></main>
+      <p className="progress-note">{job.mode === 'draft' ? '글은 공개되지 않고 임시저장함에 들어갑니다. 끝난 뒤 직접 확인하고 발행하세요.' : '선택한 발행 방식으로 진행합니다.'}</p><div className="bottom-nav progress-actions">{job.status === 'running' ? <button className="chosen" disabled={busy} onClick={() => void act(async () => { await request('job.stop', {}); })}>멈추기</button> : !terminal ? <button className="chosen" disabled={busy} onClick={() => void resume()}>{job.status === 'failed' ? '다시 시도' : '이어하기'}</button> : <button onClick={() => go('home')}>상품 목록</button>}<button onClick={() => { setPostPage(1); go('history'); }}>등록 기록 보기</button></div></>}
+    {shownScreen === 'relogin' && job && <><main className="relogin-content"><p className="paused-caption">잠시 멈춤 · {job.step} / 7 단계</p><h1>{names[job.service ?? 'naver']} 로그인이<br/>풀렸습니다</h1><p>다시 로그인하면 멈춘 곳부터 이어서 합니다. 지금까지 만든 글은 그대로 보관되어 있습니다.</p><div className="saved-steps"><div><span>사진 내려받기, 본문 정리</span><strong>보관됨</strong></div><div><b>{steps[job.step - 1]}</b><strong className="warn">사진 {job.current} / {job.total}에서 멈춤</strong></div><div className="muted"><span>밴드에 쓰기</span><span>대기</span></div></div></main><ServiceSpace service={job.service ?? 'naver'}/><div className="later"><button onClick={() => void act(async () => { await request('service.hide', {}); setPostPage(1); go('history'); })}>나중에 하기</button></div><button className="action-bar" disabled={busy} onClick={() => void resume()}>로그인했어요, 이어하기<span aria-hidden="true">→</span></button></>}
+    {shownScreen === 'service' && <><div className="plain-top"><button onClick={() => void act(async () => { await request('service.hide', {}); back(); })}>← 돌아가기</button></div><main><h1>{names[app?.visibleService ?? 'naver']} 로그인</h1><p>현재 상태: {loginLabels[app?.services[app?.visibleService ?? 'naver'] ?? 'unknown']}</p></main><ServiceSpace service={app?.visibleService ?? 'naver'}/><button className="action-bar" disabled={busy} onClick={() => void act(async () => { await request('service.check', { service: app?.visibleService ?? 'naver' }); await request('service.hide', {}); back(); })}>로그인했어요, 상태 확인</button></>}
+    {shownScreen === 'history' && <>{header('등록 기록')}<main className="history-content"><div className="tabs" role="tablist" aria-label="기록 범위"><button role="tab" aria-selected={scope === 'mine'} onClick={() => { setScope('mine'); setPostPage(1); }}>내 기록 {scope === 'mine' ? posts.total : ''}</button>{(app?.user?.userType ?? 0) >= 7 && <button role="tab" aria-selected={scope === 'all'} onClick={() => { setScope('all'); setPostPage(1); }}>전체</button>}</div>
+      {Array.from(new Set(posts.items.map(p => `${p.productNo}:${p.userName}`))).map(key => { const rows = posts.items.filter(p => `${p.productNo}:${p.userName}` === key).sort((a, b) => a.channel === b.channel ? 0 : a.channel === 'blog' ? -1 : 1); const first = rows[0]!; return <article className="history-row" key={key}><div className="history-title"><strong>{first.productTitle}</strong><span className="small muted">{first.startedAt.slice(5, 10).replace('-', '.')}</span></div>{scope === 'all' && <p className="small muted">{first.userName}</p>}
+        {rows.map(post => <div className="channel-result" key={post.postNo}><span className="channel-label">{post.channel === 'blog' ? '블로그' : '밴드'}</span><span className={`result-label ${post.status === 'published' ? 'green' : post.status === 'failed' ? 'danger' : 'warn'}`}>{post.status === 'draft_saved' ? '임시저장됨 · 발행 전' : post.status === 'published' ? '발행 완료' : post.status === 'failed' ? '실패' : post.status === 'stopped' ? '중단' : '진행 중'}{post.failReason && <span className="muted"> · {post.failReason}</span>}<small className="target-name muted">{post.targetName}</small></span>{post.status === 'published' ? <button className="small" onClick={() => void act(async () => { try { await navigator.clipboard.writeText(post.postUrl); setNotice('주소를 복사했습니다.'); } catch { setNotice(`복사할 주소: ${post.postUrl}`); } })}>주소 복사</button> : post.status === 'draft_saved' ? <button className="small green" onClick={() => { void choose(post.productNo, 'publish'); }}>확인하고 발행 →</button> : <button className="small green" onClick={() => { if (job?.productNo === post.productNo && !terminal) go(job.status === 'login_paused' ? 'relogin' : 'progress'); else void choose(post.productNo); }}>다시 시도</button>}</div>)}{rows.some(p => p.productChanged) && <p className="small warn changed">등록 뒤에 상품이 바뀌었습니다</p>}</article>; })}
+      {!posts.items.length && <p>등록 기록이 없습니다.</p>}{posts.items.length < posts.total && <button className="more" onClick={() => setPostPage(n => n + 1)}>기록 더 보기</button>}</main>{footer('history')}</>}
+    {shownScreen === 'settings' && <><div className="plain-top"><button onClick={back}>← 상품 목록</button></div><main className="settings-content"><h1>설정</h1><section><h2>내 계정</h2><div className="choice-row"><span>{app?.user?.name} · {app?.user?.role === 'admin' ? '관리자' : app?.user?.role === 'staff' ? '내부직원' : '매니저'}</span><button onClick={() => void act(async () => { await request('logout', {}); setScope('mine'); setPassword(''); setProduct(null); go('login', true); })}>로그아웃</button></div></section>
+      <section><h2>서비스 로그인</h2>{(['naver', 'band', 'ai'] as const).map(service => <div className="choice-row" key={service}><span>{names[service]} <span className="small muted">{loginLabels[app?.services[service] ?? 'unknown']}</span></span><button aria-label={`${names[service]} 로그인 지우기`} onClick={() => void act(async () => { await request('service.clear', { service }); })}>지우기</button></div>)}</section>
+      {app?.user?.role === 'admin' && <section><h2>공통 등록 설정</h2><form onSubmit={event => { event.preventDefault(); void act(async () => { await request('settings.save', settings); setNotice('공통 설정을 저장했습니다.'); }); }}><label>끝 문구<textarea value={settings.closingText} onChange={e => setSettings(old => ({ ...old, closingText: e.target.value }))} /></label><label>기본 해시태그 (쉼표로 구분)<input value={settings.defaultHashtags.join(', ')} onChange={e => setSettings(old => ({ ...old, defaultHashtags: e.target.value.split(',').map(s => s.trim()) }))} /></label><label>밴드 하루 한도<input type="number" min="1" max="100" required value={settings.bandDailyLimit} onChange={e => setSettings(old => ({ ...old, bandDailyLimit: Number(e.target.value) }))} /></label><button className="save-settings chosen" type="submit" disabled={busy}>공통 설정 저장</button></form></section>}
+      <section><h2>가짜 실행 설정</h2><p className="small muted">실제 서비스에는 연결하지 않습니다.</p><label>로그인 풀림 재현<select aria-label="로그인 풀림 재현" value={app?.simulation.loginAt ?? ''} onChange={e => void request('simulation.configure', { loginAt: e.target.value ? Number(e.target.value) : null }).catch(ignore)}><option value="">없음</option><option value="4">4단계 · 블로그에 쓰기</option><option value="6">6단계 · 밴드에 쓰기</option></select></label><label>실패 재현<select aria-label="실패 재현" value={app?.simulation.failAt ?? ''} onChange={e => void request('simulation.configure', { failAt: e.target.value ? Number(e.target.value) : null }).catch(ignore)}><option value="">없음</option><option value="4">4단계 · 블로그에 쓰기</option><option value="6">6단계 · 밴드에 쓰기</option></select></label></section>
+      <section><h2>진단</h2><p className="small muted">WP1 숨김 브라우저 제목 읽기</p><form onSubmit={e => { e.preventDefault(); void act(async () => { setDiagnostic(await diagnose(diagnosticUrl)); }); }}><label>예시 주소<input type="url" required value={diagnosticUrl} onChange={e => setDiagnosticUrl(e.target.value)} /></label><button className="chosen" type="submit" disabled={busy || !connected}>진단 시작</button></form>{diagnostic && <><p data-testid="diagnostic-title">{diagnostic.title}</p><p className="small address">{diagnostic.url}</p></>}</section>
+    </main></>}
+  </div>;
+}
+connect();
 createRoot(document.getElementById('root')!).render(<App />);
