@@ -1,0 +1,809 @@
+{
+  "version": 1,
+  "device": "SM-S928N",
+  "dateKST": "2026-11-12",
+  "sample": {
+    "title": "골투오토 WP0 실험 stage3",
+    "bodyChars": 4302,
+    "bodyParagraphs": 16,
+    "bandInputChars": 4322,
+    "bandCompactChars": 3231,
+    "images": 5
+  },
+  "limits": {
+    "blogDraftSaves": 0,
+    "bandComposerAttempts": 3,
+    "publishActions": 0
+  },
+  "notes": [
+    "밴드 이름·키와 계정 식별자는 포함하지 않음. 목록의 첫 항목만 조작했다.",
+    "첫 모바일·데스크톱의 실패 기록과 수정 후 동일 작성 화면의 읽기 대조를 함께 보존했다.",
+    "PC 임시 실험 기록도 같은 앱 전용 files/wp0에 저장한 원본이다. 마지막 모바일은 APK 내장 Node에서 전체 실행했다."
+  ],
+  "records": [
+    {
+      "version": 1,
+      "runId": "e42b0535-8f8d-4424-9b7d-fa0166669f94",
+      "action": "login.check",
+      "result": "완료",
+      "steps": [
+        {
+          "at": "2026-11-12T13:19:42.726Z",
+          "action": "check-naver",
+          "result": "ok",
+          "elapsedMs": 2060,
+          "detail": {
+            "state": "unknown"
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "8cf60ecb-0dff-4e9b-b35a-d1938bf58de0",
+      "action": "login.check",
+      "result": "완료",
+      "steps": [
+        {
+          "at": "2026-11-12T13:19:59.549Z",
+          "action": "check-band",
+          "result": "ok",
+          "elapsedMs": 503,
+          "detail": {
+            "state": "unknown"
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "0b236938-0a44-445e-bb98-04b29c3af844",
+      "action": "login.check",
+      "result": "완료",
+      "steps": [
+        {
+          "at": "2026-11-12T13:21:24.584Z",
+          "action": "check-naver",
+          "result": "ok",
+          "elapsedMs": 2304,
+          "detail": {
+            "state": "confirmed"
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "d9ee10cb-2cf3-4d0b-9de7-be9e7ad0bf9c",
+      "action": "login.check",
+      "result": "완료",
+      "steps": [
+        {
+          "at": "2026-11-12T13:21:33.090Z",
+          "action": "check-band",
+          "result": "ok",
+          "elapsedMs": 1443,
+          "detail": {
+            "state": "confirmed"
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "abd9bf3b-fb21-4586-89eb-8b7cb303e612",
+      "action": "blog.run",
+      "result": "OBSERVATION_TIMEOUT",
+      "steps": [
+        {
+          "at": "2026-11-12T13:21:38.792Z",
+          "action": "check-naver",
+          "result": "ok",
+          "elapsedMs": 1168,
+          "detail": {
+            "state": "confirmed"
+          }
+        },
+        {
+          "at": "2026-11-12T13:21:39.990Z",
+          "action": "open-blog-desktop-1280x900",
+          "result": "ok",
+          "elapsedMs": 774,
+          "detail": {}
+        },
+        {
+          "at": "2026-11-12T13:21:40.767Z",
+          "action": "type-blog-and-five-photos",
+          "result": "failed",
+          "elapsedMs": 30583,
+          "detail": {
+            "code": "OBSERVATION_TIMEOUT"
+          }
+        },
+        {
+          "at": "2026-11-12T13:22:11.355Z",
+          "action": "failure-evidence",
+          "result": "captured",
+          "elapsedMs": 133,
+          "detail": {
+            "structure": {
+              "documents": 3,
+              "editables": 2,
+              "fileInputs": 0,
+              "images": 0,
+              "buttons": 70
+            },
+            "screenshot": {
+              "file": "abd9bf3b-fb21-4586-89eb-8b7cb303e612-failure.png",
+              "redacted": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "f1beecb5-a5d6-408a-afc7-6eb469f9211a",
+      "action": "blog.run",
+      "result": "OBSERVATION_TIMEOUT",
+      "steps": [
+        {
+          "at": "2026-11-12T13:22:38.278Z",
+          "action": "check-naver",
+          "result": "ok",
+          "elapsedMs": 1529,
+          "detail": {
+            "state": "confirmed"
+          }
+        },
+        {
+          "at": "2026-11-12T13:22:39.837Z",
+          "action": "open-blog-desktop-1280x900",
+          "result": "ok",
+          "elapsedMs": 605,
+          "detail": {}
+        },
+        {
+          "at": "2026-11-12T13:22:40.443Z",
+          "action": "type-blog-and-five-photos",
+          "result": "failed",
+          "elapsedMs": 31592,
+          "detail": {
+            "code": "OBSERVATION_TIMEOUT"
+          }
+        },
+        {
+          "at": "2026-11-12T13:23:12.039Z",
+          "action": "failure-evidence",
+          "result": "captured",
+          "elapsedMs": 136,
+          "detail": {
+            "structure": {
+              "documents": 3,
+              "editables": 2,
+              "fileInputs": 0,
+              "images": 0,
+              "buttons": 80
+            },
+            "screenshot": {
+              "file": "f1beecb5-a5d6-408a-afc7-6eb469f9211a-failure.png",
+              "redacted": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "719e7cb2-18e2-4aa4-83a8-0b118e353d85",
+      "action": "band.list",
+      "result": "완료",
+      "steps": [
+        {
+          "at": "2026-11-12T13:23:31.594Z",
+          "action": "check-band",
+          "result": "ok",
+          "elapsedMs": 961,
+          "detail": {
+            "state": "confirmed"
+          }
+        },
+        {
+          "at": "2026-11-12T13:23:32.557Z",
+          "action": "read-band-list",
+          "result": "ok",
+          "elapsedMs": 32,
+          "detail": {
+            "count": 0
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "a17ddfae-53c2-4cf8-9221-457b545a07f7",
+      "action": "band.list",
+      "result": "완료",
+      "steps": [
+        {
+          "at": "2026-11-12T13:25:19.040Z",
+          "action": "check-band",
+          "result": "ok",
+          "elapsedMs": 900,
+          "detail": {
+            "state": "confirmed"
+          }
+        },
+        {
+          "at": "2026-11-12T13:25:19.941Z",
+          "action": "read-band-list",
+          "result": "ok",
+          "elapsedMs": 268,
+          "detail": {
+            "count": 2
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "bb118d11-a43e-4009-bf24-e1ea357e3c6a",
+      "action": "band.run",
+      "result": "CONTROL_NOT_FOUND",
+      "steps": [
+        {
+          "at": "2026-11-12T13:25:23.739Z",
+          "action": "check-band",
+          "result": "ok",
+          "elapsedMs": 666,
+          "detail": {
+            "state": "confirmed"
+          }
+        },
+        {
+          "at": "2026-11-12T13:25:24.437Z",
+          "action": "open-band-mobile",
+          "result": "ok",
+          "elapsedMs": 411,
+          "detail": {}
+        },
+        {
+          "at": "2026-11-12T13:25:24.848Z",
+          "action": "type-band-and-five-photos",
+          "result": "failed",
+          "elapsedMs": 8294,
+          "detail": {
+            "code": "CONTROL_NOT_FOUND"
+          }
+        },
+        {
+          "at": "2026-11-12T13:25:33.145Z",
+          "action": "failure-evidence",
+          "result": "captured",
+          "elapsedMs": 966,
+          "detail": {
+            "structure": {
+              "documents": 1,
+              "editables": 0,
+              "fileInputs": 0,
+              "images": 87,
+              "buttons": 247
+            },
+            "screenshot": {
+              "file": "bb118d11-a43e-4009-bf24-e1ea357e3c6a-failure.png",
+              "redacted": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "51df90eb-a4ad-4b93-a876-1187825d62f6",
+      "action": "band-fill",
+      "result": "STAGE_FAILED",
+      "steps": [
+        {
+          "at": "2026-11-12T13:26:27.257Z",
+          "action": "human-input-and-file-attach",
+          "result": "failed",
+          "elapsedMs": 396773
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "0863a6a3-147b-4f6d-ba54-b4f95f5099b9",
+      "action": "band-snapshot",
+      "result": "완료",
+      "steps": [
+        {
+          "at": "2026-11-12T13:32:31.920Z",
+          "action": "read-composer",
+          "result": "ok",
+          "elapsedMs": 503,
+          "detail": {
+            "bodyMatches": true,
+            "bodyChars": 3231,
+            "rawBodyChars": 4322,
+            "images": 5,
+            "maxLength": null,
+            "fileInput": true,
+            "draftControl": false
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "e08f05d0-a47a-4394-a98b-34bdf3da9931",
+      "action": "band-close",
+      "result": "STAGE_FAILED",
+      "steps": [
+        {
+          "at": "2026-11-12T13:33:08.184Z",
+          "action": "discard-and-confirm",
+          "result": "failed",
+          "elapsedMs": 824
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "270f1dbc-728e-4b56-9579-8d79809e24ac",
+      "action": "band-close",
+      "result": "완료",
+      "steps": [
+        {
+          "at": "2026-11-12T13:33:48.039Z",
+          "action": "discard-and-confirm",
+          "result": "ok",
+          "elapsedMs": 947,
+          "detail": {
+            "bodyMatches": true,
+            "bodyChars": 0,
+            "rawBodyChars": 0,
+            "images": 0,
+            "maxLength": null,
+            "fileInput": false,
+            "draftControl": false
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "61207173-171e-4522-ae73-7aa7c6674762",
+      "action": "band-desktop-open",
+      "result": "완료",
+      "steps": [
+        {
+          "at": "2026-11-12T13:33:49.386Z",
+          "action": "open-band-desktop-1280x900",
+          "result": "ok",
+          "elapsedMs": 688,
+          "detail": {
+            "opened": true
+          }
+        },
+        {
+          "at": "2026-11-12T13:33:50.217Z",
+          "action": "check-band",
+          "result": "ok",
+          "elapsedMs": 171,
+          "detail": "confirmed"
+        },
+        {
+          "at": "2026-11-12T13:33:50.529Z",
+          "action": "open-first-band-composer",
+          "result": "ok",
+          "elapsedMs": 903,
+          "detail": {
+            "bodyMatches": false,
+            "bodyChars": 31,
+            "rawBodyChars": 46,
+            "images": 0,
+            "maxLength": null,
+            "fileInput": true,
+            "draftControl": false
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "f88fe72f-9afd-4a4c-881d-4eac33be3308",
+      "action": "band-fill",
+      "result": "STAGE_FAILED",
+      "steps": [
+        {
+          "at": "2026-11-12T13:34:19.280Z",
+          "action": "human-input-and-file-attach",
+          "result": "failed",
+          "elapsedMs": 398070
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "013aef5d-a0c1-4949-93b2-6f96af56543c",
+      "action": "band-snapshot",
+      "result": "완료",
+      "steps": [
+        {
+          "at": "2026-11-12T13:40:18.105Z",
+          "action": "read-composer",
+          "result": "ok",
+          "elapsedMs": 650,
+          "detail": {
+            "bodyMatches": true,
+            "bodyChars": 3231,
+            "rawBodyChars": 4290,
+            "images": 0,
+            "maxLength": null,
+            "fileInput": true,
+            "draftControl": false
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "33d4b3c2-4166-43bb-8fac-86469b1a7ba3",
+      "action": "info",
+      "result": "완료",
+      "steps": [
+        {
+          "at": "2026-11-12T13:40:18.764Z",
+          "action": "runtime-and-profiles",
+          "result": "ok",
+          "elapsedMs": 34,
+          "detail": {
+            "webViewVersion": "156.0.8078.47",
+            "multiProfile": true,
+            "deleteBrowsingData": true,
+            "profiles": [
+              "goltou-naver",
+              "goltou-band",
+              "goltou-ai"
+            ],
+            "profilesDistinct": true,
+            "surfaceCount": 1,
+            "activityCreations": 1,
+            "resumes": 1,
+            "pauses": 0,
+            "foreground": true,
+            "uiReadyMs": 768,
+            "model": "SM-S928N",
+            "androidSdk": 37,
+            "shellElapsedMs": 915806,
+            "node": "v18.20.4",
+            "coreUptimeMs": 915425
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "c850ea77-7872-43a6-a5db-c7d44f13df43",
+      "action": "band-confirm-photos",
+      "result": "완료",
+      "steps": [
+        {
+          "at": "2026-11-12T13:41:13.863Z",
+          "action": "confirm-photo-attachment-only",
+          "result": "ok",
+          "elapsedMs": 2726,
+          "detail": {
+            "bodyMatches": false,
+            "bodyChars": 3261,
+            "rawBodyChars": 4545,
+            "images": 5,
+            "maxLength": null,
+            "fileInput": true,
+            "draftControl": false
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "98e13ee3-80da-46a5-bc29-8284bb6de9c6",
+      "action": "info",
+      "result": "완료",
+      "steps": [
+        {
+          "at": "2026-11-12T13:41:27.820Z",
+          "action": "runtime-and-profiles",
+          "result": "ok",
+          "elapsedMs": 35,
+          "detail": {
+            "webViewVersion": "156.0.8078.47",
+            "multiProfile": true,
+            "deleteBrowsingData": true,
+            "profiles": [
+              "goltou-naver",
+              "goltou-band",
+              "goltou-ai"
+            ],
+            "profilesDistinct": true,
+            "surfaceCount": 1,
+            "activityCreations": 1,
+            "resumes": 1,
+            "pauses": 0,
+            "foreground": true,
+            "uiReadyMs": 768,
+            "model": "SM-S928N",
+            "androidSdk": 37,
+            "shellElapsedMs": 984862,
+            "node": "v18.20.4",
+            "coreUptimeMs": 984482
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "4e99d4d0-1776-4d0e-b7d9-91e4ddf5de81",
+      "action": "band-snapshot",
+      "result": "완료",
+      "steps": [
+        {
+          "at": "2026-11-12T13:41:39.087Z",
+          "action": "read-composer",
+          "result": "ok",
+          "elapsedMs": 630,
+          "detail": {
+            "bodyMatches": true,
+            "bodyChars": 3231,
+            "rawBodyChars": 4290,
+            "images": 5,
+            "maxLength": null,
+            "fileInput": true,
+            "draftControl": false
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "3cc5ae4a-146a-4da1-ae30-fc3322413ef1",
+      "action": "band-close",
+      "result": "STAGE_FAILED",
+      "steps": [
+        {
+          "at": "2026-11-12T13:41:40.232Z",
+          "action": "discard-and-confirm",
+          "result": "failed",
+          "elapsedMs": 894
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "635e9c03-2583-4391-ab4a-b7170a725e1e",
+      "action": "band-close",
+      "result": "완료",
+      "steps": [
+        {
+          "at": "2026-11-12T13:42:17.341Z",
+          "action": "discard-and-confirm",
+          "result": "ok",
+          "elapsedMs": 1003,
+          "detail": {
+            "bodyMatches": true,
+            "bodyChars": 0,
+            "rawBodyChars": 0,
+            "images": 0,
+            "maxLength": null,
+            "fileInput": false,
+            "draftControl": false
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "97fbd4b9-f0af-41bb-97f5-893c16ce2ded",
+      "action": "info",
+      "result": "완료",
+      "steps": [
+        {
+          "at": "2026-11-12T13:43:28.253Z",
+          "action": "runtime-and-profiles",
+          "result": "ok",
+          "elapsedMs": 35,
+          "detail": {
+            "webViewVersion": "156.0.8078.47",
+            "multiProfile": true,
+            "deleteBrowsingData": true,
+            "profiles": [
+              "goltou-naver",
+              "goltou-band",
+              "goltou-ai"
+            ],
+            "profilesDistinct": true,
+            "surfaceCount": 0,
+            "activityCreations": 1,
+            "resumes": 1,
+            "pauses": 0,
+            "foreground": true,
+            "uiReadyMs": 753,
+            "model": "SM-S928N",
+            "androidSdk": 37,
+            "shellElapsedMs": 19742,
+            "node": "v18.20.4",
+            "coreUptimeMs": 19371
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "bc3be9b4-cb4b-418b-b723-76efdf50345f",
+      "action": "login.check",
+      "result": "완료",
+      "steps": [
+        {
+          "at": "2026-11-12T13:43:28.325Z",
+          "action": "check-naver",
+          "result": "ok",
+          "elapsedMs": 1625,
+          "detail": {
+            "state": "confirmed"
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "bb5ae93b-d890-48fc-98f9-fd7fd83d575c",
+      "action": "blog.run",
+      "result": "EXISTING_DRAFT_REQUIRES_EMPTY_EDITOR",
+      "steps": [
+        {
+          "at": "2026-11-12T13:43:30.459Z",
+          "action": "check-naver",
+          "result": "ok",
+          "elapsedMs": 916,
+          "detail": {
+            "state": "confirmed"
+          }
+        },
+        {
+          "at": "2026-11-12T13:43:31.404Z",
+          "action": "open-blog-desktop-1280x900",
+          "result": "ok",
+          "elapsedMs": 548,
+          "detail": {}
+        },
+        {
+          "at": "2026-11-12T13:43:31.953Z",
+          "action": "type-blog-and-five-photos",
+          "result": "failed",
+          "elapsedMs": 2923,
+          "detail": {
+            "code": "EXISTING_DRAFT_REQUIRES_EMPTY_EDITOR"
+          }
+        },
+        {
+          "at": "2026-11-12T13:43:34.880Z",
+          "action": "failure-evidence",
+          "result": "captured",
+          "elapsedMs": 134,
+          "detail": {
+            "structure": {
+              "documents": 3,
+              "editables": 2,
+              "fileInputs": 0,
+              "images": 0,
+              "buttons": 80
+            },
+            "screenshot": {
+              "file": "bb5ae93b-d890-48fc-98f9-fd7fd83d575c-failure.png",
+              "redacted": true
+            }
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "e2a87c5d-d27c-4629-bd03-fd6ddc412cf8",
+      "action": "band.list",
+      "result": "완료",
+      "steps": [
+        {
+          "at": "2026-11-12T13:43:35.747Z",
+          "action": "check-band",
+          "result": "ok",
+          "elapsedMs": 979,
+          "detail": {
+            "state": "confirmed"
+          }
+        },
+        {
+          "at": "2026-11-12T13:43:36.727Z",
+          "action": "read-band-list",
+          "result": "ok",
+          "elapsedMs": 264,
+          "detail": {
+            "count": 2
+          }
+        }
+      ]
+    },
+    {
+      "version": 1,
+      "runId": "a7eaee60-2ae4-4d66-8907-6ac2032acc94",
+      "action": "band.run",
+      "result": "완료",
+      "steps": [
+        {
+          "at": "2026-11-12T13:43:37.944Z",
+          "action": "check-band",
+          "result": "ok",
+          "elapsedMs": 645,
+          "detail": {
+            "state": "confirmed"
+          }
+        },
+        {
+          "at": "2026-11-12T13:43:38.623Z",
+          "action": "open-band-mobile",
+          "result": "ok",
+          "elapsedMs": 281,
+          "detail": {}
+        },
+        {
+          "at": "2026-11-12T13:43:38.905Z",
+          "action": "type-band-and-five-photos",
+          "result": "ok",
+          "elapsedMs": 291987,
+          "detail": {
+            "bodyMatches": true,
+            "bodyChars": 3231,
+            "rawBodyChars": 4322,
+            "images": 5,
+            "maxLength": null,
+            "fileInput": true,
+            "draftControl": false,
+            "attachmentMethod": "file-input",
+            "paste": "not-tested",
+            "draftBehavior": "not-tested",
+            "stoppedBeforePost": true
+          }
+        },
+        {
+          "at": "2026-11-12T13:48:30.894Z",
+          "action": "capture-before-post",
+          "result": "ok",
+          "elapsedMs": 978,
+          "detail": {
+            "file": "a7eaee60-2ae4-4d66-8907-6ac2032acc94-before-post.png",
+            "redacted": true
+          }
+        },
+        {
+          "at": "2026-11-12T13:48:31.873Z",
+          "action": "close-without-post",
+          "result": "ok",
+          "elapsedMs": 1020,
+          "detail": {}
+        },
+        {
+          "at": "2026-11-12T13:48:32.894Z",
+          "action": "confirm-composer-closed",
+          "result": "ok",
+          "elapsedMs": 235,
+          "detail": {
+            "closed": true,
+            "draftControlObserved": false,
+            "limit": null,
+            "observedAcceptedChars": 3231
+          }
+        }
+      ]
+    }
+  ]
+}

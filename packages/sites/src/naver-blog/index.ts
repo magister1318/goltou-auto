@@ -1,21 +1,37 @@
 // Reference: ../refs/DAF/daf3/modules/helper/src/workflow/{editor,publish-draft}.ts and ../refs/DAF/daf3/packages/engine-naver-editor/src/{page/editor-page,verify/page,verify/draft-verifier}.ts (selectors and save/reopen sequence only).
 import type { Surface } from '@goltou/surface';
-import { click, compact, read, typeParagraphs, waitFor } from '../dom';
+import { click, compact, read, sleep, typeParagraphs, waitFor } from '../dom';
 import type { exampleArticle } from '../fixture';
 
 const titleSelector = '.se-documentTitle .se-text-paragraph, .se-documentTitle [contenteditable="true"]';
-const bodySelector = '.se-main-container .se-component.se-text .se-text-paragraph, article .se-component.se-text [contenteditable="true"]';
+const bodySelector = '.se-content .se-component.se-text .se-text-paragraph, .se-main-container .se-component.se-text .se-text-paragraph';
 export async function snapshot(surface: Surface) {
   return read<{ title: string; body: string; paragraphs: number; images: number }>(surface, `
     const d=docs.find(({d})=>d.querySelector('.se-documentTitle'))?.d;
     if (!d) return {title:'',body:'',paragraphs:0,images:0};
-    const blocks=Array.from(d.querySelectorAll('.se-main-container .se-component.se-text'));
-    return { title:(d.querySelector('.se-documentTitle .se-text-paragraph')?.textContent||'').trim(),
-      body:blocks.map(e=>e.textContent||'').join('\\n'),
-      paragraphs:blocks.reduce((n,e)=>n+Array.from(e.querySelectorAll('.se-text-paragraph')).filter(p=>(p.textContent||'').trim()).length,0),
-      images:d.querySelectorAll('.se-main-container .se-image-resource').length };`);
+    const text=e=>Array.from(e?.querySelectorAll('.__se-node')||[]).map(n=>n.textContent||'').join('') || (e?.querySelector('.se-placeholder') ? '' : e?.textContent||'');
+    const blocks=Array.from(d.querySelectorAll('.se-content .se-component.se-text .se-text-paragraph, .se-main-container .se-component.se-text .se-text-paragraph'));
+    return { title:text(d.querySelector('.se-documentTitle .se-text-paragraph')).trim(),
+      body:blocks.map(text).join('\\n'),
+      paragraphs:blocks.filter(p=>text(p).trim()).length,
+      images:d.querySelectorAll('.se-content .se-image-resource, .se-main-container .se-image-resource').length };`);
 }
 export async function fillBlog(surface: Surface, article: ReturnType<typeof exampleArticle>, photos: readonly string[], check: () => void) {
+  await waitFor(() => read(surface, `return docs.some(({d})=>d.querySelector('.se-documentTitle'));`), 30000);
+  await waitFor(() => read(surface, `return docs.some(({d})=>d.querySelector(${JSON.stringify(bodySelector)}) || Array.from(d.querySelectorAll('.se-popup-alert-confirm')).some(visible));`), 30000);
+  // SmartEditor's autosave check can show its restore prompt after the first paint.
+  await sleep(900); check();
+  // Resume for preservation, then stop before any text input into the owner's composition.
+  const restore = await read<boolean>(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll('.se-popup-alert-confirm')).some(e=>visible(e)&&/작성 중인 글이 있습니다/.test(e.textContent||'')&&/이어서 작성/.test(e.textContent||'')));`);
+  if (restore) {
+    await click(surface, '.se-popup-alert-confirm .se-popup-button-confirm', '확인');
+    await sleep(900);
+    // Never overwrite a delayed restore, even if its first frame still looks empty.
+    throw new Error('EXISTING_DRAFT_REQUIRES_EMPTY_EDITOR');
+  }
+  await waitFor(() => read(surface, `return docs.some(({d})=>d.querySelector(${JSON.stringify(bodySelector)}));`), 30000);
+  const help = await read<boolean>(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll('.se-help-panel-close-button')).some(visible));`);
+  if (help) await click(surface, '.se-help-panel-close-button');
   const initial = await snapshot(surface);
   if (initial.title || compact(initial.body) || initial.images) throw new Error('EDITOR_NOT_EMPTY');
   await click(surface, titleSelector); check(); await surface.typeText(article.title);
@@ -32,7 +48,7 @@ export async function fillBlog(surface: Surface, article: ReturnType<typeof exam
 export async function saveAndReopen(surface: Surface, article: ReturnType<typeof exampleArticle>, photos: number, check: () => void, reopenEmpty: () => Promise<Surface>) {
   check();
   // Exact save selector/text only. This module contains no publish or schedule action.
-  await click(surface, 'button.save_btn__bzc5B, button[data-click-area="tpb.save"], button', '임시저장');
+  await click(surface, 'button[data-click-area="tpb.save"]');
   await waitFor(() => read(surface, `return docs.some(({d})=>/저장되었습니다|저장 완료|임시저장되었습니다/.test(d.body?.textContent||''));`));
   check(); surface = await reopenEmpty();
   const empty = await snapshot(surface);

@@ -130,7 +130,8 @@ export class Experiments {
         if (!this.state.bands.some(b => b.key === input.bandKey)) throw new Error('BAND_NOT_SELECTED_FROM_LIST');
         if (await this.step('check-band', () => this.probe('band'), state => ({ state })) !== 'confirmed') throw new Error('LOGIN_REQUIRED');
         active = await this.get('band', true);
-        const article = exampleArticle(this.runId.slice(0, 8));
+        // Keep the synthetic text identical across the mobile/desktop comparison.
+        const article = exampleArticle('stage3');
         const ua = input.ua === 'mobile' ? mobileUA : desktopUA;
         await this.step(`open-band-${String(input.ua)}`, () => this.open(active!, `https://band.us/band/${String(input.bandKey)}/post`, ua));
         const result = await this.step('type-band-and-five-photos', () => fillBand(active!, article, this.options.photoPaths, this.check), v => v);

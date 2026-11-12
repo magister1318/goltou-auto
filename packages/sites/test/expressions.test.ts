@@ -9,7 +9,7 @@ describe('site read-only expressions and fixtures', () => {
   it('produces valid JavaScript for every reader, including escaped CSS and URL patterns', async () => {
     const expressions: string[] = [];
     const surface = { session: 'band', evaluateReadOnly: async (expression: string) => {
-      expressions.push(expression); new Script(expression); return null;
+      expressions.push(expression); new Script(expression); return expression.includes('const seen=new Set') ? [{ key: '123', name: '연습' }] : null;
     } } as unknown as Surface;
     await loginState(surface); await listBands(surface); await bandSnapshot(surface, '연습 글'); await snapshot(surface); await domSummary(surface);
     expect(expressions).toHaveLength(5);
