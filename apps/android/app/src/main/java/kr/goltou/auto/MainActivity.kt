@@ -60,7 +60,7 @@ class MainActivity : ComponentActivity() {
         link = CoreLink { op, msg, reply -> surfaces.handle(op, msg, reply) }
         setContentView(root)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() { if (!surfaces.hideTop()) finish() }
+            override fun handleOnBackPressed() { if (!surfaces.hideTop()) { if (ui.canGoBack()) ui.goBack() else finish() } }
         })
         Thread {
             val client = OkHttpClient.Builder().connectTimeout(500, TimeUnit.MILLISECONDS).readTimeout(1, TimeUnit.SECONDS).build()

@@ -1,6 +1,6 @@
 {
   "name": "@goltou/core", "version": "0.1.0", "private": true, "type": "module",
-  "exports": { ".": "./src/index.ts" },
+  "exports": { ".": "./src/index.ts", "./protocol": "./src/protocol.ts" },
   "scripts": { "typecheck": "tsc -p tsconfig.json" },
-  "dependencies": { "@goltou/surface": "workspace:*", "ws": "8.18.3" }
+  "dependencies": { "@goltou/api-client": "workspace:*", "@goltou/surface": "workspace:*", "ws": "8.18.3" }
 }
