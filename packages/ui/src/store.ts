@@ -34,7 +34,8 @@ function send(message: Record<string, unknown>): Promise<unknown> {
   if (socket?.readyState !== WebSocket.OPEN) return Promise.reject(new Error('코어 연결을 기다려 주세요.'));
   return new Promise((resolve, reject) => {
     const id = ++serial;
-    const timer = setTimeout(() => { pending.delete(id); update({ error: '응답이 늦습니다. 다시 시도해 주세요.' }); reject(new Error('응답 시간 초과')); }, 30000);
+    // A long introduction is still typed at the Surface's human input pace.
+    const timer = setTimeout(() => { pending.delete(id); update({ error: '응답이 늦습니다. 다시 시도해 주세요.' }); reject(new Error('응답 시간 초과')); }, message.command === 'preview.prepare' ? 1800000 : 30000);
     pending.set(id, { resolve, reject, timer }); socket.send(JSON.stringify({ id, ...message }));
   });
 }

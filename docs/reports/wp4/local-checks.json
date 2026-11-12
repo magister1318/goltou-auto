@@ -1,0 +1,122 @@
+{
+  "at": "2026-11-12T15:02:18.908Z",
+  "node": "v24.19.0",
+  "fixtures": [
+    {
+      "fixture": "table",
+      "sourceParagraphs": 2,
+      "photos": 0,
+      "tableBlocks": 1,
+      "blog": true,
+      "band": true,
+      "prices": 2,
+      "departures": 2,
+      "characters": 95,
+      "elapsedMs": 3.298,
+      "discarded": 0
+    },
+    {
+      "fixture": "photos-only",
+      "sourceParagraphs": 0,
+      "photos": 3,
+      "tableBlocks": 0,
+      "blog": true,
+      "band": true,
+      "prices": 2,
+      "departures": 2,
+      "characters": 49,
+      "elapsedMs": 0.483,
+      "discarded": 0
+    },
+    {
+      "fixture": "interleaved",
+      "sourceParagraphs": 3,
+      "photos": 3,
+      "tableBlocks": 0,
+      "blog": true,
+      "band": true,
+      "prices": 2,
+      "departures": 2,
+      "characters": 75,
+      "elapsedMs": 0.577,
+      "discarded": 0
+    },
+    {
+      "fixture": "messy",
+      "sourceParagraphs": 2,
+      "photos": 1,
+      "tableBlocks": 0,
+      "blog": true,
+      "band": true,
+      "prices": 2,
+      "departures": 2,
+      "characters": 84,
+      "elapsedMs": 2.997,
+      "discarded": 8
+    },
+    {
+      "fixture": "long",
+      "sourceParagraphs": 40,
+      "photos": 0,
+      "tableBlocks": 0,
+      "blog": true,
+      "band": true,
+      "prices": 2,
+      "departures": 2,
+      "characters": 13280,
+      "elapsedMs": 22.718,
+      "discarded": 0
+    },
+    {
+      "fixture": "empty",
+      "sourceParagraphs": 1,
+      "photos": 0,
+      "tableBlocks": 0,
+      "blog": true,
+      "band": true,
+      "prices": 2,
+      "departures": 2,
+      "characters": 64,
+      "elapsedMs": 0.884,
+      "discarded": 6
+    },
+    {
+      "fixture": "links-bold",
+      "sourceParagraphs": 2,
+      "photos": 0,
+      "tableBlocks": 0,
+      "blog": true,
+      "band": true,
+      "prices": 2,
+      "departures": 2,
+      "characters": 91,
+      "elapsedMs": 1.123,
+      "discarded": 0
+    },
+    {
+      "fixture": "broken",
+      "sourceParagraphs": 3,
+      "photos": 1,
+      "tableBlocks": 0,
+      "blog": true,
+      "band": true,
+      "prices": 2,
+      "departures": 2,
+      "characters": 77,
+      "elapsedMs": 1.146,
+      "discarded": 0
+    }
+  ],
+  "ui": {
+    "viewport": "390x844",
+    "polishParagraphs": 3,
+    "unsafeParagraphsKeptOriginal": 1,
+    "revert": true,
+    "polishCalls": 2,
+    "run": "real-local-photos-and-body-then-simulated-blog",
+    "mediaCleanup": true,
+    "mismatchBlocksAction": true,
+    "pageErrors": [],
+    "externalRequests": []
+  }
+}

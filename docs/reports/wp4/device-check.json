@@ -1,0 +1,16 @@
+{
+  "at": "2026-11-13T00:06:10.8386690+09:00",
+  "connectedDevices": 1,
+  "model": "SM-S928N",
+  "appOwnedWindowTypes": [
+    "BASE_APPLICATION"
+  ],
+  "focusedWindowOwnedByApp": false,
+  "confirmDialogState": "unverified",
+  "installPerformed": false,
+  "restartPerformed": false,
+  "aiExperimentPerformed": false,
+  "scope": "read-only app window metadata",
+  "decision": "skipped",
+  "reason": "App is not focused. The previously pending owner-only confirm cannot be verified safely; preserve state and skip installation/restart/AI experiment."
+}

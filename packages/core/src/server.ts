@@ -9,6 +9,7 @@ import { NativeBridge } from './native';
 import { AppCore } from './app';
 import type { AppRequest } from './protocol';
 import type { Experiments } from './experiments';
+import type { PreparationServices } from './preparation';
 
 export interface CoreOptions {
   host: SurfaceHost;
@@ -19,6 +20,7 @@ export interface CoreOptions {
   port?: number;
   app?: AppCore;
   experiments?: Experiments;
+  preparation?: PreparationServices;
 }
 
 const mime: Record<string, string> = {
@@ -34,7 +36,7 @@ export async function startCore(options: CoreOptions) {
   const uiDir = await realpath(options.uiDir);
   let origin = '';
   let diagnosing = false;
-  const app = options.app ?? new AppCore();
+  const app = options.app ?? new AppCore(undefined, undefined, undefined, options.preparation);
 
   function validToken(value: string | undefined | null): boolean {
     if (!value) return false;

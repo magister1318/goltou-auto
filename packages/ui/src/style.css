@@ -171,3 +171,10 @@ progress::-webkit-progress-value { background:var(--green); }
 .experiment-steps li { padding: 8px 0; border-bottom: 1px solid #E2E2E2; }
 .experiment-steps span { display: block; font-size: 13px; }
 .experiment-steps pre { font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.converted-content { overflow-wrap: anywhere; }
+.converted-content p { white-space: pre-wrap; }
+.converted-content table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.converted-content td { border-bottom: 1px solid var(--line); padding: 8px 4px; }
+.polish-row { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 14px; overflow-wrap: anywhere; }
+.polish-row p { white-space: pre-wrap; }
+.polish-row button { grid-column: 1 / -1; text-align: left; color: var(--green); }

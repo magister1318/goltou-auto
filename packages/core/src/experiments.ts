@@ -2,8 +2,10 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { Surface, SurfaceHost, SurfaceSession, SurfaceState } from '@goltou/surface';
-import { bandSnapshot, closeComposer, domSummary, exampleArticle, fillBand, fillBlog, listBands, loginState, loginUrls, probeUrls, saveAndReopen, saveBandDraftAndVerify, sleep } from '@goltou/sites';
+import { aiModeTransport, bandSnapshot, closeComposer, domSummary, exampleArticle, fillBand, fillBlog, listBands, loginState, loginUrls, probeUrls, saveAndReopen, saveBandDraftAndVerify, sleep } from '@goltou/sites';
 import type { LoginState } from '@goltou/sites';
+import { parseContents } from './convert';
+import { polishContent } from './polish';
 
 export const desktopUA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 const mobileUA = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
@@ -36,7 +38,7 @@ export class Experiments {
     if (command === 'state') return this.snapshot();
     if (command === 'stop') { this.cancelled = true; return this.snapshot(); }
     if (this.state.running) throw new Error('EXPERIMENT_BUSY');
-    if (!['info', 'example', 'evidence', 'show', 'hide', 'login.open', 'login.check', 'band.list', 'blog.run', 'band.run', 'lifecycle'].includes(command)) throw new Error('UNKNOWN_EXPERIMENT');
+    if (!['ai.polish', 'info', 'example', 'evidence', 'show', 'hide', 'login.open', 'login.check', 'band.list', 'blog.run', 'band.run', 'lifecycle'].includes(command)) throw new Error('UNKNOWN_EXPERIMENT');
     const channel: Channel = input.channel === 'band' ? 'band' : 'naver';
     if (command.startsWith('login.') && !['band', 'naver'].includes(String(input.channel))) throw new Error('INVALID_CHANNEL');
     if (command === 'band.run' && (!/^\d{1,30}$/.test(String(input.bandKey)) || !['mobile', 'desktop'].includes(String(input.ua)))) throw new Error('SELECT_BAND_AND_UA');
@@ -89,6 +91,12 @@ export class Experiments {
   private async run(command: string, channel: Channel, input: RecordValue) {
     let active: Surface | undefined;
     try {
+      if (command === 'ai.polish') {
+        const parsed = parseContents('<p>예시 골프장에서 조용히 라운드하며 주변 풍경을 감상합니다.</p><p>이동 후에는 숙소에서 쉬고 다음 일정을 준비합니다.</p><p>예시CC의 안내를 살펴보고 필요한 준비물을 챙깁니다.</p>');
+        const result = await this.step('ai-polish-three-example-paragraphs', () => polishContent(parsed, { golfCourses: ['예시CC'], productUrl: 'https://example.invalid/product' }, aiModeTransport(this.options.host), this.check), value => ({ status: value.status, paragraphs: value.paragraphs.length, accepted: value.paragraphs.filter(p => p.accepted).length }));
+        this.state.lastResult = result.status === 'login_required' ? '로그인 요구 · 원문 유지' : result.status === 'done' ? 'AI 다듬기 응답 검증 완료' : '안 됨 · 원문 유지';
+        return;
+      }
       if (command === 'info') this.state.info = await this.step('runtime-and-profiles', this.options.info, value => value);
       if (command === 'example') {
         active = await this.get('ai', true);
@@ -173,7 +181,7 @@ export class Experiments {
       this.state.lastResult = '완료';
     } catch (error) {
       this.state.lastResult = error instanceof Error && /^[A-Z_]{3,80}$/.test(error.message) ? error.message : 'EXPERIMENT_FAILED';
-      active ??= this.surfaces.get(channel);
+      if (command !== 'ai.polish') active ??= this.surfaces.get(channel);
       if (active) await this.captureFailure(active);
     } finally { await this.persist(); }
   }
