@@ -141,8 +141,8 @@ export class BandExecution {
     const mobile = await waitFor(async () => await point(s, 'button.uFloatingButton._btnPostWrite[aria-label="글쓰기"]') ? true : await point(s, 'button._btnPostWrite, button._btnOpenWriteLayer', '글쓰기') ? 'desktop' : null);
     this.env.directory.beforeOpen(this.env.key);
     this.owned = true;
-    if (mobile === true) await click(s, 'button.uFloatingButton._btnPostWrite[aria-label="글쓰기"]');
-    else await click(s, 'button._btnPostWrite, button._btnOpenWriteLayer', '글쓰기');
+    if (mobile === true) await click(s, 'BAND_WRITE_MOBILE', 'button.uFloatingButton._btnPostWrite[aria-label="글쓰기"]');
+    else await click(s, 'BAND_WRITE_DESKTOP', 'button._btnPostWrite, button._btnOpenWriteLayer', '글쓰기');
     await waitFor(async () => (await readBandDocument(s)).composer);
     const empty = await readBandDocument(s);
     if (compact(empty.body) || empty.photos.length) throw new Error('BAND_COMPOSER_NOT_EMPTY');
@@ -176,7 +176,7 @@ export class BandExecution {
       await this.ensureReady(); current = await readBandDocument(s);
     }
     const text = Array.from(bandText(this.plan));
-    await click(s, bandEditor); await s.pressKey({ key: 'End', modifiers: 2 });
+    await click(s, 'BAND_BODY', bandEditor); await s.pressKey({ key: 'End', modifiers: 2 });
     for (; this.offset < text.length;) {
       await this.guard();
       let end = this.offset;
@@ -195,7 +195,7 @@ export class BandExecution {
       const sizes = await Promise.all(files.map(file => this.env.sourceDimensions(file)));
       this.photoOrder = new PhotoOrder(urls, sizes);
       if ((await readBandDocument(s)).slots.length) this.photoOrder.fail();
-      if (!await read<boolean>(s, `return docs.some(({d})=>d.querySelector('input[type="file"]'));`)) await click(s, 'button,label,a', '사진');
+      if (!await read<boolean>(s, `return docs.some(({d})=>d.querySelector('input[type="file"]'));`)) await click(s, 'BAND_PHOTO_BUTTON', 'button,label,a', '사진');
       this.photoAttempted = true;
       for (const [index, file] of files.entries()) {
         await this.guard();

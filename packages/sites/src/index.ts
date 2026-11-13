@@ -1,6 +1,7 @@
 export * from './fixture';
 export * from './login';
 export * from './dom';
+export * from './control-failure';
 export * from './naver-blog';
 export * from './naver-blog/plan';
 export * from './band';

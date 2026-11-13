@@ -1,5 +1,5 @@
 import { ApiError } from '@goltou/api-client';
-import { loginState, BandDirectory, type BandExecution, type BlogExecution, type BandProgress } from '@goltou/sites';
+import { loginState, safeFailureCode, BandDirectory, type BandExecution, type BlogExecution, type BandProgress } from '@goltou/sites';
 import type { Job, JobInput, Service } from './protocol';
 import type { Checkpoint, RegistrationRunner } from './runner';
 import type { PreparationWork } from './preparation';
@@ -68,7 +68,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
       while (j.step <= 7) {
         this.check();
         if (j.step === 1 && j.targets.some(t => t.channel === 'blog')) {
-          this.blog ??= createBlogExecution(this.work!.preview!.blog, [], this.services.blog!, { check: this.check, progress: this.progress, beforeSave: () => { if (++this.saves > (this.services.blog?.draftSaveLimit ?? 3)) throw new Error('DRAFT_SAVE_LIMIT'); } });
+          this.blog ??= createBlogExecution(this.work!.preview!.blog, [], this.services.blog!, { mode: j.mode, check: this.check, progress: this.progress, beforeSave: () => { if (++this.saves > (this.services.blog?.draftSaveLimit ?? 3)) throw new Error('DRAFT_SAVE_LIMIT'); } });
           await this.blog.ensureReady();
         }
         if (j.step === 2) await this.work!.download(this.abort.signal, n => { j.current = n; this.notify(structuredClone(j)); });
@@ -125,7 +125,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
   }
   private async fail(error: unknown) {
     const j = this.job!; const code = error instanceof Error ? error.message : 'BAND_FAILED';
-    j.failureCode = /^[A-Z_]+(?::[A-Za-z,]+)?$/.test(code) ? code : 'CHANNEL_FAILED';
+    j.failureCode = safeFailureCode(error, 'CHANNEL_FAILED');
     const isBand = j.step === 6;
     const execution = isBand ? this.band : this.blog;
     const dialog = await execution?.dialog().catch(() => null);

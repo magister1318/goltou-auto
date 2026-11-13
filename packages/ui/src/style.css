@@ -178,3 +178,5 @@ progress::-webkit-progress-value { background:var(--green); }
 .polish-row { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--line); font-size: 14px; overflow-wrap: anywhere; }
 .polish-row p { white-space: pre-wrap; }
 .polish-row button { grid-column: 1 / -1; text-align: left; color: var(--green); }
+
+.failure-detail { overflow-wrap: anywhere; }

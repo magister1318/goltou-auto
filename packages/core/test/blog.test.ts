@@ -13,15 +13,17 @@ import { compareDocuments, observePlan } from '../src/verify';
 import type { InputPlan } from '../src/convert';
 import { blogFixture } from '../../sites/test/blog-fixture';
 import { BlogRegistrationRunner } from '../src/blog-runner';
+import { ChannelRegistrationRunner } from '../src/band-runner';
+import { realEnding } from './fixtures/real-ending';
 import type { PreparedPreview } from '../src/preparation';
 
 const executablePath = [process.env.CHROMIUM, 'C:/Program Files/Google/Chrome/Application/chrome.exe', '/usr/bin/chromium'].find(p => p && existsSync(p));
 const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const fn of cleanup.splice(0).reverse()) await fn(); });
-async function fixture(mode = '', extra: { tags?: boolean } = {}) {
+async function fixture(mode = '', extra: { tags?: boolean; photos?: number; photoExtension?: string } = {}) {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'goltou-wp5-'));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
-  const files = [1, 2, 3, 4, 5].map(i => ({ url: `https://example.invalid/${i}`, path: path.join(dir, `goltou-1234567890abcdef-${i}.png`) }));
+  const files = Array.from({ length: extra.photos ?? 5 }, (_, i) => i + 1).map(i => ({ url: `https://example.invalid/${i}`, path: path.join(dir, `goltou-1234567890abcdef-${i}.${extra.photoExtension ?? 'png'}`) }));
   for (const file of files) await writeFile(file.path, new Uint8Array([137, 80, 78, 71]));
   const server = http.createServer((req, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(req.url === '/login' ? '<input type="password"><p>로컬 로그인 풀림 예시</p>' : req.url?.startsWith('/published/') ? '<h1>로컬 발행 결과</h1>' : mode === 'delayed-frame' && req.url === '/editor' ? '<script>setTimeout(()=>{const f=document.createElement("iframe");f.src="/ready-editor";document.body.append(f)},500)</script><body></body>' : blogFixture(mode)));
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -53,9 +55,93 @@ async function fixture(mode = '', extra: { tags?: boolean } = {}) {
   const beforeSave = vi.fn(), check = vi.fn(), progress = vi.fn();
   const execution = createBlogExecution(plan, files, { host, editorUrl, localPublish: true }, { check, progress, beforeSave });
   return { execution, plan, files, pages, host, editorUrl, check, beforeSave, progress, external: () => external,
-    counts: async () => pages.get(execution.surface!)!.evaluate<{ saves: number; publishes: number }>("({saves:Number(localStorage.getItem('saves')),publishes:Number(localStorage.getItem('publishes'))})") };
+    counts: async (surface = execution.surface!) => pages.get(surface)!.evaluate<{ saves: number; publishes: number }>("({saves:Number(localStorage.getItem('saves')),publishes:Number(localStorage.getItem('publishes'))})") };
 }
 describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback editor only', () => {
+  it('preserves links, flattened inline elements and short text after the last seven photos with options off', async () => {
+    const f = await fixture('missing-tags', { photos: 8 });
+    const preview = realEnding(f.files, false);
+    expect(preview.verification.blog.matches).toBe(true);
+    f.plan.steps = preview.blog.steps;
+    expect(f.plan.steps.slice(-3).map(s => s.kind)).toEqual(['photos', 'text', 'break']);
+    await f.execution.write(); await f.execution.saveAndVerify();
+    expect(f.progress).toHaveBeenLastCalledWith({ photos: 8, totalPhotos: 8, characters: 1509, totalCharacters: 1509 });
+    expect(await f.counts()).toEqual({ saves: 1, publishes: 0 }); expect(f.external()).toBe(0);
+  }, 40000);
+  it.each(['blog', 'channel'] as const)('records the missing final tag control and exact plan step without content in the %s runner', async kind => {
+    const f = await fixture('missing-tags', { photos: 8 });
+    const preview = realEnding(f.files, true);
+    const tagIndex = preview.blog.steps.findIndex(s => s.kind === 'text' && s.role === 'hashtags') + 1;
+    const code = `CONTROL_NOT_FOUND:BLOG_TAG_INPUT:TEXT_HASHTAGS:${tagIndex}`;
+    const recordFailure = vi.fn(async () => {});
+    const services = { host: f.host, editorUrl: f.editorUrl, localPublish: true, recordFailure };
+    const runner = kind === 'blog' ? new BlogRegistrationRunner(services, async () => {}, () => {})
+      : new ChannelRegistrationRunner({ blog: services, band: { host: f.host } }, async () => {}, () => {});
+    cleanup.push(async () => runner.dispose());
+    const work = { preview, prepared: { preview, files: f.files }, download: async () => {}, arrange: async () => {}, cleanup: async () => {} };
+    await runner.start({ productNo: 1, mode: 'draft', targets: [{ channel: 'blog', key: 'local', name: '로컬' }], options: { polish: false, closing: false, linkCard: false } }, '[골투오토 실험] 로컬 끝 구조', 8, work);
+    for (let i = 0; i < 1000 && runner.job?.status === 'running'; i++) await new Promise(resolve => setTimeout(resolve, 50));
+    expect(runner.job).toMatchObject({ status: 'failed', step: 4, current: 8, total: 8, characters: 1509, totalCharacters: 1512, failureCode: code });
+    expect(recordFailure).toHaveBeenCalledWith(expect.objectContaining({ step: 4, code }));
+    const json = JSON.stringify(recordFailure.mock.calls);
+    expect(json).not.toMatch(/https:|로컬|예시|가가|끝글/);
+    expect(await f.counts([...f.pages.keys()].at(-1)!)).toEqual({ saves: 0, publishes: 0 }); expect(f.external()).toBe(0);
+  }, 60000);
+  it('opens the desktop metadata layer for final tags and reopens it to verify a fresh draft without publishing', async () => {
+    const f = await fixture('metadata-tags', { photos: 8, photoExtension: 'jpg' });
+    const preview = realEnding(f.files, true);
+    f.plan.steps = preview.blog.steps;
+    const body = f.plan.steps.find(s => s.kind === 'text' && s.role === 'body' && s.text.includes('가'.repeat(40)));
+    if (!body || body.kind !== 'text') throw new Error('FIXTURE_PADDING_REQUIRED');
+    // The old 32-codepoint chunk boundary separated the base and selector.
+    body.text = '가'.repeat(31) + '✈️' + body.text.slice(33);
+    await f.execution.write();
+    expect((await readBlogDocument(f.execution.surface!)).tokens.filter(t => t.kind === 'photo').every(t => t.identity.endsWith('.png'))).toBe(true);
+    const altered = structuredClone(await readBlogDocument(f.execution.surface!));
+    const photo = altered.tokens.find(t => t.kind === 'photo');
+    if (!photo || photo.kind !== 'photo') throw new Error('FIXTURE_PHOTO_REQUIRED');
+    photo.identity = photo.identity.replace('1234567890abcdef', '0000000000000000');
+    expect(compareDocuments(observePlan(f.plan), blogObservation(f.plan, f.files, altered)).differences.some(d => d.field === 'photos')).toBe(true);
+    expect((await f.execution.observe()).tags).toEqual(['예시']);
+    expect(f.progress).toHaveBeenLastCalledWith({ photos: 8, totalPhotos: 8, characters: 1512, totalCharacters: 1512 });
+    const original = f.execution.surface;
+    await f.execution.saveAndVerify();
+    expect(f.execution.surface).not.toBe(original);
+    expect((await f.execution.observe()).tags).toEqual(['예시']);
+    expect(await f.counts()).toEqual({ saves: 1, publishes: 0 });
+    expect(f.external()).toBe(0);
+  }, 60000);
+  it('blocks every key and unsafe click on the final publish control, and rechecks focus after tag typing', async () => {
+    const f = await fixture('metadata-focus-lost');
+    f.plan.steps = [{ kind: 'text', role: 'title', text: '[골투오토 실험] 안전' }, { kind: 'break' },
+      { kind: 'text', role: 'body', text: '본문' }, { kind: 'text', role: 'hashtags', text: '#예시' }];
+    await expect(f.execution.write()).rejects.toThrow('BLOG_TAG_FOCUS_LOST');
+    const s = f.execution.surface!, page = f.pages.get(s)!;
+    expect(await page.locator('[data-metadata-panel]').count()).toBe(0);
+    // The fixture itself moves focus by real UI input. The executor's Surface
+    // must reject Enter before any input, independent of the tag-writing path.
+    await page.locator('[data-click-area="tpb.publish"]').click();
+    await page.locator('[data-click-area="tpb*i.publish"]').click({ trial: true });
+    await page.locator('#tag-input').click();
+    await page.keyboard.press('Tab');
+    expect(await page.evaluate('document.activeElement?.getAttribute("data-click-area")')).toBe('tpb*i.publish');
+    for (const key of ['Enter', 'Tab', 'PageDown', 'Escape']) await expect(s.pressKey({ key })).rejects.toThrow('BLOG_TAG_FOCUS_LOST');
+    const box = (await page.locator('[data-click-area="tpb*i.publish"]').boundingBox())!;
+    await expect(s.click(box.x + box.width / 2, box.y + box.height / 2)).rejects.toThrow('BLOG_TAG_FOCUS_LOST');
+    const save = (await page.locator('[data-click-area="tpb.save"]').boundingBox())!;
+    await expect(s.click(save.x + save.width / 2, save.y + save.height / 2)).rejects.toThrow('BLOG_TAG_FOCUS_LOST');
+    expect(await f.counts()).toEqual({ saves: 0, publishes: 0 });
+    expect(f.beforeSave).not.toHaveBeenCalled(); expect(f.external()).toBe(0);
+  }, 20000);
+  it('aborts when the metadata layer cannot be verified closed, before attempting draft save', async () => {
+    const f = await fixture('metadata-stuck');
+    f.plan.steps = [{ kind: 'text', role: 'title', text: '[골투오토 실험] 닫기' }, { kind: 'break' },
+      { kind: 'text', role: 'body', text: '본문' }, { kind: 'text', role: 'hashtags', text: '#예시' }];
+    await expect(f.execution.write()).rejects.toThrow('BLOG_TAG_LAYER_NOT_CLOSED');
+    await expect(f.execution.saveAndVerify()).rejects.toThrow('BLOG_TAG_LAYER_NOT_CLOSED');
+    expect(f.beforeSave).not.toHaveBeenCalled();
+    expect(await f.counts()).toEqual({ saves: 0, publishes: 0 }); expect(f.external()).toBe(0);
+  }, 20000);
   it('waits for an editor iframe created after the outer load instead of claiming login loss', async () => {
     const f = await fixture('delayed-frame');
     await f.execution.ensureReady();
