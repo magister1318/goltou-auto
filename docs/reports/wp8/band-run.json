@@ -1,0 +1,250 @@
+{
+  "productNo": 1381,
+  "mode": "draft",
+  "bandOnly": true,
+  "optionsOff": true,
+  "experimentTitle": true,
+  "composerOpens": 1,
+  "composerOpenLimit": 3,
+  "bandPostInputs": 0,
+  "naverAttempts": 0,
+  "startedAt": "2026-11-13T07:15:19.614Z",
+  "firstJobEventAt": "2026-11-13T07:15:19.660Z",
+  "allPhotosCompletedAt": "2026-11-13T07:17:39.548Z",
+  "failedAt": "2026-11-13T07:17:41.508Z",
+  "totalJobEventMilliseconds": 141848,
+  "buttonToObservedFailureUpperBoundMilliseconds": 143992,
+  "photoUploadMilliseconds": 88700,
+  "photoCount": 36,
+  "averagePhotoMilliseconds": 2463.8888888888887,
+  "minPhotoMilliseconds": 2010,
+  "maxPhotoMilliseconds": 3333,
+  "finalAttemptStatus": "failed",
+  "failureCode": "CHANNEL_FAILED",
+  "stoppedBeforePostStatusObserved": false,
+  "inputAndReadbackMatched": true,
+  "photoLimitBlockedBeforeInput": false,
+  "photoLimitExceeded": false,
+  "textLimitExceeded": null,
+  "retries": 0,
+  "secondProductRequired": false,
+  "secondProductReason": "first_product_not_limit_blocked;36_photos_below_mobile_client_99;no_additional_composer_open",
+  "photos": [
+    {
+      "at": "2026-11-13T07:16:09.876Z",
+      "photo": 1,
+      "milliseconds": 2839,
+      "cumulativeMilliseconds": 2839
+    },
+    {
+      "at": "2026-11-13T07:16:12.149Z",
+      "photo": 2,
+      "milliseconds": 2204,
+      "cumulativeMilliseconds": 5043
+    },
+    {
+      "at": "2026-11-13T07:16:14.235Z",
+      "photo": 3,
+      "milliseconds": 2010,
+      "cumulativeMilliseconds": 7053
+    },
+    {
+      "at": "2026-11-13T07:16:16.357Z",
+      "photo": 4,
+      "milliseconds": 2050,
+      "cumulativeMilliseconds": 9103
+    },
+    {
+      "at": "2026-11-13T07:16:18.521Z",
+      "photo": 5,
+      "milliseconds": 2084,
+      "cumulativeMilliseconds": 11187
+    },
+    {
+      "at": "2026-11-13T07:16:20.938Z",
+      "photo": 6,
+      "milliseconds": 2336,
+      "cumulativeMilliseconds": 13523
+    },
+    {
+      "at": "2026-11-13T07:16:23.193Z",
+      "photo": 7,
+      "milliseconds": 2174,
+      "cumulativeMilliseconds": 15697
+    },
+    {
+      "at": "2026-11-13T07:16:25.460Z",
+      "photo": 8,
+      "milliseconds": 2187,
+      "cumulativeMilliseconds": 17884
+    },
+    {
+      "at": "2026-11-13T07:16:27.775Z",
+      "photo": 9,
+      "milliseconds": 2229,
+      "cumulativeMilliseconds": 20113
+    },
+    {
+      "at": "2026-11-13T07:16:30.112Z",
+      "photo": 10,
+      "milliseconds": 2249,
+      "cumulativeMilliseconds": 22362
+    },
+    {
+      "at": "2026-11-13T07:16:32.484Z",
+      "photo": 11,
+      "milliseconds": 2280,
+      "cumulativeMilliseconds": 24642
+    },
+    {
+      "at": "2026-11-13T07:16:34.916Z",
+      "photo": 12,
+      "milliseconds": 2340,
+      "cumulativeMilliseconds": 26982
+    },
+    {
+      "at": "2026-11-13T07:16:37.726Z",
+      "photo": 13,
+      "milliseconds": 2712,
+      "cumulativeMilliseconds": 29694
+    },
+    {
+      "at": "2026-11-13T07:16:40.231Z",
+      "photo": 14,
+      "milliseconds": 2406,
+      "cumulativeMilliseconds": 32100
+    },
+    {
+      "at": "2026-11-13T07:16:42.410Z",
+      "photo": 15,
+      "milliseconds": 2076,
+      "cumulativeMilliseconds": 34176
+    },
+    {
+      "at": "2026-11-13T07:16:44.560Z",
+      "photo": 16,
+      "milliseconds": 2046,
+      "cumulativeMilliseconds": 36222
+    },
+    {
+      "at": "2026-11-13T07:16:47.143Z",
+      "photo": 17,
+      "milliseconds": 2477,
+      "cumulativeMilliseconds": 38699
+    },
+    {
+      "at": "2026-11-13T07:16:50.590Z",
+      "photo": 18,
+      "milliseconds": 3333,
+      "cumulativeMilliseconds": 42032
+    },
+    {
+      "at": "2026-11-13T07:16:52.809Z",
+      "photo": 19,
+      "milliseconds": 2108,
+      "cumulativeMilliseconds": 44140
+    },
+    {
+      "at": "2026-11-13T07:16:55.667Z",
+      "photo": 20,
+      "milliseconds": 2732,
+      "cumulativeMilliseconds": 46872
+    },
+    {
+      "at": "2026-11-13T07:16:58.478Z",
+      "photo": 21,
+      "milliseconds": 2681,
+      "cumulativeMilliseconds": 49553
+    },
+    {
+      "at": "2026-11-13T07:17:00.645Z",
+      "photo": 22,
+      "milliseconds": 2054,
+      "cumulativeMilliseconds": 51607
+    },
+    {
+      "at": "2026-11-13T07:17:03.268Z",
+      "photo": 23,
+      "milliseconds": 2509,
+      "cumulativeMilliseconds": 54116
+    },
+    {
+      "at": "2026-11-13T07:17:05.914Z",
+      "photo": 24,
+      "milliseconds": 2532,
+      "cumulativeMilliseconds": 56648
+    },
+    {
+      "at": "2026-11-13T07:17:08.790Z",
+      "photo": 25,
+      "milliseconds": 2760,
+      "cumulativeMilliseconds": 59408
+    },
+    {
+      "at": "2026-11-13T07:17:11.721Z",
+      "photo": 26,
+      "milliseconds": 2817,
+      "cumulativeMilliseconds": 62225
+    },
+    {
+      "at": "2026-11-13T07:17:14.694Z",
+      "photo": 27,
+      "milliseconds": 2854,
+      "cumulativeMilliseconds": 65079
+    },
+    {
+      "at": "2026-11-13T07:17:17.648Z",
+      "photo": 28,
+      "milliseconds": 2831,
+      "cumulativeMilliseconds": 67910
+    },
+    {
+      "at": "2026-11-13T07:17:19.989Z",
+      "photo": 29,
+      "milliseconds": 2195,
+      "cumulativeMilliseconds": 70105
+    },
+    {
+      "at": "2026-11-13T07:17:23.013Z",
+      "photo": 30,
+      "milliseconds": 2895,
+      "cumulativeMilliseconds": 73000
+    },
+    {
+      "at": "2026-11-13T07:17:25.379Z",
+      "photo": 31,
+      "milliseconds": 2236,
+      "cumulativeMilliseconds": 75236
+    },
+    {
+      "at": "2026-11-13T07:17:27.765Z",
+      "photo": 32,
+      "milliseconds": 2253,
+      "cumulativeMilliseconds": 77489
+    },
+    {
+      "at": "2026-11-13T07:17:30.894Z",
+      "photo": 33,
+      "milliseconds": 2997,
+      "cumulativeMilliseconds": 80486
+    },
+    {
+      "at": "2026-11-13T07:17:33.728Z",
+      "photo": 34,
+      "milliseconds": 2699,
+      "cumulativeMilliseconds": 83185
+    },
+    {
+      "at": "2026-11-13T07:17:36.628Z",
+      "photo": 35,
+      "milliseconds": 2762,
+      "cumulativeMilliseconds": 85947
+    },
+    {
+      "at": "2026-11-13T07:17:39.548Z",
+      "photo": 36,
+      "milliseconds": 2753,
+      "cumulativeMilliseconds": 88700
+    }
+  ]
+}

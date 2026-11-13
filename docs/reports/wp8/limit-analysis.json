@@ -1,14 +1,18 @@
 {
-  "observedBandPhotoLimit": null,
+  "observedBandPhotoLimit": 99,
+  "photoLimitSource": "Band mobile client code;no server-boundary verification",
   "observedBandTextLimit": null,
-  "actualPhotoLimitExceededProducts": null,
+  "actualPhotoLimitExceededProducts": 0,
   "actualTextLimitExceededProducts": null,
-  "previousSampleSize": 60,
   "currentSampleSize": 60,
-  "conditionalOnly": {
-    "assumedPhotoLimit": 30,
-    "previousPhotoLimitExceeded": 37,
-    "currentPhotoLimitExceeded": 36
+  "sample": "docs/reports/wp8/conversion.json",
+  "sampleMaximumPhotos": 69,
+  "sampleMaximumBandCharacters": 5046,
+  "textLimitUnconfirmedReason": "No maxlength or visible body-text limit.10000 constant belongs to comments.",
+  "photoLimitBoundaryTested": false,
+  "appLimitDetection": {
+    "photos": null,
+    "text": null
   },
   "numericStrikeProducts": 2,
   "struckNumericCharacters": 19

@@ -1,0 +1,66 @@
+{
+  "at": "2026-11-13T07:19:02.407Z",
+  "loggedIn": true,
+  "services": {
+    "naver": "unknown",
+    "band": "unknown",
+    "ai": "unknown"
+  },
+  "job": {
+    "id": 1,
+    "productNo": 1381,
+    "status": "stopped",
+    "step": 7,
+    "current": 0,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 0,
+    "photoUploadMilliseconds": 88700,
+    "photoUploadSamples": 36,
+    "mode": "draft",
+    "failureCode": "CHANNEL_FAILED",
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "bandPhotoLimit": null,
+    "bandLimitObservedAt": "2026-11-13T07:15:22.565Z",
+    "targets": [
+      "band"
+    ],
+    "results": [
+      {
+        "channel": "band",
+        "status": "stopped",
+        "reason": "CHANNEL_FAILED"
+      }
+    ],
+    "experimentTitle": true
+  },
+  "composer": false,
+  "bodyCharacters": 0,
+  "photos": 0,
+  "uploading": false,
+  "hasPostUrl": false,
+  "screen": [
+    "작성을 버렸습니다"
+  ],
+  "composerOpens": 1,
+  "bandPostInputs": 0,
+  "naverAttempts": 0,
+  "discardInputCount": 1,
+  "firstReadWhilePending": {
+    "at": "2026-11-13T07:18:26.543Z",
+    "composer": true,
+    "bodyCharacters": 597,
+    "photos": 36
+  },
+  "discardCompletedEventAt": "2026-11-13T07:18:26.787Z",
+  "verified": true
+}
