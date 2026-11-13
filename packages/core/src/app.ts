@@ -105,7 +105,7 @@ export class AppCore {
           const product = this.forRegistration(await this.call('/auto/products/get', { productNo: request.input.productNo }, token));
           const options = request.input.options;
           const previous = this.preview;
-          const reusable = !request.input.retryPolish && options.polish && previous?.options.polish && (options.polishStrength ?? 'natural') === (previous.options.polishStrength ?? 'natural') && previous.product.productNo === product.productNo && previous.product.contentHash === product.contentHash && previous.result.polish;
+          const reusable = !request.input.retryPolish && options.polish && previous?.options.polish && (options.polishStrength ?? 'spelling') === (previous.options.polishStrength ?? 'spelling') && previous.product.productNo === product.productNo && previous.product.contentHash === product.contentHash && previous.result.polish;
           const reverted = reusable ? previous.reverted : [];
           const result = reusable ? makePreview(product, this.convertOptions(options), undefined, reusable, reverted) : await preparePreview(product, { ...this.convertOptions(options), polish: options.polish }, this.preparation?.polish);
           this.preview = { product, options: { ...options }, result, reverted };
@@ -175,7 +175,7 @@ export class AppCore {
       let preview: PreparedPreview;
       if (input.options.polish) {
         const cached = this.preview;
-        if (!cached || cached.product.productNo !== product.productNo || cached.result.contentHash !== product.contentHash || (cached.options.polishStrength ?? 'natural') !== (input.options.polishStrength ?? 'natural') || (['polish', 'closing', 'linkCard'] as const).some(key => cached.options[key] !== input.options[key])) throw new ApiError('invalid', '상품 또는 옵션이 바뀌었습니다. 내용을 다시 확인해 주세요.');
+        if (!cached || cached.product.productNo !== product.productNo || cached.result.contentHash !== product.contentHash || (cached.options.polishStrength ?? 'spelling') !== (input.options.polishStrength ?? 'spelling') || (['polish', 'closing', 'linkCard'] as const).some(key => cached.options[key] !== input.options[key])) throw new ApiError('invalid', '상품 또는 옵션이 바뀌었습니다. 내용을 다시 확인해 주세요.');
         preview = cached.result;
       } else preview = makePreview(product, this.convertOptions(input.options));
       if (input.previewHash && input.previewHash !== product.contentHash) throw new ApiError('invalid', '상품이 바뀌었습니다. 내용을 다시 확인해 주세요.');
@@ -196,7 +196,7 @@ export class AppCore {
   }
   private forRegistration(product: Product): Product { return this.runtime?.experimentTitle ? { ...product, title: `[골투오토 실험] ${product.title}` } : product; }
   private convertOptions(options: PostInput['options']) {
-    return { closing: options.closing, closingText: this.state.settings?.closingText ?? '', linkCard: options.linkCard, hashtags: this.state.settings?.defaultHashtags ?? [], polishStrength: options.polishStrength ?? 'natural' };
+    return { closing: options.closing, closingText: this.state.settings?.closingText ?? '', linkCard: options.linkCard, hashtags: this.state.settings?.defaultHashtags ?? [], polishStrength: options.polishStrength ?? 'spelling' };
   }
   private async record(job: Job, retry = false) {
     const token = await this.token();

@@ -5,9 +5,9 @@ import { initialPreviewOptions } from '../src/polish-setting';
 import { PolishStrengthChoice } from '../src/PolishStrengthChoice';
 
 describe('polish strength setting', () => {
-  it('defaults to natural with every optional feature off on each initialization', () => {
-    const first = initialPreviewOptions(); first.polish = true; first.polishStrength = 'spelling';
-    expect(initialPreviewOptions()).toEqual({ polish: false, polishStrength: 'natural', closing: false, linkCard: false });
+  it('defaults to spelling with every optional feature off on each initialization', () => {
+    const first = initialPreviewOptions(); first.polish = true; first.polishStrength = 'natural';
+    expect(initialPreviewOptions()).toEqual({ polish: false, polishStrength: 'spelling', closing: false, linkCard: false });
   });
   it.each(['spelling', 'natural'] as const)('shows both plain choices and the selected level: %s', value => {
     const html = renderToStaticMarkup(createElement(PolishStrengthChoice, { value, disabled: true, change: vi.fn() }));

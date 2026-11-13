@@ -7,7 +7,7 @@ export interface PolishStrengthStore {
   write(strength: PolishStrength): Promise<void>;
 }
 export class MemoryPolishStrengthStore implements PolishStrengthStore {
-  private strength: PolishStrength = 'natural';
+  private strength: PolishStrength = 'spelling';
   async read() { return this.strength; }
   async write(strength: PolishStrength) { this.strength = strength; }
 }
@@ -15,8 +15,8 @@ export class MemoryPolishStrengthStore implements PolishStrengthStore {
 export function filePolishStrengthStore(file: string): PolishStrengthStore {
   return {
     async read() {
-      try { return (await readFile(file, 'utf8')).trim() === 'spelling' ? 'spelling' : 'natural'; }
-      catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 'natural'; throw error; }
+      try { return (await readFile(file, 'utf8')).trim() === 'natural' ? 'natural' : 'spelling'; }
+      catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 'spelling'; throw error; }
     },
     async write(strength) {
       await mkdir(path.dirname(file), { recursive: true });

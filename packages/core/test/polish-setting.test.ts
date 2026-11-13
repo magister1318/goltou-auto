@@ -21,10 +21,10 @@ async function storage() {
   return { file, store: filePolishStrengthStore(file) };
 }
 describe('app-private polish strength persistence', () => {
-  it('defaults missing/invalid files to natural and persists only the chosen level across store recreation', async () => {
+  it('defaults missing/invalid files to spelling and persists only the chosen level across store recreation', async () => {
     const { file, store } = await storage();
-    expect(await store.read()).toBe('natural');
-    await writeFile(file, 'unknown'); expect(await store.read()).toBe('natural');
+    expect(await store.read()).toBe('spelling');
+    await writeFile(file, 'unknown'); expect(await store.read()).toBe('spelling');
     for (const level of ['spelling', 'natural'] as const) {
       await store.write(level);
       expect(await readFile(file, 'utf8')).toBe(`${level}\n`);

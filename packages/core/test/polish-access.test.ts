@@ -58,12 +58,12 @@ describe('AI surface and explicit retry', () => {
       await call('login', { loginId: 'manager', password: 'demo', device: { kind: 'test', model: 'synthetic', appVersion: '0' } });
       const options = { polish: true, closing: false, linkCard: false };
       await call('preview.prepare', { productNo: product.productNo, options });
-      await call('preview.prepare', { productNo: product.productNo, options: { ...options, closing: true, polishStrength: 'natural' } });
-      expect(polish).toHaveBeenCalledOnce(); // Missing strength means natural, and other options reuse the review.
-      await call('preview.prepare', { productNo: product.productNo, options: { ...options, polishStrength: 'spelling' } });
+      await call('preview.prepare', { productNo: product.productNo, options: { ...options, closing: true, polishStrength: 'spelling' } });
+      expect(polish).toHaveBeenCalledOnce(); // Missing strength means spelling, and other options reuse the review.
+      await call('preview.prepare', { productNo: product.productNo, options: { ...options, polishStrength: 'natural' } });
       expect(polish).toHaveBeenCalledTimes(2);
-      expect(polish.mock.calls[0]![0]).toContain('적극 고치세요');
-      expect(polish.mock.calls[1]![0]).toContain('문장은 쓴 그대로');
+      expect(polish.mock.calls[0]![0]).toContain('문장은 쓴 그대로');
+      expect(polish.mock.calls[1]![0]).toContain('적극 고치세요');
       await expect(call('job.start', { productNo: product.productNo, options, mode: 'draft', targets: [{ channel: 'blog', key: 'overseas', name: '시험' }] })).rejects.toMatchObject({ code: 'invalid' });
       expect(routes).not.toContain('/auto/posts/start'); expect(app.snapshot().job).toBeNull();
     } finally { app.dispose(); }

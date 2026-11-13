@@ -11,7 +11,7 @@ describe('polish strength instructions and safety', () => {
     expect(prompt).toContain('<원문>\n1. 첫 문단입니다.\n2. 다음 문단입니다.\n</원문>');
     expect(prompt).toContain(level === 'spelling' ? '문장은 쓴 그대로' : '적극 고치세요');
     expect(prompt).not.toContain(level === 'spelling' ? '적극 고치세요' : '문장은 쓴 그대로');
-    expect(polishPrompt(['첫 문단입니다.'])).toBe(polishPrompt(['첫 문단입니다.'], 'natural'));
+    expect(polishPrompt(['첫 문단입니다.'])).toBe(polishPrompt(['첫 문단입니다.'], 'spelling'));
   });
   it.each([
     ['18홀 후 36홀', '36홀 후 18홀'],

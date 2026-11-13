@@ -38,7 +38,7 @@ export function validateParagraph(original: string, candidate: string, protected
   if (!candidate.trim() || /\r|\n/.test(candidate)) reasons.push('문단 형식 오류');
   return reasons;
 }
-export function polishPrompt(paragraphs: readonly string[], strength: PolishStrength = 'natural'): string {
+export function polishPrompt(paragraphs: readonly string[], strength: PolishStrength = 'spelling'): string {
   const instruction = strength === 'spelling'
     ? '맞춤법·띄어쓰기·명백한 오타만 고치세요. 문장은 쓴 그대로 두고 어순·문장 길이·반복 표현·어미를 다시 쓰지 마세요.'
     : '뜻과 모든 사실을 유지하면서 자연스러운 한국어로 문장을 다시 쓰세요. 어색한 어순, 지나치게 긴 문장, 반복 단어, 일관되지 않은 어미를 적극 고치세요. 어색한 원문은 실제로 개선해 반환하세요. 이미 자연스러운 문장만 그대로 둘 수 있습니다.';
@@ -70,7 +70,7 @@ export function parsePolishAnswer(answer: string, count: number): string[] | nul
   }
   return result;
 }
-export async function polishContent(parsed: ParsedContent, product: Pick<Product, 'golfCourses' | 'productUrl'> & Partial<Pick<Product, 'title' | 'country' | 'region'>>, transport?: PolishTransport, check: () => void = () => {}, strength: PolishStrength = 'natural', omittedText: readonly string[] = []): Promise<PolishResult> {
+export async function polishContent(parsed: ParsedContent, product: Pick<Product, 'golfCourses' | 'productUrl'> & Partial<Pick<Product, 'title' | 'country' | 'region'>>, transport?: PolishTransport, check: () => void = () => {}, strength: PolishStrength = 'spelling', omittedText: readonly string[] = []): Promise<PolishResult> {
   // Keep every paragraph in the review. Never send any Unicode number or formatted/factual line.
   const paragraphs: PolishParagraph[] = parsed.blocks.filter(b => b.kind === 'paragraph').map(b => {
     const original = blockText(b);
