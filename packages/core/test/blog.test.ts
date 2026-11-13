@@ -238,7 +238,7 @@ describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback e
     const f = await fixture();
     f.plan.steps = [{ kind: 'text', role: 'title', text: '[골투오토 실험] WP5 통합' }, { kind: 'break' }, { kind: 'text', role: 'body', text: '통합 흐름의 예시 본문입니다. '.repeat(4) }];
     const verification = compareDocuments(observePlan(f.plan), observePlan(f.plan));
-    const preview: PreparedPreview = { productNo: 1, contentHash: 'fixture', options: {}, blog: f.plan, band: { ...f.plan, channel: 'band' }, verification: { blog: verification, band: verification } };
+    const preview: PreparedPreview = { productNo: 1, contentHash: 'fixture', droppedStruckCharacters: 0, options: {}, blog: f.plan, band: { ...f.plan, channel: 'band' }, verification: { blog: verification, band: verification } };
     let cleaned = 0, downloaded = 0;
     const work = { preview, prepared: { preview, files: [] }, download: async () => { downloaded++; }, arrange: async () => {}, cleanup: async () => { cleaned++; } };
     const states: import('../src/protocol').Job[] = [];

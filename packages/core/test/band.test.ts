@@ -78,7 +78,7 @@ async function settled(runner: ChannelRegistrationRunner) {
 }
 function workFor(plan: InputPlan, files: { url: string; path: string }[]) {
   const verification = compareDocuments(observePlan(plan), observePlan(plan));
-  const preview: PreparedPreview = { productNo: 1, contentHash: 'fixture', options: {}, band: plan, blog: { ...plan, channel: 'blog' }, verification: { blog: verification, band: verification } };
+  const preview: PreparedPreview = { productNo: 1, contentHash: 'fixture', droppedStruckCharacters: 0, options: {}, band: plan, blog: { ...plan, channel: 'blog' }, verification: { blog: verification, band: verification } };
   return { preview, prepared: { preview, files }, download: vi.fn(async () => {}), arrange: vi.fn(async () => {}), cleanup: vi.fn(async () => {}) };
 }
 const input: JobInput = { productNo: 1, mode: 'draft', targets: [{ channel: 'band', name: '밴드 A', key: '111' }], options: { polish: false, closing: false, linkCard: false } };

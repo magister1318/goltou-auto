@@ -6,7 +6,7 @@ export type Block =
   | { kind: 'rule' }
   | { kind: 'link'; text: string; href: string };
 export interface Discard { reason: string; tag: string; offset: number | null }
-export interface ParsedContent { blocks: Block[]; discarded: Discard[]; notices: string[] }
+export interface ParsedContent { blocks: Block[]; discarded: Discard[]; notices: string[]; droppedStruckCharacters: number }
 export type Role = 'title' | 'body' | 'departures' | 'courses' | 'closing' | 'linkCard' | 'hashtags';
 export type InputStep =
   | { kind: 'text'; role: Role; text: string; runs?: Run[]; paragraphId?: string; tableRow?: string[] }

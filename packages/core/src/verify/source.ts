@@ -15,7 +15,7 @@ function append(order: Event[], kind: Event['kind'], value: string) {
 
 /** Independent audit: only walk original HTML nodes, never converter blocks or discard records.
  * Allowed omissions: comments, script/style/non-content embed/form metadata subtrees,
- * empty/1x1/known tracking images, and whitespace. Attributes are not visible text.
+ * empty/1x1/known tracking images, struck-through text, and whitespace. Attributes are not visible text.
  * Keep this intentionally separate from convert/html.ts so block-builder faults are observable.
  */
 export function observeSource(html: string): SourceObservation {
@@ -25,10 +25,17 @@ export function observeSource(html: string): SourceObservation {
     append(order, 'text', value);
     for (const index of activeCells) tableCells[index] += value;
   };
-  function walk(node: Node) {
-    if ('value' in node && node.nodeName === '#text') { text(node.value); return; }
+  function walk(node: Node, struck = false) {
+    if ('value' in node && node.nodeName === '#text') { if (!struck) text(node.value); return; }
     if (!('tagName' in node) || ignored.test(node.tagName)) return;
     const tag = node.tagName;
+    // Deliberately derive this from source attributes here, independently of the converter.
+    const decorations = (node.attrs.find(a => a.name === 'style')?.value ?? '').split(';');
+    struck ||= /^(del|s|strike)$/.test(tag) || decorations.some(declaration => {
+      const colon = declaration.indexOf(':');
+      return /^(text-decoration|text-decoration-line)$/i.test(declaration.slice(0, colon).trim())
+        && /\bline-through\b/i.test(declaration.slice(colon + 1));
+    });
     if (tag === 'img') {
       const attrs = Object.fromEntries(node.attrs.map(a => [a.name, a.value]));
       const url = attrs.src;
@@ -37,8 +44,8 @@ export function observeSource(html: string): SourceObservation {
     }
     const cell = tag === 'td' || tag === 'th';
     if (cell) { activeCells.push(tableCells.length); tableCells.push(''); }
-    if (tag === 'hr') text('────────');
-    for (const child of node.childNodes) walk(child);
+    if (tag === 'hr' && !struck) text('────────');
+    for (const child of node.childNodes) walk(child, struck);
     if (cell) activeCells.pop();
   }
   for (const node of parseFragment(html).childNodes) walk(node);

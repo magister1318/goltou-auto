@@ -124,10 +124,11 @@ describe('production client over a local contract HTTP server', () => {
 });
 
 describe('conversion metrics and production media restrictions', () => {
-  it('counts only numeric text in del/s/strike once, without retaining struck contents or changing conversion', () => {
+  it('keeps numeric strike counts while omitting struck contents from conversion', () => {
     const source = { ...product, contentsHtml: '<p><del>이전 123<s>45</s></del><s>문자만</s><strike>날짜 2026-12-03</strike>유효 999</p><del><script>123456</script></del>' };
     const metric = conversionMetric(source);
     expect(metric.struckNumericCharacters).toBe(13);
+    expect(metric.droppedStruckCharacters).toBe(24);
     expect(metric.blog?.numbersPreserved).toBe(true);
     expect(metric.band?.numbersPreserved).toBe(true);
     expect(JSON.stringify(metric)).not.toMatch(/123|2026|999|이전|날짜|유효/);

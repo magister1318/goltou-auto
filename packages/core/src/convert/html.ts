@@ -9,8 +9,24 @@ const attr = (node: Element, name: string) => node.attrs.find(a => a.name === na
 export function parseContents(html: string): ParsedContent {
   const document = parseFragment(html, { sourceCodeLocationInfo: true });
   const blocks: Block[] = [], discarded: Discard[] = [], notices: string[] = [];
-  let runs: Run[] = [], serial = 0;
+  let runs: Run[] = [], serial = 0, droppedStruckCharacters = 0, removedSinceText = false;
+  const struckNodes = new WeakSet<Node>();
   const discard = (node: Node, reason: string) => discarded.push({ reason, tag: 'tagName' in node ? node.tagName : node.nodeName, offset: node.sourceCodeLocation?.startOffset ?? null });
+  // Filter before block building so strike on table/row/cell containers is inherited too.
+  // Keep images and their positions; record counts/locations, never the omitted text.
+  function dropStruckText(node: Node, inherited = false) {
+    if ('tagName' in node && forbidden.has(node.tagName)) return;
+    const struck = inherited || ('tagName' in node && (['del', 's', 'strike'].includes(node.tagName)
+      || /(?:^|;)\s*text-decoration(?:-line)?\s*:[^;]*\bline-through\b/i.test(attr(node, 'style'))));
+    if (struck) struckNodes.add(node);
+    if (struck && node.nodeName === '#text' && 'value' in node && node.value) {
+      droppedStruckCharacters += Array.from(node.value).length;
+      discard(node, 'struck-text');
+      node.value = '';
+    }
+    if ('childNodes' in node) for (const child of node.childNodes) dropStruckText(child, struck);
+  }
+  dropStruckText(document);
   function flush() {
     // HTML collapses ordinary whitespace. Preserve all visible letters, punctuation and line breaks.
     if (runs.length) {
@@ -19,10 +35,17 @@ export function parseContents(html: string): ParsedContent {
       if (runText(runs).trim()) blocks.push({ kind: 'paragraph', id: `p${++serial}`, runs });
       runs = [];
     }
+    removedSinceText = false;
   }
   function visit(node: Node, bold = false, href?: string) {
     if (node.nodeName === '#text' && 'value' in node) {
-      const text = node.value.replace(/[\t\n\r\f ]+/g, ' ');
+      if (struckNodes.has(node)) { removedSinceText = true; return; }
+      let text = node.value.replace(/[\t\n\r\f ]+/g, ' ');
+      if (!text) return;
+      // Only join spaces across an omission. Other run boundaries keep their spacing.
+      if (removedSinceText && runs[runs.length - 1]?.text.endsWith(' ')) text = text.replace(/^ +/, '');
+      removedSinceText = false;
+      if (!text) return;
       if (!runs.length && !text.trim()) return;
       runs.push({ text, ...(bold ? { bold: true } : {}), ...(href ? { href } : {}) }); return;
     }
@@ -35,8 +58,8 @@ export function parseContents(html: string): ParsedContent {
       if (!src || (attr(node, 'width') === '1' && attr(node, 'height') === '1') || /(?:google-analytics|doubleclick\.net|\/tracking[/.?])/i.test(src)) { discard(node, 'tracking-or-empty-image'); return; }
       flush(); blocks.push({ kind: 'image', url: src }); return;
     }
-    if (tag === 'br') { runs.push({ text: '\n' }); return; }
-    if (tag === 'hr') { flush(); blocks.push({ kind: 'rule' }); return; }
+    if (tag === 'br') { if (!struckNodes.has(node)) { runs.push({ text: '\n' }); removedSinceText = false; } return; }
+    if (tag === 'hr') { if (!struckNodes.has(node)) { flush(); blocks.push({ kind: 'rule' }); } return; }
     if (tag === 'table') {
       flush(); let rows: string[][] = [];
       const hasImage = (n: Node): boolean => 'tagName' in n && !forbidden.has(n.tagName) && (n.tagName === 'img' || n.childNodes.some(hasImage));
@@ -95,5 +118,5 @@ export function parseContents(html: string): ParsedContent {
     if (b.kind === 'paragraph' && b.runs[0]?.href && b.runs.every(r => r.href === b.runs[0]!.href) && !b.runs.some(r => r.bold))
       blocks[i] = { kind: 'link', text: runText(b.runs), href: b.runs[0].href };
   }
-  return { blocks, discarded, notices: [...new Set(notices)] };
+  return { blocks, discarded, notices: [...new Set(notices)], droppedStruckCharacters };
 }
