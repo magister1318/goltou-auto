@@ -4,6 +4,25 @@ import { click, compact, point, read, sleep, typeParagraphs, waitFor } from '../
 import type { exampleArticle } from '../fixture';
 
 export async function listBands(surface: Surface) {
+  const mode = await waitFor(() => read<string | null>(surface, `
+    if(docs.some(({d})=>d.querySelector('._myBandListWrap a.bandCover:not(._adBandCover)')))return 'legacy';
+    if(docs.some(({d})=>d.querySelector('.globalMyBandWrap a._allMyBandList')))return 'home';
+    if(docs.some(({d})=>d.querySelector('.myBandGroupList a.myBandGroupItem')))return 'my';
+    return null;`));
+  if (mode !== 'legacy') {
+    // New owned tiles have no href/key. Follow only the first non-ad band
+    // through input, then read its address. Never open other bands to enumerate.
+    if (mode === 'home') await click(surface, '.globalMyBandWrap a._allMyBandList', '전체보기');
+    const first = await waitFor(() => read<{ name: string; x: number; y: number } | null>(surface, `
+      for(const {d,x,y} of docs)for(const e of d.querySelectorAll('.myBandGroupList a.myBandGroupItem')){
+        if(e.querySelector('.adBox,.aNewFolder,.aNewFolderBox')||!visible(e))continue;
+        const name=(e.querySelector('.globalMyBandName')?.textContent||'').trim(),r=e.getBoundingClientRect();
+        if(name&&y+r.top>=0&&y+r.bottom<innerHeight)return {name:name.slice(0,100),x:x+r.left+r.width/2,y:y+r.top+r.height/2};
+      }return null;`));
+    await surface.click(first.x, first.y);
+    const key = await waitFor(async () => /^[/]band[/]([0-9]+)(?:[/]post)?[/]?$/.exec(new URL((await surface.readState()).url).pathname)?.[1] ?? null);
+    return [{ key, name: first.name }];
+  }
   return waitFor(async () => {
     const rows = await read<{ key: string; name: string }[]>(surface, `const seen=new Set(); return docs.flatMap(({d})=>Array.from(d.querySelectorAll('._myBandListWrap a.bandCover:not(._adBandCover)'))).flatMap(e=>{
       const m=(e.getAttribute('href')||'').match(/^(?:https:[/][/](?:www[.])?band[.]us)?[/]band[/]([0-9]+)(?:[/]post)?[/]?(?:[?#].*)?$/);

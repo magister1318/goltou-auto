@@ -1,0 +1,29 @@
+{
+  "at": "2026-11-13T00:19:06.313Z",
+  "hasFixtureSession": true,
+  "services": {
+    "naver": "unknown",
+    "band": "unknown",
+    "ai": "unknown"
+  },
+  "job": {
+    "id": 1,
+    "title": "[골투오토 실험] WP5 20261113T000505 다낭 예시",
+    "status": "recovery_paused",
+    "step": 1,
+    "current": 0,
+    "total": 5,
+    "message": "작성 중인 내용이 달라졌습니다. 버리고 같은 화면에서 처음부터 시작할지 선택해 주세요.",
+    "failureCode": "AUTO_RECOVER_CONSENT_REQUIRED",
+    "completedSteps": [],
+    "targetResults": [
+      {
+        "channel": "blog",
+        "status": "running"
+      }
+    ]
+  },
+  "elapsedSinceStartMs": 14742,
+  "additionalSaves": 0,
+  "ownerRecoveryChoiceAnswered": false
+}

@@ -51,7 +51,7 @@ class MainActivity : ComponentActivity() {
         val hidden = FrameLayout(session.context)
         root.addView(hidden, FrameLayout.LayoutParams(-1, -1))
         val relay = DevtoolsRelay.get(filesDir)
-        NodeRuntime.ensureStarted(applicationContext, relay.socketFile)
+        NodeRuntime.ensureStarted(applicationContext, relay.socketFile, intent.getBooleanExtra("verification-fixture", false), intent.getStringExtra("verification-title"))
         val origin = "http://127.0.0.1:${NodeRuntime.port}"
         ui = WebView(session.context).apply {
             setBackgroundColor(Color.WHITE)

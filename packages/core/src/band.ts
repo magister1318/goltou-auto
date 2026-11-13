@@ -4,7 +4,9 @@ import type { InputPlan } from './convert';
 import type { MediaFile } from './media';
 import { compact, compareDocuments, observePlan, type Observation } from './verify';
 
-export interface BandServices { host: SurfaceHost; baseUrl?: string; localPublish?: boolean }
+export interface BandServices { host: SurfaceHost; baseUrl?: string; localPublish?: boolean;
+  capture?(surface: import('@goltou/surface').Surface, name: string): Promise<Record<string, unknown>>;
+}
 /** Readback supplies all characters and photo identities; plan boundaries only assign semantic roles. */
 export function bandObservation(plan: InputPlan, files: readonly Pick<MediaFile, 'url' | 'path'>[], actual: BandReadback): Observation {
   const result: Observation = { title: '', text: actual.body, paragraphs: [], photos: [], prices: [], departures: [], golfCourses: [] };

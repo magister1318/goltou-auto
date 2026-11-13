@@ -17,7 +17,7 @@ object NodeRuntime {
     private external fun startNode(arguments: Array<String>): Int
 
     @Synchronized
-    fun ensureStarted(context: Context, devtools: File) {
+    fun ensureStarted(context: Context, devtools: File, verificationFixture: Boolean = false, verificationTitle: String? = null) {
         if (started) return
         val manifest = context.assets.open("bundle/manifest.json").bufferedReader().use { JSONObject(it.readText()) }
         val bundle = File(context.filesDir, "builtin-${manifest.getString("sha256").take(16)}")
@@ -26,7 +26,9 @@ object NodeRuntime {
         token = ByteArray(32).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
         val args = arrayOf("node", File(bundle, "core.cjs").absolutePath,
             "--port", port.toString(), "--token", token, "--devtools", devtools.absolutePath, "--bundle", bundle.absolutePath,
-            "--debug", BuildConfig.DEBUG.toString(), "--data", File(context.filesDir, "wp0").absolutePath)
+            "--debug", BuildConfig.DEBUG.toString(), "--verification-fixture", (BuildConfig.DEBUG && verificationFixture).toString(),
+            "--verification-title", (verificationTitle?.takeIf { BuildConfig.DEBUG && verificationFixture && it.startsWith("[골투오토 실험]") && it.length <= 160 } ?: "generated"),
+            "--data", File(context.filesDir, "wp0").absolutePath)
         started = true
         Thread(null, {
             exitCode = startNode(args)

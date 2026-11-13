@@ -80,6 +80,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
           if (j.mode === 'publish') result.postUrl = await this.blog.publish();
           result.status = j.mode === 'draft' ? 'draft_saved' : 'published';
           j.tableModes = [...this.blog.tableModes]; j.linkCard = this.blog.linkCard;
+          await this.capture(false, 'draft-verified');
         }
         if (j.step === 6) {
           const bands = j.targetResults!.filter(t => t.channel === 'band');
@@ -94,6 +95,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
             j.bandPhotoLimit = choice?.photoLimit ?? null; j.bandLimitObservedAt = choice?.observedAt ?? undefined;
             if (j.mode === 'draft') {
               await this.band.stopBeforePost(); result.status = 'stopped_before_post';
+              await this.capture(true, 'before-post');
               j.status = 'stopped_before_post'; j.secondsLeft = 0; j.message = '게시 전 멈춤 · 밴드 화면에서 확인하고 게시하거나 버려 주세요.';
               await this.emit(); return;
             }
@@ -110,6 +112,14 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
         j.step++; j.current = 0; await this.emit();
       }
     } catch (error) { if (!this.abort.signal.aborted && !this.disposed) await this.fail(error); }
+  }
+  private async capture(isBand: boolean, stage: string) {
+    const surface = isBand ? this.directory.surface : this.blog?.surface;
+    const capture = isBand ? this.services.band.capture : this.services.blog?.capture;
+    if (!surface || !capture) return;
+    const result = await capture(surface, `job-${this.job!.id}-${Date.now()}-${stage}`).catch(() => null);
+    const file = result?.file;
+    if (result?.redacted === true && typeof file === 'string' && /^[a-zA-Z0-9-]+\.png$/.test(file)) this.job!.evidence = file;
   }
   private async fail(error: unknown) {
     const j = this.job!; const code = error instanceof Error ? error.message : 'BAND_FAILED';
@@ -131,6 +141,8 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     }
     const choice = this.directory.choices.find(b => b.key === j.activeTargetKey);
     if (choice) { j.bandPhotoLimit = choice.photoLimit; j.bandLimitObservedAt = choice.observedAt ?? undefined; }
+    if (!dialog) await this.capture(isBand, 'failure');
+    if (!isBand) await this.services.blog?.recordFailure?.({ jobId: j.id, step: j.step, code: j.failureCode!, evidence: j.evidence ?? '' }).catch(() => {});
     await this.emit();
   }
   async stop() {

@@ -23,7 +23,7 @@ async function fixture(mode = '', extra: { tags?: boolean } = {}) {
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   const files = [1, 2, 3, 4, 5].map(i => ({ url: `https://example.invalid/${i}`, path: path.join(dir, `goltou-1234567890abcdef-${i}.png`) }));
   for (const file of files) await writeFile(file.path, new Uint8Array([137, 80, 78, 71]));
-  const server = http.createServer((req, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(req.url === '/login' ? '<input type="password"><p>로컬 로그인 풀림 예시</p>' : req.url?.startsWith('/published/') ? '<h1>로컬 발행 결과</h1>' : blogFixture(mode)));
+  const server = http.createServer((req, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(req.url === '/login' ? '<input type="password"><p>로컬 로그인 풀림 예시</p>' : req.url?.startsWith('/published/') ? '<h1>로컬 발행 결과</h1>' : mode === 'delayed-frame' && req.url === '/editor' ? '<script>setTimeout(()=>{const f=document.createElement("iframe");f.src="/ready-editor";document.body.append(f)},500)</script><body></body>' : blogFixture(mode)));
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   cleanup.push(() => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }));
   const port = (server.address() as { port: number }).port, editorUrl = `http://127.0.0.1:${port}/editor`;
@@ -56,6 +56,12 @@ async function fixture(mode = '', extra: { tags?: boolean } = {}) {
     counts: async () => pages.get(execution.surface!)!.evaluate<{ saves: number; publishes: number }>("({saves:Number(localStorage.getItem('saves')),publishes:Number(localStorage.getItem('publishes'))})") };
 }
 describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback editor only', () => {
+  it('waits for an editor iframe created after the outer load instead of claiming login loss', async () => {
+    const f = await fixture('delayed-frame');
+    await f.execution.ensureReady();
+    expect(await readBlogDocument(f.execution.surface!)).toEqual({ title: '', tokens: [], tags: [] });
+    expect(f.beforeSave).not.toHaveBeenCalled(); expect(f.external()).toBe(0);
+  });
   it('preserves five interleaved photos, native cells, and verifies a fresh draft despite an ambiguous save response', async () => {
     const f = await fixture('ambiguous'); await f.execution.write();
     expect(f.execution.tableModes).toEqual(['native']);

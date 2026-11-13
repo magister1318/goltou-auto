@@ -16,6 +16,8 @@ export function bandFixture(mode = 'mobile') {
     const upload=files=>{
       const root=desktop?view.querySelector('.cke_editable'):view.querySelector('._mediaListWrap');
       for(const f of files){const img=document.createElement('img');img.className='mediaImg';img.src='/photos/'+f.name;img.alt=f.name;
+        if(mode==='encoded-photos'){img.src='/photos/renamed';img.alt='';const li=document.createElement('li');li.setAttribute('data-file',btoa(JSON.stringify({originalName:f.name})));li.append(img);root.append(li);continue}
+        if(mode==='anonymous-photos'){img.src='/photos/renamed';img.alt=''}
         if(desktop){const n=document.createElement('band:attachment');n.setAttribute('contenteditable','false');n.append(img);root.append(n)}else root.append(img)}
     };
     const compose=()=>{

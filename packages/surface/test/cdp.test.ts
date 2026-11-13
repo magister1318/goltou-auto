@@ -41,6 +41,19 @@ async function fixture(handler?: (command: Command, socket: WebSocket) => boolea
 }
 
 describe('CDP Surface', () => {
+  it('retries one unanswered viewport capture without native-density fallback or editor input', async () => {
+    let attempts = 0;
+    const f = await fixture((command, socket) => {
+      if (command.method !== 'Page.captureScreenshot') return false;
+      if (++attempts === 1) return true;
+      if (command.params.fromSurface !== true) socket.send(JSON.stringify({ id: command.id, error: { message: 'WRONG_PIXEL_GEOMETRY' } }));
+      else socket.send(JSON.stringify({ id: command.id, result: { data: 'viewport-snapshot' } }));
+      return true;
+    });
+    await expect(f.surface.captureViewport()).resolves.toBe('viewport-snapshot');
+    expect(attempts).toBe(2);
+    expect(f.commands.some(c => c.method.startsWith('Input.') || c.method === 'Runtime.evaluate')).toBe(false);
+  });
   it('opens the requested session, UA and viewport then reads the loaded title', async () => {
     const f = await fixture();
     await f.surface.open({ url: 'https://example.com/', width: 1280, height: 900, userAgent: 'test-desktop', session: 'naver' });

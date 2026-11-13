@@ -23,6 +23,11 @@ export class AppCore {
   }
   subscribe(listener: (state: AppSnapshot) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   snapshot(): AppSnapshot { return structuredClone(this.state); }
+  /** Restore an already provisioned session; never submits credentials or calls login. */
+  async restoreSession() {
+    const { user, settings } = await this.api.request('/auto/me', {}, await this.token());
+    this.state.user = user; this.state.settings = settings; this.emit();
+  }
   private emit() { for (const listener of this.listeners) listener(this.snapshot()); }
   dispose() { this.runner.dispose(); this.listeners.clear(); }
   private async token(): Promise<string> { const token = await this.tokens.read(); if (!token) throw new ApiError('auth', '다시 로그인해 주세요.'); return token; }

@@ -27,7 +27,8 @@ async function fixture(mode = 'mobile') {
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   const files = [1, 2, 3, 4, 5].map(i => ({ url: `https://example.invalid/${i}`, path: path.join(dir, `goltou-1234567890abcdef-${i}.png`) }));
   for (const f of files) await writeFile(f.path, new Uint8Array([137, 80, 78, 71]));
-  const server = http.createServer((req, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(req.url === '/login' ? '<input type="password"><p>로컬 로그인 풀림</p>' : req.url?.startsWith('/blog') ? blogFixture(mode === 'blog-fail' ? 'duplicate' : '') : bandFixture(mode)));
+  const newList = '<div class="myBandGroupList"><a class="myBandGroupItem" href="#" onclick="throw Error(\'AD_OPENED\')"><span class="adBox">광고</span></a><a class="myBandGroupItem" href="#"><span class="aNewFolder"></span></a><a class="myBandGroupItem" href="/band/111/post"><span class="globalMyBandName">밴드 A</span></a><a class="myBandGroupItem" href="/band/222/post"><span class="globalMyBandName">밴드 B</span></a></div>';
+  const server = http.createServer((req, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(req.url === '/login' ? '<input type="password"><p>로컬 로그인 풀림</p>' : req.url?.startsWith('/blog') ? blogFixture(mode === 'blog-fail' ? 'duplicate' : '') : mode === 'new-home' && req.url === '/' ? '<section class="globalMyBandWrap"><a class="_allMyBandList" href="/my/bands">전체보기</a></section>' : mode === 'new-home' && req.url === '/my/bands' ? newList : bandFixture(mode)));
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   cleanup.push(() => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }));
   const baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
@@ -74,6 +75,23 @@ function workFor(plan: InputPlan, files: { url: string; path: string }[]) {
 const input: JobInput = { productNo: 1, mode: 'draft', targets: [{ channel: 'band', name: '밴드 A', key: '111' }], options: { polish: false, closing: false, linkCard: false } };
 
 describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pages', () => {
+  it('reads original names from encoded attachment metadata, and rejects five anonymous photos', async () => {
+    const f = await fixture('encoded-photos'); await f.execution.write();
+    expect((await readBandDocument(f.directory.surface!)).photos).toEqual(f.files.map(f => path.basename(f.path)));
+    const g = await fixture('anonymous-photos');
+    await expect(g.execution.write()).rejects.toThrow('BAND_READBACK_MISMATCH:photos');
+    expect((await readBandDocument(g.directory.surface!)).photos).toEqual(['', '', '', '', '']);
+    expect((await g.counts()).posts).toBe(0);
+  }, 20000);
+  it('follows the new owned-list screen and only the first non-ad, non-folder band through input', async () => {
+    const f = await fixture('new-home');
+    expect(f.directory.choices.map(b => ({ key: b.key, name: b.name }))).toEqual([{ key: '111', name: '밴드 A' }]);
+    expect((await readBandDocument(f.directory.surface!)).composer).toBe(false);
+    expect((await f.counts()).opens).toBe(0);
+    await f.execution.write(); await f.execution.stopBeforePost();
+    expect(await f.counts()).toEqual({ opens: 1, posts: 0, discards: 0 });
+    expect(f.external()).toBe(0);
+  }, 20000);
   for (const mode of ['mobile', 'desktop']) it(`${mode}: owned list, grouped photos in plan order, readback, stop before post and discard`, async () => {
     const f = await fixture(mode);
     expect(f.directory.choices.map(b => b.name)).toEqual(['밴드 A', '밴드 B']);
@@ -174,17 +192,24 @@ describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pa
   it('finishes blog before Band, and requires an explicit choice to continue after blog failure', async () => {
     for (const mode of ['mobile', 'blog-fail']) {
       const f = await fixture(mode);
-      const runner = new ChannelRegistrationRunner({ band: { host: f.host, baseUrl: f.baseUrl, localPublish: true }, blog: { host: f.host, editorUrl: `${f.baseUrl}/blog`, localPublish: true } }, async () => {}, () => {});
+      const captureBand = vi.fn(async () => ({ redacted: true, file: 'band-masked.png' }));
+      const captureBlog = vi.fn(async () => ({ redacted: true, file: 'blog-masked.png' }));
+      const recordFailure = vi.fn(async () => {});
+      const runner = new ChannelRegistrationRunner({ band: { host: f.host, baseUrl: f.baseUrl, localPublish: true, capture: captureBand }, blog: { host: f.host, editorUrl: `${f.baseUrl}/blog`, localPublish: true, capture: captureBlog, recordFailure } }, async () => {}, () => {});
       cleanup.push(async () => runner.dispose()); await runner.listBands();
       const plan = { ...f.plan, steps: f.plan.steps.filter(s => s.kind !== 'photos') };
       const work = workFor(plan, []);
       await runner.start({ ...input, targets: [{ channel: 'blog', key: 'sample', name: '블로그' }, ...input.targets] }, '로컬', 0, work); await settled(runner);
       if (mode === 'blog-fail') {
         expect(runner.job?.status).toBe('channel_paused');
+        expect(runner.job?.evidence).toBe('blog-masked.png');
+        expect(recordFailure).toHaveBeenCalledWith(expect.objectContaining({ code: 'DRAFT_IDENTITY_AMBIGUOUS', evidence: 'blog-masked.png' }));
         expect((await readBandDocument(runner.directory.surface!)).composer).toBe(false);
         await runner.continueBand(); await settled(runner);
       }
       expect(runner.job?.status).toBe('stopped_before_post');
+      expect(captureBlog).toHaveBeenCalledTimes(1); expect(captureBand).toHaveBeenCalledTimes(1);
+      expect(runner.job?.evidence).toBe('band-masked.png');
       expect(runner.job!.targetResults!.find(t => t.channel === 'blog')!.status).toBe(mode === 'blog-fail' ? 'failed' : 'draft_saved');
       if (mode === 'blog-fail') {
         await runner.discardBand(); await settled(runner);
@@ -208,6 +233,14 @@ describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pa
 });
 
 describe('WP6 daily limit and real-service boundaries', () => {
+  it('accepts the observed www Band redirect but rejects lookalikes and external origins', () => {
+    const host: SurfaceHost = { create: vi.fn(), destroy: vi.fn(), clearSession: vi.fn() };
+    const directory = new BandDirectory(host);
+    expect(directory.sameOrigin(new URL('https://band.us/'))).toBe(true);
+    expect(directory.sameOrigin(new URL('https://www.band.us/'))).toBe(true);
+    for (const url of ['http://www.band.us/', 'https://band.us.example.invalid/', 'https://other.band.us/']) expect(directory.sameOrigin(new URL(url))).toBe(false);
+    expect(new BandDirectory(host, 'http://127.0.0.1:12345', true).sameOrigin(new URL('https://www.band.us/'))).toBe(false);
+  });
   it('rejects real auto-post, second-band targets and lifetime composer attempts beyond three', async () => {
     const host: SurfaceHost = { create: vi.fn(), destroy: vi.fn(), clearSession: vi.fn() };
     const runner = new ChannelRegistrationRunner({ band: { host } }, async () => {}, () => {});

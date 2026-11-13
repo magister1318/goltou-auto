@@ -11,12 +11,13 @@ const counts = [6, 4, 3, 5];
 const prices = [1190000, 990000, 1350000, 890000];
 const stamp = '2026-11-12T09:00:00+09:00';
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
-export function createFakeApi(): ApiClient {
+export function createFakeApi(fixtureSession?: { token: string; user: User; productTitle?: string }): ApiClient {
   let settings: Settings = { closingText: '', defaultHashtags: [], bandDailyLimit: 3 };
   const sessions = new Map<string, User>();
+  if (fixtureSession) sessions.set(fixtureSession.token, copy(fixtureSession.user));
   let serial = 100;
   const products: Product[] = titles.map((title, i) => ({
-    productNo: 1234 + i, title: i === 0 ? `[골투오토 실험] WP5 ${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)} 다낭 예시` : title, country: ['베트남', '태국', '일본', '필리핀'][i % 4]!, region: regions[i]!,
+    productNo: 1234 + i, title: i === 0 ? fixtureSession?.productTitle ?? `[골투오토 실험] WP5 ${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)} 다낭 예시` : title, country: ['베트남', '태국', '일본', '필리핀'][i % 4]!, region: regions[i]!,
     contentsHtml: i === 0 ? Array.from({ length: 5 }, (_, n) => `<p>예시 일정 ${n + 1} 안내입니다. 골프장과 숙소를 확인합니다.</p><img src="https://example.invalid/images/0/${n}.png">`).join('') + '<p>출발일과 가격은 아래 표에서 확인하세요.</p>' : `<p>${regions[i]}의 골프장을 도는 일정입니다. 항공과 호텔, 그린피가 포함됩니다.</p>`,
     images: Array.from({ length: 5 }, (_, order) => ({ order: order + 1, url: `https://example.invalid/images/${i}/${order}.png` })),
     departures: Array.from({ length: counts[i % 4]! }, (_, d) => ({ date: `${i >= 12 ? '2027-01' : '2026-12'}-${String(3 + d * 4 + (d ? 3 : 0)).padStart(2, '0')}`, price: prices[i % 4]! + d * 60000 })),

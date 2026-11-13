@@ -97,6 +97,17 @@ export class BlogExecution {
     this.surface = await this.env.host.create('naver');
     // Keep the previous composition until the new editor is available. Never close on stop/failure.
     await this.surface.open({ url: this.env.editorUrl ?? 'https://blog.naver.com/GoBlogWrite.naver', session: 'naver', width: 1280, height: 900, userAgent: ua });
+    // The outer document's load can precede SmartEditor's iframe. Missing editor
+    // during that interval is not evidence that the authenticated session expired.
+    await waitFor(async () => {
+      this.env.check();
+      if (await this.dialog()) throw new Error('USER_DIALOG_REQUIRED');
+      const state = await read<'expired' | 'ready' | false>(this.surface!, `
+        if(docs.some(({d})=>d.location.hostname==='nid.naver.com'||d.querySelector('input[type="password"]'))) return 'expired';
+        return docs.some(({d})=>d.querySelector('.se-documentTitle'))?'ready':false;`);
+      if (state === 'expired') throw new Error('LOGIN_OR_EDITOR_LOST');
+      return state;
+    }, 30000);
     await this.guard();
     await prepareBlogEditor(this.surface, this.env.check, { autoRecover: this.recoveryConsent ? 'decline-with-user-consent' : 'stop' });
     this.recoveryConsent = false;

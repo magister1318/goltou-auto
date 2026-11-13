@@ -27,7 +27,18 @@ export async function readBandDocument(surface: Surface): Promise<BandReadback> 
     const items=e?docs.flatMap(({d})=>Array.from(d.querySelectorAll('.postAttachItem ._mediaListWrap img.mediaImg, .cke_editable band\\\\:attachment, .cke_editable img, [class*="photoPreview"] img'))):docs.flatMap(({d})=>Array.from(d.querySelectorAll('.postView img.mediaImg, .cPost .postMain img.mediaImg')));
     const photos=items.filter(n=>!(n.tagName==='IMG'&&n.parentElement?.tagName.toLowerCase()==='band:attachment')).map(n=>{
       const img=n.tagName==='IMG'?n:n.querySelector('img');
-      const raw=[n.getAttribute('data-file-name'),n.getAttribute('title'),n.getAttribute('alt'),img?.getAttribute('src'),img?.getAttribute('data-file-name'),img?.getAttribute('alt')].join(' ');
+      const metadata=[n,n.parentElement,n.parentElement?.parentElement,n.parentElement?.parentElement?.parentElement].find(e=>e?.hasAttribute('data-file'))?.getAttribute('data-file')||'';
+      const candidates=[n.getAttribute('data-file-name'),n.getAttribute('title'),n.getAttribute('alt'),img?.getAttribute('src'),img?.getAttribute('data-file-name'),img?.getAttribute('alt'),metadata];
+      try{candidates.push(decodeURIComponent(metadata));}catch{}
+      if(metadata.length%4===0&&new RegExp('^[A-Za-z0-9+/]*={0,2}$').test(metadata)){
+        const alphabet='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+        const decoded=Array.from({length:Math.floor(metadata.replace(/=+$/,'').length*6/8)},(_,i)=>{
+          const bit=i*8,k=Math.floor(bit/6),value=(alphabet.indexOf(metadata[k])<<12)|(alphabet.indexOf(metadata[k+1])<<6)|Math.max(0,alphabet.indexOf(metadata[k+2]));
+          return String.fromCharCode((value>>(10-bit%6))&255);
+        }).join('');
+        candidates.push(decoded);
+      }
+      const raw=candidates.join(' ');
       return /goltou-[a-f0-9]{16}-[0-9]+\\.[a-z]+/i.exec(raw)?.[0]||'';
     });
     const file=docs.flatMap(({d})=>Array.from(d.querySelectorAll('input[type="file"]'))).find(n=>/image/.test(n.getAttribute('accept')||''));
@@ -48,6 +59,9 @@ export class BandDirectory {
     if (!localPublish && url.origin !== 'https://band.us') throw new Error('BAND_ORIGIN_REQUIRED');
   }
   async getSurface() { return this.surface ??= await this.host.create('band'); }
+  sameOrigin(url: URL) {
+    return url.origin === new URL(this.baseUrl).origin || (!this.localPublish && url.origin === 'https://www.band.us');
+  }
   async list(): Promise<BandChoice[]> {
     const s = await this.getSurface();
     if ((await readBandDocument(s)).composer) throw new Error('BAND_COMPOSER_ACTIVE');
@@ -64,11 +78,11 @@ export class BandDirectory {
     const url = new URL(state.url);
     const login = await read<boolean>(s, `return docs.some(({d})=>d.querySelector('input[type="password"]'))||docs.some(({d})=>Array.from(d.querySelectorAll('a,button')).some(n=>visible(n)&&/^(로그인|Log in|Sign in)$/i.test((n.textContent||'').trim())));`);
     if (url.hostname === 'auth.band.us' || login) throw new Error('BAND_LOGIN_LOST');
-    if (url.origin !== new URL(this.baseUrl).origin) throw new Error('BAND_LOCATION_UNCONFIRMED');
+    if (!this.sameOrigin(url)) throw new Error('BAND_LOCATION_UNCONFIRMED');
     if (requireComposer && !(await readBandDocument(s)).composer) throw new Error('BAND_COMPOSER_LOST');
     if (!requireComposer) {
-      const confirmed = await read<boolean>(s, `return docs.some(({d})=>d.querySelector('._myBandListWrap, ._btnPostWrite, ._btnOpenWriteLayer, ${bandEditor}'))||docs.some(({d})=>Array.from(d.querySelectorAll('a,button')).some(n=>/로그아웃|log\\s*out/i.test(n.textContent||'')));`);
-      if (!confirmed) throw new Error('BAND_LOGIN_UNCONFIRMED');
+      try { await waitFor(() => read<boolean>(s, `return docs.some(({d})=>d.querySelector('._myBandListWrap, .globalMyBandWrap, .myBandGroupList, ._btnPostWrite, ._btnOpenWriteLayer, ${bandEditor}'))||docs.some(({d})=>Array.from(d.querySelectorAll('a,button')).some(n=>/로그아웃|log\\s*out/i.test(n.textContent||'')));`)); }
+      catch { throw new Error('BAND_LOGIN_UNCONFIRMED'); }
     }
   }
   beforeOpen(key: string) {
@@ -186,7 +200,7 @@ export class BandExecution {
     // A closed composer alone is never evidence of publication; require the same band's new post URL and readback.
     if (actual.composer || !actual.postUrl) return null;
     const url = new URL(actual.postUrl);
-    if (url.origin !== new URL(this.env.directory.baseUrl).origin || !new RegExp(`^/band/${this.env.key}/post/[0-9]+/?$`).test(url.pathname)) return null;
+    if (!this.env.directory.sameOrigin(url) || !new RegExp(`^/band/${this.env.key}/post/[0-9]+/?$`).test(url.pathname)) return null;
     if (!this.verified) throw new Error('BAND_NOT_VERIFIED');
     this.env.verify(actual); return actual.postUrl;
   }
