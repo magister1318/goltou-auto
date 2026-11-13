@@ -52,9 +52,9 @@ class DevtoolsRelay private constructor(val socketFile: File) {
                 } catch (e: Exception) {
                     // Never spin: back off, then bind a fresh socket.
                     failures++
-                    Log.w("GOLTOU", "relay accept failed ($failures): ${e.message}")
+                    Log.w("GOLTOU", "RELAY_ACCEPT_FAILED")
                     Thread.sleep(minOf(5_000L, 200L * failures))
-                    listener = try { open() } catch (e2: Exception) { Log.w("GOLTOU", "relay reopen failed", e2); listener }
+                    listener = try { open() } catch (_: Exception) { Log.w("GOLTOU", "RELAY_REOPEN_FAILED"); listener }
                     continue
                 }
                 Thread({ bridge(client) }, "goltou-devtools-conn").start()
@@ -67,7 +67,7 @@ class DevtoolsRelay private constructor(val socketFile: File) {
         try {
             upstream.connect(LocalSocketAddress("webview_devtools_remote_${Process.myPid()}", LocalSocketAddress.Namespace.ABSTRACT))
         } catch (e: Exception) {
-            Log.w("GOLTOU", "devtools connect", e)
+            Log.w("GOLTOU", "DEVTOOLS_CONNECT_FAILED")
             client.close()
             return
         }

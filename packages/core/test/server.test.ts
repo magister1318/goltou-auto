@@ -54,12 +54,16 @@ describe('core launch token', () => {
     expect((await fetch(`${b.origin}/health?token=${a.token}`)).status).toBe(403);
   });
 
-  it('does not expose experiment operations without the shell debug capability', async () => {
+  it.each([
+    { type: 'experiment', command: 'login.open', input: { channel: 'naver' } },
+    { type: 'diagnose', url: 'https://local.invalid' },
+    { type: 'app', command: 'simulation.configure', input: { failAt: 4 } },
+  ])('rejects debug-only requests without the shell capability (%j)', async request => {
     const core = await fixture();
     const socket = new WebSocket(`${core.origin.replace('http:', 'ws:')}/ui-socket`, { origin: core.origin, headers: { Cookie: `goltou_ui=${core.token}` } });
     await new Promise<void>(resolve => socket.once('message', () => resolve()));
     const reply = new Promise<string>(resolve => { socket.on('message', raw => { if (JSON.parse(String(raw)).id === 88) resolve(String(raw)); }); });
-    socket.send(JSON.stringify({ id: 88, type: 'experiment', command: 'login.open', input: { channel: 'naver' } }));
+    socket.send(JSON.stringify({ id: 88, ...request }));
     expect(JSON.parse(await reply)).toMatchObject({ id: 88, type: 'error', message: 'DEBUG_ONLY' });
     socket.close();
   });

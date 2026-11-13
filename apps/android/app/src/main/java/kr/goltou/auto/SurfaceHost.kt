@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
+import android.webkit.ConsoleMessage
 import android.webkit.JsResult
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
@@ -128,6 +129,8 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
         }
         // Page dialogs remain user-controlled when shown; no automatic confirmations.
         view.webChromeClient = object : WebChromeClient() {
+            override fun onConsoleMessage(message: ConsoleMessage): Boolean =
+                !BuildConfig.DEBUG || super.onConsoleMessage(message)
             private fun forward(kind: String, message: String, result: JsResult): Boolean {
                 val entry = entries[id] ?: return false
                 check(entry.dialog == null) { "DIALOG_ALREADY_PENDING" }

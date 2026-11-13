@@ -20,6 +20,9 @@ object NodeRuntime {
     fun ensureStarted(context: Context, devtools: File) {
         if (started) return
         val manifest = context.assets.open("bundle/manifest.json").bufferedReader().use { JSONObject(it.readText()) }
+        check(manifest.getBoolean("debug") == BuildConfig.DEBUG) { "BUNDLE_BUILD_TYPE_MISMATCH" }
+        check(manifest.getString("version") == BuildConfig.VERSION_NAME &&
+            manifest.getInt("versionCode") == BuildConfig.VERSION_CODE) { "BUNDLE_VERSION_MISMATCH" }
         val bundle = File(context.filesDir, "builtin-${manifest.getString("sha256").take(16)}")
         copyAssets(context, "bundle", bundle)
         port = ServerSocket(0).use { it.localPort }

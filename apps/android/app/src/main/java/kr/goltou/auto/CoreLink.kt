@@ -40,7 +40,7 @@ class CoreLink(private val handler: (String, JSONObject, (JSONObject?, String?) 
                             webSocket.send(out.toString())
                         }
                     } catch (e: Exception) {
-                        Log.w("GOLTOU", "native op failed", e)
+                        Log.w("GOLTOU", "NATIVE_OP_FAILED")
                         webSocket.send(JSONObject().put("id", id).put("ok", false).put("error", e.message ?: "NATIVE_ERROR").toString())
                     }
                 }

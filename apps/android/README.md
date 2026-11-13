@@ -1,7 +1,7 @@
 # apps/android
 
 Kotlin 껍데기. 패키지 `kr.goltou.auto`, 앱 이름 `골투오토`, Android 11(API 30) 이상.
-디버그 빌드만 사용합니다. 릴리스 변형과 릴리스 서명 설정은 없습니다.
+debug와 release 빌드를 제공합니다. 배포 서명·설치 방법은 [배포 안내](../../docs/release.md)를 따릅니다.
 
 저장소 루트에서:
 
@@ -19,7 +19,7 @@ CMake 3.22.1이 필요합니다. `local.properties`는 커밋하지 않습니다
 `$env:GRADLE_USER_HOME = Join-Path (Resolve-Path ../..) '.gradle-cache'`를 지정할 수 있습니다.
 
 APK: `app/build/outputs/apk/debug/app-debug.apk`. ARM64와 ARMv7용 libnode 18.20.4를 포함합니다.
-libnode와 빌드된 core/UI 자산은 Git에서 제외합니다. Gradle 실행 전에 `pnpm build`가 필요합니다.
+libnode와 빌드된 core/UI 자산은 Git에서 제외합니다. Gradle이 변형별 core/UI 자산을 생성합니다.
 
 `bridge/`는 공통 Surface를 Android 프로필·숨김 WebView·사설 DevTools 소켓과 연결합니다.
 Kotlin은 NodeRuntime, DevtoolsRelay, CoreLink, SurfaceHost와 진단 UI 호스팅만 제공합니다.
@@ -35,6 +35,6 @@ WP7 기본 경로는 실제 `/auto` API입니다. 주소는 `scripts/app-config.
 `pnpm build`는 디버그 실험을 포함합니다. 로그인 후 실험의 **변환 점검**은 등록·사이트 열기 없이
 최신 상품 최대 60개를 읽고 수치만 앱 내부 `files/wp7/conversion.json`에 남깁니다.
 `node scripts/build-core.mjs --release`는 실험 코드를 제외한 Node 번들을 생성합니다.
-현재 Gradle 릴리스 변형/서명은 여전히 비활성화 상태이며 실제 릴리스 APK를 제공하는 명령은 아닙니다.
+release Gradle 작업은 별도 자산을 생성하며 외부 서명 설정이 없으면 실패합니다.
 사진은 HTTPS `goltou.kr` 및 그 하위 호스트의 API 원본만, 리다이렉트 없이 받습니다.
-실제 네이버는 실험 제목 접두사·임시저장만 허용하며 이 실행기 수명 동안 저장 시도 한도는 1회입니다.
+debug에서는 실험 제목 접두사·저장 시도 1회 제한을 적용합니다. release에서는 이 실험 옵션을 넘기지 않습니다.
