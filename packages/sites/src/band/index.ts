@@ -4,6 +4,25 @@ import { click, compact, point, read, sleep, typeParagraphs, waitFor } from '../
 import type { exampleArticle } from '../fixture';
 
 export async function listBands(surface: Surface) {
+  const mode = await waitFor(() => read<string | null>(surface, `
+    if(docs.some(({d})=>d.querySelector('._myBandListWrap a.bandCover:not(._adBandCover)')))return 'legacy';
+    if(docs.some(({d})=>d.querySelector('.globalMyBandWrap a._allMyBandList')))return 'home';
+    if(docs.some(({d})=>d.querySelector('.myBandGroupList a.myBandGroupItem')))return 'my';
+    return null;`));
+  if (mode !== 'legacy') {
+    // New owned tiles have no href/key. Follow only the first non-ad band
+    // through input, then read its address. Never open other bands to enumerate.
+    if (mode === 'home') await click(surface, '.globalMyBandWrap a._allMyBandList', '전체보기');
+    const first = await waitFor(() => read<{ name: string; x: number; y: number } | null>(surface, `
+      for(const {d,x,y} of docs)for(const e of d.querySelectorAll('.myBandGroupList a.myBandGroupItem')){
+        if(e.querySelector('.adBox,.aNewFolder,.aNewFolderBox')||!visible(e))continue;
+        const name=(e.querySelector('.globalMyBandName')?.textContent||'').trim(),r=e.getBoundingClientRect();
+        if(name&&y+r.top>=0&&y+r.bottom<innerHeight)return {name:name.slice(0,100),x:x+r.left+r.width/2,y:y+r.top+r.height/2};
+      }return null;`));
+    await surface.click(first.x, first.y);
+    const key = await waitFor(async () => /^[/]band[/]([0-9]+)(?:[/]post)?[/]?$/.exec(new URL((await surface.readState()).url).pathname)?.[1] ?? null);
+    return [{ key, name: first.name }];
+  }
   return waitFor(async () => {
     const rows = await read<{ key: string; name: string }[]>(surface, `const seen=new Set(); return docs.flatMap(({d})=>Array.from(d.querySelectorAll('._myBandListWrap a.bandCover:not(._adBandCover)'))).flatMap(e=>{
       const m=(e.getAttribute('href')||'').match(/^(?:https:[/][/](?:www[.])?band[.]us)?[/]band[/]([0-9]+)(?:[/]post)?[/]?(?:[?#].*)?$/);
@@ -56,20 +75,21 @@ export async function fillBand(surface: Surface, article: ReturnType<typeof exam
   if (!result.bodyMatches || result.bodyChars !== compact(text).length) throw new Error('BAND_INPUT_MISMATCH');
   return { ...result, attachmentMethod: 'file-input', paste: 'not-tested', draftBehavior: 'not-tested', stoppedBeforePost: true };
 }
-export async function confirmBandPhotos(surface: Surface, count: number) {
+export async function confirmBandPhotos(surface: Surface, count: number, check: () => Promise<void> = async () => {}, selectedCount = count, timeoutMs = 60000) {
   let confirmed = false;
   await waitFor(async () => {
+    await check();
     if ((await bandSnapshot(surface, '')).images === count) return true;
     if (!confirmed) {
       const control = await read<{ x: number; y: number } | null>(surface, `for(const {d,x,y} of docs) for(const dialog of d.querySelectorAll('section.lyWrap')) {
-        if((dialog.querySelector('h1,h2,h3')?.textContent||'').trim()!=='사진 올리기'||dialog.querySelectorAll('._itemDraggable').length!==${count})continue;
+        if((dialog.querySelector('h1,h2,h3')?.textContent||'').trim()!=='사진 올리기'||dialog.querySelectorAll('._itemDraggable').length!==${selectedCount})continue;
         const e=dialog.querySelector('button._submitBtn');if(!e||!visible(e)||e.disabled||(e.textContent||'').trim()!=='첨부하기')continue;
         const r=e.getBoundingClientRect();return {x:x+r.left+r.width/2,y:y+r.top+r.height/2};
       }return null;`);
       if (control) { confirmed = true; await surface.click(control.x, control.y); await sleep(350); }
     }
     return null;
-  }, 60000);
+  }, timeoutMs);
 }
 export async function saveBandDraftAndVerify(surface: Surface, article: ReturnType<typeof exampleArticle>, check: () => void) {
   check();

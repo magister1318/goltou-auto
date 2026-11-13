@@ -1,0 +1,44 @@
+{
+  "at": "2026-11-13T00:24:43.580Z",
+  "hasFixtureSession": true,
+  "services": {
+    "naver": "unknown",
+    "band": "unknown",
+    "ai": "unknown"
+  },
+  "job": {
+    "id": 1,
+    "title": "[골투오토 실험] WP5 20261113T000505 다낭 예시",
+    "status": "stopped",
+    "step": 7,
+    "current": 0,
+    "total": 5,
+    "characters": 378,
+    "totalCharacters": 378,
+    "message": "채널별 결과를 등록 기록에 남겼습니다.",
+    "failureCode": "BAND_READBACK_MISMATCH:photos",
+    "evidence": "job-1-1794529187815-failure.png",
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "targetResults": [
+      {
+        "channel": "band",
+        "status": "stopped",
+        "reason": "BAND_READBACK_MISMATCH:photos"
+      }
+    ]
+  },
+  "discardVerifiedAt": "2026-11-13T00:24:43.580Z",
+  "composerAbsent": true,
+  "composerOpensThisRun": 1,
+  "postInputsThisRun": 0,
+  "discardObservedUpperBoundMs": 6469,
+  "firstObservedStoppedAt": "2026-11-13T00:22:20.020Z"
+}

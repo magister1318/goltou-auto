@@ -1,6 +1,7 @@
 import type { KeyInput, NavigationOptions, Surface, SurfaceDialog, SurfaceOpenOptions, SurfaceSession, SurfaceState } from '../index';
 import { CdpConnection } from './connection';
 export { CdpConnection } from './connection';
+export { redactionGeometry } from './redaction';
 
 export interface SurfaceLifecycle {
   setVisible(visible: boolean): Promise<void>;
@@ -163,7 +164,16 @@ export class CdpSurface implements Surface {
   }
   /** Shell-only capture: bitmap and CSS geometry are from the same CDP viewport. */
   async captureViewport(): Promise<string> {
-    return (await this.cdp.send<{ data: string }>('Page.captureScreenshot', { format: 'png', fromSurface: true, captureBeyondViewport: false })).data;
+    // Only the compositor snapshot shares the emulated CSS viewport. Native view
+    // snapshots can use Android density even when their PNG has the same size.
+    const params = { format: 'png', fromSurface: true, captureBeyondViewport: false };
+    try { return (await this.cdp.send<{ data: string }>('Page.captureScreenshot', params, 1500)).data; }
+    catch (error) {
+      if (!(error instanceof Error) || error.message !== 'CDP_TIMEOUT Page.captureScreenshot') throw error;
+      // An occluded WebView can leave the first frame request unanswered.
+      // Retry the read once; this never repeats an editor input or save.
+      return (await this.cdp.send<{ data: string }>('Page.captureScreenshot', params)).data;
+    }
   }
 
   async show(): Promise<void> {

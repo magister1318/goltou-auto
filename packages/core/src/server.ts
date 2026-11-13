@@ -12,6 +12,8 @@ import type { Experiments } from './experiments';
 import type { PreparationServices } from './preparation';
 import { BlogRegistrationRunner } from './blog-runner';
 import type { BlogServices } from './blog';
+import type { BandServices } from './band';
+import { ChannelRegistrationRunner } from './band-runner';
 
 export interface CoreOptions {
   host: SurfaceHost;
@@ -24,6 +26,7 @@ export interface CoreOptions {
   experiments?: Experiments;
   preparation?: PreparationServices;
   blog?: BlogServices;
+  band?: BandServices;
 }
 
 const mime: Record<string, string> = {
@@ -39,7 +42,7 @@ export async function startCore(options: CoreOptions) {
   const uiDir = await realpath(options.uiDir);
   let origin = '';
   let diagnosing = false;
-  const app = options.app ?? new AppCore(undefined, undefined, options.blog ? (checkpoint, notify) => new BlogRegistrationRunner(options.blog!, checkpoint, notify) : undefined, options.preparation);
+  const app = options.app ?? new AppCore(undefined, undefined, options.band ? (checkpoint, notify) => new ChannelRegistrationRunner({ band: options.band!, ...(options.blog ? { blog: options.blog } : {}) }, checkpoint, notify) : options.blog ? (checkpoint, notify) => new BlogRegistrationRunner(options.blog!, checkpoint, notify) : undefined, options.preparation);
 
   function validToken(value: string | undefined | null): boolean {
     if (!value) return false;

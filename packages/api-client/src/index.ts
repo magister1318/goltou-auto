@@ -7,7 +7,7 @@ export interface Settings { closingText: string; defaultHashtags: string[]; band
 export interface LoginInput { loginId: string; password: string; device: { kind: string; model: string; appVersion: string } }
 export type Channel = 'blog' | 'band';
 export type Mode = 'draft' | 'publish';
-export type PostStatus = 'running' | 'draft_saved' | 'published' | 'failed' | 'stopped';
+export type PostStatus = 'running' | 'draft_saved' | 'published' | 'failed' | 'stopped' | 'stopped_before_post';
 export interface PostMark { status: PostStatus; at: string }
 export interface ProductSummary {
   productNo: number; title: string; country: string; region: string; thumbUrl: string;

@@ -1,0 +1,17 @@
+{
+  "at": "2026-11-13T01:07:01.702Z",
+  "model": "SM-S928N",
+  "package": "kr.goltou.auto",
+  "screenOn": true,
+  "foreground": true,
+  "nativeDialog": false,
+  "composerOpensThisRun": 2,
+  "composerLimit": 3,
+  "bandPostInputs": 0,
+  "naverEditorOpens": 0,
+  "installedFixtureMatches": true,
+  "installedSource5": {
+    "width": 180,
+    "height": 320
+  }
+}

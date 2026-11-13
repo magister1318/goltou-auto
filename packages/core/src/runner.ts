@@ -13,6 +13,12 @@ export interface RegistrationRunner {
   checkLogin?(): Promise<'confirmed' | 'expired' | 'unknown'>;
   showService?(service: import('./protocol').Service): Promise<void>;
   hideService?(): Promise<void>;
+  listBands?(): Promise<import('@goltou/sites').BandChoice[]>;
+  showBand?(key: string): Promise<void>;
+  checkBand?(): Promise<void>;
+  discardBand?(): Promise<void>;
+  continueBand?(): Promise<void>;
+  checkBandLogin?(): Promise<'confirmed' | 'expired' | 'unknown'>;
 }
 export type Checkpoint = (job: Job) => Promise<void>;
 /** Site steps remain simulated. An injected preparation performs real media/body work. */

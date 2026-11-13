@@ -1,0 +1,70 @@
+{
+  "at": "2026-11-13T01:00:09.513Z",
+  "hasFixtureSession": true,
+  "services": {
+    "naver": "unknown",
+    "band": "unknown",
+    "ai": "unknown"
+  },
+  "job": {
+    "id": 1,
+    "title": "[골투오토 실험] WP5 20261113T005817 다낭 예시",
+    "status": "failed",
+    "step": 6,
+    "current": 5,
+    "total": 5,
+    "characters": 378,
+    "totalCharacters": 378,
+    "message": "다시 읽은 글자 또는 사진 순서가 달라 게시 전에 멈췄습니다.",
+    "failureCode": "BAND_READBACK_MISMATCH:photos",
+    "evidence": "job-1-1794531581037-failure.png",
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "targetResults": [
+      {
+        "channel": "band",
+        "status": "failed",
+        "reason": "BAND_READBACK_MISMATCH:photos"
+      }
+    ]
+  },
+  "elapsedSinceStartMs": 69759,
+  "composer": true,
+  "photos": 5,
+  "identitiesAvailable": 0,
+  "uploading": false,
+  "bodyChars": 378,
+  "slots": [
+    {
+      "width": 75,
+      "height": 75,
+      "loaded": true
+    },
+    {
+      "width": 75,
+      "height": 75,
+      "loaded": true
+    },
+    {
+      "width": 75,
+      "height": 75,
+      "loaded": true
+    },
+    {
+      "width": 75,
+      "height": 75,
+      "loaded": true
+    },
+    {
+      "width": 75,
+      "height": 75,
+      "loaded": true
+    }
+  ],
+  "distinctSignatures": 5
+}

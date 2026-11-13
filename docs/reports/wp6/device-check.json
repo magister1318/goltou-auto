@@ -1,0 +1,14 @@
+{
+  "at": "2026-11-13T02:20:53.0949196+09:00",
+  "model": "SM-S928N",
+  "appForegroundConfirmed": false,
+  "screenOnConfirmed": false,
+  "decision": "skipped",
+  "apkInstalled": false,
+  "appStarted": false,
+  "wakeOrUnlockAttempted": false,
+  "realBandComposerOpens": 0,
+  "realBandPostInputs": 0,
+  "realNaverEditorOpens": 0,
+  "realGoltouConnections": 0
+}

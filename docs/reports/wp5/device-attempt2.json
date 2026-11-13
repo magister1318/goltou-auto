@@ -1,0 +1,68 @@
+{
+  "at": "2026-11-13T00:06:43.375Z",
+  "scope": "SM-S928N, existing app WebView read-only; shared compareDocuments",
+  "title": "[골투오토 실험] WP5 20261113T000505 다낭 예시",
+  "status": "draft_saved",
+  "comparison": {
+    "matches": true,
+    "differences": [],
+    "notices": [],
+    "counts": {
+      "characters": 297,
+      "paragraphs": 6,
+      "photos": 5,
+      "prices": 6,
+      "departures": 6
+    },
+    "message": "원문과 일치합니다. 가격 6, 출발일 6, 사진 5"
+  },
+  "tableModes": [
+    "text-list"
+  ],
+  "elapsedSinceStartMs": 52135,
+  "photoPositions": [
+    {
+      "photo": 1,
+      "afterTextParagraph": 1
+    },
+    {
+      "photo": 2,
+      "afterTextParagraph": 2
+    },
+    {
+      "photo": 3,
+      "afterTextParagraph": 3
+    },
+    {
+      "photo": 4,
+      "afterTextParagraph": 4
+    },
+    {
+      "photo": 5,
+      "afterTextParagraph": 5
+    }
+  ],
+  "expectedPhotoPositions": [
+    {
+      "photo": 1,
+      "afterTextParagraph": 1
+    },
+    {
+      "photo": 2,
+      "afterTextParagraph": 2
+    },
+    {
+      "photo": 3,
+      "afterTextParagraph": 3
+    },
+    {
+      "photo": 4,
+      "afterTextParagraph": 4
+    },
+    {
+      "photo": 5,
+      "afterTextParagraph": 5
+    }
+  ],
+  "sourcePositionsMatch": true
+}

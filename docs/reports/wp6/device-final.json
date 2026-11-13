@@ -1,0 +1,26 @@
+{
+  "at": "2026-11-13T00:27:47.739103+00:00",
+  "package": "kr.goltou.auto",
+  "model": "SM-S928N",
+  "foreground": true,
+  "screenAwake": true,
+  "apkBytes": 64103014,
+  "apkSha256": "c0f6d28e7093b12c3acf284c9052fa05376fed50eb8f19508db12369d76879c2",
+  "apkEngineMatchesDist": true,
+  "installedEngineMatchesDist": true,
+  "draftSaveInputs": 1,
+  "blogPublishInputs": 0,
+  "draftDeleteInputs": 0,
+  "bandComposerOpens": 2,
+  "bandPostInputs": 0,
+  "bandComposersDiscarded": 2,
+  "credentialInputs": 0,
+  "nativeDialogObserved": false,
+  "hiddenCapture": {
+    "source": "AndroidSurfaceHost.capture -> CDP compositor -> Android Canvas masking",
+    "cssWidth": 1280,
+    "cssHeight": 900,
+    "pngWidth": 1280,
+    "pngHeight": 900
+  }
+}

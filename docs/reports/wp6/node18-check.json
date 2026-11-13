@@ -1,0 +1,8 @@
+{
+  "node": "v18.20.4",
+  "bandReadbackMatches": true,
+  "photoIdentityMismatchBlocked": true,
+  "priceMismatchBlocked": true,
+  "realAutoPostBlocked": true,
+  "surfacesOpened": 0
+}
