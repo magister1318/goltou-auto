@@ -111,7 +111,7 @@ function App() {
         {!products.items.length && <p role="status">조건에 맞는 상품이 없습니다.</p>}{products.items.length < products.total && <button className="more" onClick={() => setPage(n => n + 1)}>상품 더 보기</button>}{job && !terminal && <button className="more" onClick={() => go(job.status === 'login_paused' ? 'relogin' : 'progress')}>진행하던 작업 보기</button>}
       </main>{footer('home')}</>}
     {shownScreen === 'preview' && product && <><div className="preview-top"><button onClick={back}>← 상품 목록</button><div className="tabs" role="tablist" aria-label="미리보기 채널">{(['blog', 'band'] as const).map(c => <button key={c} role="tab" aria-selected={preview === c} onClick={() => setPreview(c)}>{c === 'blog' ? '블로그용' : '밴드용'}</button>)}</div></div>
-      <main className="preview-content"><section className="preview-text">{converted ? <ConversionPreview plan={converted[preview]} expanded={expanded}/> : <p role="status">{preparing ? '원문을 정리하고 대조하는 중입니다.' : '변환 결과를 확인하지 못했습니다.'}</p>}
+      <main className="preview-content"><section className="preview-text">{converted ? <ConversionPreview plan={converted[preview]} expanded={expanded} droppedStruckCharacters={converted.droppedStruckCharacters}/> : <p role="status">{preparing ? '원문을 정리하고 대조하는 중입니다.' : '변환 결과를 확인하지 못했습니다.'}</p>}
         <div className="small muted detail-line"><button onClick={() => setExpanded(!expanded)}>{expanded ? '접기' : '전체 보기'}</button></div>
         {converted && <p className={converted.verification[preview].matches ? 'match' : 'warn'} role="status">{converted.verification[preview].message}</p>}
         {converted && !converted.verification[preview].matches && <ul>{converted.verification[preview].differences.map((d, i) => <li key={i}>{d.message}</li>)}</ul>}
