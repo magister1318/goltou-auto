@@ -9,7 +9,8 @@
 | WP4 | `WP4-convert.md` | 병합됨. 실기기 AI Mode는 아직 안 됨 |
 | WP5 | `WP5-blog.md` | 병합됨. 실기기 임시저장·재열람 대조 확인 |
 | WP6 | `WP6-band.md` | 병합됨. 실기기 게시 전 멈춤·사진 순서 확인 |
-| WP7 | `WP7-real-api.md` | 지시됨 |
-| WP8 | 배포와 실기기 전체 시험 | WP7 뒤 |
+| WP7 | `WP7-real-api.md` | 병합됨. 실제 상품 블로그 임시저장 실기기 완료, 발행 방지 3중 |
+| WP8 | `WP8-heavy-photos.md` | 지시됨 |
+| WP9 | 배포와 실기기 전체 시험 | WP8 뒤 |
 
 지시서는 시작할 때 이 폴더에 추가합니다. 보고서는 `docs/reports/WPn.md`.
