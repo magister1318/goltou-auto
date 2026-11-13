@@ -11,6 +11,8 @@ import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebChromeClient
+import android.webkit.ConsoleMessage
 import android.widget.FrameLayout
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -41,7 +43,9 @@ class MainActivity : ComponentActivity() {
             session.creations++
             return
         }
-        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
+        // Required in both variants: embedded Node -> private relay -> WebView's CDP socket.
+        // Android exposes the upstream abstract socket to adb as well; see docs/release.md.
+        WebView.setWebContentsDebuggingEnabled(true)
         val root = FrameLayout(session.context)
         root.setOnApplyWindowInsetsListener { view, insets ->
             val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.ime())
@@ -59,6 +63,10 @@ class MainActivity : ComponentActivity() {
             settings.domStorageEnabled = true
             settings.allowFileAccess = false
             settings.allowContentAccess = false
+            webChromeClient = object : WebChromeClient() {
+                override fun onConsoleMessage(message: ConsoleMessage): Boolean =
+                    !BuildConfig.DEBUG || super.onConsoleMessage(message)
+            }
             webViewClient = object : WebViewClient() {
                 override fun onPageFinished(view: WebView, url: String) { retained.markUiReady() }
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest) = !request.url.toString().startsWith("$origin/ui/")

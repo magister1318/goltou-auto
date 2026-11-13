@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { Mode, Page, Post, Product, ProductSummary, Settings } from '@goltou/api-client';
 import { steps, type JobInput, type Service } from '@goltou/core/protocol';
@@ -8,7 +8,7 @@ import '@fontsource/noto-sans-kr/500.css';
 import '@fontsource/noto-sans-kr/700.css';
 import '@fontsource/noto-sans-kr/900.css';
 import './style.css';
-import { ExperimentsScreen } from './Experiments';
+const ExperimentsScreen = __GOLTOU_DEBUG__ ? lazy(() => import('./Experiments').then(module => ({ default: module.ExperimentsScreen }))) : () => null;
 import { ConversionPreview } from './ConversionPreview';
 import { FailureDetail } from './FailureDetail';
 import { PolishComparison } from './PolishComparison';
@@ -106,8 +106,8 @@ function App() {
   return <div className={`app screen-${shownScreen}`}>
     {error && <div className="error" role="alert">{error}<button aria-label="오류 닫기" onClick={clearError}>닫기</button></div>}
     {notice && <div className="notice" role="status">{notice}</div>}
-    {shownScreen === 'experiments' && debug && <ExperimentsScreen back={back}/>}
-    {shownScreen === 'login' && <>{header('골투 로그인')}<main className="login-content">{debug && <button className="chosen" onClick={() => go('settings')}>설정 · 로그인 없이 진단</button>}<p>골투 계정으로 로그인해 주세요.</p><form onSubmit={event => {
+    {__GOLTOU_DEBUG__ && shownScreen === 'experiments' && debug && <Suspense fallback={null}><ExperimentsScreen back={back}/></Suspense>}
+    {shownScreen === 'login' && <>{header('골투 로그인')}<main className="login-content">{__GOLTOU_DEBUG__ && debug && <button className="chosen" onClick={() => go('settings')}>설정 · 로그인 없이 진단</button>}<p>골투 계정으로 로그인해 주세요.</p><form onSubmit={event => {
       event.preventDefault(); void act(async () => { try {
         const pending = request('login', { loginId, password, device: { kind: 'android', model: '', appVersion: '' } });
         setPassword(''); setLoginId(''); await pending; go('home', true);
@@ -151,9 +151,9 @@ function App() {
     {shownScreen === 'settings' && <><div className="plain-top"><button onClick={back}>← 상품 목록</button></div><main className="settings-content"><h1>설정</h1>{app?.user && <><section><h2>내 계정</h2><div className="choice-row"><span>{app?.user?.name} · {app?.user?.role === 'admin' ? '관리자' : app?.user?.role === 'staff' ? '내부직원' : '매니저'}</span><button onClick={() => void act(async () => { await request('logout', {}); setScope('mine'); setPassword(''); setProduct(null); go('login', true); })}>로그아웃</button></div></section>
       <section><h2>서비스 로그인</h2>{(['naver', 'band', 'ai'] as const).map(service => <div className="choice-row" key={service}><span>{names[service]} <span className="small muted">{loginLabels[app?.services[service] ?? 'unknown']}</span></span>{service === 'ai' && <button disabled={busy || preparing} onClick={() => void showService('ai')}>AI 화면 열기</button>}<button aria-label={`${names[service]} 로그인 지우기`} onClick={() => void act(async () => { await request('service.clear', { service }); })}>지우기</button></div>)}</section>
       {app?.user?.role === 'admin' && <section><h2>공통 등록 설정</h2><form onSubmit={event => { event.preventDefault(); void act(async () => { await request('settings.save', settings); setNotice('공통 설정을 저장했습니다.'); }); }}><label>끝 문구<textarea value={settings.closingText} onChange={e => setSettings(old => ({ ...old, closingText: e.target.value }))} /></label><label>기본 해시태그 (쉼표로 구분)<input value={settings.defaultHashtags.join(', ')} onChange={e => setSettings(old => ({ ...old, defaultHashtags: e.target.value.split(',').map(s => s.trim()) }))} /></label><label>밴드 하루 한도<input type="number" min="1" max="100" required value={settings.bandDailyLimit} onChange={e => setSettings(old => ({ ...old, bandDailyLimit: Number(e.target.value) }))} /></label><button className="save-settings chosen" type="submit" disabled={busy}>공통 설정 저장</button></form></section>}
-      <section><h2>가짜 실행 설정</h2><p className="small muted">실제 서비스에는 연결하지 않습니다.</p><label>로그인 풀림 재현<select aria-label="로그인 풀림 재현" value={app?.simulation.loginAt ?? ''} onChange={e => void request('simulation.configure', { loginAt: e.target.value ? Number(e.target.value) : null }).catch(ignore)}><option value="">없음</option><option value="4">4단계 · 블로그에 쓰기</option><option value="6">6단계 · 밴드에 쓰기</option></select></label><label>실패 재현<select aria-label="실패 재현" value={app?.simulation.failAt ?? ''} onChange={e => void request('simulation.configure', { failAt: e.target.value ? Number(e.target.value) : null }).catch(ignore)}><option value="">없음</option><option value="4">4단계 · 블로그에 쓰기</option><option value="6">6단계 · 밴드에 쓰기</option></select></label></section>
-      </>}<section><h2>진단</h2><p className="small muted">WP1 숨김 브라우저 제목 읽기</p><form onSubmit={e => { e.preventDefault(); void act(async () => { setDiagnostic(await diagnose(diagnosticUrl)); }); }}><label>예시 주소<input type="url" required value={diagnosticUrl} onChange={e => setDiagnosticUrl(e.target.value)} /></label><button className="chosen" type="submit" disabled={busy || !connected}>진단 시작</button></form>{diagnostic && <><p data-testid="diagnostic-title">{diagnostic.title}</p><p className="small address">{diagnostic.url}</p></>}</section>
-      {debug && <section><h2>실험</h2><button className="chosen" onClick={() => go('experiments')}>실험 화면 열기</button></section>}
+      {__GOLTOU_DEBUG__ && <section><h2>가짜 실행 설정</h2><p className="small muted">실제 서비스에는 연결하지 않습니다.</p><label>로그인 풀림 재현<select aria-label="로그인 풀림 재현" value={app?.simulation.loginAt ?? ''} onChange={e => void request('simulation.configure', { loginAt: e.target.value ? Number(e.target.value) : null }).catch(ignore)}><option value="">없음</option><option value="4">4단계 · 블로그에 쓰기</option><option value="6">6단계 · 밴드에 쓰기</option></select></label><label>실패 재현<select aria-label="실패 재현" value={app?.simulation.failAt ?? ''} onChange={e => void request('simulation.configure', { failAt: e.target.value ? Number(e.target.value) : null }).catch(ignore)}><option value="">없음</option><option value="4">4단계 · 블로그에 쓰기</option><option value="6">6단계 · 밴드에 쓰기</option></select></label></section>}
+      </>}{__GOLTOU_DEBUG__ && <section><h2>진단</h2><p className="small muted">WP1 숨김 브라우저 제목 읽기</p><form onSubmit={e => { e.preventDefault(); void act(async () => { setDiagnostic(await diagnose(diagnosticUrl)); }); }}><label>예시 주소<input type="url" required value={diagnosticUrl} onChange={e => setDiagnosticUrl(e.target.value)} /></label><button className="chosen" type="submit" disabled={busy || !connected}>진단 시작</button></form>{diagnostic && <><p data-testid="diagnostic-title">{diagnostic.title}</p><p className="small address">{diagnostic.url}</p></>}</section>}
+      {__GOLTOU_DEBUG__ && debug && <section><h2>실험</h2><button className="chosen" onClick={() => go('experiments')}>실험 화면 열기</button></section>}
     </main></>}
   </div>;
 }

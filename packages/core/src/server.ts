@@ -22,6 +22,7 @@ export interface CoreOptions {
   port?: number;
   app?: AppCore;
   experiments?: Experiments;
+  diagnostics?: boolean;
   preparation?: PreparationServices;
   blog?: BlogServices;
   band?: BandServices;
@@ -119,11 +120,13 @@ export async function startCore(options: CoreOptions) {
               return;
             }
             if (typeof id === 'number' && msg.type === 'app') {
+              if (msg.command === 'simulation.configure' && !options.diagnostics) throw new Error('DEBUG_ONLY');
               const data = await app.handle(msg as unknown as AppRequest);
               if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ id, type: 'reply', data }));
               return;
             }
             if (typeof id !== 'number' || msg.type !== 'diagnose' || typeof msg.url !== 'string') throw new Error('BAD_DIAGNOSTIC_REQUEST');
+            if (!options.diagnostics) throw new Error('DEBUG_ONLY');
             const url = new URL(msg.url);
             if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('HTTP_URL_REQUIRED');
             if (diagnosing || options.experiments?.busy) throw new Error('DIAGNOSTIC_BUSY');

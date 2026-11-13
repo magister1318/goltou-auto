@@ -2,11 +2,13 @@ node_modules/
 dist/
 build/
 .gradle/
+.kotlin/
 *.apk
 *.aab
 *.keystore
 *.jks
 local.properties
+release-signing.properties
 .env
 .env.*
 var/

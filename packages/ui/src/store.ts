@@ -15,7 +15,7 @@ export function connect() {
   socket = new WebSocket(`${location.origin.replace('http:', 'ws:')}/ui-socket`);
   socket.onmessage = event => {
     const message = JSON.parse(String(event.data)) as { type: string; id?: number; debug?: boolean; snapshot?: AppSnapshot; data?: unknown; state?: unknown; code?: string; message?: string };
-    if (message.type === 'ready') { update({ connected: true, debug: message.debug === true }); void request('session.get', {}).then(snapshot => update({ snapshot })).catch(() => {}); }
+    if (message.type === 'ready') { update({ connected: true, debug: __GOLTOU_DEBUG__ && message.debug === true }); void request('session.get', {}).then(snapshot => update({ snapshot })).catch(() => {}); }
     if (message.type === 'snapshot' && message.snapshot) update({ snapshot: message.snapshot });
     const item = message.id === undefined ? undefined : pending.get(message.id);
     if (!item) return;

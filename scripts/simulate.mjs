@@ -75,7 +75,7 @@ async function scene(account) {
   await activeContext?.close();
   await core?.close();
   const app = new AppCore(createFakeApi());
-  core = await startCore({ host, app, uiDir: path.join(root, 'dist/ui') });
+  core = await startCore({ host, app, diagnostics: true, uiDir: path.join(root, 'dist/ui') });
   const context = await localContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
   activeContext = context;
   const page = await context.newPage();

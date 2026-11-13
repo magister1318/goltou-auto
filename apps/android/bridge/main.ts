@@ -21,9 +21,10 @@ const host = new AndroidSurfaceHost(native, argument('devtools'));
 const ai = new AiModeClient(host);
 const options: CoreOptions = {
   native, host,
-  band: { host, capture: (surface, name) => host.capture(surface, name) },
+  diagnostics: __GOLTOU_DEBUG__,
+  band: { host, ...(__GOLTOU_DEBUG__ ? { capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}) },
   blog: {
-    host, ...(__GOLTOU_DEBUG__ ? { draftSaveLimit: 1 } : {}), capture: (surface, name) => host.capture(surface, name),
+    host, ...(__GOLTOU_DEBUG__ ? { draftSaveLimit: 1, capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}),
     recordFailure: async failure => {
       const directory = path.join(path.dirname(argument('data')), 'wp5');
       await mkdir(directory, { recursive: true });

@@ -1,10 +1,11 @@
 // Reference: ../refs/DAF/daf3/apps/mobile/android/app/src/main/cpp/native-lib.cpp
 // Starts the embedded Node.js (nodejs-mobile) on the calling thread and pipes its
-// stdout/stderr to logcat (tag GOLTOU-CORE). node::Start can run only once per process.
+// stdout/stderr to logcat only in debug (release discards it). node::Start runs once per process.
 #include <jni.h>
 #include <android/log.h>
 #include <pthread.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -12,6 +13,7 @@
 
 #include "node.h"
 
+#ifdef GOLTOU_DEBUG_LOGS
 static int pipe_out[2];
 static int pipe_err[2];
 
@@ -41,6 +43,16 @@ static void redirect_output() {
     pthread_detach(t1);
     pthread_detach(t2);
 }
+#else
+static void redirect_output() {
+    // Suppress even uncaught runtime/library output, which may include URLs or tokens.
+    int sink = open("/dev/null", O_WRONLY);
+    if (sink < 0) { close(STDOUT_FILENO); close(STDERR_FILENO); return; }
+    dup2(sink, STDOUT_FILENO);
+    dup2(sink, STDERR_FILENO);
+    if (sink > STDERR_FILENO) close(sink);
+}
+#endif
 
 extern "C" JNIEXPORT jint JNICALL
 Java_kr_goltou_auto_NodeRuntime_startNode(JNIEnv* env, jobject, jobjectArray arguments) {
