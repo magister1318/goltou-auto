@@ -1,0 +1,16 @@
+{
+  "scope": "loopback fixtures only; preseeded synthetic session; no credential input",
+  "elapsedMs": 12810,
+  "status": "draft_saved",
+  "tableModes": [
+    "native"
+  ],
+  "photos": 5,
+  "counts": {
+    "saves": 1,
+    "publishes": 0
+  },
+  "reviewSurfaceShown": 1,
+  "externalRequests": 0,
+  "pageErrors": []
+}

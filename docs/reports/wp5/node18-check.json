@@ -1,0 +1,9 @@
+{
+  "node": "v18.20.4",
+  "planVerification": true,
+  "originalBytes": true,
+  "contentIdentityFilename": true,
+  "readbackComparison": true,
+  "cleanup": true,
+  "externalRequests": 0
+}

@@ -1,0 +1,11 @@
+{
+  "at": "2026-11-12T16:31:10.723Z",
+  "package": "kr.goltou.auto",
+  "action": "launch this package only",
+  "elapsedMs": 202,
+  "foreground": false,
+  "draftSaveCommands": 0,
+  "loginActions": 0,
+  "stopped": true,
+  "reason": "APP_FOREGROUND_NOT_CONFIRMED_NO_UNLOCK_OR_OTHER_APP_ACTION"
+}

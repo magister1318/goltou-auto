@@ -16,7 +16,7 @@ export function fileMediaStorage(root: string): MediaStorage {
     },
     async write(directory, name, bytes) {
       requireOwned(directory);
-      if (!/^\d+\.[a-z0-9]+$/i.test(name)) throw new Error('INVALID_MEDIA_FILENAME');
+      if (!/^(?:\d+|goltou-[a-f0-9]{16}-\d+)\.[a-z0-9]+$/i.test(name)) throw new Error('INVALID_MEDIA_FILENAME');
       const file = path.join(directory, name);
       await writeFile(file, bytes, { mode: 0o600, flag: 'wx' }); return file;
     },

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 export interface MediaStorage {
   createWorkDirectory(): Promise<string>;
   write(directory: string, name: string, bytes: Uint8Array): Promise<string>;
@@ -32,7 +33,9 @@ export async function downloadPhotos(urls: readonly string[], apiUrls: readonly 
         if (!bytes.length) throw new Error('EMPTY_PHOTO');
         signal?.throwIfAborted();
         const extension = new URL(url).pathname.match(/\.(png|jpe?g|webp|gif|avif|bmp|heic)$/i)?.[0] ?? '.image';
-        const path = await dependencies.storage.write(directory, `${index + 1}${extension}`, bytes);
+        // Content identity survives Naver upload URLs without recording the source URL.
+        const identity = createHash('sha256').update(bytes).digest('hex').slice(0, 16);
+        const path = await dependencies.storage.write(directory, `goltou-${identity}-${index + 1}${extension}`, bytes);
         files.push({ url, path }); progress(index + 1);
       } finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel); }
     }

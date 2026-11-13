@@ -1,10 +1,12 @@
-import type { KeyInput, NavigationOptions, Surface, SurfaceOpenOptions, SurfaceSession, SurfaceState } from '../index';
+import type { KeyInput, NavigationOptions, Surface, SurfaceDialog, SurfaceOpenOptions, SurfaceSession, SurfaceState } from '../index';
 import { CdpConnection } from './connection';
 export { CdpConnection } from './connection';
 
 export interface SurfaceLifecycle {
   setVisible(visible: boolean): Promise<void>;
   close(): Promise<void>;
+  readDialog?(): Promise<SurfaceDialog | null>;
+  respondDialog?(id: string, accept: boolean): Promise<void>;
 }
 
 const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
@@ -24,6 +26,8 @@ export class CdpSurface implements Surface {
   private metrics: { width: number; height: number; deviceScaleFactor: number; mobile: boolean } | undefined;
   private readonly loaded = new Set<string>();
   private mainLoader: string | undefined;
+  private dialog: SurfaceDialog | null = null;
+  private dialogSerial = 0;
 
   constructor(
     readonly session: SurfaceSession,
@@ -31,6 +35,8 @@ export class CdpSurface implements Surface {
     private readonly lifecycle: SurfaceLifecycle,
     private readonly inputDelayMs = 60,
   ) {
+    cdp.on('Page.javascriptDialogOpening', p => { this.dialog = { id: String(++this.dialogSerial), kind: p.type === 'alert' ? 'alert' : 'confirm', message: String(p.message ?? '') }; });
+    cdp.on('Page.javascriptDialogClosed', () => { this.dialog = null; });
     cdp.on('Page.frameNavigated', params => {
       const frame = params.frame as { parentId?: string; loaderId?: string } | undefined;
       if (frame && !frame.parentId && frame.loaderId) this.mainLoader = frame.loaderId;
@@ -101,15 +107,15 @@ export class CdpSurface implements Surface {
 
   async click(x: number, y: number): Promise<void> {
     if (![x, y].every(Number.isFinite)) throw new Error('SURFACE_BAD_COORDINATES');
-    await this.cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
+    await this.input('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
     await pause(this.inputDelayMs);
-    await this.cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
+    await this.input('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
     await pause(this.inputDelayMs);
-    await this.cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+    await this.input('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
   }
 
   async typeText(text: string): Promise<void> {
-    for (const char of text) { await this.cdp.send('Input.insertText', { text: char }); await pause(this.inputDelayMs); }
+    for (const char of text) { await this.input('Input.insertText', { text: char }); await pause(this.inputDelayMs); }
   }
 
   async pressKey(input: KeyInput): Promise<void> {
@@ -119,9 +125,17 @@ export class CdpSurface implements Surface {
     if (!key) throw new Error('SURFACE_UNSUPPORTED_KEY');
     const params = { key: input.key, code: key.code, windowsVirtualKeyCode: key.vk, modifiers: input.modifiers ?? 0 };
     const text = 'text' in key ? key.text : ((params.modifiers & 7) === 0 && input.key.length === 1 ? input.key : undefined);
-    await this.cdp.send('Input.dispatchKeyEvent', { ...params, type: 'keyDown', ...(text ? { text } : {}) });
+    await this.input('Input.dispatchKeyEvent', { ...params, type: 'keyDown', ...(text ? { text } : {}) });
     await pause(this.inputDelayMs);
-    await this.cdp.send('Input.dispatchKeyEvent', { ...params, type: 'keyUp' });
+    await this.input('Input.dispatchKeyEvent', { ...params, type: 'keyUp' });
+  }
+  private async input(method: string, params: Record<string, unknown>): Promise<void> {
+    if (this.dialog) throw new Error('SURFACE_DIALOG_PENDING');
+    let unsubscribe = () => {};
+    const dialog = new Promise<never>((_, reject) => { unsubscribe = this.cdp.on('Page.javascriptDialogOpening', () => reject(new Error('SURFACE_DIALOG_PENDING'))); });
+    // A modal can block the very input command that opened it. Yield to the user
+    // without waiting for that command's reply or sending a second input.
+    try { await Promise.race([this.cdp.send(method, params), dialog]); } finally { unsubscribe(); }
   }
 
   async attachFiles(selector: string, absolutePaths: readonly string[]): Promise<void> {
@@ -140,6 +154,16 @@ export class CdpSurface implements Surface {
     }
     if (!nodeId) throw new Error('SURFACE_FILE_INPUT_NOT_FOUND');
     await this.cdp.send('DOM.setFileInputFiles', { nodeId, files: [...absolutePaths] });
+  }
+  async readDialog(): Promise<SurfaceDialog | null> { return this.lifecycle.readDialog ? this.lifecycle.readDialog() : this.dialog; }
+  async respondDialog(id: string, accept: boolean): Promise<void> {
+    if (this.lifecycle.respondDialog) return this.lifecycle.respondDialog(id, accept);
+    if (this.dialog?.id !== id) throw new Error('DIALOG_ID_MISMATCH');
+    await this.cdp.send('Page.handleJavaScriptDialog', { accept }); this.dialog = null;
+  }
+  /** Shell-only capture: bitmap and CSS geometry are from the same CDP viewport. */
+  async captureViewport(): Promise<string> {
+    return (await this.cdp.send<{ data: string }>('Page.captureScreenshot', { format: 'png', fromSurface: true, captureBeyondViewport: false })).data;
   }
 
   async show(): Promise<void> {

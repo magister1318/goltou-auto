@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
+import android.webkit.JsResult
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
@@ -24,7 +25,9 @@ import org.json.JSONArray
 
 class SurfaceHost(private val context: Context, private val hidden: FrameLayout, private val visible: FrameLayout,
     private val onUserHidden: (String) -> Unit) {
-    private data class Entry(val view: WebView, val session: String, var frame: View)
+    private data class PendingDialog(val id: String, val kind: String, val message: String, val result: JsResult)
+    private data class Entry(val view: WebView, val session: String, var frame: View, var dialog: PendingDialog? = null)
+    private var dialogSerial = 0
     private val entries = mutableMapOf<String, Entry>()
     private val sessions = setOf("naver", "band", "ai")
     private val clearing = mutableSetOf<String>()
@@ -51,6 +54,19 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
             "surface.create" -> create(msg)
             "surface.destroy" -> destroy(msg.getString("surface"))
             "surface.visible" -> setVisible(msg.getString("surface"), msg.getBoolean("visible"))
+            "surface.dialog" -> {
+                val pending = entries[msg.getString("surface")]?.dialog
+                reply(JSONObject().put("dialog", if (pending == null) JSONObject.NULL else JSONObject()
+                    .put("id", pending.id).put("kind", pending.kind).put("message", pending.message)), null)
+                return
+            }
+            "surface.dialog.answer" -> {
+                val entry = entries[msg.getString("surface")] ?: error("NO_SURFACE")
+                val pending = entry.dialog ?: error("NO_DIALOG")
+                check(pending.id == msg.getString("dialog")) { "DIALOG_ID_MISMATCH" }
+                entry.dialog = null
+                if (msg.getBoolean("accept")) pending.result.confirm() else pending.result.cancel()
+            }
             "profile.clear" -> {
                 val session = session(msg)
                 requireProfiles()
@@ -111,7 +127,17 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
             }
         }
         // Page dialogs remain user-controlled when shown; no automatic confirmations.
-        view.webChromeClient = WebChromeClient()
+        view.webChromeClient = object : WebChromeClient() {
+            private fun forward(kind: String, message: String, result: JsResult): Boolean {
+                val entry = entries[id] ?: return false
+                check(entry.dialog == null) { "DIALOG_ALREADY_PENDING" }
+                // Hold the JS result for an explicit choice in the app UI. No automatic default.
+                entry.dialog = PendingDialog((++dialogSerial).toString(), kind, message, result)
+                return true
+            }
+            override fun onJsAlert(view: WebView, url: String, message: String, result: JsResult) = forward("alert", message, result)
+            override fun onJsConfirm(view: WebView, url: String, message: String, result: JsResult) = forward("confirm", message, result)
+        }
         view.isFocusable = false
         view.isFocusableInTouchMode = false
         val entry = Entry(view, session, view)

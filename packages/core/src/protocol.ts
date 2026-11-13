@@ -1,7 +1,7 @@
 import type { Channel, LoginInput, Mode, Page, Post, PostInput, Product, ProductQuery, ProductSummary, Settings, User } from '@goltou/api-client';
 export type Service = 'naver' | 'band' | 'ai';
 export type LoginState = 'confirmed' | 'expired' | 'unknown';
-export type JobStatus = 'running' | 'login_paused' | 'user_paused' | 'failed' | 'draft_saved' | 'published' | 'stopped_before_post';
+export type JobStatus = 'running' | 'login_paused' | 'user_paused' | 'recovery_paused' | 'dialog_paused' | 'failed' | 'draft_saved' | 'published' | 'stopped_before_post';
 export const steps = ['로그인 확인', '사진 내려받기', '본문 정리', '블로그에 쓰기', '블로그 임시저장과 확인', '밴드에 쓰기', '결과 기록'] as const;
 export interface JobInput {
   productNo: number; mode: Mode; targets: { channel: Channel; name: string; key: string }[];
@@ -11,9 +11,13 @@ export interface Job {
   id: number; productNo: number; title: string; mode: Mode; status: JobStatus;
   step: number; current: number; total: number; completedSteps: number[];
   targets: JobInput['targets']; service: Service | null; message: string;
+  characters?: number; totalCharacters?: number; secondsLeft?: number; postUrl?: string;
+  tableModes?: ('native' | 'text-list')[]; linkCard?: 'off' | 'card' | 'url-text';
+  dialog?: import('@goltou/surface').SurfaceDialog; evidence?: string;
+  failureCode?: string;
 }
 export interface Simulation { tickMs: number; loginAt: number | null; failAt: number | null }
-export interface AppSnapshot { user: User | null; settings: Settings | null; services: Record<Service, LoginState>; visibleService: Service | null; job: Job | null; simulation: Simulation }
+export interface AppSnapshot { user: User | null; settings: Settings | null; services: Record<Service, LoginState>; visibleService: Service | null; job: Job | null; simulation: Simulation; realBlog?: boolean }
 /** This storage lives in core. A shell secure-storage channel can implement it later. */
 export interface TokenStore { read(): Promise<string | null>; write(token: string | null): Promise<void> }
 export interface Commands {
@@ -33,6 +37,9 @@ export interface Commands {
   'job.start': { input: JobInput; output: AppSnapshot };
   'job.stop': { input: Record<string, never>; output: AppSnapshot };
   'job.resume': { input: Record<string, never>; output: AppSnapshot };
+  'job.recovery': { input: { discard: boolean }; output: AppSnapshot };
+  'job.dialog': { input: { id: string; accept: boolean }; output: AppSnapshot };
+  'draft.show': { input: { title: string }; output: AppSnapshot };
   'simulation.configure': { input: Partial<Simulation>; output: AppSnapshot };
 }
 export type AppRequest = { [K in keyof Commands]: { id: number; type: 'app'; command: K; input: Commands[K]['input'] } }[keyof Commands];
