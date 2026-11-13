@@ -1,0 +1,25 @@
+{
+  "at": "2026-11-13T07:13:52.769Z",
+  "productNo": 1381,
+  "photos": 36,
+  "inputCharacters": 597,
+  "inputCodepoints": 584,
+  "comparison": {
+    "matches": true,
+    "differences": [],
+    "notices": [],
+    "counts": {
+      "characters": 481,
+      "paragraphs": 2,
+      "photos": 36,
+      "prices": 0,
+      "departures": 0
+    },
+    "message": "원문과 일치합니다. 가격 0, 출발일 0, 사진 36"
+  },
+  "optionsOff": true,
+  "bandOnly": true,
+  "mode": "draft",
+  "experimentTitle": true,
+  "startEnabled": true
+}

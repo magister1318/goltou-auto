@@ -1,0 +1,2669 @@
+[
+  {
+    "at": "2026-11-13T07:15:19.660Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 1,
+    "current": 0,
+    "total": 36,
+    "completedSteps": [],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:19.700Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 2,
+    "current": 0,
+    "total": 36,
+    "completedSteps": [
+      1
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:20.716Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 3,
+    "current": 0,
+    "total": 36,
+    "completedSteps": [
+      1,
+      2
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:20.761Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 4,
+    "current": 0,
+    "total": 36,
+    "completedSteps": [
+      1,
+      2,
+      3
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:20.798Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 5,
+    "current": 0,
+    "total": 36,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:20.831Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:25.318Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 32,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:26.203Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 44,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:26.340Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 45,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:26.476Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 46,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:27.818Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 67,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:29.342Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 89,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:30.425Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 104,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:31.638Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 121,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:32.902Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 139,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:33.046Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 140,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:34.253Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 157,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:34.395Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 158,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:34.536Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 159,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:35.474Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 172,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:36.351Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 184,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:37.102Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 195,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:38.509Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 216,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:39.378Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 229,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:39.543Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 230,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:40.125Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 231,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:41.146Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 244,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:42.024Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 256,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:42.763Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 267,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:44.466Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 291,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:45.438Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 304,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:45.587Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 305,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:45.729Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 306,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:46.460Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 315,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:47.474Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 329,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:48.231Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 339,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:48.726Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 345,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:49.431Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 354,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:50.787Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 372,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:52.202Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 391,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:53.578Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 410,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:55.033Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 429,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:55.855Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 439,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:56.033Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 440,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:56.675Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 449,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:57.923Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 465,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:58.200Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 466,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:15:59.264Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 479,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:00.328Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 494,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:02.275Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 521,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:03.742Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 542,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:03.885Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 543,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:05.817Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 573,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:05.960Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 574,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:06.434Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 580,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:06.595Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 581,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:06.868Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 0,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 0,
+    "photoUploadSamples": 0,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:09.876Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 1,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 2839,
+    "photoUploadSamples": 1,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:12.149Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 2,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 5043,
+    "photoUploadSamples": 2,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:14.235Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 3,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 78,
+    "photoUploadMilliseconds": 7053,
+    "photoUploadSamples": 3,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:16.357Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 4,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 73,
+    "photoUploadMilliseconds": 9103,
+    "photoUploadSamples": 4,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:18.521Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 5,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 70,
+    "photoUploadMilliseconds": 11187,
+    "photoUploadSamples": 5,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:20.938Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 6,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 68,
+    "photoUploadMilliseconds": 13523,
+    "photoUploadSamples": 6,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:23.193Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 7,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 66,
+    "photoUploadMilliseconds": 15697,
+    "photoUploadSamples": 7,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:25.460Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 8,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 63,
+    "photoUploadMilliseconds": 17884,
+    "photoUploadSamples": 8,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:27.775Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 9,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 61,
+    "photoUploadMilliseconds": 20113,
+    "photoUploadSamples": 9,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:30.112Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 10,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 59,
+    "photoUploadMilliseconds": 22362,
+    "photoUploadSamples": 10,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:32.484Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 11,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 57,
+    "photoUploadMilliseconds": 24642,
+    "photoUploadSamples": 11,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:34.916Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 12,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 54,
+    "photoUploadMilliseconds": 26982,
+    "photoUploadSamples": 12,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:37.726Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 13,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 53,
+    "photoUploadMilliseconds": 29694,
+    "photoUploadSamples": 13,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:40.231Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 14,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 51,
+    "photoUploadMilliseconds": 32100,
+    "photoUploadSamples": 14,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:42.410Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 15,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 48,
+    "photoUploadMilliseconds": 34176,
+    "photoUploadSamples": 15,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:44.560Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 16,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 46,
+    "photoUploadMilliseconds": 36222,
+    "photoUploadSamples": 16,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:47.143Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 17,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 44,
+    "photoUploadMilliseconds": 38699,
+    "photoUploadSamples": 17,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:50.590Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 18,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 43,
+    "photoUploadMilliseconds": 42032,
+    "photoUploadSamples": 18,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:52.809Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 19,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 40,
+    "photoUploadMilliseconds": 44140,
+    "photoUploadSamples": 19,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:55.667Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 20,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 38,
+    "photoUploadMilliseconds": 46872,
+    "photoUploadSamples": 20,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:16:58.478Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 21,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 36,
+    "photoUploadMilliseconds": 49553,
+    "photoUploadSamples": 21,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:17:00.645Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 22,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 33,
+    "photoUploadMilliseconds": 51607,
+    "photoUploadSamples": 22,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:17:03.268Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 23,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 31,
+    "photoUploadMilliseconds": 54116,
+    "photoUploadSamples": 23,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:17:05.914Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 24,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 29,
+    "photoUploadMilliseconds": 56648,
+    "photoUploadSamples": 24,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:17:08.790Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 25,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 27,
+    "photoUploadMilliseconds": 59408,
+    "photoUploadSamples": 25,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:17:11.721Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 26,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 24,
+    "photoUploadMilliseconds": 62225,
+    "photoUploadSamples": 26,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:17:14.694Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 27,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 22,
+    "photoUploadMilliseconds": 65079,
+    "photoUploadSamples": 27,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:17:17.648Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 28,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 20,
+    "photoUploadMilliseconds": 67910,
+    "photoUploadSamples": 28,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:17:19.989Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 29,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 17,
+    "photoUploadMilliseconds": 70105,
+    "photoUploadSamples": 29,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:17:23.013Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 30,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 15,
+    "photoUploadMilliseconds": 73000,
+    "photoUploadSamples": 30,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:17:25.379Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 31,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 13,
+    "photoUploadMilliseconds": 75236,
+    "photoUploadSamples": 31,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:17:27.765Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 32,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 10,
+    "photoUploadMilliseconds": 77489,
+    "photoUploadSamples": 32,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:17:30.894Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 33,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 8,
+    "photoUploadMilliseconds": 80486,
+    "photoUploadSamples": 33,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:17:33.728Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 34,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 5,
+    "photoUploadMilliseconds": 83185,
+    "photoUploadSamples": 34,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:17:36.628Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 35,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 3,
+    "photoUploadMilliseconds": 85947,
+    "photoUploadSamples": 35,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:17:39.548Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 36,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 0,
+    "photoUploadMilliseconds": 88700,
+    "photoUploadSamples": 36,
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "results": [
+      {
+        "channel": "band",
+        "status": "running"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:17:41.508Z",
+    "productNo": 1381,
+    "status": "failed",
+    "step": 6,
+    "current": 36,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 0,
+    "photoUploadMilliseconds": 88700,
+    "photoUploadSamples": 36,
+    "failureCode": "CHANNEL_FAILED",
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "bandPhotoLimit": null,
+    "bandLimitObservedAt": "2026-11-13T07:15:22.565Z",
+    "results": [
+      {
+        "channel": "band",
+        "status": "failed",
+        "reason": "CHANNEL_FAILED"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:18:26.707Z",
+    "productNo": 1381,
+    "status": "user_paused",
+    "step": 6,
+    "current": 36,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 0,
+    "photoUploadMilliseconds": 88700,
+    "photoUploadSamples": 36,
+    "failureCode": "CHANNEL_FAILED",
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "bandPhotoLimit": null,
+    "bandLimitObservedAt": "2026-11-13T07:15:22.565Z",
+    "results": [
+      {
+        "channel": "band",
+        "status": "stopped",
+        "reason": "CHANNEL_FAILED"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:18:26.746Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 6,
+    "current": 36,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 0,
+    "photoUploadMilliseconds": 88700,
+    "photoUploadSamples": 36,
+    "failureCode": "CHANNEL_FAILED",
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "bandPhotoLimit": null,
+    "bandLimitObservedAt": "2026-11-13T07:15:22.565Z",
+    "results": [
+      {
+        "channel": "band",
+        "status": "stopped",
+        "reason": "CHANNEL_FAILED"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:18:26.773Z",
+    "productNo": 1381,
+    "status": "running",
+    "step": 7,
+    "current": 0,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "photoUploadMilliseconds": 88700,
+    "photoUploadSamples": 36,
+    "failureCode": "CHANNEL_FAILED",
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "bandPhotoLimit": null,
+    "bandLimitObservedAt": "2026-11-13T07:15:22.565Z",
+    "results": [
+      {
+        "channel": "band",
+        "status": "stopped",
+        "reason": "CHANNEL_FAILED"
+      }
+    ]
+  },
+  {
+    "at": "2026-11-13T07:18:26.787Z",
+    "productNo": 1381,
+    "status": "stopped",
+    "step": 7,
+    "current": 0,
+    "total": 36,
+    "characters": 584,
+    "totalCharacters": 584,
+    "secondsLeft": 0,
+    "photoUploadMilliseconds": 88700,
+    "photoUploadSamples": 36,
+    "failureCode": "CHANNEL_FAILED",
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "mode": "draft",
+    "experimentTitle": true,
+    "bandPhotoLimit": null,
+    "bandLimitObservedAt": "2026-11-13T07:15:22.565Z",
+    "results": [
+      {
+        "channel": "band",
+        "status": "stopped",
+        "reason": "CHANNEL_FAILED"
+      }
+    ]
+  }
+]

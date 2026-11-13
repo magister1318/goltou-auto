@@ -1,0 +1,14 @@
+{
+  "at": "2026-11-13T07:13:20.976Z",
+  "previousSha256": "f4b16181c55826d601fe9fa1c4048806d064bee9745b8d093b976289672939c4",
+  "sha256": "4c2b13309ba7408fa1943986c091b06746027f5f8becc1609d3d53c0520f0d86",
+  "bytes": 64103014,
+  "reinstalled": true,
+  "screenAndForeground": {
+    "at": "2026-11-13T07:13:21.424Z",
+    "awake": true,
+    "displayOn": true,
+    "focusApp": true,
+    "resumedApp": true
+  }
+}

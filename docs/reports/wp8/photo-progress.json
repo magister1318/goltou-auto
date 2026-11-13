@@ -1,0 +1,40 @@
+{
+  "at": "2026-11-13T06:17:27.583Z",
+  "loggedIn": true,
+  "services": {
+    "naver": "unknown",
+    "band": "unknown",
+    "ai": "unknown"
+  },
+  "job": {
+    "id": 1,
+    "productNo": 1381,
+    "status": "running",
+    "step": 4,
+    "current": 6,
+    "total": 36,
+    "characters": 568,
+    "totalCharacters": 576,
+    "secondsLeft": 75,
+    "photoUploadMilliseconds": 14805,
+    "photoUploadSamples": 6,
+    "mode": "draft",
+    "failureCode": "AUTO_RECOVER_CONSENT_REQUIRED",
+    "completedSteps": [
+      1,
+      2,
+      3
+    ],
+    "targets": [
+      "blog"
+    ],
+    "results": [
+      {
+        "channel": "blog",
+        "status": "running"
+      }
+    ],
+    "experimentTitle": true
+  },
+  "description": "사진 6/36 · 글자 99%\n남은 입력 시간 약 75초 (추정)"
+}

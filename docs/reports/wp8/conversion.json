@@ -1,0 +1,2485 @@
+{
+  "items": [
+    {
+      "productNo": 1457,
+      "blocks": {
+        "paragraph": 1,
+        "image": 13,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 13,
+      "textFallbackElements": [],
+      "bodyCharacters": 327,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 567,
+        "photos": 13,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 567,
+        "photos": 13,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1456,
+      "blocks": {
+        "paragraph": 1,
+        "image": 12,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 12,
+      "textFallbackElements": [],
+      "bodyCharacters": 216,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 353,
+        "photos": 12,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 353,
+        "photos": 12,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1455,
+      "blocks": {
+        "paragraph": 44,
+        "image": 8,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 8,
+      "textFallbackElements": [],
+      "bodyCharacters": 1151,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 1614,
+        "photos": 8,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 1614,
+        "photos": 8,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1387,
+      "blocks": {
+        "paragraph": 7,
+        "image": 10,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 10,
+      "textFallbackElements": [],
+      "bodyCharacters": 436,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 675,
+        "photos": 10,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 675,
+        "photos": 10,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1454,
+      "blocks": {
+        "paragraph": 2,
+        "image": 25,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 25,
+      "textFallbackElements": [],
+      "bodyCharacters": 455,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 656,
+        "photos": 25,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 656,
+        "photos": 25,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1453,
+      "blocks": {
+        "paragraph": 2,
+        "image": 23,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 23,
+      "textFallbackElements": [],
+      "bodyCharacters": 1369,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 1851,
+        "photos": 23,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 1851,
+        "photos": 23,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1381,
+      "blocks": {
+        "paragraph": 2,
+        "image": 36,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 36,
+      "textFallbackElements": [],
+      "bodyCharacters": 439,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 582,
+        "photos": 36,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 582,
+        "photos": 36,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1452,
+      "blocks": {
+        "paragraph": 2,
+        "image": 31,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 31,
+      "textFallbackElements": [],
+      "bodyCharacters": 996,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 1305,
+        "photos": 31,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 1305,
+        "photos": 31,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1451,
+      "blocks": {
+        "paragraph": 2,
+        "image": 45,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 45,
+      "textFallbackElements": [],
+      "bodyCharacters": 795,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 1129,
+        "photos": 45,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 1129,
+        "photos": 45,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1450,
+      "blocks": {
+        "paragraph": 1,
+        "image": 64,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 64,
+      "textFallbackElements": [],
+      "bodyCharacters": 1263,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 1706,
+        "photos": 64,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 1706,
+        "photos": 64,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1449,
+      "blocks": {
+        "paragraph": 2,
+        "image": 27,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 27,
+      "textFallbackElements": [],
+      "bodyCharacters": 334,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 480,
+        "photos": 27,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 480,
+        "photos": 27,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1448,
+      "blocks": {
+        "paragraph": 2,
+        "image": 6,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 6,
+      "textFallbackElements": [],
+      "bodyCharacters": 286,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 415,
+        "photos": 6,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 415,
+        "photos": 6,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1447,
+      "blocks": {
+        "paragraph": 3,
+        "image": 19,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 19,
+      "textFallbackElements": [
+        "font"
+      ],
+      "bodyCharacters": 443,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 623,
+        "photos": 19,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 623,
+        "photos": 19,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1330,
+      "blocks": {
+        "paragraph": 37,
+        "image": 7,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 7,
+      "textFallbackElements": [
+        "font"
+      ],
+      "bodyCharacters": 884,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 1264,
+        "photos": 7,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 1264,
+        "photos": 7,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1418,
+      "blocks": {
+        "paragraph": 1,
+        "image": 22,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 22,
+      "textFallbackElements": [],
+      "bodyCharacters": 672,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 903,
+        "photos": 22,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 903,
+        "photos": 22,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1345,
+      "blocks": {
+        "paragraph": 1,
+        "image": 26,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 26,
+      "textFallbackElements": [],
+      "bodyCharacters": 1612,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 2157,
+        "photos": 26,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 2157,
+        "photos": 26,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1446,
+      "blocks": {
+        "paragraph": 5,
+        "image": 69,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 69,
+      "textFallbackElements": [],
+      "bodyCharacters": 1702,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 2120,
+        "photos": 69,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 2120,
+        "photos": 69,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1445,
+      "blocks": {
+        "paragraph": 4,
+        "image": 30,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 30,
+      "textFallbackElements": [],
+      "bodyCharacters": 225,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 357,
+        "photos": 30,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 357,
+        "photos": 30,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1444,
+      "blocks": {
+        "paragraph": 5,
+        "image": 22,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 22,
+      "textFallbackElements": [],
+      "bodyCharacters": 503,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 711,
+        "photos": 22,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 711,
+        "photos": 22,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1443,
+      "blocks": {
+        "paragraph": 4,
+        "image": 64,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 64,
+      "textFallbackElements": [],
+      "bodyCharacters": 1350,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 1717,
+        "photos": 64,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 1717,
+        "photos": 64,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1442,
+      "blocks": {
+        "paragraph": 3,
+        "image": 36,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 36,
+      "textFallbackElements": [],
+      "bodyCharacters": 460,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 710,
+        "photos": 36,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 710,
+        "photos": 36,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1441,
+      "blocks": {
+        "paragraph": 4,
+        "image": 44,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 44,
+      "textFallbackElements": [],
+      "bodyCharacters": 1526,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 1986,
+        "photos": 44,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 1986,
+        "photos": 44,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1440,
+      "blocks": {
+        "paragraph": 8,
+        "image": 32,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 32,
+      "textFallbackElements": [],
+      "bodyCharacters": 2196,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 2852,
+        "photos": 32,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 2933,
+        "photos": 32,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1439,
+      "blocks": {
+        "paragraph": 1,
+        "image": 25,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 25,
+      "textFallbackElements": [],
+      "bodyCharacters": 279,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 393,
+        "photos": 25,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 393,
+        "photos": 25,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1438,
+      "blocks": {
+        "paragraph": 2,
+        "image": 30,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 30,
+      "textFallbackElements": [],
+      "bodyCharacters": 420,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 572,
+        "photos": 30,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 572,
+        "photos": 30,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1437,
+      "blocks": {
+        "paragraph": 15,
+        "image": 68,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 68,
+      "textFallbackElements": [
+        "del",
+        "u"
+      ],
+      "bodyCharacters": 3303,
+      "struckNumericCharacters": 5,
+      "blog": {
+        "characters": 4456,
+        "photos": 68,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 4456,
+        "photos": 68,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1436,
+      "blocks": {
+        "paragraph": 3,
+        "image": 51,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 51,
+      "textFallbackElements": [],
+      "bodyCharacters": 516,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 831,
+        "photos": 51,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 831,
+        "photos": 51,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1435,
+      "blocks": {
+        "paragraph": 4,
+        "image": 34,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 34,
+      "textFallbackElements": [],
+      "bodyCharacters": 684,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 1037,
+        "photos": 34,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 1037,
+        "photos": 34,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1434,
+      "blocks": {
+        "paragraph": 18,
+        "image": 48,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 48,
+      "textFallbackElements": [
+        "u"
+      ],
+      "bodyCharacters": 1394,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 1955,
+        "photos": 48,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 1955,
+        "photos": 48,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1433,
+      "blocks": {
+        "paragraph": 1,
+        "image": 5,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 5,
+      "textFallbackElements": [],
+      "bodyCharacters": 368,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 485,
+        "photos": 5,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 485,
+        "photos": 5,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1432,
+      "blocks": {
+        "paragraph": 2,
+        "image": 33,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 33,
+      "textFallbackElements": [],
+      "bodyCharacters": 415,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 546,
+        "photos": 33,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 546,
+        "photos": 33,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1431,
+      "blocks": {
+        "paragraph": 4,
+        "image": 28,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 28,
+      "textFallbackElements": [],
+      "bodyCharacters": 687,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 996,
+        "photos": 28,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 996,
+        "photos": 28,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1430,
+      "blocks": {
+        "paragraph": 5,
+        "image": 54,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 54,
+      "textFallbackElements": [
+        "u"
+      ],
+      "bodyCharacters": 1838,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 2581,
+        "photos": 54,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 2581,
+        "photos": 54,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1429,
+      "blocks": {
+        "paragraph": 7,
+        "image": 12,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 12,
+      "textFallbackElements": [],
+      "bodyCharacters": 551,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 797,
+        "photos": 12,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 797,
+        "photos": 12,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1428,
+      "blocks": {
+        "paragraph": 3,
+        "image": 37,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 37,
+      "textFallbackElements": [],
+      "bodyCharacters": 476,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 669,
+        "photos": 37,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 669,
+        "photos": 37,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1427,
+      "blocks": {
+        "paragraph": 6,
+        "image": 38,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 38,
+      "textFallbackElements": [],
+      "bodyCharacters": 2105,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 2714,
+        "photos": 38,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 2795,
+        "photos": 38,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1426,
+      "blocks": {
+        "paragraph": 5,
+        "image": 34,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 34,
+      "textFallbackElements": [],
+      "bodyCharacters": 1446,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 1860,
+        "photos": 34,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 1860,
+        "photos": 34,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1425,
+      "blocks": {
+        "paragraph": 5,
+        "image": 26,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 26,
+      "textFallbackElements": [],
+      "bodyCharacters": 1359,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 1752,
+        "photos": 26,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 1752,
+        "photos": 26,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1424,
+      "blocks": {
+        "paragraph": 4,
+        "image": 31,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 31,
+      "textFallbackElements": [],
+      "bodyCharacters": 1111,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 1513,
+        "photos": 31,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 1513,
+        "photos": 31,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1423,
+      "blocks": {
+        "paragraph": 1,
+        "image": 38,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 38,
+      "textFallbackElements": [],
+      "bodyCharacters": 1149,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 1625,
+        "photos": 38,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 1625,
+        "photos": 38,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1422,
+      "blocks": {
+        "paragraph": 2,
+        "image": 8,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 8,
+      "textFallbackElements": [],
+      "bodyCharacters": 208,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 300,
+        "photos": 8,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 300,
+        "photos": 8,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1421,
+      "blocks": {
+        "paragraph": 4,
+        "image": 33,
+        "table": 0,
+        "rule": 0,
+        "link": 1
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 33,
+      "textFallbackElements": [],
+      "bodyCharacters": 840,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 1110,
+        "photos": 33,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 1157,
+        "photos": 33,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1354,
+      "blocks": {
+        "paragraph": 4,
+        "image": 25,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 25,
+      "textFallbackElements": [],
+      "bodyCharacters": 783,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 998,
+        "photos": 25,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 998,
+        "photos": 25,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1420,
+      "blocks": {
+        "paragraph": 1,
+        "image": 4,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 4,
+      "textFallbackElements": [],
+      "bodyCharacters": 227,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 375,
+        "photos": 4,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 375,
+        "photos": 4,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1419,
+      "blocks": {
+        "paragraph": 3,
+        "image": 32,
+        "table": 0,
+        "rule": 0,
+        "link": 3
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 32,
+      "textFallbackElements": [],
+      "bodyCharacters": 1143,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 1463,
+        "photos": 32,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 1583,
+        "photos": 32,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1417,
+      "blocks": {
+        "paragraph": 7,
+        "image": 56,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 56,
+      "textFallbackElements": [],
+      "bodyCharacters": 1516,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 2100,
+        "photos": 56,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 2100,
+        "photos": 56,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1416,
+      "blocks": {
+        "paragraph": 52,
+        "image": 66,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 66,
+      "textFallbackElements": [],
+      "bodyCharacters": 3801,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 5046,
+        "photos": 66,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 5046,
+        "photos": 66,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1415,
+      "blocks": {
+        "paragraph": 41,
+        "image": 51,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 51,
+      "textFallbackElements": [],
+      "bodyCharacters": 3084,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 4199,
+        "photos": 51,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 4199,
+        "photos": 51,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1414,
+      "blocks": {
+        "paragraph": 4,
+        "image": 34,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 34,
+      "textFallbackElements": [],
+      "bodyCharacters": 1013,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 1356,
+        "photos": 34,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 1356,
+        "photos": 34,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1413,
+      "blocks": {
+        "paragraph": 5,
+        "image": 64,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 64,
+      "textFallbackElements": [],
+      "bodyCharacters": 1328,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 1691,
+        "photos": 64,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 1691,
+        "photos": 64,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1412,
+      "blocks": {
+        "paragraph": 4,
+        "image": 37,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 37,
+      "textFallbackElements": [],
+      "bodyCharacters": 1101,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 1443,
+        "photos": 37,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 1443,
+        "photos": 37,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1411,
+      "blocks": {
+        "paragraph": 7,
+        "image": 68,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 68,
+      "textFallbackElements": [
+        "u"
+      ],
+      "bodyCharacters": 2499,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 3425,
+        "photos": 68,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 3425,
+        "photos": 68,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1410,
+      "blocks": {
+        "paragraph": 6,
+        "image": 56,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 56,
+      "textFallbackElements": [],
+      "bodyCharacters": 364,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 509,
+        "photos": 56,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 509,
+        "photos": 56,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1409,
+      "blocks": {
+        "paragraph": 5,
+        "image": 32,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 32,
+      "textFallbackElements": [],
+      "bodyCharacters": 459,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 722,
+        "photos": 32,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 722,
+        "photos": 32,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1408,
+      "blocks": {
+        "paragraph": 14,
+        "image": 65,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 65,
+      "textFallbackElements": [
+        "u"
+      ],
+      "bodyCharacters": 3296,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 4330,
+        "photos": 65,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 4330,
+        "photos": 65,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1407,
+      "blocks": {
+        "paragraph": 2,
+        "image": 10,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 10,
+      "textFallbackElements": [
+        "del",
+        "i",
+        "u"
+      ],
+      "bodyCharacters": 607,
+      "struckNumericCharacters": 14,
+      "blog": {
+        "characters": 957,
+        "photos": 10,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 957,
+        "photos": 10,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1406,
+      "blocks": {
+        "paragraph": 7,
+        "image": 31,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 31,
+      "textFallbackElements": [],
+      "bodyCharacters": 2017,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 2569,
+        "photos": 31,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 2650,
+        "photos": 31,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1405,
+      "blocks": {
+        "paragraph": 2,
+        "image": 41,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 41,
+      "textFallbackElements": [],
+      "bodyCharacters": 425,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 583,
+        "photos": 41,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 583,
+        "photos": 41,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1404,
+      "blocks": {
+        "paragraph": 6,
+        "image": 32,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 32,
+      "textFallbackElements": [],
+      "bodyCharacters": 1327,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 1705,
+        "photos": 32,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 1705,
+        "photos": 32,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    },
+    {
+      "productNo": 1403,
+      "blocks": {
+        "paragraph": 1,
+        "image": 48,
+        "table": 0,
+        "rule": 0,
+        "link": 0
+      },
+      "tables": 0,
+      "tablesWithImages": 0,
+      "photos": 48,
+      "textFallbackElements": [],
+      "bodyCharacters": 2029,
+      "struckNumericCharacters": 0,
+      "blog": {
+        "characters": 2742,
+        "photos": 48,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "band": {
+        "characters": 2742,
+        "photos": 48,
+        "sourceMatches": true,
+        "numbersPreserved": true,
+        "pricesPreserved": true,
+        "datesPreserved": true,
+        "textLimit": null,
+        "photoLimit": null,
+        "textLimitExceeded": null,
+        "photoLimitExceeded": null
+      },
+      "failureCode": null
+    }
+  ],
+  "completed": true,
+  "failureCode": null
+}

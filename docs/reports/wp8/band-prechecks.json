@@ -1,0 +1,534 @@
+{
+  "signals": {
+    "screen": [
+      "dumpsys power mWakefulness=Awake",
+      "dumpsys display Display State=ON and mCommittedState=ON"
+    ],
+    "foreground": [
+      "dumpsys window mCurrentFocus package kr.goltou.auto",
+      "dumpsys activity topResumedActivity package kr.goltou.auto"
+    ]
+  },
+  "foregroundWaitLimitMilliseconds": 120000,
+  "foregroundWaitUsedMilliseconds": 10459,
+  "readOnlyWaiting": [
+    {
+      "from": "2026-11-13T07:13:10.223Z",
+      "to": "2026-11-13T07:13:20.682Z"
+    }
+  ],
+  "wakeOrUnlockInputs": 0,
+  "checks": [
+    {
+      "at": "2026-11-13T07:13:03.760Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:13:04.829Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:13:06.261Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:13:10.223Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": false,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:13:20.682Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:13:21.424Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:13:27.358Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:13:47.099Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:13:48.861Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:13:49.451Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:13:49.964Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:13:53.215Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:14:27.959Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:15:18.438Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:15:19.613Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:15:20.037Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:15:20.579Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:15:23.589Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:15:26.655Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:15:29.730Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:15:32.740Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:15:35.797Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:15:38.813Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:15:39.459Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:15:41.851Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:15:44.916Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:15:47.938Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:15:50.976Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:15:54.014Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:15:57.135Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:16:00.166Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:16:03.191Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:16:06.272Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:16:09.193Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:16:12.207Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:16:15.157Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:16:18.269Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:16:21.465Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:16:24.630Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:16:27.986Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:16:31.097Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:16:34.074Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:16:34.302Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:16:37.422Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:16:40.514Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:16:43.618Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:16:46.720Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:16:49.888Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:16:52.979Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:16:56.083Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:16:59.284Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:17:02.433Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:17:05.633Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:17:08.767Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:17:11.921Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:17:15.152Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:17:18.283Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:17:21.368Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:17:24.524Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:17:27.741Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:17:30.892Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:17:34.098Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:17:37.313Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:17:40.416Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:17:43.477Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:18:11.653Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:18:23.964Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:18:25.317Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:18:25.865Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:18:26.446Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:18:39.070Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:19:01.665Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T07:19:39.105Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "at": "2026-11-13T06:15:31.009Z",
+  "steps": [
+    {
+      "at": "2026-11-13T06:13:52.037Z",
+      "action": "conversion-metrics",
+      "result": "ok",
+      "elapsedMs": 68251,
+      "detail": {
+        "products": 60,
+        "completed": true,
+        "failures": 0
+      }
+    }
+  ]
+}

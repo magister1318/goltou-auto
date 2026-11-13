@@ -6,6 +6,7 @@ export function blogFixture(mode = '') {
   .se-main-container{min-height:500px;padding:10px}.se-component{margin:5px 0}.se-text-paragraph{min-height:25px;margin:5px 0;outline:none}
   .se-documentTitle{margin:5px 10px}.se-image-resource{width:90px;height:50px}td{border:1px solid #aaa;width:150px;height:28px}
   .se-popup-alert-confirm{position:fixed;top:100px;background:white;border:1px solid;z-index:4}
+  ${mode === 'metadata-heavy' ? '.se-image-resource{height:450px}.se-main-container{height:650px;overflow:auto}' : ''}
   </style><header><button data-click-area="tpb.save">저장</button><button data-click-area="tpb*s.count">0</button><button data-click-area="tpb.publish">발행</button><button data-name="image">사진</button>${mode === 'fallback' ? '' : '<button data-name="table">표</button>'}<input type="file" multiple hidden></header>
   <div class="se-documentTitle"><p class="se-text-paragraph" contenteditable="true"></p></div>
   <div class="se-main-container" contenteditable="true"><div class="se-component se-text"><p class="se-text-paragraph"><br></p></div></div>
@@ -15,9 +16,10 @@ export function blogFixture(mode = '') {
   const empty=()=>{const e=document.createElement('div');e.className='se-component se-text';e.innerHTML='<p class="se-text-paragraph"><br></p>';return e};
   const focus=e=>{e.focus();const r=document.createRange();r.selectNodeContents(e);r.collapse(false);const s=getSelection();s.removeAllRanges();s.addRange(r)};
   const component=()=>{let n=getSelection()?.anchorNode;while(n&&!n.classList?.contains('se-component'))n=n.parentElement;return n};
-  let cursor=null, tableUndo=null;
+  let cursor=null, tableUndo=null;window.attachmentSizes=[];
   document.querySelector('[data-name=image]').onmousedown=e=>{cursor=component();e.preventDefault()};
   document.querySelector('input[type=file]').onchange=e=>{
+    window.attachmentSizes.push(e.target.files.length);
     const saved=cursor;let after=saved;const frag=document.createDocumentFragment();
     for(const f of e.target.files){const image=document.createElement('div');image.className='se-component se-image';const img=document.createElement('img');img.className='se-image-resource';img.src='/photos/'+(mode==='metadata-tags'?f.name.replace(/\\.[^.]+$/,'.png'):f.name);image.append(img);frag.append(image)}
     const next=empty();frag.append(next);if(after)after.after(frag);else main.append(frag);focus(next.querySelector('p'));
@@ -63,7 +65,7 @@ export function blogFixture(mode = '') {
       const li=document.createElement('li'), b=document.createElement('button'), strong=document.createElement('strong');
       b.dataset.clickArea='tpb*s.tlist';strong.textContent=draft.title;b.append(strong);li.append(b);list.append(li);
       b.onclick=()=>{title.textContent=draft.title;main.innerHTML=draft.html;document.querySelector('.tag_list').innerHTML=draft.tags;metadataTags=draft.metadataTags||[];list.hidden=true;
-        if(mode==='metadata-tags')for(const img of main.querySelectorAll('img')){img.dataset.lazySource=img.getAttribute('src');img.src='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>'}
+        if(mode==='metadata-tags'||mode==='metadata-heavy')for(const img of main.querySelectorAll('img')){img.dataset.lazySource=img.getAttribute('src');img.src='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>'}
       };
     }list.hidden=false;
   };
@@ -72,7 +74,8 @@ export function blogFixture(mode = '') {
     const toggle=document.querySelector('[data-click-area="tpb.publish"]');toggle.className='publish_btn__fixture';toggle.onclick=tagPanel;
     // Model SmartEditor's expansion when a selector arrives after its base.
     document.addEventListener('beforeinput',e=>{if(e.data==='\uFE0F'&&e.target.closest('.se-main-container')){e.preventDefault();document.execCommand('insertText',false,'✈️')}});
-    document.addEventListener('keydown',e=>{if(e.key==='PageDown'&&e.target.closest('.se-main-container,.se-documentTitle'))for(const img of main.querySelectorAll('img[data-lazy-source]')){img.src=img.dataset.lazySource;delete img.dataset.lazySource}});
+    const reveal=()=>{for(const img of main.querySelectorAll('img[data-lazy-source]')){const b=img.getBoundingClientRect();if(mode!=='metadata-heavy'||(b.top<innerHeight&&b.bottom>45)){img.src=img.dataset.lazySource;delete img.dataset.lazySource}}};
+    document.addEventListener('keydown',e=>{if(['Home','PageDown'].includes(e.key)&&e.target.closest('.se-main-container,.se-documentTitle'))setTimeout(reveal,50)});
   }
   if(mode==='restore'&&!sessionStorage.getItem('declined')){
     const prompt=document.createElement('div');prompt.className='se-popup-alert-confirm';prompt.innerHTML='작성 중인 글이 있습니다. 이어서 작성하시겠습니까?<button class="se-popup-button-cancel">취소</button>';

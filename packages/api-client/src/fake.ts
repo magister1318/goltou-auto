@@ -45,6 +45,7 @@ export function createFakeApi(fixtureSession?: { token: string; user: User; prod
       if (!user) throw new ApiError('auth', '다시 로그인해 주세요.');
       const page = <T>(items: T[]) => { const size = Math.min(50, Math.max(1, Number(data.pageSize) || 20)); const offset = (Math.max(1, Number(data.page) || 1) - 1) * size; return { total: items.length, items: items.slice(offset, offset + size) }; };
       const successful = (p: StoredPost) => p.status === 'draft_saved' || p.status === 'published';
+      const visibleMark = (p: StoredPost) => successful(p) || p.channel === 'band' && p.status === 'stopped_before_post';
       switch (path) {
         case '/auto/logout': sessions.delete(token!); output = {}; break;
         case '/auto/me': output = { user, settings }; break;
@@ -56,7 +57,7 @@ export function createFakeApi(fixtureSession?: { token: string; user: User; prod
           let filtered = products.filter(p => (!data.q || `${p.title} ${p.golfCourses.join(' ')}`.includes(String(data.q))) && (!data.country || p.country === data.country) && (!data.region || p.region === data.region) && (!data.month || p.departures.some(d => d.date.startsWith(String(data.month)))) && (!data.onlyUnposted || !posts.some(post => post.owner === user.userNo && post.productNo === p.productNo && successful(post))));
           if (data.sort === 'departure') filtered = [...filtered].sort((a, b) => a.departures[0]!.date.localeCompare(b.departures[0]!.date));
           output = page(filtered.map(p => {
-            const mark = (channel: Channel) => { const post = [...posts].reverse().find(post => post.owner === user.userNo && post.productNo === p.productNo && post.channel === channel && successful(post)); return post ? { status: post.status, at: post.finishedAt.slice(0, 10) } : null; };
+            const mark = (channel: Channel) => { const post = [...posts].reverse().find(post => post.owner === user.userNo && post.productNo === p.productNo && post.channel === channel && visibleMark(post)); return post ? { status: post.status, at: post.finishedAt.slice(0, 10) } : null; };
             return { productNo: p.productNo, title: p.title, country: p.country, region: p.region, thumbUrl: p.images[0]!.url, priceFrom: Math.min(...p.departures.map(d => d.price)), departureCount: p.departures.length, updatedAt: p.updatedAt, myPosts: { blog: mark('blog'), band: mark('band') } };
           })); break;
         }
@@ -77,6 +78,8 @@ export function createFakeApi(fixtureSession?: { token: string; user: User; prod
           const value = input as ApiRoutes['/auto/posts/update']['input']; const post = posts.find(p => p.postNo === value.postNo);
           if (!post) throw new ApiError('not_found', '기록을 찾지 못했습니다.');
           if (post.owner !== user.userNo) throw new ApiError('forbidden', '내 기록만 고칠 수 있습니다.');
+          if (value.status === 'stopped_before_post' && post.channel !== 'band') throw new ApiError('invalid', '밴드만 게시 전 멈춤으로 기록할 수 있습니다.');
+          if (post.status === 'stopped_before_post' && !['published', 'stopped', 'stopped_before_post'].includes(value.status)) throw new ApiError('conflict', '게시 전 멈춤 기록은 게시 완료 또는 중단으로만 바꿀 수 있습니다.');
           if (successful(post) && value.status === 'running') throw new ApiError('conflict', '저장한 기록을 다시 실행할 수 없습니다.');
           Object.assign(post, value, { finishedAt: value.status === 'running' ? '' : stamp }); output = {}; break;
         }

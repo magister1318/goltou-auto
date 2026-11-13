@@ -5,6 +5,8 @@ import type { Checkpoint, RegistrationRunner } from './runner';
 import type { PreparationWork } from './preparation';
 import { createBandExecution, type BandServices } from './band';
 import { createBlogExecution, type BlogServices } from './blog';
+import { updateInputProgress } from './input-progress';
+import { RecordError, RecordingCheckpoint } from './record-checkpoint';
 
 /** One product, blog first, then exactly one Band composer at a time. */
 export class ChannelRegistrationRunner implements RegistrationRunner {
@@ -21,7 +23,9 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
   private bandIndex = 0;
   private discardPending = false;
   private blogSkipped = false;
-  constructor(private readonly services: { band: BandServices; blog?: BlogServices }, private readonly checkpoint: Checkpoint, private readonly notify: (job: Job) => void) {
+  private readonly recording: RecordingCheckpoint;
+  constructor(private readonly services: { band: BandServices; blog?: BlogServices }, checkpoint: Checkpoint, private readonly notify: (job: Job) => void) {
+    this.recording = new RecordingCheckpoint(checkpoint, notify);
     this.directory = new BandDirectory(services.band.host, services.band.baseUrl, services.band.localPublish);
   }
   async listBands() {
@@ -35,7 +39,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     }
   }
   async start(input: JobInput, title: string, photos: number, work?: PreparationWork) {
-    if (this.job && !['draft_saved', 'published', 'stopped'].includes(this.job.status) && !this.job.completedSteps.includes(7)) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
+    if (this.job && (this.job.status === 'record_failed' || !['draft_saved', 'published', 'stopped'].includes(this.job.status) && !this.job.completedSteps.includes(7))) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
     if (!work?.preview || !input.targets.length) throw new ApiError('invalid', '입력 준비가 필요합니다.');
     if (input.mode === 'publish' && !input.publishConfirmed) throw new ApiError('invalid', '이 작업의 발행 확인이 필요합니다.');
     const bands = input.targets.filter(t => t.channel === 'band');
@@ -48,18 +52,17 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     this.work = work; this.abort = new AbortController(); this.band = undefined; this.bandIndex = 0; this.discardPending = false; this.blogSkipped = false;
     await this.blog?.close(); this.blog = undefined;
     this.job = { id: ++this.serial, productNo: input.productNo, title, mode: input.mode, targets: structuredClone(input.targets), targetResults: input.targets.map(t => ({ ...t, status: 'running' })), status: 'running', step: 1, current: 0, total: photos, completedSteps: [], service: null, message: '' };
-    await this.emit(); this.launch();
+    try { await this.emit(); this.launch(); } catch (error) { if (!(error instanceof RecordError)) throw error; }
   }
   private result() { return this.job?.targetResults?.filter(t => t.channel === 'band')[this.bandIndex]; }
-  private async emit() { if (this.job) { await this.checkpoint(structuredClone(this.job)); this.notify(structuredClone(this.job)); } }
+  private async emit() { if (this.job) await this.recording.emit(this.job); }
+  async retryRecord() { await this.active; if (this.job) await this.recording.retry(this.job); }
   private check = () => { this.abort.signal.throwIfAborted(); if (this.disposed) throw new Error('RUNNER_DISPOSED'); };
   private launch() {
-    this.active = this.run().catch(() => { if (this.job) { this.job.status = 'failed'; this.job.message = '기록을 저장하지 못했습니다.'; this.notify(structuredClone(this.job)); } }).finally(() => { this.active = undefined; });
+    this.active = this.run().catch(error => { if (error instanceof RecordError) return; if (this.job) { this.job.status = 'failed'; this.job.message = '기록을 저장하지 못했습니다.'; this.notify(structuredClone(this.job)); } }).finally(() => { this.active = undefined; });
   }
   private progress = (v: BandProgress) => {
-    const j = this.job!; j.current = v.photos; j.total = v.totalPhotos; j.characters = v.characters; j.totalCharacters = v.totalCharacters;
-    j.secondsLeft = Math.max(0, Math.ceil((v.totalCharacters - v.characters) * 0.06 + (v.totalPhotos - v.photos) * 5));
-    j.message = `사진 ${v.photos}/${v.totalPhotos} · 글자 ${Math.min(100, Math.round(v.characters / Math.max(1, v.totalCharacters) * 100))}%`;
+    const j = this.job!; updateInputProgress(j, v);
     this.notify(structuredClone(j));
   };
   private async run() {
@@ -76,6 +79,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
         if (j.step === 4 && this.blog) { this.blog.files = this.work!.prepared!.files; await this.blog.write(); }
         if (j.step === 5 && this.blog) {
           await this.blog.saveAndVerify();
+          j.blogReadbackTimings = [...this.blog.readbackTimings];
           const result = j.targetResults!.find(t => t.channel === 'blog')!;
           if (j.mode === 'publish') result.postUrl = await this.blog.publish();
           result.status = j.mode === 'draft' ? 'draft_saved' : 'published';
@@ -111,7 +115,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
           j.status = results.some(t => t.status === 'failed') ? 'failed' : results.every(t => t.status === 'stopped') ? 'stopped' : results.some(t => t.status === 'published') ? 'published' : 'draft_saved';
           j.message = '채널별 결과를 등록 기록에 남겼습니다.'; j.secondsLeft = 0; await this.emit(); return;
         }
-        j.step++; j.current = 0; await this.emit();
+        j.step++; j.current = 0; delete j.secondsLeft; await this.emit();
       }
     } catch (error) { if (!this.abort.signal.aborted && !this.disposed) await this.fail(error); }
   }
@@ -124,6 +128,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     if (result?.redacted === true && typeof file === 'string' && /^[a-zA-Z0-9-]+\.png$/.test(file)) this.job!.evidence = file;
   }
   private async fail(error: unknown) {
+    if (error instanceof RecordError) return;
     const j = this.job!; const code = error instanceof Error ? error.message : 'BAND_FAILED';
     j.failureCode = safeFailureCode(error, 'CHANNEL_FAILED');
     const isBand = j.step === 6;
@@ -179,7 +184,10 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     delete this.job.dialog;
     if (this.discardPending) {
       this.job.status = 'stopped_before_post';
-      if (accept) await this.discardBand(); else { this.discardPending = false; this.band?.resetDiscard(); await this.emit(); }
+      if (accept) await this.discardBand(); else {
+        this.discardPending = false; this.band?.resetDiscard();
+        try { await this.emit(); } catch (error) { if (!(error instanceof RecordError)) throw error; }
+      }
     } else { this.job.status = 'user_paused'; await this.emit(); }
   }
   async showBand(key: string) {
@@ -196,7 +204,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     } catch (error) { await this.fail(error); }
   }
   async discardBand() {
-    if (!this.job || this.job.step !== 6 || !['stopped_before_post', 'failed', 'user_paused', 'recovery_paused'].includes(this.job.status) || !this.band) throw new ApiError('conflict', '버릴 작성기가 없습니다.');
+    if (!this.job || this.job.step !== 6 || !['stopped_before_post', 'record_failed', 'failed', 'user_paused', 'recovery_paused'].includes(this.job.status) || !this.band) throw new ApiError('conflict', '버릴 작성기가 없습니다.');
     try {
       this.discardPending = true; await this.band.discard(); this.discardPending = false;
       this.result()!.status = 'stopped'; await this.nextBand();

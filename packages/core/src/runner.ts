@@ -6,6 +6,7 @@ export interface RegistrationRunner {
   start(input: JobInput, title: string, photos: number, preparation?: PreparationWork): Promise<void>;
   stop(): Promise<void>;
   resume(): Promise<void>;
+  retryRecord?(): Promise<void>;
   dispose(): void;
   recover?(discard: boolean): Promise<void>;
   answerDialog?(id: string, accept: boolean): Promise<void>;
@@ -20,7 +21,7 @@ export interface RegistrationRunner {
   continueBand?(): Promise<void>;
   checkBandLogin?(): Promise<'confirmed' | 'expired' | 'unknown'>;
 }
-export type Checkpoint = (job: Job) => Promise<void>;
+export type Checkpoint = (job: Job, retryRecord?: boolean) => Promise<void>;
 /** Site steps remain simulated. An injected preparation performs real media/body work. */
 export class FakeRegistrationRunner implements RegistrationRunner {
   job: Job | null = null;

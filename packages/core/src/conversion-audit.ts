@@ -10,6 +10,7 @@ export interface ConversionMetric {
   blocks: { paragraph: number; image: number; table: number; rule: number; link: number };
   tables: number; tablesWithImages: number; photos: number;
   textFallbackElements: string[]; bodyCharacters: number;
+  struckNumericCharacters: number;
   blog: PlanMetric | null; band: PlanMetric | null;
   failureCode: 'CONVERSION_FAILED' | 'PRODUCT_READ_FAILED' | 'SOURCE_MISMATCH' | null;
 }
@@ -24,7 +25,7 @@ export interface ConversionAudit { items: ConversionMetric[]; completed: boolean
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const numbers = (text: string) => text.match(/[0-9]+/g) ?? [];
 function empty(productNo: number): ConversionMetric {
-  return { productNo, blocks: { paragraph: 0, image: 0, table: 0, rule: 0, link: 0 }, tables: 0, tablesWithImages: 0, photos: 0, textFallbackElements: [], bodyCharacters: 0, blog: null, band: null, failureCode: null };
+  return { productNo, blocks: { paragraph: 0, image: 0, table: 0, rule: 0, link: 0 }, tables: 0, tablesWithImages: 0, photos: 0, textFallbackElements: [], bodyCharacters: 0, struckNumericCharacters: 0, blog: null, band: null, failureCode: null };
 }
 export function conversionMetric(product: Product, limits: { text: number | null; photos: number | null } = { text: null, photos: null }): ConversionMetric {
   const result = empty(product.productNo);
@@ -37,11 +38,17 @@ export function conversionMetric(product: Product, limits: { text: number | null
     const fallbacks = new Set<string>();
     const hasImage = (node: Node): boolean => 'tagName' in node && !ignored.has(node.tagName) && (node.tagName === 'img' || node.childNodes.some(hasImage));
     const hasText = (node: Node): boolean => node.nodeName === '#text' && 'value' in node ? !!node.value.trim() : 'childNodes' in node && node.childNodes.some(hasText);
-    function walk(node: Node) {
+    function walk(node: Node, struck = false) {
+      // Count each numeric text character once, including nested strike tags.
+      // No struck text or numeric values leave this in-memory traversal.
+      if (node.nodeName === '#text' && 'value' in node) {
+        if (struck) result.struckNumericCharacters += (node.value.match(/[0-9]/g) ?? []).length;
+        return;
+      }
       if (!('tagName' in node) || ignored.has(node.tagName)) return;
       if (node.tagName === 'table') { result.tables++; if (hasImage(node)) result.tablesWithImages++; }
       if (!supported.has(node.tagName) && hasText(node)) fallbacks.add(/^[a-z][a-z0-9-]{0,31}$/.test(node.tagName) ? node.tagName : 'other');
-      for (const child of node.childNodes) walk(child);
+      for (const child of node.childNodes) walk(child, struck || ['del', 's', 'strike'].includes(node.tagName));
     }
     for (const node of parseFragment(product.contentsHtml).childNodes) walk(node);
     result.textFallbackElements = [...fallbacks].sort();

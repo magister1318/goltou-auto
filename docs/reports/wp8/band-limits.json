@@ -1,0 +1,63 @@
+{
+  "at": "2026-11-13T07:19:50.596Z",
+  "mobile": true,
+  "photoDefinitions": [
+    "PHOTO:{COUNT_LIMIT:100,POST_COUNT_LIMIT:100,MOBILE_POST_COUNT_LIMIT:99"
+  ],
+  "mobilePhotoUses": [
+    "deo()?1:0,i=Math.min(n+t,u.VIDEO.COUNT_LIMIT);return{photoCount:e.length-i,maxPhotoCount:u.PHOTO.MOBILE_POST_COUNT_LIMIT,videoGifCount:i,maxVideoGifCount:u.VIDEO.COUNT_LIMIT}},hasPhotoOrVide",
+    "deo()?1:0,i=Math.min(n+t,c.VIDEO.COUNT_LIMIT);return{photoCount:e.length-i,maxPhotoCount:c.PHOTO.MOBILE_POST_COUNT_LIMIT,videoGifCount:i,maxVideoGifCount:c.VIDEO.COUNT_LIMIT}},hasPhotoOrVide",
+    "deo()?1:0,i=Math.min(n+t,d.VIDEO.COUNT_LIMIT);return{photoCount:e.length-i,maxPhotoCount:d.PHOTO.MOBILE_POST_COUNT_LIMIT,videoGifCount:i,maxVideoGifCount:d.VIDEO.COUNT_LIMIT}},hasPhotoOrVide"
+  ],
+  "excludedCommentLimitUses": [
+    "maxMessageLength:_.MAX_LENGTH,overMaxLengthAlertMessage:IM(\"web.postdetail.comment.message.over_max_message\",{count:_.MAX_LENGTH})",
+    "maxMessageLength:c.MAX_LENGTH,overMaxLengthAlertMessage:IM(\"web.postdetail.comment.message.over_max_message\",{count:c.MAX_LENGTH})"
+  ],
+  "photoLimit": 99,
+  "textLimit": null,
+  "textLimitReason": "composer_has_no_maxlength_or_visible_limit;10000_constant_is_for_comments;no_server_validation_attempt",
+  "serverLimitValidated": false,
+  "initialPhotoCodeObservedAt": "2026-11-13T07:14:45.485Z",
+  "initialComposerObservation": {
+    "at": "2026-11-13T07:15:23.644Z",
+    "composer": true,
+    "bodyCharacters": 0,
+    "photos": 0,
+    "uploading": false,
+    "photoLimit": null,
+    "textLimit": null,
+    "hasPostUrl": false
+  },
+  "composerAttributes": {
+    "at": "2026-11-13T07:16:34.299Z",
+    "editors": [
+      {
+        "tag": "TEXTAREA",
+        "maxlength": null,
+        "max": null,
+        "data-max-length": null
+      }
+    ],
+    "fileLimits": [
+      {
+        "accept": "image/*",
+        "max": null,
+        "maxCount": null
+      },
+      {
+        "accept": "video/*",
+        "max": null,
+        "maxCount": null
+      }
+    ],
+    "numericLabels": []
+  },
+  "appDisplayedPhotoLimit": null,
+  "appDisplayedTextLimit": null,
+  "appLimitScreenText": "관측한 밴드 사진 한도: 미확인",
+  "failureScreenText": "등록에 실패했습니다",
+  "failureMessage": "이 채널의 작업을 마치지 못했습니다. 작성 중인 내용은 그대로 두었습니다.",
+  "photoLimitSource": "Band-delivered mobile client code;not_visible_limit_label_or_server_boundary",
+  "textLimitSource": null,
+  "excludedCommentLimit": 10000
+}

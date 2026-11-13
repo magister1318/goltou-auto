@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-13T06:13:27.546Z",
+  "apkBytes": 64103014,
+  "apkSha256": "f4b16181c55826d601fe9fa1c4048806d064bee9745b8d093b976289672939c4",
+  "installedEngineMatches": true,
+  "preconditions": {
+    "at": "2026-11-13T06:13:28.121Z",
+    "model": "SM-S928N",
+    "awake": true,
+    "on": true,
+    "front": true
+  }
+}

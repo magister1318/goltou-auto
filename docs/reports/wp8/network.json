@@ -1,0 +1,14 @@
+[
+  {
+    "at": "2026-11-13T06:18:52.893Z",
+    "kind": "request",
+    "path": "/RabbitTempPostWrite.naver",
+    "method": "POST"
+  },
+  {
+    "at": "2026-11-13T06:18:53.071Z",
+    "kind": "response",
+    "path": "/RabbitTempPostWrite.naver",
+    "status": 200
+  }
+]
