@@ -84,6 +84,47 @@ function workFor(plan: InputPlan, files: { url: string; path: string }[]) {
 const input: JobInput = { productNo: 1, mode: 'draft', targets: [{ channel: 'band', name: '밴드 A', key: '111' }], options: { polish: false, closing: false, linkCard: false } };
 
 describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pages', () => {
+  it.each(['invalid', 'network', 'native-dialog'])('retains the verified composer after a record %s failure, retries only recording and supports discard', async failure => {
+    const f = await fixture(failure === 'native-dialog' ? 'native-dialog' : 'mobile');
+    let broken = true;
+    const checkpoint = vi.fn(async (job: Job) => {
+      if (broken && job.status === 'stopped_before_post') {
+        if (failure === 'network') throw Error('private transport error');
+        throw new ApiError('invalid', '등록 상태를 확인해 주세요.');
+      }
+    });
+    const runner = new ChannelRegistrationRunner({ band: { host: f.host, baseUrl: f.baseUrl, localPublish: true } }, checkpoint, () => {});
+    cleanup.push(async () => runner.dispose()); await runner.listBands();
+    await runner.start(input, '로컬', 5, workFor(f.plan, f.files)); await settled(runner);
+    expect(runner.job).toMatchObject({ status: 'record_failed', failureCode: `RECORD_FAILED:${failure === 'network' ? 'server' : 'invalid'}`, targetResults: [{ status: 'stopped_before_post' }] });
+    const before = await readBandDocument(runner.directory.surface!);
+    expect(before.composer).toBe(true); expect(before.photos).toHaveLength(5);
+    const attached = await f.pages.get(runner.directory.surface!)!.evaluate('localStorage.getItem("attachSizes")');
+    await runner.showBand('111');
+    if (failure === 'native-dialog') {
+      await runner.discardBand(); expect(runner.job?.status).toBe('dialog_paused');
+      const attempts = checkpoint.mock.calls.length;
+      await runner.answerDialog(runner.job!.dialog!.id, false);
+      expect(runner.job?.status).toBe('record_failed');
+      expect(checkpoint.mock.calls).toHaveLength(attempts + 1);
+      await runner.discardBand(); expect(runner.job?.status).toBe('dialog_paused');
+      await runner.answerDialog(runner.job!.dialog!.id, true); await settled(runner);
+    } else {
+      broken = false;
+      const calls = checkpoint.mock.calls.length;
+      await runner.retryRecord();
+      expect(checkpoint.mock.calls).toHaveLength(calls + 1);
+      expect(checkpoint.mock.calls.at(-1)?.[0]).toEqual(checkpoint.mock.calls.at(-2)?.[0]);
+      expect(await readBandDocument(runner.directory.surface!)).toEqual(before);
+      expect(await f.pages.get(runner.directory.surface!)!.evaluate('localStorage.getItem("attachSizes")')).toBe(attached);
+      expect(await f.counts()).toEqual({ opens: 1, posts: 0, discards: 0 });
+      await runner.discardBand(); await settled(runner);
+    }
+    expect(runner.job?.status).toBe('stopped');
+    expect((await readBandDocument(runner.directory.surface!)).composer).toBe(false);
+    expect(await f.counts()).toEqual({ opens: 1, posts: 0, discards: 1 });
+    expect(f.external()).toBe(0);
+  }, 25000);
   it('attaches one file at a time and proves re-hosted photos without original names', async () => {
     const f = await fixture('encoded-photos'); await f.execution.write();
     expect((await readBandDocument(f.directory.surface!)).photos).toEqual(f.files.map(f => path.basename(f.path)));

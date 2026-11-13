@@ -2,6 +2,7 @@ import { ApiError, type ApiClient, type Channel, type PostStatus, type Product, 
 import { FakeRegistrationRunner, type RegistrationRunner } from './runner';
 import type { AppRequest, AppSnapshot, Job, JobInput, TokenStore } from './protocol';
 import { makePreview, preparePreview, preparationWork, type PreparationServices, type PreparedPreview } from './preparation';
+import { RecordError } from './record-checkpoint';
 export class MemoryTokenStore implements TokenStore {
   private token: string | null = null;
   async read() { return this.token; }
@@ -18,10 +19,11 @@ export class AppCore {
   private initialization: Promise<void> | undefined;
   private preview: { product: Product; options: PostInput['options']; result: PreparedPreview; reverted: string[] } | undefined;
   private uncertainStart = false;
-  private records: { postNo: number; channel: Channel; key: string; status: PostStatus; updates: Set<string> }[] = [];
-  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: (job: Job) => Promise<void>, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { device: () => Promise<import('@goltou/api-client').LoginInput['device']>; experimentTitle?: boolean }) {
+  private records: { postNo: number; channel: Channel; key: string; status: PostStatus; updates: Map<string, RecordError | null> }[] = [];
+  private recordPrivateText: string[] = [];
+  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { device: () => Promise<import('@goltou/api-client').LoginInput['device']>; experimentTitle?: boolean }) {
     const notify = (job: Job) => { if (!this.state.user) return; this.state.job = job; if (job.status === 'login_paused' && job.service) { this.state.services[job.service] = 'expired'; this.state.visibleService = job.service; } this.emit(); };
-    this.createRunner = () => factory ? factory(job => this.record(job), notify) : new FakeRegistrationRunner(() => this.state.simulation, job => this.record(job), notify);
+    this.createRunner = () => factory ? factory((job, retry) => this.record(job, retry), notify) : new FakeRegistrationRunner(() => this.state.simulation, job => this.record(job), notify);
     this.runner = this.createRunner();
     if (this.runner.checkLogin) { this.state.realBlog = true; this.state.services.naver = 'unknown'; }
     if (this.runner.listBands) { this.state.realBand = true; this.state.services.band = 'unknown'; }
@@ -36,7 +38,7 @@ export class AppCore {
   private emit() { for (const listener of this.listeners) listener(this.snapshot()); }
   dispose() { this.runner.dispose(); this.listeners.clear(); }
   private async token(): Promise<string> { const token = await this.tokens.read(); if (!token) throw new ApiError('auth', '다시 로그인해 주세요.'); return token; }
-  private async clearSession() { await this.tokens.write(null); this.initialization = Promise.resolve(); this.preview = undefined; this.records = []; this.state.user = null; this.state.settings = null; this.state.job = null; this.emit(); }
+  private async clearSession() { await this.tokens.write(null); this.initialization = Promise.resolve(); this.preview = undefined; this.records = []; this.recordPrivateText = []; this.state.user = null; this.state.settings = null; this.state.job = null; this.emit(); }
   private async call<P extends keyof import('@goltou/api-client').ApiRoutes>(path: P, input: import('@goltou/api-client').ApiRoutes[P]['input'], token?: string): Promise<import('@goltou/api-client').ApiRoutes[P]['output']> {
     try { return await this.api.request(path, input, token); }
     catch (error) {
@@ -75,7 +77,7 @@ export class AppCore {
     const token = await this.token();
     switch (request.command) {
       case 'logout':
-        if (this.preparing || this.starting || (this.runner.job && !['draft_saved', 'published', 'stopped'].includes(this.runner.job.status) && !this.runner.job.completedSteps.includes(7))) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
+        if (this.preparing || this.starting || (this.runner.job && (this.runner.job.status === 'record_failed' || !['draft_saved', 'published', 'stopped'].includes(this.runner.job.status) && !this.runner.job.completedSteps.includes(7)))) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
         try { await this.call('/auto/logout', {}, token); } finally { await this.clearSession(); } break;
       case 'products.list': return this.call('/auto/products/list', request.input, token);
       case 'products.get': return this.call('/auto/products/get', request.input, token);
@@ -123,7 +125,7 @@ export class AppCore {
         if (!this.runner.showDraft) throw new ApiError('invalid', '이 실행기는 실제 임시글을 열 수 없습니다.');
         await this.runner.showDraft(request.input.title); return this.snapshot();
       case 'bands.list':
-        if (this.starting || this.state.job && !['draft_saved', 'published', 'stopped'].includes(this.state.job.status) && !this.state.job.completedSteps.includes(7)) throw new ApiError('conflict', '진행 중인 작업을 먼저 마쳐 주세요.');
+        if (this.starting || this.state.job && (this.state.job.status === 'record_failed' || !['draft_saved', 'published', 'stopped'].includes(this.state.job.status) && !this.state.job.completedSteps.includes(7))) throw new ApiError('conflict', '진행 중인 작업을 먼저 마쳐 주세요.');
         return this.runner.listBands ? this.runner.listBands() : [{ key: 'travel', name: '골투 여행', photoLimit: null, observedAt: null }, { key: 'golf', name: '해외골프 모임', photoLimit: null, observedAt: null }];
       case 'band.show':
         if (!this.runner.showBand) throw new ApiError('invalid', '열 수 있는 밴드 작성기가 없습니다.');
@@ -138,13 +140,16 @@ export class AppCore {
       case 'job.resume':
         if (this.runner.job?.status === 'login_paused' && this.runner.job.service && this.state.services[this.runner.job.service] !== 'confirmed') throw new ApiError('auth', '로그인 상태를 먼저 확인해 주세요.');
         this.state.visibleService = null; await this.runner.resume(); return this.snapshot();
+      case 'job.retryRecord':
+        if (!this.runner.retryRecord) throw new ApiError('invalid', '다시 시도할 기록이 없습니다.');
+        await this.runner.retryRecord(); return this.snapshot();
       default: throw new ApiError('invalid', '지원하지 않는 요청입니다.');
     }
     this.emit(); return this.snapshot();
   }
   private async start(input: JobInput, token: string) {
     if (this.uncertainStart) throw new ApiError('conflict', '이전 기록 시작 요청의 결과를 확인하지 못했습니다. 등록 기록을 확인해 주세요.');
-    if (this.preparing || this.starting || (this.runner.job && !['draft_saved', 'published', 'stopped'].includes(this.runner.job.status) && !this.runner.job.completedSteps.includes(7))) throw new ApiError('conflict', '한 번에 한 작업만 등록할 수 있습니다.');
+    if (this.preparing || this.starting || (this.runner.job && (this.runner.job.status === 'record_failed' || !['draft_saved', 'published', 'stopped'].includes(this.runner.job.status) && !this.runner.job.completedSteps.includes(7)))) throw new ApiError('conflict', '한 번에 한 작업만 등록할 수 있습니다.');
     if (!input.targets.length || new Set(input.targets.map(t => `${t.channel}:${t.key}`)).size !== input.targets.length) throw new ApiError('invalid', '올릴 곳을 선택해 주세요.');
     if (input.mode === 'publish' && input.publishConfirmed !== true) throw new ApiError('invalid', '발행 전에 한 번 더 확인해 주세요.');
     this.starting = true; this.records = [];
@@ -163,8 +168,9 @@ export class AppCore {
         let postNo: number;
         try { this.uncertainStart = true; ({ postNo } = await this.call('/auto/posts/start', { productNo: input.productNo, channel: target.channel, mode: input.mode, target: { name: target.name, key: target.key }, options: input.options, contentHash: product.contentHash }, token)); this.uncertainStart = false; }
         catch (error) { if (error instanceof ApiError && error.code !== 'server') this.uncertainStart = false; if (target.channel === 'band' && error instanceof ApiError && error.code === 'conflict') throw new ApiError('conflict', `${target.name}: ${error.message}`); throw error; }
-        this.records.push({ postNo, channel: target.channel, key: target.key, status: 'running', updates: new Set() });
+        this.records.push({ postNo, channel: target.channel, key: target.key, status: 'running', updates: new Map() });
       }
+      this.recordPrivateText = [product.title, ...product.golfCourses, ...preview.blog.steps.flatMap(step => step.kind === 'text' ? [step.text] : step.kind === 'table' ? step.rows.flat() : [])];
       await this.runner.start(input, product.title, product.images.length, this.preparation ? preparationWork(product, preview, this.preparation) : undefined);
     } catch (error) {
       for (const record of this.records) await this.call('/auto/posts/update', { postNo: record.postNo, status: 'stopped', step: 1, failReason: '작업 시작 실패', postUrl: '' }, token);
@@ -175,7 +181,7 @@ export class AppCore {
   private convertOptions(options: PostInput['options']) {
     return { closing: options.closing, closingText: this.state.settings?.closingText ?? '', linkCard: options.linkCard, hashtags: this.state.settings?.defaultHashtags ?? [] };
   }
-  private async record(job: Job) {
+  private async record(job: Job, retry = false) {
     const token = await this.token();
     for (const record of this.records) {
       if (['draft_saved', 'published'].includes(record.status)) continue;
@@ -184,9 +190,17 @@ export class AppCore {
       const status: PostStatus = (result?.status === 'running' && job.status === 'user_paused' ? 'stopped' : result?.status) ?? (saved ? (record.channel === 'band' && job.mode === 'draft' ? 'stopped_before_post' : job.mode === 'draft' ? 'draft_saved' : 'published') : job.status === 'failed' ? 'failed' : job.status === 'user_paused' ? 'stopped' : 'running');
       const update = { postNo: record.postNo, status, step: job.step, failReason: ['failed', 'stopped'].includes(status) ? (result?.reason ?? job.message) : '', postUrl: status === 'published' ? (result?.postUrl ?? job.postUrl ?? (job.targetResults ? '' : `https://example.invalid/posts/${record.postNo}`)) : '' };
       const identity = JSON.stringify(update);
-      if (record.updates.has(identity)) continue;
-      record.updates.add(identity); // Mark before I/O: an ambiguous response must not resend this update.
-      await this.call('/auto/posts/update', update, token);
+      if (record.updates.has(identity)) {
+        const failure = record.updates.get(identity);
+        if (!failure) continue;
+        if (!retry) throw failure; // Only the explicit record action may resend an uncertain update.
+      }
+      try { await this.call('/auto/posts/update', update, token); }
+      catch (error) {
+        const failure = new RecordError(error, [token, job.title, ...this.recordPrivateText]);
+        record.updates.set(identity, failure); throw failure;
+      }
+      record.updates.set(identity, null);
       record.status = status;
     }
   }

@@ -34,6 +34,23 @@ describe('API envelope and credentials', () => {
   });
 });
 describe('memory API contract', () => {
+  it('restricts stopped_before_post to Band, permits only its three transitions and exposes its product mark', async () => {
+    const api = createFakeApi(); const { token } = await api.request('/auto/login', login);
+    const start = { productNo: 1237, contentHash: 'fake-content-3', channel: 'band' as const, mode: 'draft' as const, target: { name: '시험 밴드', key: 'handoff' }, options: { polish: false, closing: false, linkCard: false } };
+    const blog = await api.request('/auto/posts/start', { ...start, channel: 'blog' }, token);
+    const update = { postNo: blog.postNo, status: 'stopped_before_post' as const, step: 6, failReason: '', postUrl: '' };
+    await expect(api.request('/auto/posts/update', update, token)).rejects.toHaveProperty('code', 'invalid');
+    for (const status of ['published', 'stopped', 'stopped_before_post'] as const) {
+      const { postNo } = await api.request('/auto/posts/start', start, token);
+      await api.request('/auto/posts/update', { ...update, postNo }, token);
+      for (const forbidden of ['running', 'draft_saved', 'failed'] as const) await expect(api.request('/auto/posts/update', { ...update, postNo, status: forbidden }, token)).rejects.toHaveProperty('code', 'conflict');
+      const before = (await api.request('/auto/posts/list', { scope: 'mine' }, token)).total;
+      await api.request('/auto/posts/update', { ...update, postNo }, token);
+      expect((await api.request('/auto/posts/list', { scope: 'mine' }, token)).total).toBe(before);
+      expect((await api.request('/auto/products/list', { q: '클락' }, token)).items[0]?.myPosts.band?.status).toBe('stopped_before_post');
+      await api.request('/auto/posts/update', { ...update, postNo, status, postUrl: status === 'published' ? 'https://example.invalid/post' : '' }, token);
+    }
+  });
   it('enforces the configured daily limit for the same person and band', async () => {
     const api = createFakeApi();
     const { token } = await api.request('/auto/login', { ...login, loginId: 'admin' });

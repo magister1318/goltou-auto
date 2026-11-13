@@ -42,6 +42,7 @@
 - 대상: `gf_board_foregin_tour`에서 `gf_is_comment = 0 AND gf_is_disable = 0`.
 - `month`가 있으면 그 달에 출발일(`gf_start_date_0..9`, 가격 > 0)이 하나라도 있는 상품.
 - `onlyUnposted`: 요청한 사람이 블로그와 밴드 어느 쪽에도 `draft_saved`/`published` 기록이 없는 상품.
+- `myPosts.band`에는 `stopped_before_post`도 표시합니다. 밴드 작성기 확인이 남은 상태이며 저장된 임시글로 표시하지 않습니다.
 
 출력 `data`: 
 ```json
@@ -78,7 +79,7 @@
 
 입력 `{ "productNo": 1234, "channel": "blog" | "band", "mode": "draft" | "publish", "target": { "name": "해외골프" , "key": "" }, "options": { "polish": false, "closing": false, "linkCard": false }, "contentHash": "..." }`
 
-- `channel = band`이고 같은 사람이 같은 밴드(`target.key`)에 오늘 올린 건수가 `bandDailyLimit` 이상이면 `conflict`.
+- `channel = band`이고 같은 사람이 같은 밴드(`target.key`)에 오늘 올린 건수가 `bandDailyLimit` 이상이면 `conflict`. `stopped_before_post`도 하루 한도에 포함합니다.
 
 출력 `data`: `{ "postNo": 88 }`
 
@@ -86,7 +87,12 @@
 
 입력 `{ "postNo": 88, "status": "running" | "draft_saved" | "published" | "failed" | "stopped" | "stopped_before_post", "step": 4, "failReason": "", "postUrl": "" }`
 
-WP6 밴드의 `stopped_before_post`는 작성기 입력·대조 후 게시 전 멈춤이며 서버에 저장된 임시글이 아니다. 작성 취소를 확인하면 `stopped`, 사용자 게시 후 새 글 주소와 본문·사진 대조까지 확인하면 `published`로 갱신한다. 실제 서버의 새 상태 수용은 별도 반영이 필요하며 WP6은 가짜 API로만 확인한다.
+`stopped_before_post`는 **band 전용**이며 블로그에는 허용하지 않습니다. 작성기 입력·대조 후 게시 전 멈춤이며 서버에 저장된 임시글이 아닙니다. 작성 취소를 확인하면 `stopped`, 사용자 게시 후 새 글 주소와 본문·사진 대조까지 확인하면 `published`로 갱신합니다.
+
+- 허용 전이: `stopped_before_post → published | stopped | stopped_before_post`. 같은 상태·내용의 갱신은 멱등적이며 새 기록이나 하루 건수를 추가하지 않습니다.
+- `stopped_before_post`에서 `running` 또는 `draft_saved`로 되돌릴 수 없습니다. 위 세 상태 이외의 전이도 허용하지 않습니다.
+- 이 상태는 밴드 하루 한도에 포함되고 상품 목록의 `myPosts.band`와 등록 기록에 표시됩니다.
+- 기록 갱신이 실패하면 앱은 사이트의 입력·대조 결과를 보존하고 `RECORD_FAILED:<API 코드>`와 안전한 한국어 API 안내를 표시합니다. 자동 재요청하지 않으며 사용자가 `기록 다시 시도`를 눌렀을 때 같은 `postNo`와 동일 갱신 본문만 재전송합니다. 사이트 입력·저장·게시를 다시 실행하지 않습니다. 서버 반영 및 실제 계정에서의 새 상태 수용 확인은 별도 작업입니다.
 
 - 본인 기록만 고칠 수 있습니다. `published`와 `draft_saved`에서 `running`으로 되돌릴 수 없습니다.
 

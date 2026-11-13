@@ -1,7 +1,7 @@
 import type { Channel, LoginInput, Mode, Page, Post, PostInput, Product, ProductQuery, ProductSummary, Settings, User } from '@goltou/api-client';
 export type Service = 'naver' | 'band' | 'ai';
 export type LoginState = 'confirmed' | 'expired' | 'unknown';
-export type JobStatus = 'running' | 'login_paused' | 'user_paused' | 'recovery_paused' | 'dialog_paused' | 'channel_paused' | 'failed' | 'draft_saved' | 'published' | 'stopped_before_post' | 'stopped';
+export type JobStatus = 'running' | 'login_paused' | 'user_paused' | 'recovery_paused' | 'dialog_paused' | 'channel_paused' | 'record_failed' | 'failed' | 'draft_saved' | 'published' | 'stopped_before_post' | 'stopped';
 export interface TargetResult { channel: Channel; key: string; name: string; status: import('@goltou/api-client').PostStatus; postUrl?: string; reason?: string }
 export const steps = ['로그인 확인', '사진 내려받기', '본문 정리', '블로그에 쓰기', '블로그 임시저장과 확인', '밴드에 쓰기', '결과 기록'] as const;
 export interface JobInput {
@@ -18,6 +18,7 @@ export interface Job {
   tableModes?: ('native' | 'text-list')[]; linkCard?: 'off' | 'card' | 'url-text';
   dialog?: import('@goltou/surface').SurfaceDialog; evidence?: string;
   failureCode?: string;
+  recordFailure?: { status: JobStatus; message: string };
   targetResults?: TargetResult[]; activeTargetKey?: string;
   bandPhotoLimit?: number | null; bandLimitObservedAt?: string | undefined;
   bandPhotoVerification?: { order: 'matched'; ratio: 'matched' | 'unavailable'; counts: number[]; sources: { width: number; height: number }[]; thumbnails: { width: number; height: number }[] };
@@ -43,6 +44,7 @@ export interface Commands {
   'job.start': { input: JobInput; output: AppSnapshot };
   'job.stop': { input: Record<string, never>; output: AppSnapshot };
   'job.resume': { input: Record<string, never>; output: AppSnapshot };
+  'job.retryRecord': { input: Record<string, never>; output: AppSnapshot };
   'job.recovery': { input: { discard: boolean }; output: AppSnapshot };
   'job.dialog': { input: { id: string; accept: boolean }; output: AppSnapshot };
   'draft.show': { input: { title: string }; output: AppSnapshot };

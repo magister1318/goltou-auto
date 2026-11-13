@@ -117,7 +117,8 @@ describe('production client over a local contract HTTP server', () => {
     await app.handle({ type: 'app', id: 2, command: 'job.start', input });
     f.fail('disconnect');
     const job: Job = { ...input, id: 1, title: 'local', status: 'running', step: 2, current: 1, total: 2, completedSteps: [1], service: null, message: '' };
-    await expect(checkpoint(job)).rejects.toHaveProperty('code', 'server'); await checkpoint(job);
+    await expect(checkpoint(job)).rejects.toHaveProperty('code', 'RECORD_FAILED:server');
+    await expect(checkpoint(job)).rejects.toHaveProperty('code', 'RECORD_FAILED:server');
     expect(f.calls.filter(c => c.route === '/auto/posts/update')).toHaveLength(1);
   });
 });
