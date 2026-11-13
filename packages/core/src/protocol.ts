@@ -18,6 +18,7 @@ export interface Job {
   failureCode?: string;
   targetResults?: TargetResult[]; activeTargetKey?: string;
   bandPhotoLimit?: number | null; bandLimitObservedAt?: string | undefined;
+  bandPhotoVerification?: { order: 'matched'; ratio: 'matched' | 'unavailable'; counts: number[]; sources: { width: number; height: number }[]; thumbnails: { width: number; height: number }[] };
 }
 export interface Simulation { tickMs: number; loginAt: number | null; failAt: number | null }
 export interface AppSnapshot { user: User | null; settings: Settings | null; services: Record<Service, LoginState>; visibleService: Service | null; job: Job | null; simulation: Simulation; realBlog?: boolean; realBand?: boolean }

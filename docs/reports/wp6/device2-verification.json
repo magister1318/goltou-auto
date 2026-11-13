@@ -1,0 +1,84 @@
+{
+  "at": "2026-11-13T01:04:59.812Z",
+  "title": "[골투오토 실험] WP5 20261113T010355 다낭 예시",
+  "status": "stopped_before_post",
+  "mode": "draft",
+  "bandOnly": true,
+  "composer": true,
+  "photoIdentitiesInDom": 0,
+  "photoVerification": {
+    "order": "matched",
+    "ratio": "unavailable",
+    "counts": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "sources": [
+      {
+        "width": 320,
+        "height": 180
+      },
+      {
+        "width": 320,
+        "height": 180
+      },
+      {
+        "width": 320,
+        "height": 180
+      },
+      {
+        "width": 320,
+        "height": 180
+      },
+      {
+        "width": 180,
+        "height": 320
+      }
+    ],
+    "thumbnails": [
+      {
+        "width": 75,
+        "height": 75
+      },
+      {
+        "width": 75,
+        "height": 75
+      },
+      {
+        "width": 75,
+        "height": 75
+      },
+      {
+        "width": 75,
+        "height": 75
+      },
+      {
+        "width": 75,
+        "height": 75
+      }
+    ]
+  },
+  "comparison": {
+    "matches": true,
+    "differences": [],
+    "notices": [],
+    "counts": {
+      "characters": 297,
+      "paragraphs": 6,
+      "photos": 5,
+      "prices": 6,
+      "departures": 6
+    },
+    "message": "원문과 일치합니다. 가격 6, 출발일 6, 사진 5"
+  },
+  "elapsedSinceStartMs": 48054,
+  "composerOpensThisRun": 2,
+  "bandPostInputs": 0,
+  "naverEditorOpens": 0,
+  "shownComposer": true,
+  "lastRunningObservedElapsedMs": 44466,
+  "completionObservedUpperBoundMs": 48054
+}

@@ -75,21 +75,21 @@ export async function fillBand(surface: Surface, article: ReturnType<typeof exam
   if (!result.bodyMatches || result.bodyChars !== compact(text).length) throw new Error('BAND_INPUT_MISMATCH');
   return { ...result, attachmentMethod: 'file-input', paste: 'not-tested', draftBehavior: 'not-tested', stoppedBeforePost: true };
 }
-export async function confirmBandPhotos(surface: Surface, count: number, check: () => Promise<void> = async () => {}) {
+export async function confirmBandPhotos(surface: Surface, count: number, check: () => Promise<void> = async () => {}, selectedCount = count, timeoutMs = 60000) {
   let confirmed = false;
   await waitFor(async () => {
     await check();
     if ((await bandSnapshot(surface, '')).images === count) return true;
     if (!confirmed) {
       const control = await read<{ x: number; y: number } | null>(surface, `for(const {d,x,y} of docs) for(const dialog of d.querySelectorAll('section.lyWrap')) {
-        if((dialog.querySelector('h1,h2,h3')?.textContent||'').trim()!=='사진 올리기'||dialog.querySelectorAll('._itemDraggable').length!==${count})continue;
+        if((dialog.querySelector('h1,h2,h3')?.textContent||'').trim()!=='사진 올리기'||dialog.querySelectorAll('._itemDraggable').length!==${selectedCount})continue;
         const e=dialog.querySelector('button._submitBtn');if(!e||!visible(e)||e.disabled||(e.textContent||'').trim()!=='첨부하기')continue;
         const r=e.getBoundingClientRect();return {x:x+r.left+r.width/2,y:y+r.top+r.height/2};
       }return null;`);
       if (control) { confirmed = true; await surface.click(control.x, control.y); await sleep(350); }
     }
     return null;
-  }, 60000);
+  }, timeoutMs);
 }
 export async function saveBandDraftAndVerify(surface: Surface, article: ReturnType<typeof exampleArticle>, check: () => void) {
   check();

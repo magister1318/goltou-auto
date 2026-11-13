@@ -1,0 +1,99 @@
+{
+  "at": "2026-11-13T01:05:20.988Z",
+  "hasFixtureSession": true,
+  "services": {
+    "naver": "unknown",
+    "band": "unknown",
+    "ai": "unknown"
+  },
+  "job": {
+    "id": 1,
+    "title": "[골투오토 실험] WP5 20261113T010355 다낭 예시",
+    "status": "stopped",
+    "step": 7,
+    "current": 0,
+    "total": 5,
+    "characters": 378,
+    "totalCharacters": 378,
+    "message": "채널별 결과를 등록 기록에 남겼습니다.",
+    "evidence": "job-1-1794531895883-before-post.png",
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "targetResults": [
+      {
+        "channel": "band",
+        "status": "stopped"
+      }
+    ]
+  },
+  "elapsedSinceStartMs": 69231,
+  "composer": false,
+  "photos": 0,
+  "identitiesAvailable": 0,
+  "uploading": false,
+  "bodyChars": 0,
+  "slots": [],
+  "distinctSignatures": 0,
+  "photoVerification": {
+    "order": "matched",
+    "ratio": "unavailable",
+    "counts": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "sources": [
+      {
+        "width": 320,
+        "height": 180
+      },
+      {
+        "width": 320,
+        "height": 180
+      },
+      {
+        "width": 320,
+        "height": 180
+      },
+      {
+        "width": 320,
+        "height": 180
+      },
+      {
+        "width": 180,
+        "height": 320
+      }
+    ],
+    "thumbnails": [
+      {
+        "width": 75,
+        "height": 75
+      },
+      {
+        "width": 75,
+        "height": 75
+      },
+      {
+        "width": 75,
+        "height": 75
+      },
+      {
+        "width": 75,
+        "height": 75
+      },
+      {
+        "width": 75,
+        "height": 75
+      }
+    ]
+  }
+}

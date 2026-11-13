@@ -91,6 +91,8 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
             const existingPost = await this.band.detectPublished();
             if (existingPost) { result.status = 'published'; result.postUrl = existingPost; await this.emit(); continue; }
             await this.band.write();
+            const proof = (await this.band.observe()).photoProof;
+            if (proof) j.bandPhotoVerification = { order: 'matched', ratio: proof.ratio, counts: proof.counts, sources: proof.sources, thumbnails: proof.thumbnails };
             const choice = this.directory.choices.find(b => b.key === result.key);
             j.bandPhotoLimit = choice?.photoLimit ?? null; j.bandLimitObservedAt = choice?.observedAt ?? undefined;
             if (j.mode === 'draft') {

@@ -18,6 +18,7 @@ import type { Job, JobInput } from '../src/protocol';
 import type { PreparedPreview } from '../src/preparation';
 import { AppCore, MemoryTokenStore } from '../src/app';
 import { ApiError, createFakeApi, type ApiClient, type ApiRoutes } from '@goltou/api-client';
+import { png } from './image-fixture';
 
 const executablePath = [process.env.CHROMIUM, 'C:/Program Files/Google/Chrome/Application/chrome.exe', '/usr/bin/chromium'].find(p => p && existsSync(p));
 const cleanup: (() => Promise<unknown>)[] = [];
@@ -26,9 +27,16 @@ async function fixture(mode = 'mobile') {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'goltou-wp6-'));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   const files = [1, 2, 3, 4, 5].map(i => ({ url: `https://example.invalid/${i}`, path: path.join(dir, `goltou-1234567890abcdef-${i}.png`) }));
-  for (const f of files) await writeFile(f.path, new Uint8Array([137, 80, 78, 71]));
+  const sizes = files.map((_, i) => ({ width: mode === 'cropped' ? 100 + i * 40 : 160, height: 90 }));
+  for (const [i, f] of files.entries()) await writeFile(f.path, png(sizes[i]!.width, sizes[i]!.height, i * 40));
   const newList = '<div class="myBandGroupList"><a class="myBandGroupItem" href="#" onclick="throw Error(\'AD_OPENED\')"><span class="adBox">광고</span></a><a class="myBandGroupItem" href="#"><span class="aNewFolder"></span></a><a class="myBandGroupItem" href="/band/111/post"><span class="globalMyBandName">밴드 A</span></a><a class="myBandGroupItem" href="/band/222/post"><span class="globalMyBandName">밴드 B</span></a></div>';
-  const server = http.createServer((req, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(req.url === '/login' ? '<input type="password"><p>로컬 로그인 풀림</p>' : req.url?.startsWith('/blog') ? blogFixture(mode === 'blog-fail' ? 'duplicate' : '') : mode === 'new-home' && req.url === '/' ? '<section class="globalMyBandWrap"><a class="_allMyBandList" href="/my/bands">전체보기</a></section>' : mode === 'new-home' && req.url === '/my/bands' ? newList : bandFixture(mode)));
+  const server = http.createServer((req, res) => {
+    if (req.url?.startsWith('/photos/')) {
+      const square = mode === 'cropped' || mode === 'ratio-mismatch';
+      res.writeHead(200, { 'content-type': 'image/png' }).end(png(square ? 90 : 160, 90)); return;
+    }
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(req.url === '/login' ? '<input type="password"><p>로컬 로그인 풀림</p>' : req.url?.startsWith('/blog') ? blogFixture(mode === 'blog-fail' ? 'duplicate' : '') : mode === 'new-home' && req.url === '/' ? '<section class="globalMyBandWrap"><a class="_allMyBandList" href="/my/bands">전체보기</a></section>' : mode === 'new-home' && req.url === '/my/bands' ? newList : bandFixture(mode));
+  });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   cleanup.push(() => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }));
   const baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
@@ -59,6 +67,7 @@ async function fixture(mode = 'mobile') {
   ] };
   const check = vi.fn(), progress = vi.fn();
   const execution = createBandExecution(plan, files, directory, '111', { check, progress });
+  execution.env.photoTimeoutMs = 1800;
   const page = () => pages.get(directory.surface!)!;
   const counts = () => page().evaluate<{ opens: number; posts: number; discards: number }>("({opens:Number(localStorage.getItem('opens')),posts:Number(localStorage.getItem('posts')),discards:Number(localStorage.getItem('discards'))})");
   return { baseUrl, host, directory, execution, plan, files, check, progress, pages, page, counts, external: () => external, shown: () => shown };
@@ -75,12 +84,18 @@ function workFor(plan: InputPlan, files: { url: string; path: string }[]) {
 const input: JobInput = { productNo: 1, mode: 'draft', targets: [{ channel: 'band', name: '밴드 A', key: '111' }], options: { polish: false, closing: false, linkCard: false } };
 
 describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pages', () => {
-  it('reads original names from encoded attachment metadata, and rejects five anonymous photos', async () => {
+  it('attaches one file at a time and proves re-hosted photos without original names', async () => {
     const f = await fixture('encoded-photos'); await f.execution.write();
     expect((await readBandDocument(f.directory.surface!)).photos).toEqual(f.files.map(f => path.basename(f.path)));
     const g = await fixture('anonymous-photos');
-    await expect(g.execution.write()).rejects.toThrow('BAND_READBACK_MISMATCH:photos');
+    await g.execution.write(); await g.execution.stopBeforePost();
     expect((await readBandDocument(g.directory.surface!)).photos).toEqual(['', '', '', '', '']);
+    expect(await g.page().evaluate("JSON.parse(localStorage.getItem('attachSizes'))")).toEqual([1, 1, 1, 1, 1]);
+    const actual = await g.execution.observe();
+    expect(actual.photoProof).toMatchObject({ urls: g.files.map(f => f.url), ratio: 'matched', counts: [1, 2, 3, 4, 5] });
+    expect(compareDocuments(observePlan(g.plan), bandObservation(g.plan, g.files, actual)).matches).toBe(true);
+    // The identical raw count, without this execution's ledger, supplies no photo identity.
+    expect(compareDocuments(observePlan(g.plan), bandObservation(g.plan, g.files, await readBandDocument(g.directory.surface!))).matches).toBe(false);
     expect((await g.counts()).posts).toBe(0);
   }, 20000);
   it('follows the new owned-list screen and only the first non-ad, non-folder band through input', async () => {
@@ -97,7 +112,7 @@ describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pa
     expect(f.directory.choices.map(b => b.name)).toEqual(['밴드 A', '밴드 B']);
     expect(f.directory.choices.every(b => b.photoLimit === null)).toBe(true);
     await f.execution.write(); await f.execution.stopBeforePost();
-    const actual = await readBandDocument(f.directory.surface!);
+    const actual = await f.execution.observe();
     expect(actual.photos).toEqual(f.files.map(f => path.basename(f.path)));
     expect(compareDocuments(observePlan(f.plan), bandObservation(f.plan, f.files, actual)).matches).toBe(true);
     expect(await f.execution.detectPublished()).toBeNull();
@@ -105,7 +120,21 @@ describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pa
     await f.execution.discard(); expect(await f.counts()).toEqual({ opens: 1, posts: 0, discards: 1 });
     expect((await readBandDocument(f.directory.surface!)).composer).toBe(false); expect(f.external()).toBe(0);
   }, 25000);
-  it('blocks a reordered attachment before handing the composer to the user or posting', async () => {
+  for (const mode of ['drop', 'double', 'ratio-mismatch']) it(`rejects ${mode} without handoff, posting or a count-only retry`, async () => {
+    const f = await fixture(mode);
+    await expect(f.execution.write()).rejects.toThrow('BAND_READBACK_MISMATCH:photos');
+    await expect(f.execution.stopBeforePost()).rejects.toThrow('BAND_READBACK_MISMATCH:photos');
+    const attached = await f.page().evaluate("localStorage.getItem('attachSizes')");
+    await expect(f.execution.write()).rejects.toThrow('BAND_READBACK_MISMATCH:photos');
+    expect(await f.page().evaluate("localStorage.getItem('attachSizes')")).toBe(attached);
+    expect(f.shown()).toBe(0); expect((await f.counts()).posts).toBe(0);
+  }, 20000);
+  it('records fixed-shape cropping as unavailable and retains the one-by-one proof', async () => {
+    const f = await fixture('cropped'); await f.execution.write(); await f.execution.stopBeforePost();
+    expect((await f.execution.observe()).photoProof).toMatchObject({ urls: f.files.map(f => f.url), ratio: 'unavailable', counts: [1, 2, 3, 4, 5] });
+    expect((await f.counts()).posts).toBe(0);
+  }, 20000);
+  it('rejects front insertion when a previous slot signature moves, before handoff or posting', async () => {
     const f = await fixture('reorder');
     await expect(f.execution.write()).rejects.toThrow('BAND_READBACK_MISMATCH');
     await expect(f.execution.stopBeforePost()).rejects.toThrow('BAND_READBACK_MISMATCH');

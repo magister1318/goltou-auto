@@ -33,6 +33,15 @@ describe('WP4 original media via local HTTP only', () => {
     expect(progress.mock.calls.map(c => c[0])).toEqual([1, 2]);
     await batch.cleanup(); expect(await readdir(f.root)).toEqual([]);
   });
+  it('assigns distinct Naver identities to arbitrary repeated source basenames and identical bytes', async () => {
+    const f = await fixture(), urls = [f.url('/a/random-name.jpg'), f.url('/b/random-name.jpg'), f.url('/b/random-name.jpg')];
+    const batch = await downloadPhotos(urls, urls, { storage: f.storage });
+    const names = batch.files.map(file => path.basename(file.path));
+    expect(names).toEqual([1, 2, 3].map(i => `goltou-${names[0]!.split('-')[1]}-${i}.jpg`));
+    expect(new Set(names).size).toBe(3);
+    for (const file of batch.files) expect(await readFile(file.path)).toEqual(f.original);
+    await batch.cleanup();
+  });
   it('stops on any failed image and cleans earlier downloads without skipping it', async () => {
     const f = await fixture(), urls = [f.url('/first.png'), f.url('/bad'), f.url('/last.png')];
     await expect(downloadPhotos(urls, urls, { storage: f.storage })).rejects.toThrow('PHOTO_DOWNLOAD_FAILED');

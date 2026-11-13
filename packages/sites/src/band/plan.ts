@@ -2,6 +2,7 @@
 import type { Surface, SurfaceDialog, SurfaceHost } from '@goltou/surface';
 import { click, compact, point, read, waitFor } from '../dom';
 import { closeComposer, confirmBandPhotos, listBands } from './index';
+import { PhotoOrder, type PhotoProof, type PhotoSize, type PhotoSlot } from './photos';
 
 export const bandMobileUA = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
 export const bandEditor = 'textarea._postTextArea, .cke_editable[contenteditable="true"], [contenteditable="true"][role="textbox"]';
@@ -9,7 +10,7 @@ export interface BandPlan {
   channel: 'blog' | 'band';
   steps: ({ kind: 'text'; role: string; text: string } | { kind: 'break' } | { kind: 'photos'; urls: string[] } | { kind: 'table'; role: string; rows: string[][] })[];
 }
-export interface BandReadback { body: string; photos: string[]; composer: boolean; postUrl: string | null; photoLimit: number | null; textLimit: number | null }
+export interface BandReadback { body: string; photos: string[]; slots: PhotoSlot[]; uploading: boolean; photoProof?: PhotoProof; composer: boolean; postUrl: string | null; photoLimit: number | null; textLimit: number | null }
 export interface BandChoice { key: string; name: string; photoLimit: number | null; observedAt: string | null }
 export interface BandProgress { characters: number; totalCharacters: number; photos: number; totalPhotos: number }
 export function bandText(plan: BandPlan) {
@@ -25,7 +26,13 @@ export async function readBandDocument(surface: Surface): Promise<BandReadback> 
     const root=e||published[0];
     const body=e?.tagName==='TEXTAREA'?e.value:root?text(root):'';
     const items=e?docs.flatMap(({d})=>Array.from(d.querySelectorAll('.postAttachItem ._mediaListWrap img.mediaImg, .cke_editable band\\\\:attachment, .cke_editable img, [class*="photoPreview"] img'))):docs.flatMap(({d})=>Array.from(d.querySelectorAll('.postView img.mediaImg, .cPost .postMain img.mediaImg')));
-    const photos=items.filter(n=>!(n.tagName==='IMG'&&n.parentElement?.tagName.toLowerCase()==='band:attachment')).map(n=>{
+    const unique=items.filter(n=>!(n.tagName==='IMG'&&n.parentElement?.tagName.toLowerCase()==='band:attachment'));
+    const slots=unique.map(n=>{const img=n.tagName==='IMG'?n:n.querySelector('img');
+      const src=img?.currentSrc||img?.getAttribute('src')||'';
+      const width=img?.naturalWidth||0,height=img?.naturalHeight||0;
+      return {signature:src?JSON.stringify([src,width,height]):'',width,height,loaded:!!img?.complete&&width>0&&height>0&&!src.startsWith('data:image/svg')};});
+    const uploading=docs.some(({d})=>Array.from(d.querySelectorAll('._uploading,.uploading,.uploadProgress,[aria-busy="true"],[role="progressbar"]')).some(visible));
+    const photos=unique.map(n=>{
       const img=n.tagName==='IMG'?n:n.querySelector('img');
       const metadata=[n,n.parentElement,n.parentElement?.parentElement,n.parentElement?.parentElement?.parentElement].find(e=>e?.hasAttribute('data-file'))?.getAttribute('data-file')||'';
       const candidates=[n.getAttribute('data-file-name'),n.getAttribute('title'),n.getAttribute('alt'),img?.getAttribute('src'),img?.getAttribute('data-file-name'),img?.getAttribute('alt'),metadata];
@@ -45,7 +52,7 @@ export async function readBandDocument(surface: Surface): Promise<BandReadback> 
     const declared=file?.getAttribute('data-max-count')||file?.getAttribute('max');
     const limitLabels=docs.flatMap(({d})=>Array.from(d.querySelectorAll('.photoCount, .photoLimit, ._photoCount'))).filter(visible).map(n=>n.textContent||'').join(' ');
     const limit=declared&&/^[0-9]+$/.test(declared)?Number(declared):Number(/최대\\s*([0-9]+)\\s*장/.exec(limitLabels)?.[1]||/\\d+\\s*[/]\\s*(\\d+)/.exec(limitLabels)?.[1])||null;
-    return {body,photos,composer:!!e,postUrl:!e&&/[/]band[/][0-9]+[/]post[/][0-9]+[/]?(?:[?#].*)?$/.test(location.pathname)?location.href:null,
+    return {body,photos,slots,uploading,composer:!!e,postUrl:!e&&/[/]band[/][0-9]+[/]post[/][0-9]+[/]?(?:[?#].*)?$/.test(location.pathname)?location.href:null,
       photoLimit:limit&&limit>0?limit:null,textLimit:e?.hasAttribute('maxlength')&&Number(e.getAttribute('maxlength'))>=0?Number(e.getAttribute('maxlength')):null};`);
 }
 /** A single Band surface is reused for listing, composing and recovery. No new tab on resume. */
@@ -98,8 +105,10 @@ export class BandDirectory {
 }
 export interface BandEnvironment {
   directory: BandDirectory; key: string; check(): void; verify(actual: BandReadback): void; progress(value: BandProgress): void;
+  sourceDimensions(file: { url: string; path: string }): Promise<PhotoSize>;
+  photoTimeoutMs?: number;
 }
-const same = (a: BandReadback, b: BandReadback) => compact(a.body) === compact(b.body) && JSON.stringify(a.photos) === JSON.stringify(b.photos);
+const same = (a: BandReadback, b: BandReadback) => compact(a.body) === compact(b.body) && JSON.stringify(a.slots) === JSON.stringify(b.slots);
 export class BandExecution {
   private offset = 0;
   private photoAttempted = false;
@@ -109,6 +118,7 @@ export class BandExecution {
   private discardAttempted = false;
   private restartAllowed = false;
   private verified = false;
+  private photoOrder: PhotoOrder | undefined;
   constructor(readonly plan: BandPlan, public files: readonly { url: string; path: string }[], readonly env: BandEnvironment) {
     if (plan.channel !== 'band') throw new Error('BAND_PLAN_REQUIRED');
   }
@@ -137,7 +147,7 @@ export class BandExecution {
     const empty = await readBandDocument(s);
     if (compact(empty.body) || empty.photos.length) throw new Error('BAND_COMPOSER_NOT_EMPTY');
     this.checkpoint = empty;
-    this.offset = 0; this.photoAttempted = false; this.verified = false;
+    this.offset = 0; this.photoAttempted = false; this.verified = false; this.photoOrder = undefined;
     this.limits(empty);
   }
   private limits(actual: BandReadback) {
@@ -156,7 +166,9 @@ export class BandExecution {
     let current = await readBandDocument(s);
     this.limits(current);
     if (this.photoAttempted && this.offset === Array.from(bandText(this.plan)).length) {
-      try { this.env.verify(current); this.checkpoint = current; } catch { /* Keep the last verified prefix. */ }
+      // An ambiguous/failed attachment is never retried or accepted as a count-only prefix.
+      current = await this.observe();
+      try { this.env.verify(current); this.checkpoint = current; } catch { /* Text edits still require restart consent below. */ }
     }
     if (this.checkpoint && !same(current, this.checkpoint)) {
       if (!this.restartAllowed) throw new Error('BAND_RESTART_REQUIRED');
@@ -177,21 +189,59 @@ export class BandExecution {
       this.offset = end; this.checkpoint = current; this.report(current);
     }
     const urls = this.photoUrls();
-    const paths = urls.map(url => { const f = this.files.find(f => f.url === url); if (!f) throw new Error('PREPARED_PHOTOS_MISSING'); return f.path; });
+    const files = urls.map(url => { const f = this.files.find(f => f.url === url); if (!f) throw new Error('PREPARED_PHOTOS_MISSING'); return f; });
     await this.guard();
-    if (paths.length && !this.photoAttempted) {
+    if (files.length && !this.photoAttempted) {
+      const sizes = await Promise.all(files.map(file => this.env.sourceDimensions(file)));
+      this.photoOrder = new PhotoOrder(urls, sizes);
+      if ((await readBandDocument(s)).slots.length) this.photoOrder.fail();
       if (!await read<boolean>(s, `return docs.some(({d})=>d.querySelector('input[type="file"]'));`)) await click(s, 'button,label,a', '사진');
       this.photoAttempted = true;
-      await s.attachFiles('input[type="file"][accept*="image"], input[type="file"]', paths);
+      for (const [index, file] of files.entries()) {
+        await this.guard();
+        this.photoOrder.check((await readBandDocument(s)).slots);
+        // Record the attempt before dispatch. A lost reply must never attach the file twice.
+        await s.attachFiles('input[type="file"][accept*="image"], input[type="file"]', [file.path]);
+        await this.settlePhoto(index + 1);
+      }
     }
-    if (paths.length) await confirmBandPhotos(s, paths.length, () => this.guard());
-    await this.guard(); current = await readBandDocument(s);
+    await this.guard(); current = await this.observe();
     this.checkpoint = current; this.env.verify(current); this.verified = true; this.report(current);
+  }
+  private async settlePhoto(count: number) {
+    const s = this.surface!, order = this.photoOrder!;
+    const check = async () => { await this.guard(); order.check((await readBandDocument(s)).slots, true); };
+    try {
+      // Desktop Band has a separate upload dialog; each invocation contains ONE new file.
+      await confirmBandPhotos(s, count, check, 1, this.env.photoTimeoutMs);
+      let previous = '', stableSince = Date.now();
+      const slots = await waitFor(async () => {
+        await check(); const actual = await readBandDocument(s);
+        order.check(actual.slots, true);
+        const signature = JSON.stringify(actual.slots);
+        if (signature !== previous || actual.uploading || actual.slots.some(p => !p.loaded)) { previous = signature; stableSince = Date.now(); }
+        return actual.slots.length === count && !actual.uploading && actual.slots.every(p => p.loaded) && Date.now() - stableSince >= 500 ? actual.slots : null;
+      }, this.env.photoTimeoutMs ?? 60000);
+      order.commit(slots);
+      this.checkpoint = await readBandDocument(s); this.report(this.checkpoint);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'OBSERVATION_TIMEOUT') order.fail();
+      throw error;
+    }
+  }
+  /** Only this execution can add the plan URLs after its per-attachment ledger is proven. */
+  async observe(): Promise<BandReadback> {
+    const actual = await readBandDocument(this.surface!);
+    if (actual.composer && this.photoUrls().length) {
+      if (!this.photoOrder || actual.uploading || actual.slots.some(s => !s.loaded)) throw new Error('BAND_READBACK_MISMATCH:photos');
+      actual.photoProof = this.photoOrder.prove(actual.slots);
+    }
+    return actual;
   }
   private report(actual: BandReadback) {
     this.env.progress({ characters: this.offset, totalCharacters: Array.from(bandText(this.plan)).length, photos: actual.photos.length, totalPhotos: this.photoUrls().length });
   }
-  async stopBeforePost() { await this.guard(); this.env.verify(await readBandDocument(this.surface!)); if (!this.verified) throw new Error('BAND_NOT_VERIFIED'); await this.show(); }
+  async stopBeforePost() { await this.guard(); this.env.verify(await this.observe()); if (!this.verified) throw new Error('BAND_NOT_VERIFIED'); await this.show(); }
   async detectPublished() {
     this.env.check();
     if (!this.verified) return null;
@@ -208,7 +258,7 @@ export class BandExecution {
     const state = await this.surface!.readState();
     if (!this.env.directory.localPublish || new URL(state.url).origin !== new URL(this.env.directory.baseUrl).origin || new URL(state.url).hostname !== '127.0.0.1') throw new Error('REAL_BAND_PUBLISH_DISABLED');
     if (this.postAttempted) { const url = await this.detectPublished(); if (url) return url; throw new Error('BAND_POST_UNCONFIRMED'); }
-    await this.guard(); this.env.verify(await readBandDocument(this.surface!));
+    await this.guard(); this.env.verify(await this.observe());
     if (!this.verified) throw new Error('BAND_NOT_VERIFIED');
     const control = await point(this.surface!, 'button._btnPostSubmit, button._btnSubmitPost', '완료') ?? await point(this.surface!, 'button._btnPostSubmit, button._btnSubmitPost', '게시');
     if (!control) throw new Error('BAND_POST_CONTROL_MISSING');
