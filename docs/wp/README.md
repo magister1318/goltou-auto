@@ -15,5 +15,6 @@
 | WP10 | 선택형 문장 다듬기 실기기 보완 | 초안 PR #12, [보고서](../reports/WP10-polish.md) |
 | WP11 | 문장 다듬기 강도 (이번 사용자 지시) | 구현·시험 완료, 초안 PR 검토 대기. [보고서](../reports/WP11-polish-strength.md) |
 | WP12 | [release build](WP12-release.md) | 구현·시험·APK 검사 완료, 초안 PR 검토 대기. 실기기 설치는 지시로 생략. [보고서](../reports/WP12-release.md) · [배포 안내](../release.md) |
+| WP13 | [screen finish](WP13-screen-finish.md) | 구현·시험·실기기 6장·시뮬레이터 17장 확인 완료, 초안 PR 검토 대기. 런처 캡처 생략. [보고서](../reports/WP13-screen-finish.md) |
 
 지시서는 시작할 때 이 폴더에 추가합니다. 보고서는 `docs/reports/WPn.md`.

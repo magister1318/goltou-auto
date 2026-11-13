@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./protocol": "./src/protocol.ts",
+    "./photo-url": "./src/photo-url.ts",
     "./experiments": "./src/experiments.ts"
   },
   "scripts": {

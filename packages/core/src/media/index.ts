@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+export { goltouPhotoUrl } from '../photo-url';
 export interface MediaStorage {
   createWorkDirectory(): Promise<string>;
   write(directory: string, name: string, bytes: Uint8Array): Promise<string>;
@@ -8,9 +9,6 @@ export interface MediaFile { url: string; path: string }
 export interface MediaBatch { files: MediaFile[]; cleanup(): Promise<void> }
 export type MediaFetch = (url: string, init: { redirect: 'manual'; credentials: 'omit'; signal: AbortSignal }) => Promise<{ ok: boolean; arrayBuffer(): Promise<ArrayBuffer> }>;
 export interface MediaDependencies { storage: MediaStorage; fetcher?: MediaFetch; allowUrl?: (url: URL) => boolean }
-export function goltouPhotoUrl(url: URL): boolean {
-  return url.protocol === 'https:' && !url.port && !url.username && !url.password && (url.hostname === 'goltou.kr' || url.hostname.endsWith('.goltou.kr'));
-}
 
 export async function downloadPhotos(urls: readonly string[], apiUrls: readonly string[], dependencies: MediaDependencies, signal?: AbortSignal, progress: (current: number) => void = () => {}): Promise<MediaBatch> {
   const allowed = new Set(apiUrls);

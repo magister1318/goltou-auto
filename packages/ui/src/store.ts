@@ -25,13 +25,13 @@ export function connect() {
     } else item.resolve(message.data ?? message.state);
   };
   socket.onclose = () => {
-    update({ connected: false, error: '코어 연결이 끊겼습니다. 앱을 다시 열어 주세요.' });
-    for (const item of pending.values()) { clearTimeout(item.timer); item.reject(new Error('코어 연결이 끊겼습니다.')); } pending.clear();
+    update({ connected: false, error: '앱 연결이 끊겼습니다. 앱을 다시 열어 주세요.' });
+    for (const item of pending.values()) { clearTimeout(item.timer); item.reject(new Error('앱 연결이 끊겼습니다.')); } pending.clear();
   };
-  socket.onerror = () => update({ error: '코어에 연결하지 못했습니다.' });
+  socket.onerror = () => update({ error: '앱에 연결하지 못했습니다. 다시 열어 주세요.' });
 }
 function send(message: Record<string, unknown>): Promise<unknown> {
-  if (socket?.readyState !== WebSocket.OPEN) return Promise.reject(new Error('코어 연결을 기다려 주세요.'));
+  if (socket?.readyState !== WebSocket.OPEN) return Promise.reject(new Error('앱 연결을 기다려 주세요.'));
   return new Promise((resolve, reject) => {
     const id = ++serial;
     // A long introduction is still typed at the Surface's human input pace.

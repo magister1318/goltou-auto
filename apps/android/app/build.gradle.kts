@@ -88,6 +88,7 @@ for (variant in listOf("debug", "release")) {
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     implementation("androidx.activity:activity-ktx:1.11.0")
     implementation("androidx.webkit:webkit:1.14.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
