@@ -48,7 +48,7 @@ describe('WP4 AI Mode on local fake pages', () => {
       async destroy(surface) { destroyed++; await pages.find(p => p.surface === surface)!.close(); },
       async clearSession() { throw new Error('MUST_NOT_CLEAR_LOGIN_DATA'); },
     };
-    const transport = (mode: string) => aiModeTransport(host, { url: `http://127.0.0.1:${address.port}/?mode=${mode}`, timeoutMs: 250, pollMs: 5 });
+    const transport = (mode: string) => aiModeTransport(host, { url: `http://127.0.0.1:${address.port}/?mode=${mode}`, timeoutMs: 250, pollMs: 5, paceMs: 0 });
     try {
       const prompt = '원문을 다듬어 주세요.\n1. 문장을 자연스럽게 다듬습니다.';
       await expect(transport('ok')(prompt)).resolves.toBe('1. 문장을 자연스럽게 다듬습니다.');

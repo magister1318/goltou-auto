@@ -1,0 +1,56 @@
+{
+  "at": "2026-11-13T11:11:31.355Z",
+  "incident": "문장 다듬기 스위치 좌표 입력이 등록 시작에 전달됨",
+  "before": {
+    "status": "recovery_paused",
+    "step": 1,
+    "completedSteps": [],
+    "current": 0,
+    "total": 34,
+    "targetChannels": [
+      "blog"
+    ],
+    "results": [
+      {
+        "channel": "blog",
+        "status": "running"
+      }
+    ],
+    "mode": "draft"
+  },
+  "stopReply": {
+    "status": "user_paused",
+    "step": 1,
+    "completedSteps": [],
+    "current": 0,
+    "total": 34,
+    "targetChannels": [
+      "blog"
+    ],
+    "results": [
+      {
+        "channel": "blog",
+        "status": "running"
+      }
+    ],
+    "mode": "draft"
+  },
+  "after": {
+    "status": "user_paused",
+    "step": 1,
+    "completedSteps": [],
+    "current": 0,
+    "total": 34,
+    "targetChannels": [
+      "blog"
+    ],
+    "results": [
+      {
+        "channel": "blog",
+        "status": "running"
+      }
+    ],
+    "mode": "draft"
+  },
+  "discardNotSelected": true
+}

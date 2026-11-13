@@ -1,12 +1,12 @@
 // Reference: ../refs/DAF/daf3/apps/mobile/src/core/main.ts (embedded Node startup arguments).
 import path from 'node:path';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { AppCore, ChannelRegistrationRunner, goltouPhotoUrl, NativeBridge, startCore, fileMediaStorage, type CoreOptions } from '../../../packages/core/src/index';
+import { AppCore, ChannelRegistrationRunner, goltouPhotoUrl, NativeBridge, startCore, fileMediaStorage, filePolishStrengthStore, type CoreOptions } from '../../../packages/core/src/index';
 import { createApiClient } from '../../../packages/api-client/src/index';
 import { apiOrigin } from './config';
 declare const __GOLTOU_DEBUG__: boolean;
 import { AndroidTokenStore } from './session';
-import { aiModeTransport } from '../../../packages/sites/src/ai-mode';
+import { AiModeClient } from '../../../packages/sites/src/ai-mode';
 import { AndroidSurfaceHost } from './host';
 
 function argument(name: string): string {
@@ -18,6 +18,7 @@ function argument(name: string): string {
 
 const native = new NativeBridge();
 const host = new AndroidSurfaceHost(native, argument('devtools'));
+const ai = new AiModeClient(host);
 const options: CoreOptions = {
   native, host,
   band: { host, capture: (surface, name) => host.capture(surface, name) },
@@ -30,7 +31,7 @@ const options: CoreOptions = {
     },
   },
   preparation: {
-    polish: aiModeTransport(host),
+    polish: ai.polish, ai,
     media: {
       storage: fileMediaStorage(path.join(path.dirname(argument('data')), 'wp4-media')),
       allowUrl: goltouPhotoUrl,
@@ -42,7 +43,7 @@ const options: CoreOptions = {
 async function start() {
   const app = new AppCore(createApiClient(apiOrigin, fetch), new AndroidTokenStore(native),
     (checkpoint, notify) => new ChannelRegistrationRunner({ band: options.band!, blog: options.blog! }, checkpoint, notify), options.preparation,
-    { device: () => native.call('session.device'), ...(__GOLTOU_DEBUG__ ? { experimentTitle: true } : {}) });
+    { device: () => native.call('session.device'), polishStrength: filePolishStrengthStore(path.join(path.dirname(argument('data')), 'polish-strength.txt')), ...(__GOLTOU_DEBUG__ ? { experimentTitle: true } : {}) });
   options.app = app;
   if (__GOLTOU_DEBUG__ && argument('debug') === 'true') {
     const { Experiments } = await import('../../../packages/core/src/experiments');

@@ -1,0 +1,61 @@
+{
+  "status": "invalid_format",
+  "paragraphs": [
+    {
+      "paragraph": 1,
+      "outcome": "kept_digits",
+      "sent": false,
+      "accepted": false,
+      "elapsedMs": 0,
+      "reasons": [
+        "숫자 포함 · 전송하지 않음"
+      ]
+    },
+    {
+      "paragraph": 2,
+      "outcome": "kept_digits",
+      "sent": false,
+      "accepted": false,
+      "elapsedMs": 0,
+      "reasons": [
+        "숫자 포함 · 전송하지 않음"
+      ]
+    },
+    {
+      "paragraph": 3,
+      "outcome": "polished",
+      "sent": true,
+      "accepted": true,
+      "elapsedMs": 22372,
+      "reasons": []
+    },
+    {
+      "paragraph": 4,
+      "outcome": "polished",
+      "sent": true,
+      "accepted": true,
+      "elapsedMs": 24641,
+      "reasons": []
+    },
+    {
+      "paragraph": 5,
+      "outcome": "fallback",
+      "sent": true,
+      "accepted": false,
+      "elapsedMs": 24355,
+      "reasons": [
+        "응답 문단·번호 형식 오류 · 원문 유지"
+      ],
+      "failureCode": "AI_INVALID_FORMAT"
+    }
+  ],
+  "counts": {
+    "sent": 3,
+    "accepted": 2,
+    "fallbacks": 1,
+    "keptDigits": 2,
+    "changedAccepted": 0
+  },
+  "observedAt": "2026-11-13T11:13:25.261Z",
+  "resultReadMs": 704
+}

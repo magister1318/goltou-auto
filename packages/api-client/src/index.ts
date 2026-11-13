@@ -7,6 +7,7 @@ export interface Settings { closingText: string; defaultHashtags: string[]; band
 export interface LoginInput { loginId: string; password: string; device: { kind: string; model: string; appVersion: string } }
 export type Channel = 'blog' | 'band';
 export type Mode = 'draft' | 'publish';
+export type PolishStrength = 'spelling' | 'natural';
 export type PostStatus = 'running' | 'draft_saved' | 'published' | 'failed' | 'stopped' | 'stopped_before_post';
 export interface PostMark { status: PostStatus; at: string }
 export interface ProductSummary {
@@ -25,7 +26,7 @@ export interface ProductQuery {
 export interface Page<T> { total: number; items: T[] }
 export interface PostInput {
   productNo: number; channel: Channel; mode: Mode; target: { name: string; key: string };
-  options: { polish: boolean; closing: boolean; linkCard: boolean }; contentHash: string;
+  options: { polish: boolean; polishStrength?: PolishStrength; closing: boolean; linkCard: boolean }; contentHash: string;
 }
 export interface PostUpdate { postNo: number; status: PostStatus; step: number; failReason: string; postUrl: string }
 export interface Post extends PostUpdate {
