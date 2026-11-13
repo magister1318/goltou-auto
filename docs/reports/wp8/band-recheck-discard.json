@@ -1,0 +1,194 @@
+{
+  "discard": {
+    "at": "2026-11-13T09:27:13.380Z",
+    "loggedIn": true,
+    "services": {
+      "naver": "unknown",
+      "band": "unknown",
+      "ai": "unknown"
+    },
+    "job": {
+      "id": 1,
+      "productNo": 1381,
+      "status": "stopped",
+      "step": 7,
+      "current": 0,
+      "total": 36,
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 0,
+      "photoUploadMilliseconds": 88100,
+      "photoUploadSamples": 36,
+      "mode": "draft",
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "bandPhotoLimit": null,
+      "bandLimitObservedAt": "2026-11-13T09:23:53.347Z",
+      "targets": [
+        "band"
+      ],
+      "results": [
+        {
+          "channel": "band",
+          "status": "stopped"
+        }
+      ],
+      "experimentTitle": true
+    },
+    "discardElapsedMs": 2545,
+    "composer": false,
+    "bodyCharacters": 0,
+    "photos": 0,
+    "uploading": false,
+    "hasPostUrl": false,
+    "composerOpens": 1,
+    "bandPostInputs": 0,
+    "naverAttempts": 0
+  },
+  "secondRead": {
+    "at": "2026-11-13T09:27:20.938Z",
+    "loggedIn": true,
+    "services": {
+      "naver": "unknown",
+      "band": "unknown",
+      "ai": "unknown"
+    },
+    "job": {
+      "id": 1,
+      "productNo": 1381,
+      "status": "stopped",
+      "step": 7,
+      "current": 0,
+      "total": 36,
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 0,
+      "photoUploadMilliseconds": 88100,
+      "photoUploadSamples": 36,
+      "mode": "draft",
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "bandPhotoLimit": null,
+      "bandLimitObservedAt": "2026-11-13T09:23:53.347Z",
+      "targets": [
+        "band"
+      ],
+      "results": [
+        {
+          "channel": "band",
+          "status": "stopped"
+        }
+      ],
+      "experimentTitle": true
+    },
+    "composer": false,
+    "bodyCharacters": 0,
+    "photos": 0,
+    "uploading": false,
+    "hasPostUrl": false,
+    "screen": [
+      "작성을 버렸습니다"
+    ],
+    "composerOpens": 1,
+    "bandPostInputs": 0,
+    "naverAttempts": 0
+  },
+  "api": {
+    "at": "2026-11-13T09:27:23.192Z",
+    "loggedIn": true,
+    "services": {
+      "naver": "unknown",
+      "band": "unknown",
+      "ai": "unknown"
+    },
+    "job": {
+      "id": 1,
+      "productNo": 1381,
+      "status": "stopped",
+      "step": 7,
+      "current": 0,
+      "total": 36,
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 0,
+      "photoUploadMilliseconds": 88100,
+      "photoUploadSamples": 36,
+      "mode": "draft",
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "bandPhotoLimit": null,
+      "bandLimitObservedAt": "2026-11-13T09:23:53.347Z",
+      "targets": [
+        "band"
+      ],
+      "results": [
+        {
+          "channel": "band",
+          "status": "stopped"
+        }
+      ],
+      "experimentTitle": true
+    },
+    "recordFailure": null,
+    "dailyLimit": 3,
+    "today": "2026-11-13",
+    "sameBandDailyActive": 0,
+    "records": [
+      {
+        "postNo": 9,
+        "status": "stopped",
+        "step": 7,
+        "startedAt": "2026-11-13T09:23:50Z",
+        "finishedAt": "2026-11-13T09:27:12Z",
+        "hasPostUrl": false
+      },
+      {
+        "postNo": 8,
+        "status": "stopped",
+        "step": 7,
+        "startedAt": "2026-11-13T07:15:19Z",
+        "finishedAt": "2026-11-13T07:18:26Z",
+        "hasPostUrl": false
+      }
+    ],
+    "bandMark": null
+  },
+  "restartReady": {
+    "at": "2026-11-13T09:27:52.725Z",
+    "sameTarget": true,
+    "bandOnly": true,
+    "startEnabled": true,
+    "secondStartPressed": false,
+    "composerOpens": 1,
+    "historyStopped": true,
+    "bandMarkCleared": true,
+    "finalScreen": "home",
+    "finalJobStatus": "stopped"
+  },
+  "secondJobStarted": false,
+  "forwarding": {
+    "removedPort": 19221,
+    "preservedPort": 19220
+  }
+}
