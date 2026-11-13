@@ -22,7 +22,7 @@ const options: CoreOptions = {
   native, host,
   band: { host, capture: (surface, name) => host.capture(surface, name) },
   blog: {
-    host, draftSaveLimit: 1, capture: (surface, name) => host.capture(surface, name),
+    host, ...(__GOLTOU_DEBUG__ ? { draftSaveLimit: 1 } : {}), capture: (surface, name) => host.capture(surface, name),
     recordFailure: async failure => {
       const directory = path.join(path.dirname(argument('data')), 'wp5');
       await mkdir(directory, { recursive: true });
@@ -42,7 +42,7 @@ const options: CoreOptions = {
 async function start() {
   const app = new AppCore(createApiClient(apiOrigin, fetch), new AndroidTokenStore(native),
     (checkpoint, notify) => new ChannelRegistrationRunner({ band: options.band!, blog: options.blog! }, checkpoint, notify), options.preparation,
-    { device: () => native.call('session.device'), experimentTitle: true });
+    { device: () => native.call('session.device'), ...(__GOLTOU_DEBUG__ ? { experimentTitle: true } : {}) });
   options.app = app;
   if (__GOLTOU_DEBUG__ && argument('debug') === 'true') {
     const { Experiments } = await import('../../../packages/core/src/experiments');

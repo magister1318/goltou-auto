@@ -61,12 +61,12 @@ export async function prepareBlogEditor(surface: Surface, check: () => void, opt
   if (restore) {
     if (restore !== 1 || options.autoRecover !== 'decline-with-user-consent') throw new Error('AUTO_RECOVER_CONSENT_REQUIRED');
     check();
-    await click(surface, '.se-popup-alert-confirm .se-popup-button-cancel', '취소');
+    await click(surface, 'BLOG_RESTORE_CANCEL', '.se-popup-alert-confirm .se-popup-button-cancel', '취소');
     await waitFor(() => read(surface, `return !docs.some(({d})=>Array.from(d.querySelectorAll('.se-popup-alert-confirm')).some(visible));`));
   }
   await waitFor(() => read(surface, `return docs.some(({d})=>d.querySelector(${JSON.stringify(bodySelector)}));`), 30000);
   const help = await read<boolean>(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll('.se-help-panel-close-button')).some(visible));`);
-  if (help) await click(surface, '.se-help-panel-close-button');
+  if (help) await click(surface, 'BLOG_HELP_CLOSE', '.se-help-panel-close-button');
   const initial = await snapshot(surface);
   const embedded = await read<boolean>(surface, `return docs.some(({d})=>d.querySelector('.se-component.se-table,.se-component.se-oglink,.se-component.se-quotation,.se-component.se-video,.se-component.se-sticker'));`);
   if (initial.title || compact(initial.body) || initial.images || embedded) throw new Error('EDITOR_NOT_EMPTY');
@@ -79,15 +79,15 @@ export async function confirmBlogPhotos(surface: Surface, count: number, check: 
     return docs.some(({d})=>d.querySelectorAll('.se-content .se-image-resource, .se-main-container .se-image-resource').length===${count})?'inserted':null;`), 60000);
   if (state === 'choice') {
     check(); await requireBlogEditor(surface);
-    await click(surface, '.se-popup-image-type label[for="image-type-list"]', '개별사진');
+    await click(surface, 'BLOG_IMAGE_LIST', '.se-popup-image-type label[for="image-type-list"]', '개별사진');
   }
   return waitFor(async () => { const v = await snapshot(surface); return v.images === count ? v : null; }, 60000);
 }
 export async function fillBlog(surface: Surface, article: ReturnType<typeof exampleArticle>, photos: readonly string[], check: () => void, options: BlogEditorOptions = {}) {
   await prepareBlogEditor(surface, check, options);
   await requireBlogEditor(surface);
-  await click(surface, titleSelector); await typeBlogText(surface, article.title, check);
-  await click(surface, bodySelector);
+  await click(surface, 'BLOG_TITLE', titleSelector); await typeBlogText(surface, article.title, check);
+  await click(surface, 'BLOG_BODY', bodySelector);
   for (let i = 0; i < article.paragraphs.length; i++) {
     await typeBlogText(surface, article.paragraphs[i]!, check);
     if (i < article.paragraphs.length - 1) {
@@ -97,7 +97,7 @@ export async function fillBlog(surface: Surface, article: ReturnType<typeof exam
   }
   check();
   await requireBlogEditor(surface);
-  await click(surface, 'button[data-name="image"]');
+  await click(surface, 'BLOG_IMAGE_BUTTON', 'button[data-name="image"]');
   // File chooser is handled by CDP's file-input command, without opening personal storage UI.
   await surface.attachFiles('input[type="file"]', photos);
   await confirmBlogPhotos(surface, photos.length, check);
@@ -114,7 +114,7 @@ export async function saveAndReopen(surface: Surface, article: ReturnType<typeof
   const countBefore = await draftCount(surface);
   if (countBefore === null) throw new Error('DRAFT_COUNT_UNAVAILABLE');
   // Exact save selector/text only. This module contains no publish or schedule action.
-  await click(surface, 'button[data-click-area="tpb.save"]');
+  await click(surface, 'BLOG_SAVE', 'button[data-click-area="tpb.save"]');
   // This experiment always saves a new, uniquely titled draft. A transient toast is not reliable.
   await waitFor(async () => { const count = await draftCount(surface); return count !== null && count > countBefore; }, 30000);
   check(); surface = await reopenEmpty();
@@ -131,16 +131,16 @@ async function draftCount(surface: Surface) {
 export async function reopenBlogDraftFromList(surface: Surface, article: ReturnType<typeof exampleArticle>, photos: number, check: () => void) {
   check(); await requireBlogEditor(surface);
   const opened = await read<boolean>(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll('[aria-label="임시저장된 글"]')).some(visible));`);
-  if (!opened) await click(surface, 'button[data-click-area="tpb*s.count"]');
+  if (!opened) await click(surface, 'BLOG_DRAFT_LIST', 'button[data-click-area="tpb*s.count"]');
   const selector = '[aria-label="임시저장된 글"] > li button[data-click-area="tpb*s.tlist"] strong';
   const count = await waitFor(() => read<number | null>(surface, `const n=docs.reduce((n,{d})=>n+Array.from(d.querySelectorAll(${JSON.stringify(selector)})).filter(e=>(e.textContent||'').trim()===${JSON.stringify(article.title)}).length,0); return n||null;`));
   if (count !== 1) throw new Error('DRAFT_IDENTITY_AMBIGUOUS');
-  check(); await click(surface, selector, article.title);
+  check(); await click(surface, 'BLOG_DRAFT_ITEM', selector, article.title);
   const after = await waitFor(async () => { const v = await snapshot(surface); return v.title === article.title && v.images === photos ? v : null; }, 30000);
   if (compact(after.body) !== compact(article.body) || after.paragraphs !== article.paragraphs.length) throw new Error('DRAFT_READBACK_MISMATCH');
   // Reopened offscreen photos initially have a data:image SVG placeholder, without a filename.
   // PageDown uses editor input to reveal them; never scroll or change src through a DOM write.
-  await click(surface, bodySelector);
+  await click(surface, 'BLOG_BODY', bodySelector);
   const imageLayout = await waitFor(async () => {
     check(); await requireBlogEditor(surface);
     const layout = await blogImageLayout(surface);

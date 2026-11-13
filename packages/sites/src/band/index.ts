@@ -12,7 +12,7 @@ export async function listBands(surface: Surface) {
   if (mode !== 'legacy') {
     // New owned tiles have no href/key. Follow only the first non-ad band
     // through input, then read its address. Never open other bands to enumerate.
-    if (mode === 'home') await click(surface, '.globalMyBandWrap a._allMyBandList', '전체보기');
+    if (mode === 'home') await click(surface, 'BAND_ALL_LIST', '.globalMyBandWrap a._allMyBandList', '전체보기');
     const first = await waitFor(() => read<{ name: string; x: number; y: number } | null>(surface, `
       for(const {d,x,y} of docs)for(const e of d.querySelectorAll('.myBandGroupList a.myBandGroupItem')){
         if(e.querySelector('.adBox,.aNewFolder,.aNewFolderBox')||!visible(e))continue;
@@ -52,8 +52,8 @@ export async function openBandComposer(surface: Surface) {
     const desktopSelector = 'button._btnPostWrite, button.cPostWriteEventWrapper._btnOpenWriteLayer';
     const mode = await waitFor(async () => await point(surface, mobileSelector) ? 'mobile'
       : await point(surface, desktopSelector, '글쓰기') ? 'desktop' : null);
-    if (mode === 'mobile') await click(surface, mobileSelector);
-    else await click(surface, desktopSelector, '글쓰기');
+    if (mode === 'mobile') await click(surface, 'BAND_WRITE_MOBILE', mobileSelector);
+    else await click(surface, 'BAND_WRITE_DESKTOP', desktopSelector, '글쓰기');
   }
   await waitFor(() => read(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(editor)})).some(visible));`));
 }
@@ -65,10 +65,10 @@ export async function fillBand(surface: Surface, article: ReturnType<typeof exam
   if (candidates !== 1) throw new Error('BAND_EDITOR_AMBIGUOUS');
   const text = [article.title, ...article.paragraphs].join('\n\n');
   if (empty.maxLength !== null && text.length > empty.maxLength) throw new Error('BAND_DECLARED_LENGTH_LIMIT');
-  await click(surface, editor); await typeParagraphs(surface, [article.title, ...article.paragraphs], check);
+  await click(surface, 'BAND_BODY', editor); await typeParagraphs(surface, [article.title, ...article.paragraphs], check);
   check();
   const hasFile = await read<boolean>(surface, `return docs.some(({d})=>d.querySelector('input[type="file"]'));`);
-  if (!hasFile) await click(surface, 'button, label, a', '사진');
+  if (!hasFile) await click(surface, 'BAND_PHOTO_BUTTON', 'button, label, a', '사진');
   await surface.attachFiles('input[type="file"][accept*="image"], input[type="file"]', photos);
   await confirmBandPhotos(surface, photos.length);
   const result = await waitFor(async () => { const v = await bandSnapshot(surface, text); return v.images === photos.length ? v : null; }, 60000);
@@ -95,11 +95,11 @@ export async function saveBandDraftAndVerify(surface: Surface, article: ReturnTy
   check();
   const label = await read<string | null>(surface, `return docs.flatMap(({d})=>Array.from(d.querySelectorAll('button'))).filter(visible).map(e=>(e.textContent||'').trim()).find(t=>/^(임시저장|임시 저장|Save draft)$/i.test(t))||null;`);
   if (!label) throw new Error('BAND_DRAFT_CONTROL_MISSING');
-  await click(surface, 'button', label);
+  await click(surface, 'BAND_SAVE', 'button', label);
   await waitFor(() => read(surface, `return !docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(editor)})).some(visible));`));
   check();
-  await click(surface, 'button, a', '임시저장 글');
-  await click(surface, '[role="dialog"] button, [role="dialog"] a, [class*="draft"] button, [class*="draft"] a', article.title);
+  await click(surface, 'BAND_DRAFT_LIST', 'button, a', '임시저장 글');
+  await click(surface, 'BAND_DRAFT_ITEM', '[role="dialog"] button, [role="dialog"] a, [class*="draft"] button, [class*="draft"] a', article.title);
   const expected = [article.title, ...article.paragraphs].join('\n\n');
   const reopened = await waitFor(async () => { const v = await bandSnapshot(surface, expected); return v.bodyMatches && v.images === 5 ? v : null; });
   return { draftSaved: true, reopened: true, bodyChars: reopened.bodyChars, images: reopened.images };
@@ -111,9 +111,9 @@ export async function closeComposer(surface: Surface) {
     const r=e.getBoundingClientRect();return {x:x+r.left+r.width/2,y:y+r.top+r.height/2};
   } return null;`);
   if (!await cancelConfirmation()) {
-    if (await point(surface, 'button.buttonClose._closeBtn', '이전')) await click(surface, 'button.buttonClose._closeBtn', '이전');
-    else if (await point(surface, 'button[aria-label="닫기"]')) await click(surface, 'button[aria-label="닫기"]');
-    else await click(surface, 'button', '취소');
+    if (await point(surface, 'button.buttonClose._closeBtn', '이전')) await click(surface, 'BAND_BACK', 'button.buttonClose._closeBtn', '이전');
+    else if (await point(surface, 'button[aria-label="닫기"]')) await click(surface, 'BAND_CLOSE', 'button[aria-label="닫기"]');
+    else await click(surface, 'BAND_CANCEL', 'button', '취소');
   }
   const discardControl = await cancelConfirmation();
   if (discardControl) { await surface.click(discardControl.x, discardControl.y); await sleep(350); }
@@ -122,7 +122,7 @@ export async function closeComposer(surface: Surface) {
     if(!/작성|내용/.test(dialog.textContent||'')||!/취소|삭제|나가/.test(dialog.textContent||'')) continue;
     const e=Array.from(dialog.querySelectorAll('button')).find(e=>visible(e)&&/^(작성 취소|나가기)$/.test((e.textContent||'').trim())); if(e)return e.textContent.trim();
   } return null;`);
-  if (discard) await click(surface, '[role="dialog"] button', discard);
+  if (discard) await click(surface, 'BAND_DISCARD', '[role="dialog"] button', discard);
   const remaining = await read<boolean>(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(editor)})).some(visible));`);
   if (remaining) { await surface.show(); throw new Error('BAND_DISCARD_CONFIRM_REQUIRED'); }
 }

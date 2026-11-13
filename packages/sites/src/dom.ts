@@ -1,4 +1,5 @@
 import type { Surface } from '@goltou/surface';
+import { ControlNotFoundError, type ControlId } from './control-failure';
 
 export const sleep = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
 /** Same-origin frame readers only; inaccessible frames fail closed. No writes or input values. */
@@ -22,14 +23,14 @@ export async function point(surface: Surface, selector: string, exactText?: stri
     if (px>0 && py>0 && px<innerWidth && py<innerHeight) return {x:px,y:py};
   } return null;`);
 }
-export async function click(surface: Surface, selector: string, text?: string, timeoutMs = 8000): Promise<void> {
+export async function click(surface: Surface, control: ControlId, selector: string, text?: string, timeoutMs = 8000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const found = await point(surface, selector, text);
     if (found) { await surface.click(found.x, found.y); await sleep(350); return; }
     await sleep(250);
   }
-  throw new Error('CONTROL_NOT_FOUND');
+  throw new ControlNotFoundError(control);
 }
 export async function typeParagraphs(surface: Surface, paragraphs: readonly string[], check: () => void) {
   for (let i = 0; i < paragraphs.length; i++) {

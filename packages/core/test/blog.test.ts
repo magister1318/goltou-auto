@@ -13,15 +13,17 @@ import { compareDocuments, observePlan } from '../src/verify';
 import type { InputPlan } from '../src/convert';
 import { blogFixture } from '../../sites/test/blog-fixture';
 import { BlogRegistrationRunner } from '../src/blog-runner';
+import { ChannelRegistrationRunner } from '../src/band-runner';
+import { realEnding } from './fixtures/real-ending';
 import type { PreparedPreview } from '../src/preparation';
 
 const executablePath = [process.env.CHROMIUM, 'C:/Program Files/Google/Chrome/Application/chrome.exe', '/usr/bin/chromium'].find(p => p && existsSync(p));
 const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const fn of cleanup.splice(0).reverse()) await fn(); });
-async function fixture(mode = '', extra: { tags?: boolean } = {}) {
+async function fixture(mode = '', extra: { tags?: boolean; photos?: number } = {}) {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'goltou-wp5-'));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
-  const files = [1, 2, 3, 4, 5].map(i => ({ url: `https://example.invalid/${i}`, path: path.join(dir, `goltou-1234567890abcdef-${i}.png`) }));
+  const files = Array.from({ length: extra.photos ?? 5 }, (_, i) => i + 1).map(i => ({ url: `https://example.invalid/${i}`, path: path.join(dir, `goltou-1234567890abcdef-${i}.png`) }));
   for (const file of files) await writeFile(file.path, new Uint8Array([137, 80, 78, 71]));
   const server = http.createServer((req, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(req.url === '/login' ? '<input type="password"><p>로컬 로그인 풀림 예시</p>' : req.url?.startsWith('/published/') ? '<h1>로컬 발행 결과</h1>' : mode === 'delayed-frame' && req.url === '/editor' ? '<script>setTimeout(()=>{const f=document.createElement("iframe");f.src="/ready-editor";document.body.append(f)},500)</script><body></body>' : blogFixture(mode)));
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -53,9 +55,38 @@ async function fixture(mode = '', extra: { tags?: boolean } = {}) {
   const beforeSave = vi.fn(), check = vi.fn(), progress = vi.fn();
   const execution = createBlogExecution(plan, files, { host, editorUrl, localPublish: true }, { check, progress, beforeSave });
   return { execution, plan, files, pages, host, editorUrl, check, beforeSave, progress, external: () => external,
-    counts: async () => pages.get(execution.surface!)!.evaluate<{ saves: number; publishes: number }>("({saves:Number(localStorage.getItem('saves')),publishes:Number(localStorage.getItem('publishes'))})") };
+    counts: async (surface = execution.surface!) => pages.get(surface)!.evaluate<{ saves: number; publishes: number }>("({saves:Number(localStorage.getItem('saves')),publishes:Number(localStorage.getItem('publishes'))})") };
 }
 describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback editor only', () => {
+  it('preserves links, flattened inline elements and short text after the last seven photos with options off', async () => {
+    const f = await fixture('missing-tags', { photos: 8 });
+    const preview = realEnding(f.files, false);
+    expect(preview.verification.blog.matches).toBe(true);
+    f.plan.steps = preview.blog.steps;
+    expect(f.plan.steps.slice(-3).map(s => s.kind)).toEqual(['photos', 'text', 'break']);
+    await f.execution.write(); await f.execution.saveAndVerify();
+    expect(f.progress).toHaveBeenLastCalledWith({ photos: 8, totalPhotos: 8, characters: 1509, totalCharacters: 1509 });
+    expect(await f.counts()).toEqual({ saves: 1, publishes: 0 }); expect(f.external()).toBe(0);
+  }, 40000);
+  it.each(['blog', 'channel'] as const)('records the missing final tag control and exact plan step without content in the %s runner', async kind => {
+    const f = await fixture('missing-tags', { photos: 8 });
+    const preview = realEnding(f.files, true);
+    const tagIndex = preview.blog.steps.findIndex(s => s.kind === 'text' && s.role === 'hashtags') + 1;
+    const code = `CONTROL_NOT_FOUND:BLOG_TAG_INPUT:TEXT_HASHTAGS:${tagIndex}`;
+    const recordFailure = vi.fn(async () => {});
+    const services = { host: f.host, editorUrl: f.editorUrl, localPublish: true, recordFailure };
+    const runner = kind === 'blog' ? new BlogRegistrationRunner(services, async () => {}, () => {})
+      : new ChannelRegistrationRunner({ blog: services, band: { host: f.host } }, async () => {}, () => {});
+    cleanup.push(async () => runner.dispose());
+    const work = { preview, prepared: { preview, files: f.files }, download: async () => {}, arrange: async () => {}, cleanup: async () => {} };
+    await runner.start({ productNo: 1, mode: 'draft', targets: [{ channel: 'blog', key: 'local', name: '로컬' }], options: { polish: false, closing: false, linkCard: false } }, '[골투오토 실험] 로컬 끝 구조', 8, work);
+    for (let i = 0; i < 1000 && runner.job?.status === 'running'; i++) await new Promise(resolve => setTimeout(resolve, 50));
+    expect(runner.job).toMatchObject({ status: 'failed', step: 4, current: 8, total: 8, characters: 1509, totalCharacters: 1512, failureCode: code });
+    expect(recordFailure).toHaveBeenCalledWith(expect.objectContaining({ step: 4, code }));
+    const json = JSON.stringify(recordFailure.mock.calls);
+    expect(json).not.toMatch(/https:|로컬|예시|가가|끝글/);
+    expect(await f.counts([...f.pages.keys()].at(-1)!)).toEqual({ saves: 0, publishes: 0 }); expect(f.external()).toBe(0);
+  }, 60000);
   it('waits for an editor iframe created after the outer load instead of claiming login loss', async () => {
     const f = await fixture('delayed-frame');
     await f.execution.ensureReady();

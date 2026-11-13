@@ -1,5 +1,5 @@
 import { ApiError } from '@goltou/api-client';
-import { loginState, BandDirectory, type BandExecution, type BlogExecution, type BandProgress } from '@goltou/sites';
+import { loginState, safeFailureCode, BandDirectory, type BandExecution, type BlogExecution, type BandProgress } from '@goltou/sites';
 import type { Job, JobInput, Service } from './protocol';
 import type { Checkpoint, RegistrationRunner } from './runner';
 import type { PreparationWork } from './preparation';
@@ -125,7 +125,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
   }
   private async fail(error: unknown) {
     const j = this.job!; const code = error instanceof Error ? error.message : 'BAND_FAILED';
-    j.failureCode = /^[A-Z_]+(?::[A-Za-z,]+)?$/.test(code) ? code : 'CHANNEL_FAILED';
+    j.failureCode = safeFailureCode(error, 'CHANNEL_FAILED');
     const isBand = j.step === 6;
     const execution = isBand ? this.band : this.blog;
     const dialog = await execution?.dialog().catch(() => null);

@@ -160,6 +160,12 @@ describe('conversion metrics and production media restrictions', () => {
     }
     expect(fetcher).not.toHaveBeenCalled(); expect(storage.createWorkDirectory).not.toHaveBeenCalled();
   });
+  it.each([false, true])('applies experiment title and the one-save limit only to the debug engine (%s)', async debug => {
+    const result = await build({ entryPoints: ['apps/android/bridge/main.ts'], bundle: true, minifySyntax: true, platform: 'node', target: 'node18', format: 'cjs', write: false, external: ['bufferutil', 'utf-8-validate'], define: { __GOLTOU_API_ORIGIN__: JSON.stringify('https://local.invalid'), __GOLTOU_DEBUG__: String(debug) } });
+    const source = result.outputFiles[0]!.text;
+    expect(/draftSaveLimit:\s*1\b/.test(source)).toBe(debug);
+    expect(/experimentTitle:\s*(?:!0|true)\b/.test(source)).toBe(debug);
+  });
   it('builds the actual release engine without fake API, seeded sessions, examples or debug audit code', async () => {
     const result = await build({ entryPoints: ['apps/android/bridge/main.ts'], bundle: true, minifySyntax: true, platform: 'node', target: 'node18', format: 'cjs', write: false, external: ['bufferutil', 'utf-8-validate'], define: { __GOLTOU_API_ORIGIN__: JSON.stringify('https://local.invalid'), __GOLTOU_DEBUG__: 'false' } });
     const source = result.outputFiles[0]!.text;

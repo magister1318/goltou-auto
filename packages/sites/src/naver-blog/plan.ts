@@ -2,6 +2,7 @@
 import type { Surface, SurfaceDialog, SurfaceHost } from '@goltou/surface';
 import { click, compact, point, read, sleep, waitFor } from '../dom';
 import { confirmBlogPhotos, prepareBlogEditor } from './index';
+import { ControlNotFoundError } from '../control-failure';
 
 /** Structural subset of WP4 InputPlan. Sites has no dependency on core or a device API. */
 export interface BlogPlan {
@@ -57,6 +58,7 @@ const same = (a: BlogReadback, b: BlogReadback) => compact(a.title) === compact(
 export class BlogExecution {
   surface: Surface | undefined;
   private index = 0;
+  private executingStep: BlogPlan['steps'][number] | undefined;
   private offset = 0;
   private characters = 0;
   private photos = 0;
@@ -151,13 +153,22 @@ export class BlogExecution {
     if (!atEnd) throw new Error('CURSOR_POSITION_UNCONFIRMED');
   }
   async write() {
+    this.executingStep = undefined;
+    try { await this.writePlan(); }
+    catch (error) {
+      const step = this.executingStep;
+      if (error instanceof ControlNotFoundError && step) throw error.atPlanStep(this.index + 1, step);
+      throw error;
+    } finally { this.executingStep = undefined; }
+  }
+  private async writePlan() {
     for (const step of this.plan.steps) if (step.kind === 'photos' && step.urls.some(url => !this.files.find(f => f.url === url))) throw new Error('PREPARED_PHOTOS_MISSING');
     if (!this.surface) await this.fresh();
     else {
       await this.guard();
       const current = await readBlogDocument(this.surface);
       if (this.checkpoint && same(current, this.checkpoint)) {
-        if (this.index === 0) { await click(this.surface, titleSelector); await this.surface.pressKey({ key: 'End' }); }
+        if (this.index === 0) { await click(this.surface, 'BLOG_TITLE', titleSelector); await this.surface.pressKey({ key: 'End' }); }
         else await this.endOfBody();
       } else if (this.checkpoint) {
         await this.fresh(); this.index = 0; this.offset = 0; this.characters = 0; this.photos = 0; this.tableModes.length = 0; this.atomic = false;
@@ -167,10 +178,11 @@ export class BlogExecution {
     const s = this.surface!;
     for (; this.index < this.plan.steps.length; this.index++, this.offset = 0) {
       await this.guard(); const step = this.plan.steps[this.index]!;
+      this.executingStep = step;
       if (step.kind === 'text' && step.role === 'title') {
-        if (!this.offset) await click(s, titleSelector);
+        if (!this.offset) await click(s, 'BLOG_TITLE', titleSelector);
         await this.type(step.text, true);
-        await click(s, bodySelector);
+        await click(s, 'BLOG_BODY', bodySelector);
       } else if (step.kind === 'break') {
         // The title separator changes focus only. Other separators create editor paragraphs.
         if (this.index > 1) { await s.pressKey({ key: 'Enter' }); await s.pressKey({ key: 'Enter' }); }
@@ -179,7 +191,7 @@ export class BlogExecution {
         await this.endOfBody();
         const before = await readBlogDocument(s);
         if (before.tokens.filter(t => t.kind === 'photo').length !== this.photos) throw new Error('PHOTO_CURSOR_PREFIX_MISMATCH');
-        await click(s, 'button[data-name="image"]');
+        await click(s, 'BLOG_IMAGE_BUTTON', 'button[data-name="image"]');
         await s.attachFiles('input[type="file"]', step.urls.map(url => this.files.find(f => f.url === url)!.path));
         await confirmBlogPhotos(s, this.photos + step.urls.length, this.env.check);
         this.photos += step.urls.length;
@@ -190,7 +202,7 @@ export class BlogExecution {
       } else if (step.kind === 'text' && step.role === 'hashtags') {
         const selector = 'input[placeholder*="태그"], .tag_input input, input[name="tag"]';
         for (let n = 0; n < 12 && !await point(s, selector); n++) { await this.guard(); await s.pressKey({ key: 'PageDown' }); await sleep(100); }
-        await click(s, selector);
+        await click(s, 'BLOG_TAG_INPUT', selector);
         for (const tag of step.text.split(/\s+/).filter(Boolean)) { await this.type(tag.replace(/^#/, '')); await s.pressKey({ key: 'Enter' }); }
         await this.endOfBody();
       } else if (step.kind === 'text') {
@@ -202,6 +214,7 @@ export class BlogExecution {
       }
       await this.guard(); this.checkpoint = await readBlogDocument(s); this.atomic = false; this.report();
     }
+    this.executingStep = undefined;
     this.env.verify(await this.observe());
   }
   private async table(rows: string[][]) {
@@ -232,7 +245,7 @@ export class BlogExecution {
       await this.endOfBody(); return fallback();
     }
     while (dimensions.length < rows.length) {
-      await click(s, '.se-table-control.se-is-on .se-cell-controlbar-row .se-cell-add-button:last-child');
+      await click(s, 'BLOG_TABLE_ADD_ROW', '.se-table-control.se-is-on .se-cell-controlbar-row .se-cell-add-button:last-child');
       const previous = dimensions.length;
       dimensions = await waitFor(async () => { const v = await shape(); return v.length === previous + 1 ? v : null; }, 5000);
     }
@@ -265,7 +278,7 @@ export class BlogExecution {
       this.env.check(); this.env.beforeSave();
       // Mark BEFORE sending input. Ambiguous transport responses never cause another save.
       this.saveAttempted = true;
-      try { await click(this.surface!, 'button[data-click-area="tpb.save"]'); }
+      try { await click(this.surface!, 'BLOG_SAVE', 'button[data-click-area="tpb.save"]'); }
       catch (error) { if (await this.dialog()) throw new Error('USER_DIALOG_REQUIRED'); /* Resolve from the list, never retry input. */ }
       await sleep(800);
       await this.guard();
@@ -274,11 +287,11 @@ export class BlogExecution {
     await this.guard();
     const s = this.surface!;
     const opened = await read<boolean>(s, `return docs.some(({d})=>Array.from(d.querySelectorAll('[aria-label="임시저장된 글"]')).some(visible));`);
-    if (!opened) await click(s, 'button[data-click-area="tpb*s.count"]');
+    if (!opened) await click(s, 'BLOG_DRAFT_LIST', 'button[data-click-area="tpb*s.count"]');
     const selector = '[aria-label="임시저장된 글"] > li button[data-click-area="tpb*s.tlist"] strong';
     const count = await waitFor(() => read<number | null>(s, `const n=docs.reduce((n,{d})=>n+Array.from(d.querySelectorAll(${JSON.stringify(selector)})).filter(e=>(e.textContent||'').trim()===${JSON.stringify(this.title.text)}).length,0);return n||null;`), 15000);
     if (count !== 1) throw new Error('DRAFT_IDENTITY_AMBIGUOUS');
-    await this.guard(); await click(s, selector, this.title.text);
+    await this.guard(); await click(s, 'BLOG_DRAFT_ITEM', selector, this.title.text);
     await waitFor(async () => (await readBlogDocument(s)).title === this.title.text, 15000);
     const observed = await this.observe(); this.env.verify(observed); this.verified = true; return observed;
   }
@@ -286,7 +299,7 @@ export class BlogExecution {
     const state = await this.surface!.readState();
     if (!this.verified || !this.env.localPublish || !this.env.editorUrl || new URL(this.env.editorUrl).hostname !== '127.0.0.1' || new URL(state.url).hostname !== '127.0.0.1') throw new Error('REAL_PUBLISH_DISABLED');
     await this.guard(); this.env.verify(await this.observe());
-    await click(this.surface!, 'button[data-click-area="tpb.publish"]');
+    await click(this.surface!, 'BLOG_PUBLISH', 'button[data-click-area="tpb.publish"]');
     const after = await this.surface!.waitForNavigation();
     if (new URL(after.url).hostname !== '127.0.0.1' || !/\/published\//.test(new URL(after.url).pathname)) throw new Error('PUBLISH_URL_UNCONFIRMED');
     return after.url;

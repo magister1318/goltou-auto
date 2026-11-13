@@ -8,7 +8,7 @@ export function blogFixture(mode = '') {
   </style><header><button data-click-area="tpb.save">저장</button><button data-click-area="tpb*s.count">0</button><button data-click-area="tpb.publish">발행</button><button data-name="image">사진</button>${mode === 'fallback' ? '' : '<button data-name="table">표</button>'}<input type="file" multiple hidden></header>
   <div class="se-documentTitle"><p class="se-text-paragraph" contenteditable="true"></p></div>
   <div class="se-main-container" contenteditable="true"><div class="se-component se-text"><p class="se-text-paragraph"><br></p></div></div>
-  <input placeholder="태그 입력"><div class="tag_list"></div><ul aria-label="임시저장된 글" hidden></ul>
+  ${mode === 'missing-tags' ? '' : '<input placeholder="태그 입력">'}<div class="tag_list"></div><ul aria-label="임시저장된 글" hidden></ul>
   <script>
   const mode=${JSON.stringify(mode)}, main=document.querySelector('.se-main-container'), title=document.querySelector('.se-documentTitle p');
   const empty=()=>{const e=document.createElement('div');e.className='se-component se-text';e.innerHTML='<p class="se-text-paragraph"><br></p>';return e};
@@ -34,7 +34,7 @@ export function blogFixture(mode = '') {
     t.innerHTML='<table>'+Array.from({length:2},()=>'<tr>'+Array.from({length:mode==='bad-table'?3:2},()=>'<td><p class="se-text-paragraph"><br></p></td>').join('')+'</tr>').join('')+'</table>';
     const next=empty();if(at)at.after(t,next);else main.append(t,next);focus(t.querySelector('p'));
   };
-  const tags=document.querySelector('input[placeholder]');tags.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const t=document.createElement('span');t.className='tag';t.textContent=tags.value;document.querySelector('.tag_list').append(t);tags.value=''}};
+  const tags=document.querySelector('input[placeholder]');if(tags)tags.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const t=document.createElement('span');t.className='tag';t.textContent=tags.value;document.querySelector('.tag_list').append(t);tags.value=''}};
   const store=()=>JSON.parse(localStorage.getItem('drafts')||'[]');
   document.querySelector('[data-click-area="tpb.save"]').onclick=()=>{
     const drafts=store();drafts.push({title:title.textContent,html:main.innerHTML,tags:document.querySelector('.tag_list').innerHTML});
