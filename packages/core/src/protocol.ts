@@ -13,6 +13,8 @@ export interface Job {
   step: number; current: number; total: number; completedSteps: number[];
   targets: JobInput['targets']; service: Service | null; message: string;
   characters?: number; totalCharacters?: number; secondsLeft?: number; postUrl?: string;
+  photoUploadMilliseconds?: number; photoUploadSamples?: number;
+  blogReadbackTimings?: { photos: number; milliseconds: number; navigationKeys: number }[];
   tableModes?: ('native' | 'text-list')[]; linkCard?: 'off' | 'card' | 'url-text';
   dialog?: import('@goltou/surface').SurfaceDialog; evidence?: string;
   failureCode?: string;

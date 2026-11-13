@@ -13,7 +13,7 @@ export interface BlogPlan {
 }
 export type BlogToken = { kind: 'text'; text: string } | { kind: 'photo'; identity: string };
 export interface BlogReadback { title: string; tokens: BlogToken[]; tags: string[] }
-export interface BlogProgress { characters: number; totalCharacters: number; photos: number; totalPhotos: number }
+export interface BlogProgress { characters: number; totalCharacters: number; photos: number; totalPhotos: number; photoUploadMilliseconds?: number; photoUploadSamples?: number }
 export interface BlogEnvironment {
   host: SurfaceHost;
   mode?: 'draft' | 'publish';
@@ -65,6 +65,9 @@ export class BlogExecution {
   private offset = 0;
   private characters = 0;
   private photos = 0;
+  private photoUploadMilliseconds = 0;
+  private photoUploadSamples = 0;
+  readonly readbackTimings: { photos: number; milliseconds: number; navigationKeys: number }[] = [];
   private checkpoint: BlogReadback | undefined;
   private saveAttempted = false;
   private reopened = false;
@@ -130,7 +133,8 @@ export class BlogExecution {
   }
   private report() {
     const totalCharacters = this.plan.steps.reduce((n, s) => n + (s.kind === 'text' ? Array.from(s.text).length : s.kind === 'table' ? s.rows.flat().reduce((a, t) => a + Array.from(t).length, 0) : 0), 0);
-    this.env.progress({ characters: this.characters, totalCharacters, photos: this.photos, totalPhotos: this.files.length });
+    this.env.progress({ characters: this.characters, totalCharacters, photos: this.photos, totalPhotos: this.files.length,
+      photoUploadMilliseconds: this.photoUploadMilliseconds, photoUploadSamples: this.photoUploadSamples });
   }
   private async type(text: string, resume = false) {
     const chars = inputCharacters(text);
@@ -212,6 +216,7 @@ export class BlogExecution {
         else await this.endOfBody();
       } else if (this.checkpoint) {
         await this.fresh(); this.index = 0; this.offset = 0; this.characters = 0; this.photos = 0; this.tableModes.length = 0; this.atomic = false;
+        this.photoUploadMilliseconds = 0; this.photoUploadSamples = 0;
       } else await prepareBlogEditor(this.surface, this.env.check, { autoRecover: this.recoveryConsent ? 'decline-with-user-consent' : 'stop' });
       this.recoveryConsent = false;
     }
@@ -228,14 +233,20 @@ export class BlogExecution {
         if (this.index > 1) { await s.pressKey({ key: 'Enter' }); await s.pressKey({ key: 'Enter' }); }
       } else if (step.kind === 'photos') {
         this.atomic = true;
-        await this.endOfBody();
-        const before = await readBlogDocument(s);
-        if (before.tokens.filter(t => t.kind === 'photo').length !== this.photos) throw new Error('PHOTO_CURSOR_PREFIX_MISMATCH');
-        await click(s, 'BLOG_IMAGE_BUTTON', 'button[data-name="image"]');
-        await s.attachFiles('input[type="file"]', step.urls.map(url => this.files.find(f => f.url === url)!.path));
-        await confirmBlogPhotos(s, this.photos + step.urls.length, this.env.check);
-        this.photos += step.urls.length;
-        await s.pressKey({ key: 'ArrowDown' }); await this.endOfBody();
+        for (const url of step.urls) {
+          await this.guard();
+          const started = Date.now();
+          await this.endOfBody();
+          const before = await readBlogDocument(s);
+          if (before.tokens.filter(t => t.kind === 'photo').length !== this.photos) throw new Error('PHOTO_CURSOR_PREFIX_MISMATCH');
+          await click(s, 'BLOG_IMAGE_BUTTON', 'button[data-name="image"]');
+          await s.attachFiles('input[type="file"]', [this.files.find(f => f.url === url)!.path]);
+          await confirmBlogPhotos(s, this.photos + 1, this.env.check);
+          await s.pressKey({ key: 'ArrowDown' }); await this.endOfBody();
+          this.photos++;
+          this.photoUploadMilliseconds += Date.now() - started; this.photoUploadSamples++;
+          this.report();
+        }
       } else if (step.kind === 'table') {
         this.atomic = true;
         await this.table(step.rows);
@@ -323,15 +334,25 @@ export class BlogExecution {
     try {
     await this.guard();
     await closeTagLayer(this.surface!);
+    const started = Date.now(); let navigationKeys = 0;
+    let sweepStarted = false;
     let observed = await waitFor(async () => {
       await this.guard(); const value = await readBlogDocument(this.surface!);
       if (value.tokens.every(t => t.kind !== 'photo' || t.identity)) return value;
       // A metadata input consumes navigation keys. Reveal lazy-loaded photos
       // with the layer closed and body focused before opening it to read tags.
-      await closeTagLayer(this.surface!);
-      await this.endOfBody();
-      await this.surface!.pressKey({ key: 'PageDown' }); return null;
-    }, 30000);
+      if (!sweepStarted) {
+        const focus = await point(this.surface!, bodySelector) ?? await point(this.surface!, titleSelector);
+        if (!focus) throw new Error('CURSOR_POSITION_UNCONFIRMED');
+        await this.surface!.click(focus.x, focus.y);
+        await this.surface!.pressKey({ key: 'Home', modifiers: 2 }); navigationKeys++;
+        sweepStarted = true;
+      } else {
+        await this.surface!.pressKey({ key: 'PageDown' }); navigationKeys++;
+      }
+      return null;
+    }, Math.max(30000, this.files.length * 2000));
+    this.readbackTimings.push({ photos: observed.tokens.filter(t => t.kind === 'photo').length, milliseconds: Date.now() - started, navigationKeys });
     if (this.plan.steps.some(s => s.kind === 'text' && s.role === 'hashtags')) {
       await this.tagInput(); observed = await readBlogDocument(this.surface!);
     }

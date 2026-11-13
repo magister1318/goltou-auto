@@ -12,7 +12,7 @@ export interface BandPlan {
 }
 export interface BandReadback { body: string; photos: string[]; slots: PhotoSlot[]; uploading: boolean; photoProof?: PhotoProof; composer: boolean; postUrl: string | null; photoLimit: number | null; textLimit: number | null }
 export interface BandChoice { key: string; name: string; photoLimit: number | null; observedAt: string | null }
-export interface BandProgress { characters: number; totalCharacters: number; photos: number; totalPhotos: number }
+export interface BandProgress { characters: number; totalCharacters: number; photos: number; totalPhotos: number; photoUploadMilliseconds?: number; photoUploadSamples?: number }
 export function bandText(plan: BandPlan) {
   return plan.steps.flatMap(s => s.kind === 'text' ? [s.text] : s.kind === 'table' ? s.rows.map(r => r.join(' | ')) : []).join('\n\n');
 }
@@ -111,6 +111,8 @@ export interface BandEnvironment {
 const same = (a: BandReadback, b: BandReadback) => compact(a.body) === compact(b.body) && JSON.stringify(a.slots) === JSON.stringify(b.slots);
 export class BandExecution {
   private offset = 0;
+  private photoUploadMilliseconds = 0;
+  private photoUploadSamples = 0;
   private photoAttempted = false;
   private checkpoint: BandReadback | undefined;
   private owned = false;
@@ -148,6 +150,7 @@ export class BandExecution {
     if (compact(empty.body) || empty.photos.length) throw new Error('BAND_COMPOSER_NOT_EMPTY');
     this.checkpoint = empty;
     this.offset = 0; this.photoAttempted = false; this.verified = false; this.photoOrder = undefined;
+    this.photoUploadMilliseconds = 0; this.photoUploadSamples = 0;
     this.limits(empty);
   }
   private limits(actual: BandReadback) {
@@ -200,9 +203,12 @@ export class BandExecution {
       for (const [index, file] of files.entries()) {
         await this.guard();
         this.photoOrder.check((await readBandDocument(s)).slots);
+        const started = Date.now();
         // Record the attempt before dispatch. A lost reply must never attach the file twice.
         await s.attachFiles('input[type="file"][accept*="image"], input[type="file"]', [file.path]);
         await this.settlePhoto(index + 1);
+        this.photoUploadMilliseconds += Date.now() - started; this.photoUploadSamples++;
+        this.report(this.checkpoint!);
       }
     }
     await this.guard(); current = await this.observe();
@@ -223,7 +229,7 @@ export class BandExecution {
         return actual.slots.length === count && !actual.uploading && actual.slots.every(p => p.loaded) && Date.now() - stableSince >= 500 ? actual.slots : null;
       }, this.env.photoTimeoutMs ?? 60000);
       order.commit(slots);
-      this.checkpoint = await readBandDocument(s); this.report(this.checkpoint);
+      this.checkpoint = await readBandDocument(s);
     } catch (error) {
       if (error instanceof Error && error.message === 'OBSERVATION_TIMEOUT') order.fail();
       throw error;
@@ -239,7 +245,8 @@ export class BandExecution {
     return actual;
   }
   private report(actual: BandReadback) {
-    this.env.progress({ characters: this.offset, totalCharacters: Array.from(bandText(this.plan)).length, photos: actual.photos.length, totalPhotos: this.photoUrls().length });
+    this.env.progress({ characters: this.offset, totalCharacters: Array.from(bandText(this.plan)).length, photos: actual.photos.length, totalPhotos: this.photoUrls().length,
+      photoUploadMilliseconds: this.photoUploadMilliseconds, photoUploadSamples: this.photoUploadSamples });
   }
   async stopBeforePost() { await this.guard(); this.env.verify(await this.observe()); if (!this.verified) throw new Error('BAND_NOT_VERIFIED'); await this.show(); }
   async detectPublished() {

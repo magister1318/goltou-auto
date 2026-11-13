@@ -58,6 +58,21 @@ async function fixture(mode = '', extra: { tags?: boolean; photos?: number; phot
     counts: async (surface = execution.surface!) => pages.get(surface)!.evaluate<{ saves: number; publishes: number }>("({saves:Number(localStorage.getItem('saves')),publishes:Number(localStorage.getItem('publishes'))})") };
 }
 describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback editor only', () => {
+  it('uploads 36 photos individually, reports every completed photo and sweeps a fresh tall draft for lazy identities', async () => {
+    const f = await fixture('metadata-heavy', { photos: 36 });
+    f.plan.steps = [{ kind: 'text', role: 'title', text: '[골투오토 실험] 로컬 사진 36장' }, { kind: 'break' },
+      { kind: 'photos', urls: f.files.map(file => file.url) }, { kind: 'text', role: 'body', text: '사진 뒤 안내' }];
+    await f.execution.write();
+    const values = f.progress.mock.calls.map(([value]) => value as import('@goltou/sites').BlogProgress);
+    expect([...new Set(values.map(v => v.photos))]).toEqual(Array.from({ length: 37 }, (_, i) => i));
+    expect(values.at(-1)).toMatchObject({ photos: 36, photoUploadSamples: 36, photoUploadMilliseconds: expect.any(Number) });
+    const page = f.pages.get(f.execution.surface!)!;
+    expect(await page.evaluate('window.attachmentSizes')).toEqual(Array(36).fill(1));
+    await f.execution.saveAndVerify();
+    expect(f.execution.readbackTimings.at(-1)).toMatchObject({ photos: 36, navigationKeys: expect.any(Number) });
+    expect(f.execution.readbackTimings.at(-1)!.navigationKeys).toBeGreaterThan(10);
+    expect(await f.counts()).toEqual({ saves: 1, publishes: 0 }); expect(f.external()).toBe(0);
+  }, 120000);
   it('preserves links, flattened inline elements and short text after the last seven photos with options off', async () => {
     const f = await fixture('missing-tags', { photos: 8 });
     const preview = realEnding(f.files, false);
@@ -65,7 +80,7 @@ describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback e
     f.plan.steps = preview.blog.steps;
     expect(f.plan.steps.slice(-3).map(s => s.kind)).toEqual(['photos', 'text', 'break']);
     await f.execution.write(); await f.execution.saveAndVerify();
-    expect(f.progress).toHaveBeenLastCalledWith({ photos: 8, totalPhotos: 8, characters: 1509, totalCharacters: 1509 });
+    expect(f.progress).toHaveBeenLastCalledWith(expect.objectContaining({ photos: 8, totalPhotos: 8, characters: 1509, totalCharacters: 1509 }));
     expect(await f.counts()).toEqual({ saves: 1, publishes: 0 }); expect(f.external()).toBe(0);
   }, 40000);
   it.each(['blog', 'channel'] as const)('records the missing final tag control and exact plan step without content in the %s runner', async kind => {
@@ -103,7 +118,7 @@ describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback e
     photo.identity = photo.identity.replace('1234567890abcdef', '0000000000000000');
     expect(compareDocuments(observePlan(f.plan), blogObservation(f.plan, f.files, altered)).differences.some(d => d.field === 'photos')).toBe(true);
     expect((await f.execution.observe()).tags).toEqual(['예시']);
-    expect(f.progress).toHaveBeenLastCalledWith({ photos: 8, totalPhotos: 8, characters: 1512, totalCharacters: 1512 });
+    expect(f.progress).toHaveBeenLastCalledWith(expect.objectContaining({ photos: 8, totalPhotos: 8, characters: 1512, totalCharacters: 1512 }));
     const original = f.execution.surface;
     await f.execution.saveAndVerify();
     expect(f.execution.surface).not.toBe(original);

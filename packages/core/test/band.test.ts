@@ -93,6 +93,7 @@ describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pa
     expect(await g.page().evaluate("JSON.parse(localStorage.getItem('attachSizes'))")).toEqual([1, 1, 1, 1, 1]);
     const actual = await g.execution.observe();
     expect(actual.photoProof).toMatchObject({ urls: g.files.map(f => f.url), ratio: 'matched', counts: [1, 2, 3, 4, 5] });
+    expect(g.progress.mock.calls.map(([p]) => p).find(p => p.photos === 3)).toMatchObject({ photoUploadSamples: 3, photoUploadMilliseconds: expect.any(Number) });
     expect(compareDocuments(observePlan(g.plan), bandObservation(g.plan, g.files, actual)).matches).toBe(true);
     // The identical raw count, without this execution's ledger, supplies no photo identity.
     expect(compareDocuments(observePlan(g.plan), bandObservation(g.plan, g.files, await readBandDocument(g.directory.surface!))).matches).toBe(false);

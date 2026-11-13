@@ -4,6 +4,7 @@ import type { Job, JobInput } from './protocol';
 import type { Checkpoint, RegistrationRunner } from './runner';
 import type { PreparationWork } from './preparation';
 import { createBlogExecution, type BlogServices } from './blog';
+import { updateInputProgress } from './input-progress';
 
 /** Android's real blog runner. Band remains outside WP5 and cannot be reported as saved. */
 export class BlogRegistrationRunner implements RegistrationRunner {
@@ -85,13 +86,14 @@ export class BlogRegistrationRunner implements RegistrationRunner {
         }
         if (job.step === 5) {
           await this.execution!.saveAndVerify();
+          job.blogReadbackTimings = [...this.execution!.readbackTimings];
           if (job.mode === 'publish') job.postUrl = await this.execution!.publish();
           job.tableModes = [...this.execution!.tableModes]; job.linkCard = this.execution!.linkCard;
         }
         if (job.step === 7) await this.work!.cleanup();
         check(); job.completedSteps.push(job.step);
         if (job.step === 7) { job.status = job.mode === 'draft' ? 'draft_saved' : 'published'; job.message = '새 편집기에서 임시글을 다시 열어 원문 대조를 마쳤습니다.'; job.secondsLeft = 0; await this.emit(); return; }
-        job.step++; job.current = 0; job.message = job.step === 6 ? '밴드 선택 없음' : ''; await this.emit();
+        job.step++; job.current = 0; delete job.secondsLeft; job.message = job.step === 6 ? '밴드 선택 없음' : ''; await this.emit();
       }
     } catch (error) {
       if (this.abort.signal.aborted || this.disposed) return;
@@ -120,10 +122,7 @@ export class BlogRegistrationRunner implements RegistrationRunner {
       beforeSave: () => { if (++this.saves > (this.services.draftSaveLimit ?? 3)) throw new Error('DRAFT_SAVE_LIMIT'); },
       progress: (value: import('@goltou/sites').BlogProgress) => {
         const job = this.job!;
-        job.current = value.photos; job.total = value.totalPhotos;
-        job.characters = value.characters; job.totalCharacters = value.totalCharacters;
-        job.secondsLeft = Math.max(0, Math.ceil((value.totalCharacters - value.characters) * 0.06 + (value.totalPhotos - value.photos) * 5 + 15));
-        job.message = `사진 ${value.photos}/${value.totalPhotos} · 글자 ${Math.min(100, Math.round(value.characters / Math.max(1, value.totalCharacters) * 100))}%`;
+        updateInputProgress(job, value);
         this.notify(structuredClone(job));
       },
     };

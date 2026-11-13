@@ -123,6 +123,15 @@ describe('production client over a local contract HTTP server', () => {
 });
 
 describe('conversion metrics and production media restrictions', () => {
+  it('counts only numeric text in del/s/strike once, without retaining struck contents or changing conversion', () => {
+    const source = { ...product, contentsHtml: '<p><del>이전 123<s>45</s></del><s>문자만</s><strike>날짜 2026-12-03</strike>유효 999</p><del><script>123456</script></del>' };
+    const metric = conversionMetric(source);
+    expect(metric.struckNumericCharacters).toBe(13);
+    expect(metric.blog?.numbersPreserved).toBe(true);
+    expect(metric.band?.numbersPreserved).toBe(true);
+    expect(JSON.stringify(metric)).not.toMatch(/123|2026|999|이전|날짜|유효/);
+    expect(conversionMetric({ ...source, contentsHtml: '<p><del>문자만</del>123</p>' }).struckNumericCharacters).toBe(0);
+  });
   it('keeps counts, fallback types and numeric preservation, while excluding every source field', () => {
     const metric = conversionMetric(product, { text: 10, photos: 0 });
     expect(metric).toMatchObject({ productNo: 77, tables: 1, tablesWithImages: 1, photos: 1, textFallbackElements: ['em'], failureCode: null });

@@ -5,6 +5,7 @@ import type { Checkpoint, RegistrationRunner } from './runner';
 import type { PreparationWork } from './preparation';
 import { createBandExecution, type BandServices } from './band';
 import { createBlogExecution, type BlogServices } from './blog';
+import { updateInputProgress } from './input-progress';
 
 /** One product, blog first, then exactly one Band composer at a time. */
 export class ChannelRegistrationRunner implements RegistrationRunner {
@@ -57,9 +58,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     this.active = this.run().catch(() => { if (this.job) { this.job.status = 'failed'; this.job.message = '기록을 저장하지 못했습니다.'; this.notify(structuredClone(this.job)); } }).finally(() => { this.active = undefined; });
   }
   private progress = (v: BandProgress) => {
-    const j = this.job!; j.current = v.photos; j.total = v.totalPhotos; j.characters = v.characters; j.totalCharacters = v.totalCharacters;
-    j.secondsLeft = Math.max(0, Math.ceil((v.totalCharacters - v.characters) * 0.06 + (v.totalPhotos - v.photos) * 5));
-    j.message = `사진 ${v.photos}/${v.totalPhotos} · 글자 ${Math.min(100, Math.round(v.characters / Math.max(1, v.totalCharacters) * 100))}%`;
+    const j = this.job!; updateInputProgress(j, v);
     this.notify(structuredClone(j));
   };
   private async run() {
@@ -76,6 +75,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
         if (j.step === 4 && this.blog) { this.blog.files = this.work!.prepared!.files; await this.blog.write(); }
         if (j.step === 5 && this.blog) {
           await this.blog.saveAndVerify();
+          j.blogReadbackTimings = [...this.blog.readbackTimings];
           const result = j.targetResults!.find(t => t.channel === 'blog')!;
           if (j.mode === 'publish') result.postUrl = await this.blog.publish();
           result.status = j.mode === 'draft' ? 'draft_saved' : 'published';
@@ -111,7 +111,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
           j.status = results.some(t => t.status === 'failed') ? 'failed' : results.every(t => t.status === 'stopped') ? 'stopped' : results.some(t => t.status === 'published') ? 'published' : 'draft_saved';
           j.message = '채널별 결과를 등록 기록에 남겼습니다.'; j.secondsLeft = 0; await this.emit(); return;
         }
-        j.step++; j.current = 0; await this.emit();
+        j.step++; j.current = 0; delete j.secondsLeft; await this.emit();
       }
     } catch (error) { if (!this.abort.signal.aborted && !this.disposed) await this.fail(error); }
   }

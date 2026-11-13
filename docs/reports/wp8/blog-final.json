@@ -1,0 +1,60 @@
+{
+  "at": "2026-11-13T06:19:48.975Z",
+  "loggedIn": true,
+  "services": {
+    "naver": "unknown",
+    "band": "unknown",
+    "ai": "unknown"
+  },
+  "job": {
+    "id": 1,
+    "productNo": 1381,
+    "status": "draft_saved",
+    "step": 7,
+    "current": 0,
+    "total": 36,
+    "characters": 576,
+    "totalCharacters": 576,
+    "secondsLeft": 0,
+    "photoUploadMilliseconds": 91376,
+    "photoUploadSamples": 36,
+    "blogReadbackTimings": [
+      {
+        "photos": 36,
+        "milliseconds": 158,
+        "navigationKeys": 0
+      },
+      {
+        "photos": 36,
+        "milliseconds": 164,
+        "navigationKeys": 0
+      },
+      {
+        "photos": 36,
+        "milliseconds": 15902,
+        "navigationKeys": 30
+      }
+    ],
+    "mode": "draft",
+    "failureCode": "AUTO_RECOVER_CONSENT_REQUIRED",
+    "completedSteps": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "targets": [
+      "blog"
+    ],
+    "results": [
+      {
+        "channel": "blog",
+        "status": "draft_saved"
+      }
+    ],
+    "experimentTitle": true
+  }
+}

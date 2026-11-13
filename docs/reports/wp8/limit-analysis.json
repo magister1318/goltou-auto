@@ -1,0 +1,15 @@
+{
+  "observedBandPhotoLimit": null,
+  "observedBandTextLimit": null,
+  "actualPhotoLimitExceededProducts": null,
+  "actualTextLimitExceededProducts": null,
+  "previousSampleSize": 60,
+  "currentSampleSize": 60,
+  "conditionalOnly": {
+    "assumedPhotoLimit": 30,
+    "previousPhotoLimitExceeded": 37,
+    "currentPhotoLimitExceeded": 36
+  },
+  "numericStrikeProducts": 2,
+  "struckNumericCharacters": 19
+}

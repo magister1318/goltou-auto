@@ -1,0 +1,10 @@
+{
+  "bytes": 64103014,
+  "sha256": "4c2b13309ba7408fa1943986c091b06746027f5f8becc1609d3d53c0520f0d86",
+  "installed": false,
+  "reason": "foreground_precondition_failed",
+  "embeddedMatches": {
+    "engine.cjs": true,
+    "manifest.json": true
+  }
+}

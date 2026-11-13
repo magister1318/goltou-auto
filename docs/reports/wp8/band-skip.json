@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-13T06:20:11.892Z",
+  "model": "SM-S928N",
+  "awake": true,
+  "on": true,
+  "front": false,
+  "reason": "SYSTEM_ALERT_IN_FOREGROUND",
+  "composerOpens": 0,
+  "posts": 0,
+  "photoLimit": null,
+  "textLimit": null,
+  "overLimitProducts": null
+}
