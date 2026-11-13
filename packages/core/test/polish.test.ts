@@ -35,11 +35,12 @@ describe('WP4 conservative paragraph polishing', () => {
   it('excludes tables, dates, prices and formatted paragraphs; reverts individual unsafe responses', async () => {
     const product = fixtureProduct('<p>예시CC에서 조용히 쉬어 갑니다.</p><p>원문에 숫자가 없습니다.</p><p>원문에 숫자 18이 들어 있습니다.</p><p>출발일: 2026-12-03 가격: 1190000원</p><table><tr><td>가격 999원</td></tr></table><p><b>강조 문단</b></p>', 0);
     const parsed = parseContents(product.contentsHtml);
-    const transport = vi.fn(async (_prompt: string) => '1. 예시CC에서 조용히 쉬어갑니다.\n2. 원문에 숫자 19가 있습니다.');
+    const transport = vi.fn(async (prompt: string) => prompt.includes('예시CC') ? '1. 예시CC에서 조용히 쉬어갑니다.' : '1. 원문에 숫자 19가 있습니다.');
     const result = await polishContent(parsed, product, transport);
-    expect(transport).toHaveBeenCalledTimes(1);
-    expect(transport.mock.calls[0]?.[0]).not.toMatch(/1190000|2026-12-03|999|강조 문단|원문에 숫자 18/);
-    expect(result.paragraphs.map(p => p.accepted)).toEqual([true, false]);
+    expect(transport).toHaveBeenCalledTimes(2);
+    expect(transport.mock.calls.flat().join('')).not.toMatch(/1190000|2026-12-03|999|강조 문단|원문에 숫자 18/);
+    expect(result.paragraphs.map(p => p.outcome)).toEqual(['polished', 'fallback', 'kept_digits', 'kept_digits', 'kept_format']);
+    expect(result.paragraphs[1]?.reasons).toContain('숫자·날짜·금액 변경 또는 새 숫자');
     const preview = makePreview(product, {}, parsed, result);
     expect(preview.verification.blog.matches).toBe(true);
     expect(observePlan(preview.blog).text).toContain('조용히 쉬어갑니다.');
@@ -55,11 +56,11 @@ describe('WP4 conservative paragraph polishing', () => {
     const result = await polishContent(parseContents(product.contentsHtml), product, transport);
     expect(transport).toHaveBeenCalledTimes(1);
     for (const paragraph of numeric) expect(transport.mock.calls[0]![0]).not.toContain(paragraph);
-    expect(result.paragraphs).toHaveLength(1);
-    expect(result.paragraphs[0]?.accepted).toBe(true);
+    expect(result.paragraphs.filter(p => p.outcome === 'kept_digits')).toHaveLength(numeric.length);
+    expect(result.paragraphs.at(-1)?.accepted).toBe(true);
     const onlyNumbers = parseContents(numeric.map(p => `<p>${p}</p>`).join(''));
     transport.mockClear();
-    expect((await polishContent(onlyNumbers, product, transport)).paragraphs).toEqual([]);
+    expect((await polishContent(onlyNumbers, product, transport)).paragraphs.every(p => !p.sent && p.outcome === 'kept_digits')).toBe(true);
     expect(transport).not.toHaveBeenCalled();
   });
   it('falls back without failing the job on login, unavailable or malformed answers', async () => {
@@ -70,5 +71,41 @@ describe('WP4 conservative paragraph polishing', () => {
     }
     expect(parsePolishAnswer('1. 하나\n3. 둘', 2)).toBeNull();
     expect(parsePolishAnswer('1. 하나\n2. 둘\n설명', 2)).toBeNull();
+  });
+  it('sends digit-free paragraphs sequentially, keeps validation failures local, and records elapsed times', async () => {
+    const product = fixtureProduct('<p>예시CC에서 조용히 쉬어 갑니다.</p><p>풍경을 둘러보며 편하게 쉬어 갑니다.</p><p>주변 풍경을 보며 쉬어 갑니다.</p>', 0);
+    let active = 0, maxActive = 0;
+    const transport = vi.fn(async (prompt: string) => {
+      active++; maxActive = Math.max(maxActive, active);
+      await new Promise(resolve => setTimeout(resolve, 5)); active--;
+      expect(prompt.match(/\n1\. /g)).toHaveLength(1); expect(prompt).not.toContain('\n2.');
+      return prompt.includes('예시CC') ? '1. 예시CC에서 조용히 쉬어갑니다.' : prompt.includes('편하게') ? '1. 풍경을 둘러보며 2회 쉬어 갑니다.' : '1. 주변 풍경을 보며 쉬어갑니다.';
+    });
+    const result = await polishContent(parseContents(product.contentsHtml), product, transport);
+    expect(maxActive).toBe(1); expect(transport).toHaveBeenCalledTimes(3);
+    expect(result.paragraphs.map(p => p.outcome)).toEqual(['polished', 'fallback', 'polished']);
+    expect(result.paragraphs.every(p => p.sent && p.elapsedMs >= 1)).toBe(true);
+    expect(result.paragraphs[1]?.polished).toBe(result.paragraphs[1]?.original);
+    for (const channel of ['blog', 'band'] as const) {
+      const plan = makePreview(product, {}, undefined, result)[channel];
+      const before = observePlan(makePreview(product, {})[channel]), after = observePlan(plan);
+      expect(after.prices).toEqual(before.prices); expect(after.departures).toEqual(before.departures); expect(after.golfCourses).toEqual(before.golfCourses);
+    }
+  });
+  it.each(['AI_LOGIN_REQUIRED', 'AI_CONSENT_REQUIRED', 'AI_REGION_UNAVAILABLE', 'AI_AGE_RESTRICTED', 'AI_BLOCKED', 'AI_LAYOUT_UNSUPPORTED', 'AI_INPUT_NOT_READY', 'AI_INPUT_MISMATCH', 'AI_REQUEST_NOT_RECEIVED', 'AI_RESPONSE_TIMEOUT', 'AI_NAVIGATION_TIMEOUT', 'AI_READ_FAILED', 'AI_BUSY', 'private raw failure'])('stops subsequent requests and keeps originals with a safe reason: %s', async code => {
+    const product = fixtureProduct('<p>소개 문장을 다듬습니다.</p><p>주변 풍경을 감상합니다.</p>', 0);
+    const transport = vi.fn(async () => { throw Object.assign(new Error(code), { submitted: true }); });
+    const result = await polishContent(parseContents(product.contentsHtml), product, transport);
+    expect(transport).toHaveBeenCalledTimes(1);
+    expect(result.paragraphs.map(p => p.sent)).toEqual([true, false]);
+    expect(result.paragraphs.every(p => p.original === p.polished && p.outcome === 'fallback' && p.reasons.length)).toBe(true);
+    expect(result.status).toBe(code === 'AI_LOGIN_REQUIRED' ? 'login_required' : 'unavailable');
+    expect(JSON.stringify(result)).not.toContain('private raw failure');
+    if (code === 'AI_LOGIN_REQUIRED') expect(result.notice).toContain('사용자 로그인 대기');
+  });
+  it('propagates cancellation instead of swallowing it as a fallback', async () => {
+    const product = fixtureProduct('<p>소개 문장을 다듬습니다.</p>', 0);
+    let cancelled = false;
+    await expect(polishContent(parseContents(product.contentsHtml), product, async () => { cancelled = true; throw Error('stopped'); }, () => { if (cancelled) throw Error('CANCELLED'); })).rejects.toThrow('CANCELLED');
   });
 });

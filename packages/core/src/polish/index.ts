@@ -2,7 +2,11 @@ import type { Product } from '@goltou/api-client';
 import { blockText, type ParsedContent } from '../convert';
 import { unicodeNumber } from './unicode-numbers';
 
-export interface PolishParagraph { id: string; original: string; polished: string; accepted: boolean; reasons: string[]; reverted: boolean }
+export interface PolishParagraph {
+  id: string; original: string; polished: string; accepted: boolean; reasons: string[]; reverted: boolean;
+  outcome: 'polished' | 'kept_digits' | 'kept_format' | 'fallback';
+  sent: boolean; elapsedMs: number; failureCode?: string;
+}
 export interface PolishResult { paragraphs: PolishParagraph[]; notice: string; status: 'done' | 'unavailable' | 'login_required' | 'invalid_format' }
 export type PolishTransport = (prompt: string, check?: () => void) => Promise<string>;
 const numberTokens = new RegExp(`${unicodeNumber.source}+(?:[,.:/-]${unicodeNumber.source}+)*(?:\\s*(?:원|만원|억원|년|월|일|박|홀|성급|%))?`, 'gu');
@@ -36,29 +40,69 @@ export function parsePolishAnswer(answer: string, count: number): string[] | nul
   return result;
 }
 export async function polishContent(parsed: ParsedContent, product: Pick<Product, 'golfCourses' | 'productUrl'>, transport?: PolishTransport, check: () => void = () => {}): Promise<PolishResult> {
-  // All Unicode numbers, price/date lines and tables stay outside AI processing.
-  const eligible = parsed.blocks.filter(b => b.kind === 'paragraph' && !b.runs.some(r => r.href || r.bold) && !unicodeNumber.test(blockText(b)) && !/\n|[₩$€¥]|출발|출국|귀국|가격|요금|금액|참가비/.test(blockText(b)));
-  const paragraphs: PolishParagraph[] = eligible.map(b => ({ id: b.kind === 'paragraph' ? b.id : '', original: blockText(b), polished: blockText(b), accepted: false, reasons: [], reverted: false }));
-  const fallback = (status: PolishResult['status'], notice: string): PolishResult => ({ paragraphs, status, notice });
-  if (!paragraphs.length) return { paragraphs, status: 'done', notice: '다듬을 소개 문단이 없습니다.' };
-  if (!transport) return fallback('unavailable', 'AI Mode를 사용할 수 없어 원문으로 진행합니다.');
-  try {
-    check(); const answer = await transport(polishPrompt(paragraphs.map(p => p.original)), check); check();
-    const candidates = parsePolishAnswer(answer, paragraphs.length);
-    if (!candidates) return fallback('invalid_format', 'AI 응답 형식이 맞지 않아 원문으로 진행합니다.');
-    const names = [...product.golfCourses, product.productUrl];
-    for (const [i, paragraph] of paragraphs.entries()) {
-      const candidate = candidates[i]!;
-      paragraph.reasons = validateParagraph(paragraph.original, candidate, names);
-      paragraph.accepted = !paragraph.reasons.length;
-      if (paragraph.accepted) paragraph.polished = candidate;
-    }
-    const rejected = paragraphs.filter(p => !p.accepted).length;
-    return { paragraphs, status: 'done', notice: rejected ? `${rejected}개 문단은 검증을 통과하지 못해 원문을 씁니다.` : '문단별 원문과 다듬은 글을 확인해 주세요.' };
-  } catch (error) {
+  // Keep every paragraph in the review. Never send any Unicode number or formatted/factual line.
+  const paragraphs: PolishParagraph[] = parsed.blocks.filter(b => b.kind === 'paragraph').map(b => {
+    const original = blockText(b);
+    const digits = unicodeNumber.test(original);
+    const formatted = b.kind === 'paragraph' && (b.runs.some(r => r.href || r.bold) || /\n|[₩$€¥]|출발|출국|귀국|가격|요금|금액|참가비/.test(original));
+    return { id: b.kind === 'paragraph' ? b.id : '', original, polished: original, accepted: false, reverted: false,
+      outcome: digits ? 'kept_digits' : formatted ? 'kept_format' : 'fallback', sent: false, elapsedMs: 0,
+      reasons: digits ? ['숫자 포함 · 전송하지 않음'] : formatted ? ['서식·일정·요금 문단 · 전송하지 않음'] : [] };
+  });
+  let status: PolishResult['status'] = 'done';
+  let unavailable: string | undefined;
+  for (const paragraph of paragraphs) {
     check();
-    return error instanceof Error && error.message === 'AI_LOGIN_REQUIRED' ? fallback('login_required', 'Google 로그인이 필요해 다듬기를 멈추고 원문으로 진행합니다.') : fallback('unavailable', 'AI Mode 응답을 읽지 못해 원문으로 진행합니다.');
+    if (paragraph.outcome !== 'fallback') continue;
+    if (!transport || unavailable) {
+      paragraph.failureCode = unavailable ?? 'AI_UNAVAILABLE';
+      paragraph.reasons = [failureNotice(paragraph.failureCode)];
+      if (!transport) status = 'unavailable';
+      continue;
+    }
+    const start = Date.now();
+    try {
+      // Exactly one paragraph per request. Await validation before the next request.
+      const answer = await transport(polishPrompt([paragraph.original]), check); check();
+      paragraph.sent = true;
+      const candidates = parsePolishAnswer(answer, 1);
+      if (!candidates) {
+        paragraph.failureCode = 'AI_INVALID_FORMAT'; paragraph.reasons = ['응답 문단·번호 형식 오류 · 원문 유지'];
+        if (status === 'done') status = 'invalid_format';
+        continue;
+      }
+      const candidate = candidates[0]!;
+      paragraph.reasons = validateParagraph(paragraph.original, candidate, [...product.golfCourses, product.productUrl]);
+      paragraph.accepted = !paragraph.reasons.length;
+      if (paragraph.accepted) { paragraph.polished = candidate; paragraph.outcome = 'polished'; }
+      else paragraph.failureCode = 'AI_VALIDATION_REJECTED';
+    } catch (error) {
+      check();
+      const message = error instanceof Error ? error.message : '';
+      paragraph.failureCode = /^AI_[A-Z_]+$/.test(message) ? message : 'AI_UNAVAILABLE';
+      paragraph.sent = error instanceof Error && 'submitted' in error && error.submitted === true;
+      paragraph.reasons = [failureNotice(paragraph.failureCode)];
+      status = paragraph.failureCode === 'AI_LOGIN_REQUIRED' ? 'login_required' : 'unavailable';
+      unavailable = paragraph.failureCode; // No repeated login, blocked-page or ambiguous-request attempts.
+    } finally { paragraph.elapsedMs = Date.now() - start; }
   }
+  const eligible = paragraphs.filter(p => p.outcome === 'polished' || p.outcome === 'fallback');
+  const fallback = eligible.filter(p => !p.accepted).length;
+  return { paragraphs, status, notice: !eligible.length ? '다듬을 소개 문단이 없습니다.' :
+    status === 'login_required' ? '사용자 로그인 대기 · AI 화면 열기에서 Google에 직접 로그인해 주세요. 원문을 유지합니다.' :
+    fallback ? `${fallback}개 문단은 다듬지 못해 원문을 씁니다. 문단별 사유와 원문을 확인해 주세요.` : '문단별 원문과 다듬은 글을 확인해 주세요.' };
+}
+
+export function failureNotice(code: string): string {
+  const notices: Record<string, string> = {
+    AI_LOGIN_REQUIRED: '사용자 로그인 대기 · Google 로그인', AI_CONSENT_REQUIRED: '사용자 확인 대기 · Google 동의 화면',
+    AI_REGION_UNAVAILABLE: '현재 국가·지역에서 AI 모드 사용 불가', AI_AGE_RESTRICTED: 'Google 계정 연령 요건 확인 필요',
+    AI_BLOCKED: 'Google 접근 제한·보안 확인 필요', AI_LAYOUT_UNSUPPORTED: 'AI 입력창을 찾지 못함',
+    AI_INPUT_NOT_READY: 'AI 입력창 준비·버튼 위치 확인 실패', AI_INPUT_MISMATCH: '입력한 문장과 화면 내용 불일치',
+    AI_REQUEST_NOT_RECEIVED: '새 질문 수신을 확인하지 못함', AI_RESPONSE_TIMEOUT: '응답 완료 확인 시간 초과',
+    AI_NAVIGATION_TIMEOUT: 'AI 화면 열기 시간 초과', AI_READ_FAILED: 'AI 화면 읽기 실패', AI_BUSY: '다른 AI 요청 처리 중',
+  };
+  return `${notices[code] ?? 'AI 모드 사용 불가'} · 원문 유지`;
 }
 export function applyPolish(parsed: ParsedContent, result: PolishResult | undefined, reverted: readonly string[] = []): ParsedContent {
   return { ...parsed, blocks: parsed.blocks.map(block => {

@@ -59,6 +59,14 @@ export class AppCore {
   }
   async handle(request: AppRequest): Promise<unknown> {
     if (request.command === 'session.get') { await this.initialize(); return this.snapshot(); }
+    if (this.preparation?.ai && ((request.command === 'service.show' || request.command === 'service.check' || request.command === 'service.clear') && request.input.service === 'ai' || request.command === 'service.hide' && this.state.visibleService === 'ai')) {
+      if (this.preparing || this.starting || this.state.job?.status === 'running') throw new ApiError('conflict', '진행 중인 작업을 먼저 마쳐 주세요.');
+      if (request.command === 'service.show') { await this.preparation.ai.show(); this.state.visibleService = 'ai'; }
+      if (request.command === 'service.hide') { await this.preparation.ai.hide(); this.state.visibleService = null; }
+      if (request.command === 'service.clear') { await this.preparation.ai.clear(); this.state.visibleService = null; this.preview = undefined; }
+      // An input box or the owner's click does not prove Google authentication.
+      this.state.services.ai = 'unknown'; this.emit(); return this.snapshot();
+    }
     if (request.command === 'login') {
       if (this.authenticating) { request.input.password = ''; request.input.loginId = ''; throw new ApiError('conflict', '로그인 요청이 진행 중입니다.'); }
       if (this.state.user) { request.input.password = ''; request.input.loginId = ''; throw new ApiError('conflict', '먼저 로그아웃해 주세요.'); }
@@ -88,7 +96,7 @@ export class AppCore {
           const product = this.forRegistration(await this.call('/auto/products/get', { productNo: request.input.productNo }, token));
           const options = request.input.options;
           const previous = this.preview;
-          const reusable = options.polish && previous?.options.polish && previous.product.productNo === product.productNo && previous.product.contentHash === product.contentHash && previous.result.polish;
+          const reusable = !request.input.retryPolish && options.polish && previous?.options.polish && previous.product.productNo === product.productNo && previous.product.contentHash === product.contentHash && previous.result.polish;
           const reverted = reusable ? previous.reverted : [];
           const result = reusable ? makePreview(product, this.convertOptions(options), undefined, reusable, reverted) : await preparePreview(product, { ...this.convertOptions(options), polish: options.polish }, this.preparation?.polish);
           this.preview = { product, options: { ...options }, result, reverted };
@@ -104,7 +112,7 @@ export class AppCore {
       }
       case 'posts.list': return this.call('/auto/posts/list', request.input, token);
       case 'settings.save': await this.call('/auto/settings/save', request.input, token); this.state.settings = (await this.call('/auto/me', {}, token)).settings; break;
-      case 'service.check': this.state.services[request.input.service] = request.input.service === 'band' && this.runner.checkBandLogin ? await this.runner.checkBandLogin() : request.input.service === 'naver' && this.runner.checkLogin ? await this.runner.checkLogin() : 'confirmed'; break;
+      case 'service.check': this.state.services[request.input.service] = request.input.service === 'ai' ? 'unknown' : request.input.service === 'band' && this.runner.checkBandLogin ? await this.runner.checkBandLogin() : request.input.service === 'naver' && this.runner.checkLogin ? await this.runner.checkLogin() : 'confirmed'; break;
       case 'service.show': await this.runner.showService?.(request.input.service); this.state.visibleService = request.input.service; break;
       case 'service.hide': await this.runner.hideService?.(); this.state.visibleService = null; break;
       case 'service.clear': this.state.services[request.input.service] = 'unknown'; if (this.state.visibleService === request.input.service) this.state.visibleService = null; break;

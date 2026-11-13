@@ -33,7 +33,7 @@ export interface Commands {
   'logout': { input: Record<string, never>; output: AppSnapshot };
   'products.list': { input: ProductQuery; output: Page<ProductSummary> };
   'products.get': { input: { productNo: number }; output: Product };
-  'preview.prepare': { input: { productNo: number; options: PostInput['options'] }; output: import('./preparation').PreparedPreview };
+  'preview.prepare': { input: { productNo: number; options: PostInput['options']; retryPolish?: boolean }; output: import('./preparation').PreparedPreview };
   'preview.revert': { input: { productNo: number; paragraphId: string }; output: import('./preparation').PreparedPreview };
   'posts.list': { input: { scope: 'mine' | 'all'; page?: number; pageSize?: number }; output: Page<Post> };
   'settings.save': { input: Settings; output: AppSnapshot };

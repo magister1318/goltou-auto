@@ -6,7 +6,7 @@ import { createApiClient } from '../../../packages/api-client/src/index';
 import { apiOrigin } from './config';
 declare const __GOLTOU_DEBUG__: boolean;
 import { AndroidTokenStore } from './session';
-import { aiModeTransport } from '../../../packages/sites/src/ai-mode';
+import { AiModeClient } from '../../../packages/sites/src/ai-mode';
 import { AndroidSurfaceHost } from './host';
 
 function argument(name: string): string {
@@ -18,6 +18,7 @@ function argument(name: string): string {
 
 const native = new NativeBridge();
 const host = new AndroidSurfaceHost(native, argument('devtools'));
+const ai = new AiModeClient(host);
 const options: CoreOptions = {
   native, host,
   band: { host, capture: (surface, name) => host.capture(surface, name) },
@@ -30,7 +31,7 @@ const options: CoreOptions = {
     },
   },
   preparation: {
-    polish: aiModeTransport(host),
+    polish: ai.polish, ai,
     media: {
       storage: fileMediaStorage(path.join(path.dirname(argument('data')), 'wp4-media')),
       allowUrl: goltouPhotoUrl,

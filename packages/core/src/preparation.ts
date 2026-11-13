@@ -16,7 +16,10 @@ export interface PreparationWork {
   arrange(): Promise<void>;
   cleanup(): Promise<void>;
 }
-export interface PreparationServices { media: MediaDependencies; polish?: PolishTransport }
+export interface PreparationServices {
+  media: MediaDependencies; polish?: PolishTransport;
+  ai?: { show(): Promise<void>; hide(): Promise<void>; clear(): Promise<void> };
+}
 export function makePreview(product: Product, options: ConvertOptions, parsed: ParsedContent = parseContents(product.contentsHtml), polished?: PolishResult, reverted: readonly string[] = []): PreparedPreview {
   const approved = applyPolish(parsed, polished, reverted);
   const blog = assemble(product, 'blog', options, approved), band = assemble(product, 'band', options, approved);
