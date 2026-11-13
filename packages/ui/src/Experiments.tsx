@@ -38,6 +38,7 @@ export function ExperimentsScreen({ back }: { back(): void }) {
       <button disabled={busy} onClick={() => void run('lifecycle', { mode: 'rotate' })}>앱 화면 회전</button>
       <button disabled={busy} onClick={() => void run('lifecycle', { mode: 'recreate' })}>Activity 재생성</button>
     </div>{state?.info && <dl className="experiment-info">{Object.entries(state.info).filter(([, v]) => v !== undefined).map(([key, v]) => <div key={key}><dt>{key}</dt><dd>{Array.isArray(v) ? v.join(' · ') : String(v)}</dd></div>)}</dl>}</section>
+    <section><h2>AI 다듬기</h2><p>예시 문단 3개로 한 번 실행합니다. Google 로그인이 필요하면 입력 없이 멈추고 원문을 유지합니다.</p><button disabled={busy} onClick={() => void run('ai.polish')}>AI 다듬기 실험</button></section>
     <section><h2>서비스 로그인</h2><p>네이버: {labels[state?.login.naver ?? 'unknown']} · 밴드: {labels[state?.login.band ?? 'unknown']}</p>
       <label>서비스<select value={channel} onChange={e => setChannel(e.target.value as 'naver' | 'band')}><option value="naver">네이버</option><option value="band">밴드</option></select></label>
       <div className="experiment-actions"><button disabled={busy} onClick={() => void run('login.open', { channel })}>로그인 화면 열기</button>

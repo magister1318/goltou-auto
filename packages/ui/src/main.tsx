@@ -9,6 +9,8 @@ import '@fontsource/noto-sans-kr/700.css';
 import '@fontsource/noto-sans-kr/900.css';
 import './style.css';
 import { ExperimentsScreen } from './Experiments';
+import { ConversionPreview } from './ConversionPreview';
+import type { PreparedPreview } from '@goltou/core';
 
 type Screen = 'login' | 'blocked' | 'home' | 'preview' | 'progress' | 'relogin' | 'history' | 'settings' | 'service' | 'experiments';
 const names: Record<Service, string> = { naver: '네이버', band: '밴드', ai: 'AI Mode' };
@@ -17,8 +19,8 @@ const money = (n: number) => `${n.toLocaleString('ko-KR')}원`;
 const ignore = () => {};
 const dateLabel = (date: string) => new Date(`${date}T12:00:00+09:00`).toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric', weekday: 'short' });
 
-function Toggle({ label, value, change }: { label: string; value: boolean; change(value: boolean): void }) {
-  return <button className="switch" role="switch" aria-label={label} aria-checked={value} onClick={() => change(!value)}><span /></button>;
+function Toggle({ label, value, change, disabled = false }: { label: string; value: boolean; change(value: boolean): void; disabled?: boolean }) {
+  return <button className="switch" role="switch" aria-label={label} aria-checked={value} disabled={disabled} onClick={() => change(!value)}><span /></button>;
 }
 function ServiceSpace({ service }: { service: Service }) {
   return <section className="service-space"><div className="service-origin"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>{names[service]} · 가짜 로그인 화면</div><div className="service-placeholder"><strong>{names[service]} 로그인 화면이 여기에 열립니다</strong><p>실제 서비스는 열지 않는 시뮬레이션입니다. 실제 연결에서는 아이디, 비밀번호, 2단계 인증을 해당 서비스 화면에 직접 입력합니다.</p></div></section>;
@@ -32,6 +34,7 @@ function App() {
   const [q, setQ] = useState(''); const [filter, setFilter] = useState<'all' | 'unposted' | 'month'>('all'); const [month, setMonth] = useState('2026-12');
   const [page, setPage] = useState(1); const [product, setProduct] = useState<Product | null>(null);
   const [preview, setPreview] = useState<'blog' | 'band'>('blog'); const [expanded, setExpanded] = useState(false);
+  const [converted, setConverted] = useState<PreparedPreview | null>(null); const [preparing, setPreparing] = useState(false);
   const [mode, setMode] = useState<Mode>('draft'); const [blog, setBlog] = useState(true); const [band, setBand] = useState(true);
   const [bands, setBands] = useState(['travel', 'golf']); const [optionsOpen, setOptionsOpen] = useState(false); const [targetsOpen, setTargetsOpen] = useState(false);
   const [options, setOptions] = useState({ polish: false, closing: false, linkCard: false }); const [confirmation, setConfirmation] = useState(false);
@@ -47,6 +50,12 @@ function App() {
 
   useEffect(() => { if (app?.settings) setSettings(app.settings); }, [app?.settings?.closingText, app?.settings?.bandDailyLimit, app?.settings?.defaultHashtags.join('|')]);
   useEffect(() => {
+    if (screen !== 'preview' || !product) return;
+    let active = true; setPreparing(true); setConverted(null);
+    void request('preview.prepare', { productNo: product.productNo, options }).then(value => { if (active) setConverted(value); }).catch(ignore).finally(() => { if (active) setPreparing(false); });
+    return () => { active = false; };
+  }, [screen, product?.productNo, options.polish, options.closing, options.linkCard]);
+  useEffect(() => {
     if (screen !== 'home' || !app?.user) return;
     let active = true;
     const timer = setTimeout(() => { void request('products.list', { q, onlyUnposted: filter === 'unposted', ...(filter === 'month' ? { month } : {}), page, pageSize: 8 }).then(data => { if (active) setProducts(old => ({ ...data, items: page === 1 ? data.items : [...old.items, ...data.items] })); }).catch(ignore); }, 120);
@@ -59,7 +68,8 @@ function App() {
   async function start(confirmed = false) {
     if (!product) return;
     if (mode === 'publish' && !confirmed) { setConfirmation(true); return; }
-    await act(async () => { await request('job.start', { productNo: product.productNo, mode, targets: targetList(), options, publishConfirmed: confirmed }); setConfirmation(false); go('progress'); });
+    if (!converted || preparing || targetList().some(t => !converted.verification[t.channel].matches)) return;
+    await act(async () => { await request('job.start', { productNo: product.productNo, mode, targets: targetList(), options, publishConfirmed: confirmed, previewHash: converted.contentHash }); setConfirmation(false); go('progress'); });
   }
   async function showService(service: Service) { await act(async () => { await request('service.show', { service }); go('service'); }); }
   async function resume() { await act(async () => { const service = app?.job?.service; if (service) await request('service.check', { service }); await request('service.hide', {}); await request('job.resume', {}); go('progress', true); }); }
@@ -84,17 +94,19 @@ function App() {
         {!products.items.length && <p role="status">조건에 맞는 상품이 없습니다.</p>}{products.items.length < products.total && <button className="more" onClick={() => setPage(n => n + 1)}>상품 더 보기</button>}{job && !terminal && <button className="more" onClick={() => go(job.status === 'login_paused' ? 'relogin' : 'progress')}>진행하던 작업 보기</button>}
       </main>{footer('home')}</>}
     {shownScreen === 'preview' && product && <><div className="preview-top"><button onClick={back}>← 상품 목록</button><div className="tabs" role="tablist" aria-label="미리보기 채널">{(['blog', 'band'] as const).map(c => <button key={c} role="tab" aria-selected={preview === c} onClick={() => setPreview(c)}>{c === 'blog' ? '블로그용' : '밴드용'}</button>)}</div></div>
-      <main className="preview-content"><div className="hero-photo">상품 사진 1 / {product.images.length} (원본 크기)</div><section className="preview-text"><h2>{product.title}{preview === 'blog' ? `, ${Number(product.departures[0]?.date.slice(5, 7))}월 출발 일정과 가격` : ''}</h2><p className="description">{product.contentsHtml.replace(/<[^>]*>/g, '')}</p>
-        <div className="departures">{product.departures.slice(0, expanded ? undefined : 2).map(d => <div key={d.date}><span>{dateLabel(d.date)}</span><strong>{money(d.price)}</strong></div>)}</div><div className="small muted detail-line">외 출발일 {Math.max(0, product.departures.length - 2)}개, 사진 {Math.max(0, product.images.length - 1)}장 · <button onClick={() => setExpanded(!expanded)}>{expanded ? '접기' : '전체 보기'}</button></div>
-        {expanded && <><p className="small">골프장: {product.golfCourses.join(', ')}</p><p className="small address">상품 주소: {product.productUrl}</p><p className="small">사진 {product.images.map(i => i.order).join(' · ')} (예시 자리)</p></>}
-        <p className="match">원문과 일치합니다. 가격 {product.departures.length}, 출발일 {product.departures.length}, 사진 {product.images.length}</p></section>
+      <main className="preview-content"><section className="preview-text">{converted ? <ConversionPreview plan={converted[preview]} expanded={expanded}/> : <p role="status">{preparing ? '원문을 정리하고 대조하는 중입니다.' : '변환 결과를 확인하지 못했습니다.'}</p>}
+        <div className="small muted detail-line"><button onClick={() => setExpanded(!expanded)}>{expanded ? '접기' : '전체 보기'}</button></div>
+        {converted && <p className={converted.verification[preview].matches ? 'match' : 'warn'} role="status">{converted.verification[preview].message}</p>}
+        {converted && !converted.verification[preview].matches && <ul>{converted.verification[preview].differences.map((d, i) => <li key={i}>{d.message}</li>)}</ul>}
+        {options.polish && converted?.polish && <section className="polish-comparison"><p role="status">{converted.polish.notice}</p>{converted.polish.paragraphs.map(p => <div className="polish-row" key={p.id}><div><strong>원문</strong><p>{p.original}</p></div><div><strong>다듬은 글</strong><p>{p.reverted ? p.original : p.polished}</p><small className="warn">{p.reasons.join(' · ')}</small></div><button disabled={busy || preparing || !p.accepted || p.reverted} onClick={() => void act(async () => setConverted(await request('preview.revert', { productNo: product.productNo, paragraphId: p.id })))}>{p.reverted ? '원문 사용 중' : '이 문단 되돌리기'}</button></div>)}</section>}
+      </section>
         <section className="choices"><div className="choice-row"><span>등록 방식</span><button className={mode === 'draft' ? 'chosen' : ''} onClick={() => { setMode('draft'); setConfirmation(false); }}>임시저장</button><button className={mode === 'publish' ? 'chosen' : ''} onClick={() => setMode('publish')}>발행</button></div>
           <div className="choice-row"><span>블로그 <span className="small muted">해외골프</span></span><Toggle label="블로그에 등록" value={blog} change={setBlog}/></div><div className="choice-row"><span>밴드 <button className="small muted" onClick={() => setTargetsOpen(!targetsOpen)}>{bands.length}곳 · 고르기</button></span><Toggle label="밴드에 등록" value={band} change={setBand}/></div>
           {targetsOpen && <div className="suboptions">{[['travel', '골투 여행'], ['golf', '해외골프 모임']].map(([key, name]) => <div className="choice-row" key={key}><span>{name}</span><Toggle label={`${name} 선택`} value={bands.includes(key!)} change={value => setBands(old => value ? [...old, key!] : old.filter(k => k !== key))}/></div>)}</div>}
           <div className="choice-row option-row"><span>선택 옵션 <span className="small muted">문장 다듬기 · 끝 문구 · 링크 카드</span></span><button className="small muted" onClick={() => setOptionsOpen(!optionsOpen)}>{Object.values(options).some(Boolean) ? '선택됨' : '모두 꺼짐'} →</button></div>
-          {optionsOpen && <div className="suboptions">{([['polish', '문장 다듬기'], ['closing', '끝 문구'], ['linkCard', '골투 링크 카드']] as const).map(([key, name]) => <div className="choice-row" key={key}><span>{name}</span><Toggle label={name} value={options[key]} change={value => setOptions(old => ({ ...old, [key]: value }))}/></div>)}</div>}
+          {optionsOpen && <div className="suboptions">{([['polish', '문장 다듬기'], ['closing', '끝 문구'], ['linkCard', '골투 링크 카드']] as const).map(([key, name]) => <div className="choice-row" key={key}><span>{name}</span><Toggle label={name} value={options[key]} disabled={busy || preparing} change={value => setOptions(old => ({ ...old, [key]: value }))}/></div>)}</div>}
         </section>{confirmation && <section className="publish-confirm" role="alertdialog" aria-labelledby="publish-title"><h2 id="publish-title">발행하면 글이 공개됩니다</h2><p>선택한 {targetList().length}곳에 이 상품을 발행할까요?</p><button onClick={() => setConfirmation(false)}>돌아가기</button><button className="chosen" disabled={busy} onClick={() => void start(true)}>확인하고 발행 시작</button></section>}
-      </main><button className="action-bar" disabled={busy || !targetList().length || confirmation} onClick={() => void start()}>{mode === 'draft' ? '임시저장으로 등록 시작' : '발행으로 등록 시작'}<span aria-hidden="true">→</span></button></>}
+      </main><button className="action-bar" disabled={busy || preparing || !converted || !targetList().length || targetList().some(t => !converted?.verification[t.channel].matches) || confirmation} onClick={() => void start()}>{mode === 'draft' ? '임시저장으로 등록 시작' : '발행으로 등록 시작'}<span aria-hidden="true">→</span></button></>}
     {shownScreen === 'progress' && job && <><main className="progress-content"><p className="progress-caption">{job.mode === 'draft' ? '임시저장' : '발행'} 방식 · {job.title}</p><div className="step-number"><strong>{job.step}</strong><span>/ 7</span></div>
       <h2>{terminal ? (job.status === 'draft_saved' ? '임시저장됨' : '발행됨') : job.status === 'user_paused' ? '사용자가 멈췄습니다' : job.status === 'failed' ? '등록에 실패했습니다' : job.step === 4 ? '블로그에 쓰는 중' : `${steps[job.step - 1]} 중`}</h2><p className="progress-description">{job.message || (terminal ? '가짜 등록을 마쳤습니다. 기록에서 확인해 주세요.' : `${[2, 4].includes(job.step) ? '사진 ' : '단계 안 진행 '}${job.current} / ${job.total}${job.status === 'running' ? ' · 화면을 켜 두세요' : '에서 멈춤'}`)}</p><progress aria-label="등록 진행률" max="7" value={terminal ? 7 : job.step - 1 + job.current / (job.total + 1)} />
       <ol className="steps">{steps.map((step, i) => <li key={step} className={`${job.completedSteps.includes(i + 1) ? 'done' : i + 1 === job.step ? 'current' : ''}`}><span className="step-dot"/><span>{i === 4 && job.mode === 'publish' ? '블로그 발행과 확인' : step}</span><small>{job.completedSteps.includes(i + 1) ? '완료' : i + 1 === job.step ? (job.status === 'running' ? '진행 중' : '멈춤') : '대기'}</small></li>)}</ol></main>

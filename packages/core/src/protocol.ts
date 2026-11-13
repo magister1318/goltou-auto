@@ -1,11 +1,11 @@
 import type { Channel, LoginInput, Mode, Page, Post, PostInput, Product, ProductQuery, ProductSummary, Settings, User } from '@goltou/api-client';
 export type Service = 'naver' | 'band' | 'ai';
 export type LoginState = 'confirmed' | 'expired' | 'unknown';
-export type JobStatus = 'running' | 'login_paused' | 'user_paused' | 'failed' | 'draft_saved' | 'published';
+export type JobStatus = 'running' | 'login_paused' | 'user_paused' | 'failed' | 'draft_saved' | 'published' | 'stopped_before_post';
 export const steps = ['로그인 확인', '사진 내려받기', '본문 정리', '블로그에 쓰기', '블로그 임시저장과 확인', '밴드에 쓰기', '결과 기록'] as const;
 export interface JobInput {
   productNo: number; mode: Mode; targets: { channel: Channel; name: string; key: string }[];
-  options: PostInput['options']; publishConfirmed?: boolean;
+  options: PostInput['options']; publishConfirmed?: boolean; previewHash?: string;
 }
 export interface Job {
   id: number; productNo: number; title: string; mode: Mode; status: JobStatus;
@@ -22,6 +22,8 @@ export interface Commands {
   'logout': { input: Record<string, never>; output: AppSnapshot };
   'products.list': { input: ProductQuery; output: Page<ProductSummary> };
   'products.get': { input: { productNo: number }; output: Product };
+  'preview.prepare': { input: { productNo: number; options: PostInput['options'] }; output: import('./preparation').PreparedPreview };
+  'preview.revert': { input: { productNo: number; paragraphId: string }; output: import('./preparation').PreparedPreview };
   'posts.list': { input: { scope: 'mine' | 'all'; page?: number; pageSize?: number }; output: Page<Post> };
   'settings.save': { input: Settings; output: AppSnapshot };
   'service.check': { input: { service: Service }; output: AppSnapshot };

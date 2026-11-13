@@ -1,0 +1,21 @@
+{
+  "model": "SM-S928N",
+  "package": "kr.goltou.auto",
+  "at": "2026-11-12T15:40:53.189Z",
+  "attempts": 1,
+  "wallMs": 561,
+  "result": "EXPERIMENT_FAILED",
+  "steps": [
+    {
+      "at": "2026-11-12T15:40:52.786Z",
+      "action": "ai-polish-three-example-paragraphs",
+      "result": "failed",
+      "elapsedMs": 2,
+      "detail": {
+        "code": "EXPERIMENT_FAILED"
+      }
+    }
+  ],
+  "googleObservations": [],
+  "appLeftInstalled": true
+}

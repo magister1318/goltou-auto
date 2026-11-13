@@ -1,0 +1,10 @@
+{
+  "node": "v18.20.4",
+  "parser": true,
+  "blog": true,
+  "band": true,
+  "polishValidator": true,
+  "polishNumericExclusion": true,
+  "originalDownload": true,
+  "cleanup": true
+}

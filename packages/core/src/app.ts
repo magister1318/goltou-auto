@@ -1,6 +1,7 @@
-import { ApiError, createFakeApi, type ApiClient, type Channel, type PostStatus } from '@goltou/api-client';
+import { ApiError, createFakeApi, type ApiClient, type Channel, type PostStatus, type Product, type PostInput } from '@goltou/api-client';
 import { FakeRegistrationRunner, type RegistrationRunner } from './runner';
 import type { AppRequest, AppSnapshot, Job, JobInput, TokenStore } from './protocol';
+import { makePreview, preparePreview, preparationWork, type PreparationServices, type PreparedPreview } from './preparation';
 export class MemoryTokenStore implements TokenStore {
   private token: string | null = null;
   async read() { return this.token; }
@@ -11,8 +12,10 @@ export class AppCore {
   private readonly listeners = new Set<(state: AppSnapshot) => void>();
   private readonly runner: RegistrationRunner;
   private starting = false;
+  private preparing = false;
+  private preview: { product: Product; options: PostInput['options']; result: PreparedPreview; reverted: string[] } | undefined;
   private records: { postNo: number; channel: Channel; status: PostStatus }[] = [];
-  constructor(private readonly api: ApiClient = createFakeApi(), private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: (job: Job) => Promise<void>, notify: (job: Job) => void) => RegistrationRunner) {
+  constructor(private readonly api: ApiClient = createFakeApi(), private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: (job: Job) => Promise<void>, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices) {
     const notify = (job: Job) => { this.state.job = job; if (job.status === 'login_paused' && job.service) { this.state.services[job.service] = 'expired'; this.state.visibleService = job.service; } this.emit(); };
     this.runner = factory ? factory(job => this.record(job), notify) : new FakeRegistrationRunner(() => this.state.simulation, job => this.record(job), notify);
   }
@@ -37,6 +40,27 @@ export class AppCore {
         await this.api.request('/auto/logout', {}, token); await this.tokens.write(null); this.state.user = null; this.state.settings = null; this.state.job = null; break;
       case 'products.list': return this.api.request('/auto/products/list', request.input, token);
       case 'products.get': return this.api.request('/auto/products/get', request.input, token);
+      case 'preview.prepare': {
+        if (this.preparing || this.starting || this.state.job?.status === 'running') throw new ApiError('conflict', '진행 중인 작업을 먼저 마쳐 주세요.');
+        this.preparing = true;
+        try {
+          const product = await this.api.request('/auto/products/get', { productNo: request.input.productNo }, token);
+          const options = request.input.options;
+          const previous = this.preview;
+          const reusable = options.polish && previous?.options.polish && previous.product.productNo === product.productNo && previous.product.contentHash === product.contentHash && previous.result.polish;
+          const reverted = reusable ? previous.reverted : [];
+          const result = reusable ? makePreview(product, this.convertOptions(options), undefined, reusable, reverted) : await preparePreview(product, { ...this.convertOptions(options), polish: options.polish }, this.preparation?.polish);
+          this.preview = { product, options: { ...options }, result, reverted };
+          return structuredClone(result);
+        } finally { this.preparing = false; }
+      }
+      case 'preview.revert': {
+        const preview = this.preview;
+        if (this.preparing || !preview || preview.product.productNo !== request.input.productNo || !preview.result.polish?.paragraphs.some(p => p.id === request.input.paragraphId)) throw new ApiError('invalid', '확인할 문단을 다시 선택해 주세요.');
+        preview.reverted = [...new Set([...preview.reverted, request.input.paragraphId])];
+        preview.result = makePreview(preview.product, this.convertOptions(preview.options), undefined, preview.result.polish, preview.reverted);
+        return structuredClone(preview.result);
+      }
       case 'posts.list': return this.api.request('/auto/posts/list', request.input, token);
       case 'settings.save': await this.api.request('/auto/settings/save', request.input, token); this.state.settings = (await this.api.request('/auto/me', {}, token)).settings; break;
       case 'service.check': this.state.services[request.input.service] = 'confirmed'; break;
@@ -58,21 +82,33 @@ export class AppCore {
     this.emit(); return this.snapshot();
   }
   private async start(input: JobInput, token: string) {
-    if (this.starting || (this.runner.job && !['draft_saved', 'published'].includes(this.runner.job.status))) throw new ApiError('conflict', '한 번에 한 작업만 등록할 수 있습니다.');
+    if (this.preparing || this.starting || (this.runner.job && !['draft_saved', 'published'].includes(this.runner.job.status))) throw new ApiError('conflict', '한 번에 한 작업만 등록할 수 있습니다.');
     if (!input.targets.length || input.targets.length > 3 || new Set(input.targets.map(t => `${t.channel}:${t.key}`)).size !== input.targets.length) throw new ApiError('invalid', '올릴 곳을 선택해 주세요.');
     if (input.mode === 'publish' && input.publishConfirmed !== true) throw new ApiError('invalid', '발행 전에 한 번 더 확인해 주세요.');
     this.starting = true; this.records = [];
     try {
       const product = await this.api.request('/auto/products/get', { productNo: input.productNo }, token);
+      let preview: PreparedPreview;
+      if (input.options.polish) {
+        const cached = this.preview;
+        if (!cached || cached.product.productNo !== product.productNo || cached.result.contentHash !== product.contentHash || (['polish', 'closing', 'linkCard'] as const).some(key => cached.options[key] !== input.options[key])) throw new ApiError('invalid', '상품 또는 옵션이 바뀌었습니다. 내용을 다시 확인해 주세요.');
+        preview = cached.result;
+      } else preview = makePreview(product, this.convertOptions(input.options));
+      if (input.previewHash && input.previewHash !== product.contentHash) throw new ApiError('invalid', '상품이 바뀌었습니다. 내용을 다시 확인해 주세요.');
+      const mismatch = input.targets.map(t => preview.verification[t.channel]).find(v => !v.matches);
+      if (mismatch) throw new ApiError('invalid', mismatch.message);
       for (const target of input.targets) {
         const { postNo } = await this.api.request('/auto/posts/start', { productNo: input.productNo, channel: target.channel, mode: input.mode, target: { name: target.name, key: target.key }, options: input.options, contentHash: product.contentHash }, token);
         this.records.push({ postNo, channel: target.channel, status: 'running' });
       }
-      await this.runner.start(input, product.title, product.images.length);
+      await this.runner.start(input, product.title, product.images.length, this.preparation ? preparationWork(product, preview, this.preparation) : undefined);
     } catch (error) {
       for (const record of this.records) await this.api.request('/auto/posts/update', { postNo: record.postNo, status: 'stopped', step: 1, failReason: '작업 시작 실패', postUrl: '' }, token);
       throw error;
     } finally { this.starting = false; }
+  }
+  private convertOptions(options: PostInput['options']) {
+    return { closing: options.closing, closingText: this.state.settings?.closingText ?? '', linkCard: options.linkCard, hashtags: this.state.settings?.defaultHashtags ?? [] };
   }
   private async record(job: Job) {
     const token = await this.token();
