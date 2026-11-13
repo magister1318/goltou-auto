@@ -72,6 +72,9 @@ class MainActivity : ComponentActivity() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest) = !request.url.toString().startsWith("$origin/ui/")
                 override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                     if (request.url.toString().startsWith("$origin/")) return null
+                    // CSP limits these subresources to images. The UI cannot navigate
+                    // to remote pages, and cleartext/other hosts remain blocked.
+                    if (!request.isForMainFrame && UiPhotoPolicy.allows(request.url.toString())) return null
                     return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
                 }
             }

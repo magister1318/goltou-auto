@@ -135,6 +135,7 @@ try {
   await page.getByRole('heading', { name: /옮길 상품을/ }).waitFor();
   await page.getByRole('button', { name: /밴드 풀림/ }).click();
   await page.getByRole('heading', { name: '밴드 로그인', exact: true }).waitFor();
+  await page.getByRole('button', { name: '밴드 로그인 화면 열기', exact: true }).click();
   await page.getByRole('button', { name: '로그인했어요, 상태 확인' }).click();
   await page.getByRole('button', { name: /밴드 확인됨/ }).waitFor();
   await page.getByRole('tab', { name: /안 올린 상품/ }).click();

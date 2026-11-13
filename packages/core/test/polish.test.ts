@@ -101,7 +101,7 @@ describe('WP4 conservative paragraph polishing', () => {
     expect(result.paragraphs.every(p => p.original === p.polished && p.outcome === 'fallback' && p.reasons.length)).toBe(true);
     expect(result.status).toBe(code === 'AI_LOGIN_REQUIRED' ? 'login_required' : 'unavailable');
     expect(JSON.stringify(result)).not.toContain('private raw failure');
-    if (code === 'AI_LOGIN_REQUIRED') expect(result.notice).toContain('사용자 로그인 대기');
+    if (code === 'AI_LOGIN_REQUIRED') { expect(result.notice).toContain('AI 화면 확인이 필요합니다.'); expect(result.notice).not.toMatch(/Google.*로그인/); }
   });
   it('propagates cancellation instead of swallowing it as a fallback', async () => {
     const product = fixtureProduct('<p>소개 문장을 다듬습니다.</p>', 0);

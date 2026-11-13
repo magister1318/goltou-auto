@@ -23,7 +23,7 @@ describe('paragraph approval preview', () => {
     const product = fixtureProduct('<p>사용할 원문 문장입니다.</p>', 0);
     const result = await polishContent(parseContents(product.contentsHtml), product, async () => { throw Error('AI_LOGIN_REQUIRED'); });
     const html = renderToStaticMarkup(createElement(PolishComparison, { result, busy: true, onOpen() {}, onRetry() {}, onRevert() {} }));
-    expect(html).toContain('사용자 로그인 대기'); expect(html.match(/사용할 원문 문장입니다./g)).toHaveLength(2); expect(html).toContain('disabled');
+    expect(html).toContain('AI 화면 확인이 필요합니다.'); expect(html).not.toMatch(/Google.*로그인|사용자 로그인 대기/); expect(html.match(/사용할 원문 문장입니다./g)).toHaveLength(2); expect(html).toContain('disabled');
   });
   it('distinguishes unchanged answers from rejected numbers, URLs and extra commentary', async () => {
     const product = fixtureProduct('<p>풍경을 보며 편안하게 쉬어 갑니다.</p><p>안내 문장을 확인해 주세요.</p><p>주소 https://example.invalid/info 를 확인하세요.</p><p>주변 풍경을 감상합니다.</p>', 0);

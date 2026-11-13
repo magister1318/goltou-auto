@@ -44,6 +44,8 @@ describe('core launch token', () => {
     const page = await fetch(core.uiUrl);
     expect(await page.text()).toContain('진단 UI');
     expect(page.headers.get('set-cookie')).toContain('HttpOnly; SameSite=Strict');
+    expect(page.headers.get('content-security-policy')).toContain("img-src 'self' data: https://goltou.kr https://*.goltou.kr;");
+    expect(page.headers.get('content-security-policy')).toContain("connect-src 'self';");
     expect((await fetch(`${core.origin}/ui/`, { headers: { cookie: `goltou_ui=${core.token}` } })).status).toBe(200);
   });
 

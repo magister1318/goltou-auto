@@ -120,13 +120,13 @@ export async function polishContent(parsed: ParsedContent, product: Pick<Product
   const eligible = paragraphs.filter(p => p.outcome === 'polished' || p.outcome === 'fallback');
   const fallback = eligible.filter(p => !p.accepted).length;
   return { paragraphs, status, notice: !eligible.length ? '다듬을 소개 문단이 없습니다.' :
-    status === 'login_required' ? '사용자 로그인 대기 · AI 화면 열기에서 Google에 직접 로그인해 주세요. 원문을 유지합니다.' :
+    status === 'login_required' ? 'AI 화면 확인이 필요합니다. 동의 화면이 있는지 확인해 주세요. 원문을 유지합니다.' :
     fallback ? `${fallback}개 문단은 다듬지 못해 원문을 씁니다. 문단별 사유와 원문을 확인해 주세요.` : '문단별 원문과 다듬은 글을 확인해 주세요.' };
 }
 
 export function failureNotice(code: string): string {
   const notices: Record<string, string> = {
-    AI_LOGIN_REQUIRED: '사용자 로그인 대기 · Google 로그인', AI_CONSENT_REQUIRED: '사용자 확인 대기 · Google 동의 화면',
+    AI_LOGIN_REQUIRED: 'AI 화면 확인 필요', AI_CONSENT_REQUIRED: '사용자 확인 대기 · 동의 화면',
     AI_REGION_UNAVAILABLE: '현재 국가·지역에서 AI 모드 사용 불가', AI_AGE_RESTRICTED: 'Google 계정 연령 요건 확인 필요',
     AI_BLOCKED: 'Google 접근 제한·보안 확인 필요', AI_LAYOUT_UNSUPPORTED: 'AI 입력창을 찾지 못함',
     AI_INPUT_NOT_READY: 'AI 입력창 준비·버튼 위치 확인 실패', AI_INPUT_MISMATCH: '입력한 문장과 화면 내용 불일치',
