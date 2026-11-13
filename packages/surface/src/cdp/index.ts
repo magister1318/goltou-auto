@@ -1,4 +1,5 @@
 import type { KeyInput, NavigationOptions, Surface, SurfaceDialog, SurfaceOpenOptions, SurfaceSession, SurfaceState } from '../index';
+import { inputCharacters } from '../index';
 import { CdpConnection } from './connection';
 export { CdpConnection } from './connection';
 export { redactionGeometry } from './redaction';
@@ -116,7 +117,7 @@ export class CdpSurface implements Surface {
   }
 
   async typeText(text: string): Promise<void> {
-    for (const char of text) { await this.input('Input.insertText', { text: char }); await pause(this.inputDelayMs); }
+    for (const char of inputCharacters(text)) { await this.input('Input.insertText', { text: char }); await pause(this.inputDelayMs); }
   }
 
   async pressKey(input: KeyInput): Promise<void> {

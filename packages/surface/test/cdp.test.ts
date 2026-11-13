@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { CdpConnection, CdpSurface } from '../src/cdp';
 
@@ -104,6 +104,15 @@ describe('CDP Surface', () => {
     const f = await fixture();
     await f.surface.attachFiles('input[type=file]', ['C:/test/photo.jpg']);
     expect(f.commands.at(-1)).toMatchObject({ method: 'DOM.setFileInputFiles', params: { nodeId: 2, files: ['C:/test/photo.jpg'] } });
+  });
+  it('keeps variation selectors, joined emoji and combining marks in one text input event', async () => {
+    const f = await fixture();
+    vi.stubGlobal('Intl', undefined);
+    try {
+      await f.surface.typeText('한✈️👨‍👩‍👧‍👦e\u0301👍🏽🇰🇷');
+      expect(f.commands.map(c => c.method)).toEqual(Array(6).fill('Input.insertText'));
+      expect(f.commands.map(c => c.params.text)).toEqual(['한', '✈️', '👨‍👩‍👧‍👦', 'e\u0301', '👍🏽', '🇰🇷']);
+    } finally { vi.unstubAllGlobals(); }
   });
 
   it('finds a file input inside the editor frame', async () => {

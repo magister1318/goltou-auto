@@ -20,10 +20,10 @@ import type { PreparedPreview } from '../src/preparation';
 const executablePath = [process.env.CHROMIUM, 'C:/Program Files/Google/Chrome/Application/chrome.exe', '/usr/bin/chromium'].find(p => p && existsSync(p));
 const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const fn of cleanup.splice(0).reverse()) await fn(); });
-async function fixture(mode = '', extra: { tags?: boolean; photos?: number } = {}) {
+async function fixture(mode = '', extra: { tags?: boolean; photos?: number; photoExtension?: string } = {}) {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'goltou-wp5-'));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
-  const files = Array.from({ length: extra.photos ?? 5 }, (_, i) => i + 1).map(i => ({ url: `https://example.invalid/${i}`, path: path.join(dir, `goltou-1234567890abcdef-${i}.png`) }));
+  const files = Array.from({ length: extra.photos ?? 5 }, (_, i) => i + 1).map(i => ({ url: `https://example.invalid/${i}`, path: path.join(dir, `goltou-1234567890abcdef-${i}.${extra.photoExtension ?? 'png'}`) }));
   for (const file of files) await writeFile(file.path, new Uint8Array([137, 80, 78, 71]));
   const server = http.createServer((req, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(req.url === '/login' ? '<input type="password"><p>로컬 로그인 풀림 예시</p>' : req.url?.startsWith('/published/') ? '<h1>로컬 발행 결과</h1>' : mode === 'delayed-frame' && req.url === '/editor' ? '<script>setTimeout(()=>{const f=document.createElement("iframe");f.src="/ready-editor";document.body.append(f)},500)</script><body></body>' : blogFixture(mode)));
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -87,6 +87,30 @@ describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback e
     expect(json).not.toMatch(/https:|로컬|예시|가가|끝글/);
     expect(await f.counts([...f.pages.keys()].at(-1)!)).toEqual({ saves: 0, publishes: 0 }); expect(f.external()).toBe(0);
   }, 60000);
+  it('opens the desktop metadata layer for final tags and reopens it to verify a fresh draft without publishing', async () => {
+    const f = await fixture('metadata-tags', { photos: 8, photoExtension: 'jpg' });
+    const preview = realEnding(f.files, true);
+    f.plan.steps = preview.blog.steps;
+    const body = f.plan.steps.find(s => s.kind === 'text' && s.role === 'body' && s.text.includes('가'.repeat(40)));
+    if (!body || body.kind !== 'text') throw new Error('FIXTURE_PADDING_REQUIRED');
+    // The old 32-codepoint chunk boundary separated the base and selector.
+    body.text = '가'.repeat(31) + '✈️' + body.text.slice(33);
+    await f.execution.write();
+    expect((await readBlogDocument(f.execution.surface!)).tokens.filter(t => t.kind === 'photo').every(t => t.identity.endsWith('.png'))).toBe(true);
+    const altered = structuredClone(await readBlogDocument(f.execution.surface!));
+    const photo = altered.tokens.find(t => t.kind === 'photo');
+    if (!photo || photo.kind !== 'photo') throw new Error('FIXTURE_PHOTO_REQUIRED');
+    photo.identity = photo.identity.replace('1234567890abcdef', '0000000000000000');
+    expect(compareDocuments(observePlan(f.plan), blogObservation(f.plan, f.files, altered)).differences.some(d => d.field === 'photos')).toBe(true);
+    expect((await readBlogDocument(f.execution.surface!)).tags).toEqual(['예시']);
+    expect(f.progress).toHaveBeenLastCalledWith({ photos: 8, totalPhotos: 8, characters: 1512, totalCharacters: 1512 });
+    const original = f.execution.surface;
+    await f.execution.saveAndVerify();
+    expect(f.execution.surface).not.toBe(original);
+    expect((await readBlogDocument(f.execution.surface!)).tags).toEqual(['예시']);
+    expect(await f.counts()).toEqual({ saves: 1, publishes: 0 });
+    expect(f.external()).toBe(0);
+  }, 40000);
   it('waits for an editor iframe created after the outer load instead of claiming login loss', async () => {
     const f = await fixture('delayed-frame');
     await f.execution.ensureReady();

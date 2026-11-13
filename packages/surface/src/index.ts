@@ -1,5 +1,7 @@
 export type SurfaceSession = 'naver' | 'band' | 'ai';
 
+export { inputCharacters } from './input-characters';
+
 export interface SurfaceOpenOptions {
   url: string;
   width: number;

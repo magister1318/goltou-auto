@@ -1,5 +1,6 @@
 // Reference: ../refs/DAF/daf3/packages/engine-naver-editor/src/insert/info-table.ts (table toolbar/control selectors only; DOM mutations excluded).
 import type { Surface, SurfaceDialog, SurfaceHost } from '@goltou/surface';
+import { inputCharacters } from '@goltou/surface';
 import { click, compact, point, read, sleep, waitFor } from '../dom';
 import { confirmBlogPhotos, prepareBlogEditor } from './index';
 import { ControlNotFoundError } from '../control-failure';
@@ -24,6 +25,10 @@ export interface BlogEnvironment {
 }
 const titleSelector = '.se-documentTitle .se-text-paragraph';
 const bodySelector = '.se-component.se-text .se-text-paragraph';
+const tagInputSelector = 'input#tag-input, input[placeholder*="태그"], .tag_input input, input[name="tag"]';
+// The desktop editor's toolbar toggles the metadata layer. Its final publish
+// control has a different area (tpb*i.publish) and is never used for tags.
+const tagPanelToggle = 'button[data-click-area="tpb.publish"][class*="publish_btn__"]';
 const ua = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 
 /** Read document order, cells and uploaded filenames independently of the input plan. */
@@ -51,7 +56,7 @@ export async function readBlogDocument(surface: Surface): Promise<BlogReadback> 
       } else { tokens.push({kind:'text',text:'UNSUPPORTED_EDITOR_COMPONENT'}); }
     }
     return {title:text(d.querySelector(${JSON.stringify(titleSelector)})).trim(),tokens,
-      tags:Array.from(d.querySelectorAll('.tag_list .tag, .se-tag-list .se-tag, [data-goltou-tag]')).map(e=>(e.textContent||'').replace(/^#/,'').trim())};`);
+      tags:Array.from(d.querySelectorAll('.tag_list .tag, .se-tag-list .se-tag, [data-goltou-tag], [class^="tag_textarea__"] span[class*="tag__"][aria-label]')).map(e=>(e.textContent||'').replace(/^#/,'').trim())};`);
 }
 const same = (a: BlogReadback, b: BlogReadback) => compact(a.title) === compact(b.title) && JSON.stringify(a.tokens.map(t => t.kind === 'text' ? ['text', compact(t.text)] : ['photo', t.identity])) === JSON.stringify(b.tokens.map(t => t.kind === 'text' ? ['text', compact(t.text)] : ['photo', t.identity])) && JSON.stringify(a.tags) === JSON.stringify(b.tags);
 
@@ -121,7 +126,7 @@ export class BlogExecution {
     this.env.progress({ characters: this.characters, totalCharacters, photos: this.photos, totalPhotos: this.files.length });
   }
   private async type(text: string, resume = false) {
-    const chars = Array.from(text);
+    const chars = inputCharacters(text);
     for (let offset = resume ? this.offset : 0; offset < chars.length;) {
       await this.guard();
       const start = offset;
@@ -131,7 +136,7 @@ export class BlogExecution {
       if (chunk) await this.surface!.typeText(chunk);
       if (chars[end] === '\n') { await this.surface!.pressKey({ key: 'Enter' }); end++; }
       await this.guard();
-      offset = end; this.characters += end - start;
+      offset = end; this.characters += Array.from(chars.slice(start, end).join('')).length;
       if (resume) this.offset = offset;
       if (!this.atomic) this.checkpoint = await readBlogDocument(this.surface!);
       this.report();
@@ -139,7 +144,20 @@ export class BlogExecution {
   }
   private async endOfBody() {
     const s = this.surface!;
-    const last = await point(s, '.se-component.se-text:last-child .se-text-paragraph:last-child');
+    const selector = '.se-component.se-text:last-child .se-text-paragraph:last-child';
+    let last = await point(s, selector);
+    if (!last) {
+      // SmartEditor scrolls its own canvas, rather than the outer document.
+      // Focus a visible editor paragraph before sending navigation keys.
+      const focus = await point(s, bodySelector) ?? await point(s, titleSelector);
+      if (focus) await s.click(focus.x, focus.y);
+    }
+    // Closing metadata leaves focus on the sticky toolbar, which can also move
+    // the viewport. Reveal the final paragraph with keys before restoring it.
+    for (let n = 0; !last && n < 20; n++) {
+      await this.guard(); await s.pressKey({ key: 'PageDown' }); await sleep(100);
+      last = await point(s, selector);
+    }
     if (last) await s.click(last.x, last.y);
     await s.pressKey({ key: 'End', modifiers: 2 });
     await s.pressKey({ key: 'ArrowDown' });
@@ -151,6 +169,18 @@ export class BlogExecution {
       const components=Array.from((d?.querySelector('.se-main-container')||d?.querySelector('.se-content'))?.querySelectorAll('.se-component')||[]).filter(e=>!e.classList.contains('se-documentTitle'));
       return !!e&&e===components[components.length-1]&&e.classList.contains('se-text');`);
     if (!atEnd) throw new Error('CURSOR_POSITION_UNCONFIRMED');
+  }
+  private async tagInput() {
+    const s = this.surface!;
+    const present = await read<boolean>(s, `return docs.some(({d})=>d.querySelector(${JSON.stringify(tagInputSelector)}));`);
+    if (!present && await point(s, tagPanelToggle)) {
+      await this.guard();
+      await click(s, 'BLOG_TAG_PANEL', tagPanelToggle);
+    }
+    for (let n = 0; n < 12 && !await point(s, tagInputSelector); n++) {
+      await this.guard(); await s.pressKey({ key: 'PageDown' }); await sleep(100);
+    }
+    await click(s, 'BLOG_TAG_INPUT', tagInputSelector);
   }
   async write() {
     this.executingStep = undefined;
@@ -200,10 +230,24 @@ export class BlogExecution {
         this.atomic = true;
         await this.table(step.rows);
       } else if (step.kind === 'text' && step.role === 'hashtags') {
-        const selector = 'input[placeholder*="태그"], .tag_input input, input[name="tag"]';
-        for (let n = 0; n < 12 && !await point(s, selector); n++) { await this.guard(); await s.pressKey({ key: 'PageDown' }); await sleep(100); }
-        await click(s, 'BLOG_TAG_INPUT', selector);
-        for (const tag of step.text.split(/\s+/).filter(Boolean)) { await this.type(tag.replace(/^#/, '')); await s.pressKey({ key: 'Enter' }); }
+        this.atomic = true;
+        await this.tagInput();
+        const start = this.characters;
+        const expected = step.text.split(/\s+/).filter(Boolean).map(tag => tag.replace(/^#/, ''));
+        for (const [index, tag] of expected.entries()) {
+          await this.type(tag); await s.pressKey({ key: 'Enter' });
+          await waitFor(async () => {
+            await this.guard();
+            const tags = (await readBlogDocument(s)).tags;
+            return JSON.stringify(tags) === JSON.stringify(expected.slice(0, index + 1));
+          });
+        }
+        // Progress counts the plan's # prefixes and separators after tag commit.
+        this.characters = start + Array.from(step.text).length;
+        // Converted plans can end with a separator. Return keyboard focus to the
+        // body so those Enter keys never commit another tag. observe() reopens
+        // the layer before reading metadata, including after a fresh draft load.
+        if (await point(s, tagPanelToggle)) await click(s, 'BLOG_TAG_PANEL', tagPanelToggle);
         await this.endOfBody();
       } else if (step.kind === 'text') {
         await this.type(step.text, true);
@@ -264,11 +308,20 @@ export class BlogExecution {
   }
   async observe() {
     await this.guard();
-    return waitFor(async () => {
+    let observed = await waitFor(async () => {
       await this.guard(); const value = await readBlogDocument(this.surface!);
       if (value.tokens.every(t => t.kind !== 'photo' || t.identity)) return value;
+      // A metadata input consumes navigation keys. Reveal lazy-loaded photos
+      // with the layer closed and body focused before opening it to read tags.
+      const metadata = await read<boolean>(this.surface!, `return docs.some(({d})=>d.querySelector('[class^="tag_textarea__"] #tag-input'));`);
+      if (metadata && await point(this.surface!, tagPanelToggle)) await click(this.surface!, 'BLOG_TAG_PANEL', tagPanelToggle);
+      await this.endOfBody();
       await this.surface!.pressKey({ key: 'PageDown' }); return null;
     }, 30000);
+    if (this.plan.steps.some(s => s.kind === 'text' && s.role === 'hashtags')) {
+      await this.tagInput(); observed = await readBlogDocument(this.surface!);
+    }
+    return observed;
   }
   async saveAndVerify() {
     await this.guard();
