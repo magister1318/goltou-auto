@@ -18,7 +18,7 @@ it('restores an explicitly seeded fake session without login or credentials; def
     expect((await api.request('/auto/products/get', { productNo: 1234 }, token)).title).toBe(productTitle);
     expect((await app.handle({ id: 1, type: 'app', command: 'products.list', input: {} }) as { total: number }).total).toBeGreaterThan(0);
     await expect(createFakeApi().request('/auto/me', {}, token)).rejects.toMatchObject({ code: 'auth' });
-    const anonymous = new AppCore();
+    const anonymous = new AppCore(createFakeApi());
     await expect(anonymous.restoreSession()).rejects.toMatchObject({ code: 'auth' });
     expect(anonymous.snapshot().user).toBeNull(); anonymous.dispose();
   } finally { app.dispose(); }

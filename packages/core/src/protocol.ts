@@ -22,7 +22,7 @@ export interface Job {
 }
 export interface Simulation { tickMs: number; loginAt: number | null; failAt: number | null }
 export interface AppSnapshot { user: User | null; settings: Settings | null; services: Record<Service, LoginState>; visibleService: Service | null; job: Job | null; simulation: Simulation; realBlog?: boolean; realBand?: boolean }
-/** This storage lives in core. A shell secure-storage channel can implement it later. */
+/** Platform-neutral contract; Android implements it with a Keystore-encrypted native channel. */
 export interface TokenStore { read(): Promise<string | null>; write(token: string | null): Promise<void> }
 export interface Commands {
   'session.get': { input: Record<string, never>; output: AppSnapshot };

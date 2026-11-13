@@ -10,10 +10,8 @@ import { AppCore } from './app';
 import type { AppRequest } from './protocol';
 import type { Experiments } from './experiments';
 import type { PreparationServices } from './preparation';
-import { BlogRegistrationRunner } from './blog-runner';
 import type { BlogServices } from './blog';
 import type { BandServices } from './band';
-import { ChannelRegistrationRunner } from './band-runner';
 
 export interface CoreOptions {
   host: SurfaceHost;
@@ -42,7 +40,8 @@ export async function startCore(options: CoreOptions) {
   const uiDir = await realpath(options.uiDir);
   let origin = '';
   let diagnosing = false;
-  const app = options.app ?? new AppCore(undefined, undefined, options.band ? (checkpoint, notify) => new ChannelRegistrationRunner({ band: options.band!, ...(options.blog ? { blog: options.blog } : {}) }, checkpoint, notify) : options.blog ? (checkpoint, notify) => new BlogRegistrationRunner(options.blog!, checkpoint, notify) : undefined, options.preparation);
+  if (!options.app) throw new Error('APP_REQUIRED');
+  const app = options.app;
 
   function validToken(value: string | undefined | null): boolean {
     if (!value) return false;
@@ -110,6 +109,7 @@ export async function startCore(options: CoreOptions) {
           let ownsDiagnostic = false;
           try {
             const msg = JSON.parse(String(raw)) as { id?: unknown; type?: string; url?: unknown; command?: string; input?: Record<string, unknown> };
+            if (Buffer.isBuffer(raw)) raw.fill(0); // Discard credentials in the inbound transport buffer immediately.
             id = msg.id;
             if (typeof id === 'number' && msg.type === 'experiment') {
               if (!options.experiments) throw new Error('DEBUG_ONLY');

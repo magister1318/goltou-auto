@@ -28,4 +28,13 @@ Kotlin은 NodeRuntime, DevtoolsRelay, CoreLink, SurfaceHost와 진단 UI 호스�
 MULTI_PROFILE 미지원 WebView에서는 공유 프로필로 대체하지 않고 진단에 오류를 돌려줍니다.
 세션 지우기는 `WebStorageCompat.deleteBrowsingData` 완료 콜백 뒤에만 응답합니다.
 쿠키·캐시·스크립트 저장소를 함께 지우며 DELETE_BROWSING_DATA 미지원이면 오류를 반환합니다.
-로그인·상품·사이트별 편집기 조작·업데이트 기능은 포함하지 않습니다.
+WP7 기본 경로는 실제 `/auto` API입니다. 주소는 `scripts/app-config.mjs` 한 곳에서 정합니다.
+사용자가 로그인 화면에 직접 입력한 정보는 로그인 요청 한 번에만 쓰며 받은 토큰만 Keystore AES-GCM 저장소에 보관합니다.
+`auth`/`forbidden`이면 토큰을 지우고 로그인 화면으로 돌아갑니다. 이전 합성 세션 인텐트는 제거했습니다.
+
+`pnpm build`는 디버그 실험을 포함합니다. 로그인 후 실험의 **변환 점검**은 등록·사이트 열기 없이
+최신 상품 최대 60개를 읽고 수치만 앱 내부 `files/wp7/conversion.json`에 남깁니다.
+`node scripts/build-core.mjs --release`는 실험 코드를 제외한 Node 번들을 생성합니다.
+현재 Gradle 릴리스 변형/서명은 여전히 비활성화 상태이며 실제 릴리스 APK를 제공하는 명령은 아닙니다.
+사진은 HTTPS `goltou.kr` 및 그 하위 호스트의 API 원본만, 리다이렉트 없이 받습니다.
+실제 네이버는 실험 제목 접두사·임시저장만 허용하며 이 실행기 수명 동안 저장 시도 한도는 1회입니다.

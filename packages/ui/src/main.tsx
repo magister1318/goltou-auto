@@ -35,10 +35,10 @@ function App() {
   const [loginId, setLoginId] = useState(''); const [password, setPassword] = useState('');
   const [products, setProducts] = useState<Page<ProductSummary>>({ items: [], total: 0 });
   const [q, setQ] = useState(''); const [filter, setFilter] = useState<'all' | 'unposted' | 'month'>('all'); const [month, setMonth] = useState('2026-12');
-  const [page, setPage] = useState(1); const [product, setProduct] = useState<Product | null>(null);
+  const [refresh, setRefresh] = useState(0); const [page, setPage] = useState(1); const [product, setProduct] = useState<Product | null>(null);
   const [preview, setPreview] = useState<'blog' | 'band'>('blog'); const [expanded, setExpanded] = useState(false);
   const [converted, setConverted] = useState<PreparedPreview | null>(null); const [preparing, setPreparing] = useState(false);
-  const [mode, setMode] = useState<Mode>('draft'); const [blog, setBlog] = useState(true); const [band, setBand] = useState(true);
+  const [mode, setMode] = useState<Mode>('draft'); const [blog, setBlog] = useState(true); const [band, setBand] = useState(false);
   const [bands, setBands] = useState(['travel', 'golf']); const [optionsOpen, setOptionsOpen] = useState(false); const [targetsOpen, setTargetsOpen] = useState(false);
   const [availableBands, setAvailableBands] = useState<BandChoice[]>([]); const [loadingBands, setLoadingBands] = useState(false);
   const [options, setOptions] = useState({ polish: false, closing: false, linkCard: false }); const [confirmation, setConfirmation] = useState(false);
@@ -50,15 +50,16 @@ function App() {
   function back() { if (history.state?.screen && screen !== 'home' && screen !== 'login') history.back(); else go(app?.user ? 'home' : 'login', true); }
   useEffect(() => { const pop = () => { setScreen((history.state?.screen as Screen) ?? (app?.user ? 'home' : 'login')); clearError(); setConfirmation(false); if (app?.user) void request('service.hide', {}).catch(ignore); }; window.addEventListener('popstate', pop); return () => window.removeEventListener('popstate', pop); }, [app?.user?.userNo]);
   useEffect(() => { if (screen === 'progress' && app?.job?.status === 'login_paused') go('relogin'); }, [screen, app?.job?.status]);
-  useEffect(() => { if (app?.user && screen === 'login') go('home', true); }, [app?.user?.userNo, screen]);
+  useEffect(() => { if (app?.user && screen === 'login') go('home', true); if (!app?.user) { setLoginId(''); setPassword(''); setProduct(null); setProducts({ items: [], total: 0 }); setPosts({ items: [], total: 0 }); setConverted(null); } }, [app?.user?.userNo, screen]);
 
+  useEffect(() => { if (app && !app.user) { setScreen('login'); history.replaceState({ screen: 'login' }, '', location.pathname); } }, [!!app, app?.user?.userNo]);
   useEffect(() => { if (app?.settings) setSettings(app.settings); }, [app?.settings?.closingText, app?.settings?.bandDailyLimit, app?.settings?.defaultHashtags.join('|')]);
   useEffect(() => {
-    if (screen !== 'preview' || !app?.user) return;
+    if (screen !== 'preview' || !app?.user || !band) return;
     let active = true; setLoadingBands(true);
     void request('bands.list', {}).then(rows => { if (active) { setAvailableBands(rows); setBands(old => { const kept = old.filter(key => rows.some(b => b.key === key)); return kept.length ? kept : rows.slice(0, 1).map(b => b.key); }); } }).catch(ignore).finally(() => { if (active) setLoadingBands(false); });
     return () => { active = false; };
-  }, [screen, app?.user?.userNo]);
+  }, [screen, app?.user?.userNo, band]);
   useEffect(() => {
     if (screen !== 'preview' || !product) return;
     let active = true; setPreparing(true); setConverted(null);
@@ -70,7 +71,7 @@ function App() {
     let active = true;
     const timer = setTimeout(() => { void request('products.list', { q, onlyUnposted: filter === 'unposted', ...(filter === 'month' ? { month } : {}), page, pageSize: 8 }).then(data => { if (active) setProducts(old => ({ ...data, items: page === 1 ? data.items : [...old.items, ...data.items] })); }).catch(ignore); }, 120);
     return () => { active = false; clearTimeout(timer); };
-  }, [screen, q, filter, month, page, app?.user?.userNo]);
+  }, [screen, q, filter, month, page, refresh, app?.user?.userNo]);
   useEffect(() => { if (screen !== 'history' || !app?.user) return; let active = true; void request('posts.list', { scope, page: postPage, pageSize: 12 }).then(data => { if (active) setPosts(old => ({ ...data, items: postPage === 1 ? data.items : [...old.items, ...data.items] })); }).catch(ignore); return () => { active = false; }; }, [screen, scope, postPage, app?.user?.userNo, app?.job?.status]);
   async function act(fn: () => Promise<void>) { if (busy) return; setBusy(true); clearError(); try { await fn(); } catch { /* Server errors are exposed by the store. */ } finally { setBusy(false); } }
   async function choose(productNo: number, requestedMode: Mode = 'draft') { await act(async () => { setProduct(await request('products.get', { productNo })); setMode(requestedMode); setPreview('blog'); setExpanded(false); setConfirmation(false); go('preview'); }); }
@@ -94,14 +95,17 @@ function App() {
     {notice && <div className="notice" role="status">{notice}</div>}
     {shownScreen === 'experiments' && debug && <ExperimentsScreen back={back}/>}
     {shownScreen === 'login' && <>{header('골투 로그인')}<main className="login-content">{debug && <button className="chosen" onClick={() => go('settings')}>설정 · 로그인 없이 진단</button>}<p>골투 계정으로 로그인해 주세요.</p><form onSubmit={event => {
-      event.preventDefault(); void act(async () => { try { await request('login', { loginId, password, device: { kind: 'android', model: 'simulation', appVersion: '0.1.0' } }); setPassword(''); go('home', true); } catch (e) { setPassword(''); if ((e as { code?: string }).code === 'forbidden') go('blocked', true); else throw e; } });
-    }}><label>아이디<input autoComplete="off" required value={loginId} onChange={e => setLoginId(e.target.value)} /></label><label>비밀번호<input type="password" autoComplete="off" required value={password} onChange={e => setPassword(e.target.value)} /></label><p className="small">예시 계정: manager / staff / admin<br/>일반 회원 안내: member · 비밀번호: demo</p><button className="action-bar" type="submit" disabled={!connected || busy}>{busy ? '로그인 중…' : '로그인'}</button></form></main></>}
+      event.preventDefault(); void act(async () => { try {
+        const pending = request('login', { loginId, password, device: { kind: 'android', model: '', appVersion: '' } });
+        setPassword(''); setLoginId(''); await pending; go('home', true);
+      } catch (e) { setPassword(''); if ((e as { code?: string }).code === 'forbidden') go('blocked', true); else throw e; } });
+    }}><label>아이디<input autoComplete="off" required value={loginId} onChange={e => setLoginId(e.target.value)} /></label><label>비밀번호<input type="password" autoComplete="off" required value={password} onChange={e => setPassword(e.target.value)} /></label><button className="action-bar" type="submit" disabled={!connected || busy}>{busy ? '로그인 중…' : '로그인'}</button></form></main></>}
     {shownScreen === 'blocked' && <>{header('사용 권한 안내')}<main><h2>매니저와 직원 전용입니다</h2><p>골투오토는 골투 매니저와 직원만 쓸 수 있습니다.</p><p className="muted">일반 회원(0~2등급)은 이용할 수 없습니다. 계정 등급을 확인해 주세요.</p></main><button className="action-bar" onClick={() => go('login', true)}>다른 계정으로 로그인</button></>}
     {shownScreen === 'home' && <>{header(<>옮길 상품을<br/>고르세요</>, true)}<div className="login-strip" aria-label="서비스 로그인 상태">{(['naver', 'band', 'ai'] as const).map(service => <button key={service} className={app?.services[service] === 'expired' ? 'expired' : ''} onClick={() => void showService(service)}><span className={`dot ${app?.services[service]}`} />{service === 'naver' ? '블로그' : service === 'ai' ? 'AI' : '밴드'} {loginLabels[app?.services[service] ?? 'unknown']}</button>)}</div>
       <main className="home-content"><label className="search"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7"/><path d="M16.5 16.5 21 21"/></svg><input aria-label="상품 검색" placeholder="상품 이름, 골프장, 지역" value={q} onChange={e => { setQ(e.target.value); setPage(1); }} /></label>
         <div className="tabs" role="tablist" aria-label="상품 필터">{(['all', 'unposted', 'month'] as const).map(f => <button role="tab" aria-selected={filter === f} key={f} onClick={() => { setFilter(f); setPage(1); }}>{f === 'all' ? `전체${filter === 'all' ? ` ${products.total}` : ''}` : f === 'unposted' ? `안 올린 상품${filter === 'unposted' ? ` ${products.total}` : ''}` : '출발 월'}</button>)}</div>
         {filter === 'month' && <label className="month-row">출발 월<input type="month" value={month} onChange={e => { setMonth(e.target.value); setPage(1); }} /></label>}
-        <div className="product-list">{products.items.map((p, i) => <button className="product-row" key={p.productNo} onClick={() => void choose(p.productNo)} disabled={busy}><span className="number">{String(i + 1).padStart(2, '0')}</span><span className="product-copy"><strong>{p.title}</strong><span className="small muted">{p.country} {p.region} · 출발일 {p.departureCount}개 · {money(p.priceFrom)}부터</span><span className={`small ${p.myPosts.blog || p.myPosts.band ? 'green' : 'muted'}`}>{p.myPosts.blog || p.myPosts.band ? `블로그 ${p.myPosts.blog?.at.slice(5).replace('-', '.') ?? '아직'} · 밴드 ${p.myPosts.band?.at.slice(5).replace('-', '.') ?? '아직'}` : '아직 올리지 않음'}</span></span><span className="thumbnail">사진</span></button>)}</div>
+        <button className="more" onClick={() => { setPage(1); setRefresh(n => n + 1); }}>상품 새로고침</button><div className="product-list">{products.items.map((p, i) => <button className="product-row" key={p.productNo} onClick={() => void choose(p.productNo)} disabled={busy}><span className="number">{String(i + 1).padStart(2, '0')}</span><span className="product-copy"><strong>{p.title}</strong><span className="small muted">{p.country} {p.region} · 출발일 {p.departureCount}개 · {money(p.priceFrom)}부터</span><span className={`small ${p.myPosts.blog || p.myPosts.band ? 'green' : 'muted'}`}>{p.myPosts.blog || p.myPosts.band ? `블로그 ${p.myPosts.blog?.at.slice(5).replace('-', '.') ?? '아직'} · 밴드 ${p.myPosts.band?.at.slice(5).replace('-', '.') ?? '아직'}` : '아직 올리지 않음'}</span></span><span className="thumbnail">사진</span></button>)}</div>
         {!products.items.length && <p role="status">조건에 맞는 상품이 없습니다.</p>}{products.items.length < products.total && <button className="more" onClick={() => setPage(n => n + 1)}>상품 더 보기</button>}{job && !terminal && <button className="more" onClick={() => go(job.status === 'login_paused' ? 'relogin' : 'progress')}>진행하던 작업 보기</button>}
       </main>{footer('home')}</>}
     {shownScreen === 'preview' && product && <><div className="preview-top"><button onClick={back}>← 상품 목록</button><div className="tabs" role="tablist" aria-label="미리보기 채널">{(['blog', 'band'] as const).map(c => <button key={c} role="tab" aria-selected={preview === c} onClick={() => setPreview(c)}>{c === 'blog' ? '블로그용' : '밴드용'}</button>)}</div></div>

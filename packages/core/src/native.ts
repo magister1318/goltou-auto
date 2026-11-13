@@ -9,6 +9,16 @@ export class NativeBridge {
   private nextId = 1;
   private readonly pending = new Map<number, Pending>();
   private readonly events = new Map<string, Set<(data: Record<string, unknown>) => void>>();
+  private readonly connections = new Set<() => void>();
+
+  async ready(): Promise<void> {
+    if (this.socket?.readyState === WebSocket.OPEN) return;
+    await new Promise<void>((resolve, reject) => {
+      const ready = () => { clearTimeout(timer); this.connections.delete(ready); resolve(); };
+      const timer = setTimeout(() => { this.connections.delete(ready); reject(new Error('NATIVE_NOT_CONNECTED')); }, 15000);
+      this.connections.add(ready);
+    });
+  }
 
   onEvent(name: string, listener: (data: Record<string, unknown>) => void): () => void {
     const listeners = this.events.get(name) ?? new Set(); this.events.set(name, listeners); listeners.add(listener);
@@ -18,6 +28,7 @@ export class NativeBridge {
   attach(socket: WebSocket): void {
     this.detach();
     this.socket = socket;
+    for (const ready of this.connections) ready();
     socket.on('message', raw => {
       if (this.socket !== socket) return;
       try {

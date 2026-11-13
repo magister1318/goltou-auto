@@ -1,5 +1,5 @@
 import { ApiError } from '@goltou/api-client';
-import { BandDirectory, type BandExecution, type BlogExecution, type BandProgress } from '@goltou/sites';
+import { loginState, BandDirectory, type BandExecution, type BlogExecution, type BandProgress } from '@goltou/sites';
 import type { Job, JobInput, Service } from './protocol';
 import type { Checkpoint, RegistrationRunner } from './runner';
 import type { PreparationWork } from './preparation';
@@ -68,7 +68,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
       while (j.step <= 7) {
         this.check();
         if (j.step === 1 && j.targets.some(t => t.channel === 'blog')) {
-          this.blog ??= createBlogExecution(this.work!.preview!.blog, [], this.services.blog!, { check: this.check, progress: this.progress, beforeSave: () => { if (++this.saves > 3) throw new Error('DRAFT_SAVE_LIMIT'); } });
+          this.blog ??= createBlogExecution(this.work!.preview!.blog, [], this.services.blog!, { check: this.check, progress: this.progress, beforeSave: () => { if (++this.saves > (this.services.blog?.draftSaveLimit ?? 3)) throw new Error('DRAFT_SAVE_LIMIT'); } });
           await this.blog.ensureReady();
         }
         if (j.step === 2) await this.work!.download(this.abort.signal, n => { j.current = n; this.notify(structuredClone(j)); });
@@ -139,7 +139,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
       if (result && !['draft_saved', 'published'].includes(result.status)) { result.status = 'failed'; result.reason = j.failureCode; }
       if ([2, 3].includes(j.step)) for (const target of j.targetResults!) if (target.status === 'running') { target.status = 'failed'; target.reason = j.failureCode; }
       j.status = !isBand && [1, 4, 5].includes(j.step) && j.targets.some(t => t.channel === 'band') ? 'channel_paused' : 'failed';
-      j.message = code === 'BAND_PHOTO_LIMIT' ? '관측한 밴드 사진 한도를 넘었습니다. 내용을 넣지 않았습니다. 확인 화면에서 사진 수를 확인해 주세요.' : code.startsWith('BAND_READBACK_MISMATCH') || code === 'BAND_INPUT_MISMATCH' ? '다시 읽은 글자 또는 사진 순서가 달라 게시 전에 멈췄습니다.' : '이 채널의 작업을 마치지 못했습니다. 작성 중인 내용은 그대로 두었습니다.';
+      j.message = code === 'PHOTO_HOST_NOT_ALLOWED' ? '골투에서 제공하는 주소의 사진만 내려받을 수 있습니다.' : code === 'PHOTO_DOWNLOAD_FAILED' ? '사진을 내려받지 못했습니다. 연결을 확인해 주세요.' : code === 'BAND_PHOTO_LIMIT' ? '관측한 밴드 사진 한도를 넘었습니다. 내용을 넣지 않았습니다. 확인 화면에서 사진 수를 확인해 주세요.' : code.startsWith('BAND_READBACK_MISMATCH') || code === 'BAND_INPUT_MISMATCH' ? '다시 읽은 글자 또는 사진 순서가 달라 게시 전에 멈췄습니다.' : '이 채널의 작업을 마치지 못했습니다. 작성 중인 내용은 그대로 두었습니다.';
     }
     const choice = this.directory.choices.find(b => b.key === j.activeTargetKey);
     if (choice) { j.bandPhotoLimit = choice.photoLimit; j.bandLimitObservedAt = choice.observedAt ?? undefined; }
@@ -207,7 +207,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     this.job!.status = 'user_paused'; this.job!.message = ''; await this.emit(); await this.resume();
   }
   async checkBandLogin() { try { await this.directory.guard(false); return 'confirmed' as const; } catch (error) { return error instanceof Error && error.message === 'BAND_LOGIN_LOST' ? 'expired' as const : 'unknown' as const; } }
-  async checkLogin() { return this.blog?.surface ? (await import('@goltou/sites')).loginState(this.blog.surface) : 'unknown' as const; }
+  async checkLogin() { return this.blog?.surface ? loginState(this.blog.surface) : 'unknown' as const; }
   async showService(service: Service) { if (service === 'band') await this.directory.surface?.show(); else if (service === 'naver') await this.blog?.show(); }
   async hideService() { await this.directory.surface?.hide(); await this.blog?.hide(); }
   async showDraft(title: string) { if (this.job?.title !== title || !this.job.targetResults?.some(t => t.channel === 'blog' && t.status === 'draft_saved')) throw new ApiError('invalid', '이번 실행의 임시글만 열 수 있습니다.'); await this.blog?.show(); }

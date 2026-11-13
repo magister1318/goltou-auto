@@ -6,7 +6,7 @@ describe('API envelope and credentials', () => {
     const fetcher = vi.fn<FetchLike>().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: { token: 'demo', user: {} } }) });
     const api = createApiClient('https://example.invalid/', fetcher);
     expect(await api.request('/auto/login', login, 'old-token')).toHaveProperty('token', 'demo');
-    expect(fetcher).toHaveBeenLastCalledWith('https://example.invalid/auto/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(login) });
+    expect(fetcher).toHaveBeenLastCalledWith('https://example.invalid/auto/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(login), signal: expect.any(AbortSignal), redirect: 'error', credentials: 'omit' });
   });
   it('passes the caller token to every protected path without retaining it', async () => {
     const fetcher = vi.fn<FetchLike>().mockResolvedValue({ ok: true, json: async () => ({ ok: true, data: {} }) });

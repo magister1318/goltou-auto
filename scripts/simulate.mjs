@@ -10,7 +10,7 @@ import path from 'node:path';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
 const require = createRequire(import.meta.url);
-const { startCore, AppCore } = require('../dist/core-api.cjs');
+const { startCore, AppCore, createFakeApi } = require('../dist/core-api.cjs');
 const shots = process.argv.includes('--shots');
 const checking = shots || process.argv.includes('--check');
 const { CdpConnection, CdpSurface } = require('../dist/surface.cjs');
@@ -74,7 +74,7 @@ const out = path.join(root, 'docs/reports/wp3');
 async function scene(account) {
   await activeContext?.close();
   await core?.close();
-  const app = new AppCore();
+  const app = new AppCore(createFakeApi());
   core = await startCore({ host, app, uiDir: path.join(root, 'dist/ui') });
   const context = await localContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 1 });
   activeContext = context;

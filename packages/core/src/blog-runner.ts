@@ -1,5 +1,5 @@
 import { ApiError } from '@goltou/api-client';
-import type { BlogExecution } from '@goltou/sites';
+import { loginState, type BlogExecution } from '@goltou/sites';
 import type { Job, JobInput } from './protocol';
 import type { Checkpoint, RegistrationRunner } from './runner';
 import type { PreparationWork } from './preparation';
@@ -54,7 +54,6 @@ export class BlogRegistrationRunner implements RegistrationRunner {
   }
   async checkLogin() {
     if (!this.execution?.surface) return 'unknown' as const;
-    const { loginState } = await import('@goltou/sites');
     return loginState(this.execution.surface);
   }
   async showService(service: import('./protocol').Service) {
@@ -106,7 +105,7 @@ export class BlogRegistrationRunner implements RegistrationRunner {
       else if (code === 'USER_DIALOG_REQUIRED') { job.status = 'dialog_paused'; const dialog = await this.execution?.dialog(); if (dialog) job.dialog = dialog; }
       else job.status = 'failed';
       job.failureCode = job.message;
-      job.message = code === 'LOGIN_OR_EDITOR_LOST' ? '로그인 풀림으로 멈춤' : job.status === 'dialog_paused' ? '네이버 확인창의 선택을 기다립니다.' : job.status === 'recovery_paused' ? '작성 중인 글을 버리고 새로 시작할지 선택해 주세요.' : code === 'DRAFT_IDENTITY_AMBIGUOUS' ? '같은 제목의 임시글이 여러 개여서 멈췄습니다.' : code.startsWith('BLOG_READBACK_MISMATCH') ? '다시 읽은 글이 원문과 달라 완료하지 못했습니다.' : code === 'TABLE_DIMENSIONS_UNSTABLE' ? '표 배치를 확인할 수 없어 멈췄습니다.' : code === 'CURSOR_POSITION_UNCONFIRMED' ? '사진을 넣을 커서 위치를 확인하지 못했습니다.' : code === 'DRAFT_SAVE_LIMIT' ? '이번 실행의 임시저장 한도에 도달했습니다.' : '편집기 상태를 확인하지 못해 멈췄습니다. 작성 중인 글은 그대로 두었습니다.';
+      job.message = code === 'PHOTO_HOST_NOT_ALLOWED' ? '골투에서 제공하는 주소의 사진만 내려받을 수 있습니다.' : code === 'PHOTO_DOWNLOAD_FAILED' ? '사진을 내려받지 못했습니다. 연결을 확인해 주세요.' : code === 'LOGIN_OR_EDITOR_LOST' ? '로그인 풀림으로 멈춤' : job.status === 'dialog_paused' ? '네이버 확인창의 선택을 기다립니다.' : job.status === 'recovery_paused' ? '작성 중인 글을 버리고 새로 시작할지 선택해 주세요.' : code === 'DRAFT_IDENTITY_AMBIGUOUS' ? '같은 제목의 임시글이 여러 개여서 멈췄습니다.' : code.startsWith('BLOG_READBACK_MISMATCH') ? '다시 읽은 글이 원문과 달라 완료하지 못했습니다.' : code === 'TABLE_DIMENSIONS_UNSTABLE' ? '표 배치를 확인할 수 없어 멈췄습니다.' : code === 'CURSOR_POSITION_UNCONFIRMED' ? '사진을 넣을 커서 위치를 확인하지 못했습니다.' : code === 'DRAFT_SAVE_LIMIT' ? '이번 실행의 임시저장 한도에 도달했습니다.' : '편집기 상태를 확인하지 못해 멈췄습니다. 작성 중인 글은 그대로 두었습니다.';
       if (this.execution?.surface && this.services.capture) {
         try { const evidence = await this.services.capture(this.execution.surface, `wp5-job-${job.id}-step-${job.step}`); job.evidence = typeof evidence.file === 'string' ? evidence.file : 'unavailable'; }
         catch { job.evidence = 'unavailable'; }
@@ -118,7 +117,7 @@ export class BlogRegistrationRunner implements RegistrationRunner {
   private hooks(check: () => void) {
     return {
       check,
-      beforeSave: () => { if (++this.saves > 3) throw new Error('DRAFT_SAVE_LIMIT'); },
+      beforeSave: () => { if (++this.saves > (this.services.draftSaveLimit ?? 3)) throw new Error('DRAFT_SAVE_LIMIT'); },
       progress: (value: import('@goltou/sites').BlogProgress) => {
         const job = this.job!;
         job.current = value.photos; job.total = value.totalPhotos;

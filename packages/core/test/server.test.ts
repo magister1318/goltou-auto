@@ -1,3 +1,5 @@
+import { AppCore } from '../src/app';
+import { createFakeApi } from '@goltou/api-client';
 import { afterEach, describe, expect, it } from 'vitest';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
@@ -17,7 +19,7 @@ async function fixture() {
   await writeFile(path.join(dir, 'outside.txt'), 'private');
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   const host: SurfaceHost = { create: async () => { throw new Error('NOT_NEEDED'); }, destroy: async () => {}, clearSession: async () => {} };
-  const core = await startCore({ host, uiDir: path.join(dir, 'ui') });
+  const core = await startCore({ app: new AppCore(createFakeApi()), host, uiDir: path.join(dir, 'ui') });
   cleanup.push(() => core.close());
   return core;
 }
