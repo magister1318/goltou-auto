@@ -1,0 +1,485 @@
+{
+  "readback": {
+    "at": "2026-11-13T09:26:19.356Z",
+    "loggedIn": true,
+    "services": {
+      "naver": "unknown",
+      "band": "unknown",
+      "ai": "unknown"
+    },
+    "job": {
+      "id": 1,
+      "productNo": 1381,
+      "status": "stopped_before_post",
+      "step": 6,
+      "current": 36,
+      "total": 36,
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 0,
+      "photoUploadMilliseconds": 88100,
+      "photoUploadSamples": 36,
+      "mode": "draft",
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "bandPhotoLimit": null,
+      "bandLimitObservedAt": "2026-11-13T09:23:53.347Z",
+      "targets": [
+        "band"
+      ],
+      "results": [
+        {
+          "channel": "band",
+          "status": "stopped_before_post"
+        }
+      ],
+      "experimentTitle": true
+    },
+    "composer": true,
+    "bodyCharacters": 597,
+    "photos": 36,
+    "identitiesInDom": 0,
+    "photoProof": {
+      "order": "matched",
+      "ratio": "unavailable",
+      "counts": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36
+      ],
+      "sources": [
+        {
+          "width": 1254,
+          "height": 1254
+        },
+        {
+          "width": 905,
+          "height": 1280
+        },
+        {
+          "width": 905,
+          "height": 1280
+        },
+        {
+          "width": 905,
+          "height": 1280
+        },
+        {
+          "width": 972,
+          "height": 1161
+        },
+        {
+          "width": 905,
+          "height": 1280
+        },
+        {
+          "width": 905,
+          "height": 1280
+        },
+        {
+          "width": 905,
+          "height": 1280
+        },
+        {
+          "width": 905,
+          "height": 1280
+        },
+        {
+          "width": 905,
+          "height": 1280
+        },
+        {
+          "width": 1280,
+          "height": 960
+        },
+        {
+          "width": 960,
+          "height": 1280
+        },
+        {
+          "width": 960,
+          "height": 1280
+        },
+        {
+          "width": 960,
+          "height": 1280
+        },
+        {
+          "width": 1280,
+          "height": 960
+        },
+        {
+          "width": 1280,
+          "height": 960
+        },
+        {
+          "width": 1280,
+          "height": 960
+        },
+        {
+          "width": 1280,
+          "height": 960
+        },
+        {
+          "width": 1280,
+          "height": 960
+        },
+        {
+          "width": 1280,
+          "height": 960
+        },
+        {
+          "width": 1280,
+          "height": 960
+        },
+        {
+          "width": 1280,
+          "height": 960
+        },
+        {
+          "width": 960,
+          "height": 1280
+        },
+        {
+          "width": 1280,
+          "height": 1280
+        },
+        {
+          "width": 960,
+          "height": 1280
+        },
+        {
+          "width": 960,
+          "height": 1280
+        },
+        {
+          "width": 960,
+          "height": 1280
+        },
+        {
+          "width": 960,
+          "height": 1280
+        },
+        {
+          "width": 960,
+          "height": 1280
+        },
+        {
+          "width": 960,
+          "height": 1280
+        },
+        {
+          "width": 960,
+          "height": 1280
+        },
+        {
+          "width": 960,
+          "height": 1280
+        },
+        {
+          "width": 1280,
+          "height": 960
+        },
+        {
+          "width": 1280,
+          "height": 1280
+        },
+        {
+          "width": 1280,
+          "height": 960
+        },
+        {
+          "width": 1280,
+          "height": 960
+        }
+      ],
+      "thumbnails": [
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        },
+        {
+          "width": 75,
+          "height": 75
+        }
+      ]
+    },
+    "comparison": {
+      "matches": true,
+      "differenceFields": [],
+      "notices": [],
+      "counts": {
+        "characters": 481,
+        "paragraphs": 2,
+        "photos": 36,
+        "prices": 0,
+        "departures": 0
+      }
+    },
+    "photoLimit": null,
+    "textLimit": null,
+    "uploading": false,
+    "hasPostUrl": false,
+    "composerOpens": 1,
+    "bandPostInputs": 0,
+    "naverAttempts": 0
+  },
+  "ui": {
+    "at": "2026-11-13T09:27:05.270Z",
+    "nativeServiceView": true,
+    "returnedWithinApp": true,
+    "progressTitle": true,
+    "historyLabelRows": 1,
+    "currentHistory": true,
+    "postNo": 9,
+    "recordStatus": "stopped_before_post",
+    "bandMark": {
+      "status": "stopped_before_post",
+      "at": "2026-11-13"
+    },
+    "markVisible": true,
+    "discardVisible": true
+  },
+  "api": {
+    "at": "2026-11-13T09:26:22.260Z",
+    "loggedIn": true,
+    "services": {
+      "naver": "unknown",
+      "band": "unknown",
+      "ai": "unknown"
+    },
+    "job": {
+      "id": 1,
+      "productNo": 1381,
+      "status": "stopped_before_post",
+      "step": 6,
+      "current": 36,
+      "total": 36,
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 0,
+      "photoUploadMilliseconds": 88100,
+      "photoUploadSamples": 36,
+      "mode": "draft",
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "bandPhotoLimit": null,
+      "bandLimitObservedAt": "2026-11-13T09:23:53.347Z",
+      "targets": [
+        "band"
+      ],
+      "results": [
+        {
+          "channel": "band",
+          "status": "stopped_before_post"
+        }
+      ],
+      "experimentTitle": true
+    },
+    "recordFailure": null,
+    "dailyLimit": 3,
+    "today": "2026-11-13",
+    "sameBandDailyActive": 1,
+    "records": [
+      {
+        "postNo": 9,
+        "status": "stopped_before_post",
+        "step": 6,
+        "startedAt": "2026-11-13T09:23:50Z",
+        "finishedAt": "2026-11-13T09:26:10Z",
+        "hasPostUrl": false
+      },
+      {
+        "postNo": 8,
+        "status": "stopped",
+        "step": 7,
+        "startedAt": "2026-11-13T07:15:19Z",
+        "finishedAt": "2026-11-13T07:18:26Z",
+        "hasPostUrl": false
+      }
+    ],
+    "bandMark": {
+      "status": "stopped_before_post",
+      "at": "2026-11-13"
+    }
+  }
+}

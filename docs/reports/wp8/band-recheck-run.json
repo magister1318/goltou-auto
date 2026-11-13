@@ -1,0 +1,2826 @@
+{
+  "base": "6c36263",
+  "deviceModel": "SM-S928N",
+  "install": {
+    "at": "2026-11-13T09:22:25.870Z",
+    "previousSha256": "4c2b13309ba7408fa1943986c091b06746027f5f8becc1609d3d53c0520f0d86",
+    "sha256": "eb478f73819c4c85ba2021bbdb5d870788332a457e0be243d5a01665e4346f46",
+    "bytes": 64103014,
+    "reinstalled": true,
+    "screenAndForeground": {
+      "at": "2026-11-13T09:22:26.369Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    }
+  },
+  "prechecks": [
+    {
+      "at": "2026-11-13T09:22:08.889Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:22:09.811Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:22:11.065Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:22:15.071Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": false,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:22:25.585Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:22:26.369Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:22:37.547Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:22:39.436Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:22:40.108Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:22:40.624Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:23:10.800Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:23:12.489Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:23:16.884Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:23:27.159Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:23:40.520Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:23:41.532Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:23:42.107Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:23:42.619Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:23:49.625Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:23:50.747Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:23:51.208Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:23:51.699Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:23:54.698Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:23:57.745Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:24:00.811Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:24:03.851Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:24:06.901Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:24:09.964Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:24:13.121Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:24:16.249Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:24:19.397Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:24:22.520Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:24:25.511Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:24:25.624Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:24:28.703Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:24:31.801Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:24:34.790Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:24:37.793Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:24:40.928Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:24:43.987Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:24:47.010Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:24:50.113Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:24:53.292Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:24:56.416Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:24:59.759Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:25:03.088Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:25:06.239Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:25:09.230Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:25:12.389Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:25:15.518Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:25:18.611Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:25:21.815Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:25:25.020Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:25:28.194Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:25:31.336Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:25:34.569Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:25:37.735Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:25:40.769Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:25:43.977Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:25:47.117Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:25:50.268Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:25:53.349Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:25:56.408Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:25:59.811Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:26:03.223Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:26:06.577Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:26:09.754Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:26:12.938Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:26:18.194Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:26:20.791Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:26:27.745Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:26:45.525Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:26:57.674Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:27:02.109Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:27:02.784Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:27:03.317Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:27:04.063Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:27:05.108Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:27:09.670Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:27:10.835Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:27:11.316Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:27:11.755Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:27:12.524Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:27:13.343Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:27:20.222Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:27:21.796Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:27:23.956Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:27:25.043Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:27:26.103Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:27:28.895Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:27:50.786Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:27:53.089Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:27:53.641Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    },
+    {
+      "at": "2026-11-13T09:27:54.308Z",
+      "awake": true,
+      "displayOn": true,
+      "focusApp": true,
+      "resumedApp": true
+    }
+  ],
+  "directoryRead": {
+    "firstResult": "OBSERVATION_TIMEOUT",
+    "recoveredBy": "normal Band selection toggle",
+    "composerOpenedForRetry": false
+  },
+  "selection": {
+    "productNo": 1381,
+    "photos": 36,
+    "bandTargets": 1,
+    "blogTargets": 0,
+    "mode": "draft",
+    "optionsOff": true,
+    "experimentTitle": true,
+    "originalMatch": true
+  },
+  "timings": {
+    "startAt": "2026-11-13T09:23:50.748Z",
+    "firstJobAt": "2026-11-13T09:23:50.772Z",
+    "stoppedBeforePostAt": "2026-11-13T09:26:10.667Z",
+    "clickToStoppedBeforePostMs": 139919,
+    "firstJobToStoppedBeforePostMs": 139895,
+    "pollConfirmedAt": "2026-11-13T09:26:13.098Z",
+    "pollElapsedMs": 142350,
+    "steps": [
+      {
+        "step": 1,
+        "at": "2026-11-13T09:23:50.772Z"
+      },
+      {
+        "step": 2,
+        "at": "2026-11-13T09:23:50.810Z"
+      },
+      {
+        "step": 3,
+        "at": "2026-11-13T09:23:51.899Z"
+      },
+      {
+        "step": 4,
+        "at": "2026-11-13T09:23:51.946Z"
+      },
+      {
+        "step": 5,
+        "at": "2026-11-13T09:23:51.981Z"
+      },
+      {
+        "step": 6,
+        "at": "2026-11-13T09:23:52.013Z"
+      },
+      {
+        "step": 7,
+        "at": "2026-11-13T09:27:12.055Z"
+      }
+    ],
+    "photoInputTotalMs": 88100,
+    "photoMeanMs": 2447.222222222222,
+    "photoMinMs": 1811,
+    "photoMaxMs": 3187,
+    "firstEstimate": {
+      "at": "2026-11-13T09:24:43.958Z",
+      "productNo": 1381,
+      "status": "running",
+      "step": 6,
+      "current": 3,
+      "total": 36,
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 76,
+      "photoUploadMilliseconds": 6876,
+      "photoUploadSamples": 3,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    "separateReadbackDurationMeasured": false
+  },
+  "photoSamples": [
+    {
+      "at": "2026-11-13T09:24:39.585Z",
+      "completed": 1,
+      "milliseconds": 2664
+    },
+    {
+      "at": "2026-11-13T09:24:41.754Z",
+      "completed": 2,
+      "milliseconds": 4756
+    },
+    {
+      "at": "2026-11-13T09:24:43.958Z",
+      "completed": 3,
+      "milliseconds": 6876
+    },
+    {
+      "at": "2026-11-13T09:24:46.163Z",
+      "completed": 4,
+      "milliseconds": 8998
+    },
+    {
+      "at": "2026-11-13T09:24:48.060Z",
+      "completed": 5,
+      "milliseconds": 10809
+    },
+    {
+      "at": "2026-11-13T09:24:50.378Z",
+      "completed": 6,
+      "milliseconds": 13036
+    },
+    {
+      "at": "2026-11-13T09:24:52.382Z",
+      "completed": 7,
+      "milliseconds": 14942
+    },
+    {
+      "at": "2026-11-13T09:24:54.770Z",
+      "completed": 8,
+      "milliseconds": 17240
+    },
+    {
+      "at": "2026-11-13T09:24:57.475Z",
+      "completed": 9,
+      "milliseconds": 19852
+    },
+    {
+      "at": "2026-11-13T09:25:00.199Z",
+      "completed": 10,
+      "milliseconds": 22477
+    },
+    {
+      "at": "2026-11-13T09:25:02.956Z",
+      "completed": 11,
+      "milliseconds": 25129
+    },
+    {
+      "at": "2026-11-13T09:25:05.484Z",
+      "completed": 12,
+      "milliseconds": 27550
+    },
+    {
+      "at": "2026-11-13T09:25:08.310Z",
+      "completed": 13,
+      "milliseconds": 30271
+    },
+    {
+      "at": "2026-11-13T09:25:10.501Z",
+      "completed": 14,
+      "milliseconds": 32354
+    },
+    {
+      "at": "2026-11-13T09:25:12.742Z",
+      "completed": 15,
+      "milliseconds": 34485
+    },
+    {
+      "at": "2026-11-13T09:25:14.948Z",
+      "completed": 16,
+      "milliseconds": 36578
+    },
+    {
+      "at": "2026-11-13T09:25:17.599Z",
+      "completed": 17,
+      "milliseconds": 39118
+    },
+    {
+      "at": "2026-11-13T09:25:19.908Z",
+      "completed": 18,
+      "milliseconds": 41309
+    },
+    {
+      "at": "2026-11-13T09:25:22.219Z",
+      "completed": 19,
+      "milliseconds": 43503
+    },
+    {
+      "at": "2026-11-13T09:25:24.907Z",
+      "completed": 20,
+      "milliseconds": 46073
+    },
+    {
+      "at": "2026-11-13T09:25:27.904Z",
+      "completed": 21,
+      "milliseconds": 48948
+    },
+    {
+      "at": "2026-11-13T09:25:30.228Z",
+      "completed": 22,
+      "milliseconds": 51148
+    },
+    {
+      "at": "2026-11-13T09:25:32.596Z",
+      "completed": 23,
+      "milliseconds": 53389
+    },
+    {
+      "at": "2026-11-13T09:25:35.414Z",
+      "completed": 24,
+      "milliseconds": 56081
+    },
+    {
+      "at": "2026-11-13T09:25:38.520Z",
+      "completed": 25,
+      "milliseconds": 59056
+    },
+    {
+      "at": "2026-11-13T09:25:41.367Z",
+      "completed": 26,
+      "milliseconds": 61746
+    },
+    {
+      "at": "2026-11-13T09:25:44.263Z",
+      "completed": 27,
+      "milliseconds": 64499
+    },
+    {
+      "at": "2026-11-13T09:25:47.149Z",
+      "completed": 28,
+      "milliseconds": 67247
+    },
+    {
+      "at": "2026-11-13T09:25:49.640Z",
+      "completed": 29,
+      "milliseconds": 69598
+    },
+    {
+      "at": "2026-11-13T09:25:52.894Z",
+      "completed": 30,
+      "milliseconds": 72690
+    },
+    {
+      "at": "2026-11-13T09:25:55.406Z",
+      "completed": 31,
+      "milliseconds": 75060
+    },
+    {
+      "at": "2026-11-13T09:25:57.983Z",
+      "completed": 32,
+      "milliseconds": 77493
+    },
+    {
+      "at": "2026-11-13T09:26:01.319Z",
+      "completed": 33,
+      "milliseconds": 80680
+    },
+    {
+      "at": "2026-11-13T09:26:03.916Z",
+      "completed": 34,
+      "milliseconds": 83127
+    },
+    {
+      "at": "2026-11-13T09:26:06.537Z",
+      "completed": 35,
+      "milliseconds": 85600
+    },
+    {
+      "at": "2026-11-13T09:26:09.193Z",
+      "completed": 36,
+      "milliseconds": 88100
+    }
+  ],
+  "events": [
+    {
+      "at": "2026-11-13T09:23:50.772Z",
+      "status": "running",
+      "step": 1,
+      "current": 0,
+      "total": 36,
+      "completedSteps": [],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:50.810Z",
+      "status": "running",
+      "step": 2,
+      "current": 0,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:50.940Z",
+      "status": "running",
+      "step": 2,
+      "current": 1,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:50.965Z",
+      "status": "running",
+      "step": 2,
+      "current": 2,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.003Z",
+      "status": "running",
+      "step": 2,
+      "current": 3,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.053Z",
+      "status": "running",
+      "step": 2,
+      "current": 4,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.082Z",
+      "status": "running",
+      "step": 2,
+      "current": 5,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.112Z",
+      "status": "running",
+      "step": 2,
+      "current": 6,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.139Z",
+      "status": "running",
+      "step": 2,
+      "current": 7,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.159Z",
+      "status": "running",
+      "step": 2,
+      "current": 8,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.177Z",
+      "status": "running",
+      "step": 2,
+      "current": 9,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.199Z",
+      "status": "running",
+      "step": 2,
+      "current": 10,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.229Z",
+      "status": "running",
+      "step": 2,
+      "current": 11,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.252Z",
+      "status": "running",
+      "step": 2,
+      "current": 12,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.273Z",
+      "status": "running",
+      "step": 2,
+      "current": 13,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.293Z",
+      "status": "running",
+      "step": 2,
+      "current": 14,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.316Z",
+      "status": "running",
+      "step": 2,
+      "current": 15,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.335Z",
+      "status": "running",
+      "step": 2,
+      "current": 16,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.354Z",
+      "status": "running",
+      "step": 2,
+      "current": 17,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.383Z",
+      "status": "running",
+      "step": 2,
+      "current": 18,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.405Z",
+      "status": "running",
+      "step": 2,
+      "current": 19,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.426Z",
+      "status": "running",
+      "step": 2,
+      "current": 20,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.448Z",
+      "status": "running",
+      "step": 2,
+      "current": 21,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.469Z",
+      "status": "running",
+      "step": 2,
+      "current": 22,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.489Z",
+      "status": "running",
+      "step": 2,
+      "current": 23,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.514Z",
+      "status": "running",
+      "step": 2,
+      "current": 24,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.537Z",
+      "status": "running",
+      "step": 2,
+      "current": 25,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.563Z",
+      "status": "running",
+      "step": 2,
+      "current": 26,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.599Z",
+      "status": "running",
+      "step": 2,
+      "current": 27,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.634Z",
+      "status": "running",
+      "step": 2,
+      "current": 28,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.657Z",
+      "status": "running",
+      "step": 2,
+      "current": 29,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.700Z",
+      "status": "running",
+      "step": 2,
+      "current": 30,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.722Z",
+      "status": "running",
+      "step": 2,
+      "current": 31,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.743Z",
+      "status": "running",
+      "step": 2,
+      "current": 32,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.767Z",
+      "status": "running",
+      "step": 2,
+      "current": 33,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.803Z",
+      "status": "running",
+      "step": 2,
+      "current": 34,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.828Z",
+      "status": "running",
+      "step": 2,
+      "current": 35,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.850Z",
+      "status": "running",
+      "step": 2,
+      "current": 36,
+      "total": 36,
+      "completedSteps": [
+        1
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.899Z",
+      "status": "running",
+      "step": 3,
+      "current": 0,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.946Z",
+      "status": "running",
+      "step": 4,
+      "current": 0,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:51.981Z",
+      "status": "running",
+      "step": 5,
+      "current": 0,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:23:52.013Z",
+      "status": "running",
+      "step": 6,
+      "current": 0,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:24:39.585Z",
+      "status": "running",
+      "step": 6,
+      "current": 1,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "photoUploadMilliseconds": 2664,
+      "photoUploadSamples": 1,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:24:41.754Z",
+      "status": "running",
+      "step": 6,
+      "current": 2,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "photoUploadMilliseconds": 4756,
+      "photoUploadSamples": 2,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:24:43.958Z",
+      "status": "running",
+      "step": 6,
+      "current": 3,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 76,
+      "photoUploadMilliseconds": 6876,
+      "photoUploadSamples": 3,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:24:46.163Z",
+      "status": "running",
+      "step": 6,
+      "current": 4,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 72,
+      "photoUploadMilliseconds": 8998,
+      "photoUploadSamples": 4,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:24:48.060Z",
+      "status": "running",
+      "step": 6,
+      "current": 5,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 68,
+      "photoUploadMilliseconds": 10809,
+      "photoUploadSamples": 5,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:24:50.378Z",
+      "status": "running",
+      "step": 6,
+      "current": 6,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 66,
+      "photoUploadMilliseconds": 13036,
+      "photoUploadSamples": 6,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:24:52.382Z",
+      "status": "running",
+      "step": 6,
+      "current": 7,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 62,
+      "photoUploadMilliseconds": 14942,
+      "photoUploadSamples": 7,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:24:54.770Z",
+      "status": "running",
+      "step": 6,
+      "current": 8,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 61,
+      "photoUploadMilliseconds": 17240,
+      "photoUploadSamples": 8,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:24:57.475Z",
+      "status": "running",
+      "step": 6,
+      "current": 9,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 60,
+      "photoUploadMilliseconds": 19852,
+      "photoUploadSamples": 9,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:00.199Z",
+      "status": "running",
+      "step": 6,
+      "current": 10,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 59,
+      "photoUploadMilliseconds": 22477,
+      "photoUploadSamples": 10,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:02.956Z",
+      "status": "running",
+      "step": 6,
+      "current": 11,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 58,
+      "photoUploadMilliseconds": 25129,
+      "photoUploadSamples": 11,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:05.484Z",
+      "status": "running",
+      "step": 6,
+      "current": 12,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 56,
+      "photoUploadMilliseconds": 27550,
+      "photoUploadSamples": 12,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:08.310Z",
+      "status": "running",
+      "step": 6,
+      "current": 13,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 54,
+      "photoUploadMilliseconds": 30271,
+      "photoUploadSamples": 13,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:10.501Z",
+      "status": "running",
+      "step": 6,
+      "current": 14,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 51,
+      "photoUploadMilliseconds": 32354,
+      "photoUploadSamples": 14,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:12.742Z",
+      "status": "running",
+      "step": 6,
+      "current": 15,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 49,
+      "photoUploadMilliseconds": 34485,
+      "photoUploadSamples": 15,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:14.948Z",
+      "status": "running",
+      "step": 6,
+      "current": 16,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 46,
+      "photoUploadMilliseconds": 36578,
+      "photoUploadSamples": 16,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:17.599Z",
+      "status": "running",
+      "step": 6,
+      "current": 17,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 44,
+      "photoUploadMilliseconds": 39118,
+      "photoUploadSamples": 17,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:19.908Z",
+      "status": "running",
+      "step": 6,
+      "current": 18,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 42,
+      "photoUploadMilliseconds": 41309,
+      "photoUploadSamples": 18,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:22.219Z",
+      "status": "running",
+      "step": 6,
+      "current": 19,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 39,
+      "photoUploadMilliseconds": 43503,
+      "photoUploadSamples": 19,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:24.907Z",
+      "status": "running",
+      "step": 6,
+      "current": 20,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 37,
+      "photoUploadMilliseconds": 46073,
+      "photoUploadSamples": 20,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:27.904Z",
+      "status": "running",
+      "step": 6,
+      "current": 21,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 35,
+      "photoUploadMilliseconds": 48948,
+      "photoUploadSamples": 21,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:30.228Z",
+      "status": "running",
+      "step": 6,
+      "current": 22,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 33,
+      "photoUploadMilliseconds": 51148,
+      "photoUploadSamples": 22,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:32.596Z",
+      "status": "running",
+      "step": 6,
+      "current": 23,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 31,
+      "photoUploadMilliseconds": 53389,
+      "photoUploadSamples": 23,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:35.414Z",
+      "status": "running",
+      "step": 6,
+      "current": 24,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 29,
+      "photoUploadMilliseconds": 56081,
+      "photoUploadSamples": 24,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:38.520Z",
+      "status": "running",
+      "step": 6,
+      "current": 25,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 26,
+      "photoUploadMilliseconds": 59056,
+      "photoUploadSamples": 25,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:41.367Z",
+      "status": "running",
+      "step": 6,
+      "current": 26,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 24,
+      "photoUploadMilliseconds": 61746,
+      "photoUploadSamples": 26,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:44.263Z",
+      "status": "running",
+      "step": 6,
+      "current": 27,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 22,
+      "photoUploadMilliseconds": 64499,
+      "photoUploadSamples": 27,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:47.149Z",
+      "status": "running",
+      "step": 6,
+      "current": 28,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 20,
+      "photoUploadMilliseconds": 67247,
+      "photoUploadSamples": 28,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:49.640Z",
+      "status": "running",
+      "step": 6,
+      "current": 29,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 17,
+      "photoUploadMilliseconds": 69598,
+      "photoUploadSamples": 29,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:52.894Z",
+      "status": "running",
+      "step": 6,
+      "current": 30,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 15,
+      "photoUploadMilliseconds": 72690,
+      "photoUploadSamples": 30,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:55.406Z",
+      "status": "running",
+      "step": 6,
+      "current": 31,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 13,
+      "photoUploadMilliseconds": 75060,
+      "photoUploadSamples": 31,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:25:57.983Z",
+      "status": "running",
+      "step": 6,
+      "current": 32,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 10,
+      "photoUploadMilliseconds": 77493,
+      "photoUploadSamples": 32,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:26:01.319Z",
+      "status": "running",
+      "step": 6,
+      "current": 33,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 8,
+      "photoUploadMilliseconds": 80680,
+      "photoUploadSamples": 33,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:26:03.916Z",
+      "status": "running",
+      "step": 6,
+      "current": 34,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 5,
+      "photoUploadMilliseconds": 83127,
+      "photoUploadSamples": 34,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:26:06.537Z",
+      "status": "running",
+      "step": 6,
+      "current": 35,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 3,
+      "photoUploadMilliseconds": 85600,
+      "photoUploadSamples": 35,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:26:09.193Z",
+      "status": "running",
+      "step": 6,
+      "current": 36,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 0,
+      "photoUploadMilliseconds": 88100,
+      "photoUploadSamples": 36,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "running"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:26:10.667Z",
+      "status": "stopped_before_post",
+      "step": 6,
+      "current": 36,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 0,
+      "photoUploadMilliseconds": 88100,
+      "photoUploadSamples": 36,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "stopped_before_post"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:27:11.981Z",
+      "status": "user_paused",
+      "step": 6,
+      "current": 36,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 0,
+      "photoUploadMilliseconds": 88100,
+      "photoUploadSamples": 36,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "stopped"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:27:12.028Z",
+      "status": "running",
+      "step": 6,
+      "current": 36,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 0,
+      "photoUploadMilliseconds": 88100,
+      "photoUploadSamples": 36,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "stopped"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:27:12.055Z",
+      "status": "running",
+      "step": 7,
+      "current": 0,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "photoUploadMilliseconds": 88100,
+      "photoUploadSamples": 36,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "stopped"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-13T09:27:12.092Z",
+      "status": "stopped",
+      "step": 7,
+      "current": 0,
+      "total": 36,
+      "completedSteps": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7
+      ],
+      "characters": 584,
+      "totalCharacters": 584,
+      "secondsLeft": 0,
+      "photoUploadMilliseconds": 88100,
+      "photoUploadSamples": 36,
+      "mode": "draft",
+      "experimentTitle": true,
+      "results": [
+        {
+          "channel": "band",
+          "status": "stopped"
+        }
+      ]
+    }
+  ],
+  "registrationStarts": 1,
+  "composerOpens": 1,
+  "recordRetries": 0,
+  "inputRetries": 0,
+  "bandPostInputs": 0,
+  "naverAttempts": 0
+}
