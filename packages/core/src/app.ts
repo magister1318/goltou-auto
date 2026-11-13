@@ -3,6 +3,7 @@ import { FakeRegistrationRunner, type RegistrationRunner } from './runner';
 import type { AppRequest, AppSnapshot, Job, JobInput, TokenStore } from './protocol';
 import { makePreview, preparePreview, preparationWork, type PreparationServices, type PreparedPreview } from './preparation';
 import { RecordError } from './record-checkpoint';
+import { MemoryPolishStrengthStore, type PolishStrengthStore } from './polish/setting';
 export class MemoryTokenStore implements TokenStore {
   private token: string | null = null;
   async read() { return this.token; }
@@ -21,7 +22,9 @@ export class AppCore {
   private uncertainStart = false;
   private records: { postNo: number; channel: Channel; key: string; status: PostStatus; updates: Map<string, RecordError | null> }[] = [];
   private recordPrivateText: string[] = [];
-  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { device: () => Promise<import('@goltou/api-client').LoginInput['device']>; experimentTitle?: boolean }) {
+  private readonly polishSetting: PolishStrengthStore;
+  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { device: () => Promise<import('@goltou/api-client').LoginInput['device']>; experimentTitle?: boolean; polishStrength?: PolishStrengthStore }) {
+    this.polishSetting = runtime?.polishStrength ?? new MemoryPolishStrengthStore();
     const notify = (job: Job) => { if (!this.state.user) return; this.state.job = job; if (job.status === 'login_paused' && job.service) { this.state.services[job.service] = 'expired'; this.state.visibleService = job.service; } this.emit(); };
     this.createRunner = () => factory ? factory((job, retry) => this.record(job, retry), notify) : new FakeRegistrationRunner(() => this.state.simulation, job => this.record(job), notify);
     this.runner = this.createRunner();
@@ -58,6 +61,12 @@ export class AppCore {
     finally { this.preparing = false; }
   }
   async handle(request: AppRequest): Promise<unknown> {
+    if (request.command === 'polish.setting.get') return this.polishSetting.read();
+    if (request.command === 'polish.setting.save') {
+      const strength = request.input.strength;
+      if (strength !== 'spelling' && strength !== 'natural') throw new ApiError('invalid', '문장 다듬기 수준을 확인해 주세요.');
+      await this.polishSetting.write(strength); return strength;
+    }
     if (request.command === 'session.get') { await this.initialize(); return this.snapshot(); }
     if (this.preparation?.ai && ((request.command === 'service.show' || request.command === 'service.check' || request.command === 'service.clear') && request.input.service === 'ai' || request.command === 'service.hide' && this.state.visibleService === 'ai')) {
       if (this.preparing || this.starting || this.state.job?.status === 'running') throw new ApiError('conflict', '진행 중인 작업을 먼저 마쳐 주세요.');
@@ -96,7 +105,7 @@ export class AppCore {
           const product = this.forRegistration(await this.call('/auto/products/get', { productNo: request.input.productNo }, token));
           const options = request.input.options;
           const previous = this.preview;
-          const reusable = !request.input.retryPolish && options.polish && previous?.options.polish && previous.product.productNo === product.productNo && previous.product.contentHash === product.contentHash && previous.result.polish;
+          const reusable = !request.input.retryPolish && options.polish && previous?.options.polish && (options.polishStrength ?? 'natural') === (previous.options.polishStrength ?? 'natural') && previous.product.productNo === product.productNo && previous.product.contentHash === product.contentHash && previous.result.polish;
           const reverted = reusable ? previous.reverted : [];
           const result = reusable ? makePreview(product, this.convertOptions(options), undefined, reusable, reverted) : await preparePreview(product, { ...this.convertOptions(options), polish: options.polish }, this.preparation?.polish);
           this.preview = { product, options: { ...options }, result, reverted };
@@ -166,7 +175,7 @@ export class AppCore {
       let preview: PreparedPreview;
       if (input.options.polish) {
         const cached = this.preview;
-        if (!cached || cached.product.productNo !== product.productNo || cached.result.contentHash !== product.contentHash || (['polish', 'closing', 'linkCard'] as const).some(key => cached.options[key] !== input.options[key])) throw new ApiError('invalid', '상품 또는 옵션이 바뀌었습니다. 내용을 다시 확인해 주세요.');
+        if (!cached || cached.product.productNo !== product.productNo || cached.result.contentHash !== product.contentHash || (cached.options.polishStrength ?? 'natural') !== (input.options.polishStrength ?? 'natural') || (['polish', 'closing', 'linkCard'] as const).some(key => cached.options[key] !== input.options[key])) throw new ApiError('invalid', '상품 또는 옵션이 바뀌었습니다. 내용을 다시 확인해 주세요.');
         preview = cached.result;
       } else preview = makePreview(product, this.convertOptions(input.options));
       if (input.previewHash && input.previewHash !== product.contentHash) throw new ApiError('invalid', '상품이 바뀌었습니다. 내용을 다시 확인해 주세요.');
@@ -187,7 +196,7 @@ export class AppCore {
   }
   private forRegistration(product: Product): Product { return this.runtime?.experimentTitle ? { ...product, title: `[골투오토 실험] ${product.title}` } : product; }
   private convertOptions(options: PostInput['options']) {
-    return { closing: options.closing, closingText: this.state.settings?.closingText ?? '', linkCard: options.linkCard, hashtags: this.state.settings?.defaultHashtags ?? [] };
+    return { closing: options.closing, closingText: this.state.settings?.closingText ?? '', linkCard: options.linkCard, hashtags: this.state.settings?.defaultHashtags ?? [], polishStrength: options.polishStrength ?? 'natural' };
   }
   private async record(job: Job, retry = false) {
     const token = await this.token();

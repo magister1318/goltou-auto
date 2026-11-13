@@ -47,4 +47,25 @@ describe('AI surface and explicit retry', () => {
       expect(calls).not.toContain('/auto/posts/start'); expect(app.snapshot().job).toBeNull();
     } finally { finish?.(); app.dispose(); }
   });
+  it('invalidates the preview when strength changes and refuses a stale reviewed level before creating a record', async () => {
+    const product = fixtureProduct('<p>소개 문장을 다듬습니다.</p>', 0), fake = createFakeApi(), routes: string[] = [];
+    const api: ApiClient = { async request(route, input, token) { routes.push(route); return route === '/auto/products/get' ? product as never : fake.request(route, input, token); } };
+    const services = preparation();
+    const polish = vi.fn(async (_prompt: string) => '1. 소개 문장을 다듬습니다.'); services.polish = polish;
+    const app = new AppCore(api, undefined, undefined, services);
+    const call = (command: AppRequest['command'], input = {}) => app.handle({ id: 1, type: 'app', command, input } as AppRequest);
+    try {
+      await call('login', { loginId: 'manager', password: 'demo', device: { kind: 'test', model: 'synthetic', appVersion: '0' } });
+      const options = { polish: true, closing: false, linkCard: false };
+      await call('preview.prepare', { productNo: product.productNo, options });
+      await call('preview.prepare', { productNo: product.productNo, options: { ...options, closing: true, polishStrength: 'natural' } });
+      expect(polish).toHaveBeenCalledOnce(); // Missing strength means natural, and other options reuse the review.
+      await call('preview.prepare', { productNo: product.productNo, options: { ...options, polishStrength: 'spelling' } });
+      expect(polish).toHaveBeenCalledTimes(2);
+      expect(polish.mock.calls[0]![0]).toContain('적극 고치세요');
+      expect(polish.mock.calls[1]![0]).toContain('문장은 쓴 그대로');
+      await expect(call('job.start', { productNo: product.productNo, options, mode: 'draft', targets: [{ channel: 'blog', key: 'overseas', name: '시험' }] })).rejects.toMatchObject({ code: 'invalid' });
+      expect(routes).not.toContain('/auto/posts/start'); expect(app.snapshot().job).toBeNull();
+    } finally { app.dispose(); }
+  });
 });

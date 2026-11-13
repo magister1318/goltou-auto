@@ -28,6 +28,8 @@ export interface AppSnapshot { user: User | null; settings: Settings | null; ser
 /** Platform-neutral contract; Android implements it with a Keystore-encrypted native channel. */
 export interface TokenStore { read(): Promise<string | null>; write(token: string | null): Promise<void> }
 export interface Commands {
+  'polish.setting.get': { input: Record<string, never>; output: import('@goltou/api-client').PolishStrength };
+  'polish.setting.save': { input: { strength: import('@goltou/api-client').PolishStrength }; output: import('@goltou/api-client').PolishStrength };
   'session.get': { input: Record<string, never>; output: AppSnapshot };
   'login': { input: LoginInput; output: AppSnapshot };
   'logout': { input: Record<string, never>; output: AppSnapshot };

@@ -6,7 +6,7 @@ type Element = DefaultTreeAdapterMap['element'];
 const containers = new Set(['p', 'div', 'section', 'article', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'blockquote', 'pre', 'ul', 'ol', 'figure', 'figcaption']);
 const forbidden = new Set(['script', 'style', 'iframe', 'object', 'embed', 'noscript', 'template', 'input', 'meta', 'link']);
 const attr = (node: Element, name: string) => node.attrs.find(a => a.name === name)?.value ?? '';
-export function parseContents(html: string): ParsedContent {
+export function parseContents(html: string, onDroppedStruckText?: (text: string) => void): ParsedContent {
   const document = parseFragment(html, { sourceCodeLocationInfo: true });
   const blocks: Block[] = [], discarded: Discard[] = [], notices: string[] = [];
   let runs: Run[] = [], serial = 0, droppedStruckCharacters = 0, removedSinceText = false;
@@ -21,6 +21,8 @@ export function parseContents(html: string): ParsedContent {
     if (struck) struckNodes.add(node);
     if (struck && node.nodeName === '#text' && 'value' in node && node.value) {
       droppedStruckCharacters += Array.from(node.value).length;
+      // Optional in-memory rejection guard; omitted text is never returned or sent to AI.
+      onDroppedStruckText?.(node.value);
       discard(node, 'struck-text');
       node.value = '';
     }

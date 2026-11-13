@@ -14,6 +14,6 @@ export type InputStep =
   | { kind: 'photos'; urls: string[] }
   | { kind: 'table'; role: Role; rows: string[][] };
 export interface InputPlan { channel: 'blog' | 'band'; steps: InputStep[]; discarded: Discard[]; notices: string[] }
-export interface ConvertOptions { closing?: boolean; closingText?: string; linkCard?: boolean; hashtags?: string[] }
+export interface ConvertOptions { closing?: boolean; closingText?: string; linkCard?: boolean; hashtags?: string[]; polishStrength?: import('@goltou/api-client').PolishStrength }
 export const runText = (runs: readonly Run[]) => runs.map(run => run.text).join('');
 export const blockText = (block: Block) => block.kind === 'paragraph' ? runText(block.runs) : block.kind === 'link' ? block.text : block.kind === 'table' ? block.rows.map(row => row.join(' ')).join('\n') : '';

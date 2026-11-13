@@ -36,8 +36,9 @@ export function makePreview(product: Product, options: ConvertOptions, parsed: P
   return { productNo: product.productNo, contentHash: product.contentHash, droppedStruckCharacters: parsed.droppedStruckCharacters, options: structuredClone(options), blog, band, verification, ...(polished ? { polish: { ...polished, paragraphs: polished.paragraphs.map(p => ({ ...p, reverted: reverted.includes(p.id) })) } } : {}) };
 }
 export async function preparePreview(product: Product, options: ConvertOptions & { polish?: boolean }, transport?: PolishTransport): Promise<PreparedPreview> {
-  const parsed = parseContents(product.contentsHtml);
-  const polished = options.polish ? await polishContent(parsed, product, transport) : undefined;
+  const omitted: string[] = [];
+  const parsed = parseContents(product.contentsHtml, options.polish ? text => omitted.push(text) : undefined);
+  const polished = options.polish ? await polishContent(parsed, product, transport, undefined, options.polishStrength, omitted) : undefined;
   return makePreview(product, options, parsed, polished);
 }
 export function preparationWork(product: Product, preview: PreparedPreview, services: PreparationServices): PreparationWork {

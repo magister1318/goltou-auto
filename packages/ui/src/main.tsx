@@ -12,6 +12,8 @@ import { ExperimentsScreen } from './Experiments';
 import { ConversionPreview } from './ConversionPreview';
 import { FailureDetail } from './FailureDetail';
 import { PolishComparison } from './PolishComparison';
+import { PolishStrengthChoice } from './PolishStrengthChoice';
+import { initialPreviewOptions } from './polish-setting';
 import { RecordFailureActions } from './RecordFailureActions';
 import type { PreparedPreview } from '@goltou/core';
 import type { Commands } from '@goltou/core/protocol';
@@ -45,7 +47,14 @@ function App() {
   const [mode, setMode] = useState<Mode>('draft'); const [blog, setBlog] = useState(true); const [band, setBand] = useState(false);
   const [bands, setBands] = useState(['travel', 'golf']); const [optionsOpen, setOptionsOpen] = useState(false); const [targetsOpen, setTargetsOpen] = useState(false);
   const [availableBands, setAvailableBands] = useState<BandChoice[]>([]); const [loadingBands, setLoadingBands] = useState(false);
-  const [options, setOptions] = useState({ polish: false, closing: false, linkCard: false }); const [confirmation, setConfirmation] = useState(false);
+  const [options, setOptions] = useState(initialPreviewOptions); const [confirmation, setConfirmation] = useState(false);
+  const [polishSettingReady, setPolishSettingReady] = useState(false);
+  useEffect(() => {
+    if (!connected) { setPolishSettingReady(false); return; }
+    let active = true;
+    void request('polish.setting.get', {}).then(polishStrength => { if (active) { setOptions(old => ({ ...old, polishStrength })); setPolishSettingReady(true); } }).catch(ignore);
+    return () => { active = false; };
+  }, [connected]);
   const [scope, setScope] = useState<'mine' | 'all'>('mine'); const [posts, setPosts] = useState<Page<Post>>({ items: [], total: 0 }); const [postPage, setPostPage] = useState(1);
   const [settings, setSettings] = useState<Settings>({ closingText: '', defaultHashtags: [], bandDailyLimit: 3 });
   const [notice, setNotice] = useState(''); const [diagnosticUrl, setDiagnosticUrl] = useState('https://example.com/'); const [diagnostic, setDiagnostic] = useState<{ title: string; url: string } | null>(null);
@@ -69,7 +78,7 @@ function App() {
     let active = true; setPreparing(true); setConverted(null);
     void request('preview.prepare', { productNo: product.productNo, options }).then(value => { if (active) setConverted(value); }).catch(ignore).finally(() => { if (active) setPreparing(false); });
     return () => { active = false; };
-  }, [screen, product?.productNo, options.polish, options.closing, options.linkCard]);
+  }, [screen, product?.productNo, options.polish, options.polishStrength, options.closing, options.linkCard]);
   useEffect(() => {
     if (screen !== 'home' || !app?.user) return;
     let active = true;
@@ -122,8 +131,8 @@ function App() {
         <section className="choices"><div className="choice-row"><span>등록 방식</span><button className={mode === 'draft' ? 'chosen' : ''} onClick={() => { setMode('draft'); setConfirmation(false); }}>임시저장</button><button className={mode === 'publish' ? 'chosen' : ''} onClick={() => setMode('publish')}>발행</button></div>
           <div className="choice-row"><span>블로그 <span className="small muted">해외골프</span></span><Toggle label="블로그에 등록" value={blog} change={setBlog}/></div><div className="choice-row"><span>밴드 <button className="small muted" onClick={() => setTargetsOpen(!targetsOpen)}>{bands.length}곳 · 고르기</button></span><Toggle label="밴드에 등록" value={band} change={setBand}/></div>
           {targetsOpen && <div className="suboptions">{loadingBands && <p role="status">내 밴드 목록을 읽는 중입니다.</p>}{availableBands.map(b => <div className="choice-row" key={b.key}><span>{b.name}<small className="muted">{b.photoLimit === null ? ' · 사진 한도 미확인' : ` · 관측한 사진 한도 ${b.photoLimit}장`}</small></span><Toggle label={`${b.name} 선택`} value={bands.includes(b.key)} change={value => setBands(old => value ? [...old, b.key] : old.filter(k => k !== b.key))}/></div>)}</div>}{band && <p className={bandLimitExceeded ? 'warn' : 'small muted'} role="status">{bandLimitExceeded ? '선택한 밴드에서 관측한 사진 한도를 넘었습니다. 등록을 시작할 수 없습니다.' : '밴드는 한 곳씩 진행합니다. 임시저장 방식에서는 게시 전 멈추며 작성 화면을 보여 줍니다. 한도는 관측값만 사용하고 사진을 자르지 않습니다.'}</p>}
-          <div className="choice-row option-row"><span>선택 옵션 <span className="small muted">문장 다듬기 · 끝 문구 · 링크 카드</span></span><button className="small muted" onClick={() => setOptionsOpen(!optionsOpen)}>{Object.values(options).some(Boolean) ? '선택됨' : '모두 꺼짐'} →</button></div>
-          {optionsOpen && <div className="suboptions">{([['polish', '문장 다듬기'], ['closing', '끝 문구'], ['linkCard', '골투 링크 카드']] as const).map(([key, name]) => <div className="choice-row" key={key}><span>{name}</span><Toggle label={name} value={options[key]} disabled={busy || preparing} change={value => setOptions(old => ({ ...old, [key]: value }))}/></div>)}</div>}
+          <div className="choice-row option-row"><span>선택 옵션 <span className="small muted">문장 다듬기 · 끝 문구 · 링크 카드</span></span><button className="small muted" onClick={() => setOptionsOpen(!optionsOpen)}>{[options.polish, options.closing, options.linkCard].some(Boolean) ? '선택됨' : '모두 꺼짐'} →</button></div>
+          {optionsOpen && <div className="suboptions">{([['polish', '문장 다듬기'], ['closing', '끝 문구'], ['linkCard', '골투 링크 카드']] as const).map(([key, name]) => <React.Fragment key={key}><div className="choice-row"><span>{name}</span><Toggle label={name} value={options[key]} disabled={busy || preparing || key === 'polish' && !polishSettingReady} change={value => setOptions(old => ({ ...old, [key]: value }))}/></div>{key === 'polish' && options.polish && <PolishStrengthChoice value={options.polishStrength} disabled={busy || preparing || !polishSettingReady} change={strength => void act(async () => { const polishStrength = await request('polish.setting.save', { strength }); setOptions(old => ({ ...old, polishStrength })); })}/>}</React.Fragment>)}</div>}
         </section>{confirmation && <section className="publish-confirm" role="alertdialog" aria-labelledby="publish-title"><h2 id="publish-title">발행하면 글이 공개됩니다</h2><p>선택한 {targetList().length}곳에 이 상품을 발행할까요?</p><button onClick={() => setConfirmation(false)}>돌아가기</button><button className="chosen" disabled={busy} onClick={() => void start(true)}>확인하고 발행 시작</button></section>}
       </main><button className="action-bar" disabled={busy || preparing || (band && loadingBands) || bandLimitExceeded || !converted || !targetList().length || targetList().some(t => !converted?.verification[t.channel].matches) || confirmation} onClick={() => void start()}>{mode === 'draft' ? '임시저장으로 등록 시작' : '발행으로 등록 시작'}<span aria-hidden="true">→</span></button></>}
     {shownScreen === 'progress' && job && <><main className="progress-content"><p className="progress-caption">{job.status === 'record_failed' ? '등록 기록 확인' : <>{job.mode === 'draft' ? '임시저장' : '발행'} 방식 · {job.title}</>}</p><div className="step-number"><strong>{job.step}</strong><span>/ 7</span></div>
