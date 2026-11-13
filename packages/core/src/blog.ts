@@ -58,7 +58,7 @@ export function blogObservation(plan: InputPlan, files: readonly MediaFile[], ac
   result.text = all.join('\n'); return result;
 }
 export function createBlogExecution(plan: InputPlan, files: readonly MediaFile[], services: BlogServices,
-  hooks: Pick<ConstructorParameters<typeof BlogExecution>[2], 'check' | 'progress' | 'beforeSave'>) {
+  hooks: Pick<ConstructorParameters<typeof BlogExecution>[2], 'check' | 'progress' | 'beforeSave' | 'mode'>) {
   const execution: BlogExecution = new BlogExecution(plan, files, { ...services, ...hooks, verify: actual => {
     const comparison = compareDocuments(observePlan(plan), blogObservation(plan, execution.files, actual));
     if (!comparison.matches) throw new Error(`BLOG_READBACK_MISMATCH:${comparison.differences.map(d => d.field).join(',')}`);

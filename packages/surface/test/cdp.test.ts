@@ -37,10 +37,31 @@ async function fixture(handler?: (command: Command, socket: WebSocket) => boolea
     for (const client of server.clients) client.terminate();
     await new Promise<void>(resolve => server.close(() => resolve()));
   });
-  return { surface, connection, commands, visibility: () => visible, closed: () => closed };
+  return { surface, connection, commands, visibility: () => visible, closed: () => closed,
+    event: (method: string, params: Record<string, unknown>) => { for (const socket of server.clients) socket.send(JSON.stringify({ method, params })); } };
 }
 
 describe('CDP Surface', () => {
+  it('fails real submission at Fetch while allowing the distinct draft-save paths and preserving request privacy', async () => {
+    const f = await fixture();
+    await f.surface.blockRequests(['/RabbitWrite.naver', '/RabbitUpdate.naver'].map(pathname => ({ hostname: 'blog.naver.com', pathname })));
+    expect(f.commands[0]).toMatchObject({ method: 'Fetch.enable', params: { patterns: [
+      { urlPattern: '*://blog.naver.com/RabbitWrite.naver*', requestStage: 'Request' },
+      { urlPattern: '*://blog.naver.com/RabbitUpdate.naver*', requestStage: 'Request' },
+    ] } });
+    // Events simulate requests before transport; no actual Naver requests occur.
+    for (const [i, path] of ['/RabbitWrite.naver?local=1', '/RabbitUpdate.naver', '/RabbitTempPostWrite.naver', '/RabbitTempPostUpdate.naver'].entries()) {
+      f.event('Fetch.requestPaused', { requestId: String(i), request: { url: `https://blog.naver.com${path}`, postData: 'PRIVATE_CONTENT_NEVER_RECORDED' } });
+    }
+    await vi.waitFor(() => expect(f.commands).toHaveLength(5));
+    expect(f.commands.slice(1)).toEqual([
+      expect.objectContaining({ method: 'Fetch.failRequest', params: { requestId: '0', errorReason: 'BlockedByClient' } }),
+      expect.objectContaining({ method: 'Fetch.failRequest', params: { requestId: '1', errorReason: 'BlockedByClient' } }),
+      expect.objectContaining({ method: 'Fetch.continueRequest', params: { requestId: '2' } }),
+      expect.objectContaining({ method: 'Fetch.continueRequest', params: { requestId: '3' } }),
+    ]);
+    expect(JSON.stringify(f.commands)).not.toContain('PRIVATE_CONTENT');
+  });
   it('retries one unanswered viewport capture without native-density fallback or editor input', async () => {
     let attempts = 0;
     const f = await fixture((command, socket) => {

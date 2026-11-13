@@ -68,7 +68,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
       while (j.step <= 7) {
         this.check();
         if (j.step === 1 && j.targets.some(t => t.channel === 'blog')) {
-          this.blog ??= createBlogExecution(this.work!.preview!.blog, [], this.services.blog!, { check: this.check, progress: this.progress, beforeSave: () => { if (++this.saves > (this.services.blog?.draftSaveLimit ?? 3)) throw new Error('DRAFT_SAVE_LIMIT'); } });
+          this.blog ??= createBlogExecution(this.work!.preview!.blog, [], this.services.blog!, { mode: j.mode, check: this.check, progress: this.progress, beforeSave: () => { if (++this.saves > (this.services.blog?.draftSaveLimit ?? 3)) throw new Error('DRAFT_SAVE_LIMIT'); } });
           await this.blog.ensureReady();
         }
         if (j.step === 2) await this.work!.download(this.abort.signal, n => { j.current = n; this.notify(structuredClone(j)); });

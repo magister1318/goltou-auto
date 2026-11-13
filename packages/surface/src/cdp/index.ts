@@ -30,6 +30,8 @@ export class CdpSurface implements Surface {
   private mainLoader: string | undefined;
   private dialog: SurfaceDialog | null = null;
   private dialogSerial = 0;
+  private barrierFailed = false;
+  private readonly blockedRequests = new Set<string>();
 
   constructor(
     readonly session: SurfaceSession,
@@ -37,6 +39,17 @@ export class CdpSurface implements Surface {
     private readonly lifecycle: SurfaceLifecycle,
     private readonly inputDelayMs = 60,
   ) {
+    cdp.on('Fetch.requestPaused', p => {
+      const request = p.request as { url?: string } | undefined;
+      let blocked = true;
+      try {
+        const url = new URL(request?.url ?? '');
+        blocked = this.blockedRequests.has(`${url.hostname}${url.pathname}`);
+      } catch { /* Unreadable intercepted requests fail closed. */ }
+      void cdp.send(blocked ? 'Fetch.failRequest' : 'Fetch.continueRequest', {
+        requestId: p.requestId, ...(blocked ? { errorReason: 'BlockedByClient' } : {}),
+      }).catch(() => { this.barrierFailed = true; });
+    });
     cdp.on('Page.javascriptDialogOpening', p => { this.dialog = { id: String(++this.dialogSerial), kind: p.type === 'alert' ? 'alert' : 'confirm', message: String(p.message ?? '') }; });
     cdp.on('Page.javascriptDialogClosed', () => { this.dialog = null; });
     cdp.on('Page.frameNavigated', params => {
@@ -49,6 +62,14 @@ export class CdpSurface implements Surface {
         this.loaded.add(params.loaderId);
       }
     });
+  }
+
+  async blockRequests(rules: readonly { hostname: string; pathname: string }[]): Promise<void> {
+    for (const rule of rules) {
+      if (!/^[a-z0-9.-]+$/.test(rule.hostname) || !/^\/[a-zA-Z0-9/_.-]+$/.test(rule.pathname)) throw new Error('SURFACE_BAD_REQUEST_BARRIER');
+      this.blockedRequests.add(`${rule.hostname}${rule.pathname}`);
+    }
+    await this.cdp.send('Fetch.enable', { patterns: [...this.blockedRequests].map(path => ({ urlPattern: `*://${path}*`, requestStage: 'Request' })) });
   }
 
   async open(options: SurfaceOpenOptions): Promise<void> {
@@ -89,6 +110,23 @@ export class CdpSurface implements Surface {
 
   readState(): Promise<SurfaceState> {
     return this.evaluateReadOnly<SurfaceState>('({url: location.href, title: document.title, loading: document.readyState !== "complete"})');
+  }
+
+  async readClickTarget(x: number, y: number, selector: string): Promise<boolean> {
+    // This DOM command takes document coordinates; Input takes viewport coordinates.
+    const metrics = await this.cdp.send<{ cssVisualViewport: { pageX: number; pageY: number } }>('Page.getLayoutMetrics');
+    const node = await this.cdp.send<{ backendNodeId?: number }>('DOM.getNodeForLocation', { x: Math.round(x + metrics.cssVisualViewport.pageX), y: Math.round(y + metrics.cssVisualViewport.pageY), includeUserAgentShadowDOM: false, ignorePointerEventsNone: false });
+    if (!node.backendNodeId) return false;
+    const { object } = await this.cdp.send<{ object: { objectId?: string } }>('DOM.resolveNode', { backendNodeId: node.backendNodeId });
+    if (!object.objectId) return false;
+    try {
+      const result = await this.cdp.send<{ result: { value?: boolean }; exceptionDetails?: unknown }>('Runtime.callFunctionOn', {
+        objectId: object.objectId, functionDeclaration: 'function(selector) { const targets=Array.from(this.ownerDocument.querySelectorAll(selector)); let e=this; while(e) { if(targets.includes(e)) return true; e=e.parentElement; } return false; }',
+        arguments: [{ value: selector }], returnByValue: true, throwOnSideEffect: true,
+      });
+      if (result.exceptionDetails) throw new Error('SURFACE_HIT_TEST_FAILED');
+      return result.result.value === true;
+    } finally { await this.cdp.send('Runtime.releaseObject', { objectId: object.objectId }); }
   }
 
   async waitForNavigation(options: NavigationOptions = {}): Promise<SurfaceState> {
@@ -132,6 +170,7 @@ export class CdpSurface implements Surface {
     await this.input('Input.dispatchKeyEvent', { ...params, type: 'keyUp' });
   }
   private async input(method: string, params: Record<string, unknown>): Promise<void> {
+    if (this.barrierFailed) throw new Error('SURFACE_DRAFT_BARRIER_FAILED');
     if (this.dialog) throw new Error('SURFACE_DIALOG_PENDING');
     let unsubscribe = () => {};
     const dialog = new Promise<never>((_, reject) => { unsubscribe = this.cdp.on('Page.javascriptDialogOpening', () => reject(new Error('SURFACE_DIALOG_PENDING'))); });

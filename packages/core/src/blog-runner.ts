@@ -71,7 +71,7 @@ export class BlogRegistrationRunner implements RegistrationRunner {
         if (job.step === 1) {
           const preview = this.work!.preview;
           if (!preview) throw new Error('PREPARATION_REQUIRED');
-          this.execution ??= createBlogExecution(preview.blog, [], this.services, this.hooks(check));
+          this.execution ??= createBlogExecution(preview.blog, [], this.services, { ...this.hooks(check), mode: job.mode });
           await this.execution.ensureReady();
         }
         if (job.step === 2) await this.work!.download(this.abort.signal, n => { job.current = n; job.message = `사진 ${n} / ${job.total}`; this.notify(structuredClone(job)); });

@@ -26,10 +26,14 @@ export interface Surface {
   waitForNavigation(options?: NavigationOptions): Promise<SurfaceState>;
   /** Read-only expression, including element geometry. Never use to edit the page. */
   evaluateReadOnly<T>(expression: string): Promise<T>;
+  /** Read the actual hit-tested element, including occluding elements and frames. */
+  readClickTarget?(x: number, y: number, selector: string): Promise<boolean>;
   click(x: number, y: number): Promise<void>;
   typeText(text: string): Promise<void>;
   pressKey(input: KeyInput): Promise<void>;
   attachFiles(selector: string, absolutePaths: readonly string[]): Promise<void>;
+  /** Shell-enforced request barrier, installed before navigation; persists until close. */
+  blockRequests?(rules: readonly { hostname: string; pathname: string }[]): Promise<void>;
   readDialog?(): Promise<SurfaceDialog | null>;
   respondDialog?(id: string, accept: boolean): Promise<void>;
   show(): Promise<void>;

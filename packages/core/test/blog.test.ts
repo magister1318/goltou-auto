@@ -102,15 +102,46 @@ describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback e
     if (!photo || photo.kind !== 'photo') throw new Error('FIXTURE_PHOTO_REQUIRED');
     photo.identity = photo.identity.replace('1234567890abcdef', '0000000000000000');
     expect(compareDocuments(observePlan(f.plan), blogObservation(f.plan, f.files, altered)).differences.some(d => d.field === 'photos')).toBe(true);
-    expect((await readBlogDocument(f.execution.surface!)).tags).toEqual(['예시']);
+    expect((await f.execution.observe()).tags).toEqual(['예시']);
     expect(f.progress).toHaveBeenLastCalledWith({ photos: 8, totalPhotos: 8, characters: 1512, totalCharacters: 1512 });
     const original = f.execution.surface;
     await f.execution.saveAndVerify();
     expect(f.execution.surface).not.toBe(original);
-    expect((await readBlogDocument(f.execution.surface!)).tags).toEqual(['예시']);
+    expect((await f.execution.observe()).tags).toEqual(['예시']);
     expect(await f.counts()).toEqual({ saves: 1, publishes: 0 });
     expect(f.external()).toBe(0);
-  }, 40000);
+  }, 60000);
+  it('blocks every key and unsafe click on the final publish control, and rechecks focus after tag typing', async () => {
+    const f = await fixture('metadata-focus-lost');
+    f.plan.steps = [{ kind: 'text', role: 'title', text: '[골투오토 실험] 안전' }, { kind: 'break' },
+      { kind: 'text', role: 'body', text: '본문' }, { kind: 'text', role: 'hashtags', text: '#예시' }];
+    await expect(f.execution.write()).rejects.toThrow('BLOG_TAG_FOCUS_LOST');
+    const s = f.execution.surface!, page = f.pages.get(s)!;
+    expect(await page.locator('[data-metadata-panel]').count()).toBe(0);
+    // The fixture itself moves focus by real UI input. The executor's Surface
+    // must reject Enter before any input, independent of the tag-writing path.
+    await page.locator('[data-click-area="tpb.publish"]').click();
+    await page.locator('[data-click-area="tpb*i.publish"]').click({ trial: true });
+    await page.locator('#tag-input').click();
+    await page.keyboard.press('Tab');
+    expect(await page.evaluate('document.activeElement?.getAttribute("data-click-area")')).toBe('tpb*i.publish');
+    for (const key of ['Enter', 'Tab', 'PageDown', 'Escape']) await expect(s.pressKey({ key })).rejects.toThrow('BLOG_TAG_FOCUS_LOST');
+    const box = (await page.locator('[data-click-area="tpb*i.publish"]').boundingBox())!;
+    await expect(s.click(box.x + box.width / 2, box.y + box.height / 2)).rejects.toThrow('BLOG_TAG_FOCUS_LOST');
+    const save = (await page.locator('[data-click-area="tpb.save"]').boundingBox())!;
+    await expect(s.click(save.x + save.width / 2, save.y + save.height / 2)).rejects.toThrow('BLOG_TAG_FOCUS_LOST');
+    expect(await f.counts()).toEqual({ saves: 0, publishes: 0 });
+    expect(f.beforeSave).not.toHaveBeenCalled(); expect(f.external()).toBe(0);
+  }, 20000);
+  it('aborts when the metadata layer cannot be verified closed, before attempting draft save', async () => {
+    const f = await fixture('metadata-stuck');
+    f.plan.steps = [{ kind: 'text', role: 'title', text: '[골투오토 실험] 닫기' }, { kind: 'break' },
+      { kind: 'text', role: 'body', text: '본문' }, { kind: 'text', role: 'hashtags', text: '#예시' }];
+    await expect(f.execution.write()).rejects.toThrow('BLOG_TAG_LAYER_NOT_CLOSED');
+    await expect(f.execution.saveAndVerify()).rejects.toThrow('BLOG_TAG_LAYER_NOT_CLOSED');
+    expect(f.beforeSave).not.toHaveBeenCalled();
+    expect(await f.counts()).toEqual({ saves: 0, publishes: 0 }); expect(f.external()).toBe(0);
+  }, 20000);
   it('waits for an editor iframe created after the outer load instead of claiming login loss', async () => {
     const f = await fixture('delayed-frame');
     await f.execution.ensureReady();

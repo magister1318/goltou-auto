@@ -1,5 +1,6 @@
 /** A local editor responds to real input; only this fixture changes its own DOM. */
 export function blogFixture(mode = '') {
+  const metadata = mode.startsWith('metadata-');
   return `<!doctype html><meta charset="utf-8"><style>
   body{font:16px sans-serif;margin:0}header{position:sticky;top:0;background:white;z-index:2;height:45px}button{min-width:65px;height:35px}
   .se-main-container{min-height:500px;padding:10px}.se-component{margin:5px 0}.se-text-paragraph{min-height:25px;margin:5px 0;outline:none}
@@ -8,7 +9,7 @@ export function blogFixture(mode = '') {
   </style><header><button data-click-area="tpb.save">저장</button><button data-click-area="tpb*s.count">0</button><button data-click-area="tpb.publish">발행</button><button data-name="image">사진</button>${mode === 'fallback' ? '' : '<button data-name="table">표</button>'}<input type="file" multiple hidden></header>
   <div class="se-documentTitle"><p class="se-text-paragraph" contenteditable="true"></p></div>
   <div class="se-main-container" contenteditable="true"><div class="se-component se-text"><p class="se-text-paragraph"><br></p></div></div>
-  ${mode === 'missing-tags' || mode === 'metadata-tags' ? '' : '<input placeholder="태그 입력">'}<div class="tag_list"></div><ul aria-label="임시저장된 글" hidden></ul>
+  ${mode === 'missing-tags' || metadata ? '' : '<input placeholder="태그 입력">'}<div class="tag_list"></div><ul aria-label="임시저장된 글" hidden></ul>
   <script>
   const mode=${JSON.stringify(mode)}, main=document.querySelector('.se-main-container'), title=document.querySelector('.se-documentTitle p');
   const empty=()=>{const e=document.createElement('div');e.className='se-component se-text';e.innerHTML='<p class="se-text-paragraph"><br></p>';return e};
@@ -37,12 +38,15 @@ export function blogFixture(mode = '') {
   const tags=document.querySelector('input[placeholder]');if(tags)tags.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const t=document.createElement('span');t.className='tag';t.textContent=tags.value;document.querySelector('.tag_list').append(t);tags.value=''}};
   let metadataTags=[];
   const tagPanel=()=>{
-    const open=document.querySelector('[data-metadata-panel]');if(open){open.remove();return}
+    const open=document.querySelector('[data-metadata-panel]');if(open){if(mode!=='metadata-stuck'){open.remove();document.querySelector('[data-metadata-cover]')?.remove()}return}
+    const cover=document.createElement('div');cover.dataset.metadataCover='';cover.style.cssText='position:fixed;top:0;left:0;right:0;height:45px;z-index:5';document.body.append(cover);
     const panel=document.createElement('div');panel.dataset.metadataPanel='';panel.style.cssText='position:fixed;right:0;top:60px;background:white;z-index:3';
     panel.innerHTML='<div class="tag_textarea__fixture"><span><input id="tag-input" role="combobox" placeholder="태그 입력 (최대 30개)"></span></div><button data-click-area="tpb*i.publish">발행</button>';
     const input=panel.querySelector('input'),area=panel.querySelector('div');
     const render=()=>{area.querySelectorAll('[aria-label]').forEach(e=>e.remove());for(const tag of metadataTags){const chip=document.createElement('span');chip.className='tag__fixture';chip.setAttribute('aria-label',tag);chip.textContent='#'+tag;area.insertBefore(chip,input.parentElement)}};
     input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();metadataTags.push(input.value);input.value='';render()}};
+    panel.onkeydown=e=>{if(e.key==='Escape'&&e.target===input&&mode!=='metadata-stuck'){panel.remove();cover.remove()}};
+    if(mode==='metadata-focus-lost')input.oninput=()=>panel.querySelector('button').focus();
     panel.querySelector('button').onclick=()=>localStorage.setItem('publishes',String(Number(localStorage.getItem('publishes')||0)+1));
     document.body.append(panel);render();
   };
@@ -64,7 +68,7 @@ export function blogFixture(mode = '') {
     }list.hidden=false;
   };
   document.querySelector('[data-click-area="tpb.publish"]').onclick=()=>{localStorage.setItem('publishes',String(Number(localStorage.getItem('publishes')||0)+1));location.href='/published/local'};
-  if(mode==='metadata-tags'){
+  if(${metadata}){
     const toggle=document.querySelector('[data-click-area="tpb.publish"]');toggle.className='publish_btn__fixture';toggle.onclick=tagPanel;
     // Model SmartEditor's expansion when a selector arrives after its base.
     document.addEventListener('beforeinput',e=>{if(e.data==='\uFE0F'&&e.target.closest('.se-main-container')){e.preventDefault();document.execCommand('insertText',false,'✈️')}});
