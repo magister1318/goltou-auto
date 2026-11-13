@@ -1,3 +1,4 @@
+import { createFakeApi } from '@goltou/api-client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FakeRegistrationRunner } from '../src/runner';
 import { AppCore } from '../src/app';
@@ -34,7 +35,7 @@ describe('fake registration transitions', () => {
 });
 describe('UI/core boundary', () => {
   async function fixture() {
-    const app = new AppCore(); const call = (command: AppRequest['command'], value: unknown = {}) => app.handle({ id: 1, type: 'app', command, input: value } as AppRequest);
+    const app = new AppCore(createFakeApi()); const call = (command: AppRequest['command'], value: unknown = {}) => app.handle({ id: 1, type: 'app', command, input: value } as AppRequest);
     await call('login', { loginId: 'manager', password: 'demo', device: { kind: 'android', model: 'test', appVersion: '0.1.0' } });
     await call('simulation.configure', { tickMs: 10 }); return { app, call };
   }

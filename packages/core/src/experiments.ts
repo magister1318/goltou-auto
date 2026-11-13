@@ -22,6 +22,7 @@ export interface ExperimentOptions {
   info(): Promise<RecordValue>;
   lifecycle(mode: string): Promise<void>;
   capture(surface: Surface, name: string): Promise<RecordValue>;
+  conversionCheck?(check: () => void): Promise<import('./conversion-audit').ConversionAudit>;
 }
 
 /** Debug-only, single-flight tools. Never connected to the product API or registration runner. */
@@ -38,7 +39,7 @@ export class Experiments {
     if (command === 'state') return this.snapshot();
     if (command === 'stop') { this.cancelled = true; return this.snapshot(); }
     if (this.state.running) throw new Error('EXPERIMENT_BUSY');
-    if (!['ai.polish', 'info', 'example', 'evidence', 'show', 'hide', 'login.open', 'login.check', 'band.list', 'blog.run', 'band.run', 'lifecycle'].includes(command)) throw new Error('UNKNOWN_EXPERIMENT');
+    if (!['conversion.check', 'ai.polish', 'info', 'example', 'evidence', 'show', 'hide', 'login.open', 'login.check', 'band.list', 'blog.run', 'band.run', 'lifecycle'].includes(command)) throw new Error('UNKNOWN_EXPERIMENT');
     const channel: Channel = input.channel === 'band' ? 'band' : 'naver';
     if (command.startsWith('login.') && !['band', 'naver'].includes(String(input.channel))) throw new Error('INVALID_CHANNEL');
     if (command === 'band.run' && (!/^\d{1,30}$/.test(String(input.bandKey)) || !['mobile', 'desktop'].includes(String(input.ua)))) throw new Error('SELECT_BAND_AND_UA');
@@ -91,6 +92,12 @@ export class Experiments {
   private async run(command: string, channel: Channel, input: RecordValue) {
     let active: Surface | undefined;
     try {
+      if (command === 'conversion.check') {
+        if (!this.options.conversionCheck) throw new Error('DEBUG_ONLY');
+        const result = await this.step('conversion-metrics', () => this.options.conversionCheck!(this.check), value => ({ products: value.items.length, completed: value.completed, failures: value.items.filter(i => i.failureCode).length }));
+        this.state.lastResult = `변환 점검 ${result.items.length}개 완료 · files/wp7/conversion.json`;
+        return;
+      }
       if (command === 'ai.polish') {
         const parsed = parseContents('<p>예시 골프장에서 조용히 라운드하며 주변 풍경을 감상합니다.</p><p>이동 후에는 숙소에서 쉬고 다음 일정을 준비합니다.</p><p>예시CC의 안내를 살펴보고 필요한 준비물을 챙깁니다.</p>');
         const result = await this.step('ai-polish-three-example-paragraphs', () => polishContent(parsed, { golfCourses: ['예시CC'], productUrl: 'https://example.invalid/product' }, aiModeTransport(this.options.host), this.check), value => ({ status: value.status, paragraphs: value.paragraphs.length, accepted: value.paragraphs.filter(p => p.accepted).length }));

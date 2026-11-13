@@ -8,6 +8,7 @@ export interface BlogServices {
   host: SurfaceHost;
   editorUrl?: string;
   localPublish?: boolean;
+  draftSaveLimit?: number;
   capture?(surface: import('@goltou/surface').Surface, name: string): Promise<Record<string, unknown>>;
   recordFailure?(failure: { jobId: number; step: number; code: string; evidence: string }): Promise<void>;
 }

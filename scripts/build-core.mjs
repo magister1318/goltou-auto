@@ -1,5 +1,7 @@
 // Reference: ../refs/DAF/daf3/apps/mobile/scripts/build-core.mjs (Node 18 bundle + built-in UI only).
 import { build } from 'esbuild';
+import { apiOrigin } from './app-config.mjs';
+const debugBuild = !process.argv.includes('--release');
 import { build as viteBuild } from 'vite';
 import { cpSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -15,10 +17,10 @@ function clearGenerated(dir) {
 }
 clearGenerated(out);
 mkdirSync(out, { recursive: true });
-const config = { bundle: true, platform: 'node', target: 'node18', format: 'cjs', external: ['bufferutil', 'utf-8-validate'], logLevel: 'warning' };
+const config = { minifySyntax: true, bundle: true, platform: 'node', target: 'node18', format: 'cjs', external: ['bufferutil', 'utf-8-validate'], logLevel: 'warning' };
 await build({ ...config, entryPoints: [path.join(root, 'packages/core/src/index.ts')], outfile: path.join(out, 'core-api.cjs') });
 await build({ ...config, entryPoints: [path.join(root, 'packages/surface/src/cdp/index.ts')], outfile: path.join(out, 'surface.cjs') });
-await build({ ...config, entryPoints: [path.join(root, 'apps/android/bridge/main.ts')], outfile: path.join(out, 'engine.cjs') });
+await build({ ...config, entryPoints: [path.join(root, 'apps/android/bridge/main.ts')], outfile: path.join(out, 'engine.cjs'), define: { __GOLTOU_API_ORIGIN__: JSON.stringify(apiOrigin), __GOLTOU_DEBUG__: JSON.stringify(debugBuild) } });
 writeFileSync(path.join(out, 'core.cjs'), `// Built-in embedded Node bootstrap. No downloaded code.\ntry { require('./engine.cjs'); } catch (error) { console.error('core load failed', error); setInterval(() => {}, 60000); }\n`);
 await viteBuild({ configFile: path.join(root, 'packages/ui/vite.config.ts'), logLevel: 'warn' });
 cpSync(path.join(root, 'packages/ui/dist'), path.join(out, 'ui'), { recursive: true });
@@ -35,7 +37,7 @@ function digest(dir) {
 for (const file of ['core.cjs', 'engine.cjs']) hash.update(readFileSync(path.join(out, file)));
 digest(path.join(out, 'ui'));
 digest(path.join(out, 'fixtures'));
-writeFileSync(path.join(out, 'manifest.json'), JSON.stringify({ version: '0.1.0', sha256: hash.digest('hex') }, null, 2));
+writeFileSync(path.join(out, 'manifest.json'), JSON.stringify({ version: '0.1.0', debug: debugBuild, sha256: hash.digest('hex') }, null, 2));
 const android = path.join(root, 'apps/android/app/src/main/assets/bundle');
 clearGenerated(android);
 mkdirSync(android, { recursive: true });

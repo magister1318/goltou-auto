@@ -1,0 +1,14 @@
+{
+  "at": "2026-11-13T01:30:37.611Z",
+  "modelMatched": true,
+  "foreground": true,
+  "unlocked": true,
+  "screenOnConfirmed": false,
+  "decision": "skipped",
+  "reason": "SCREEN_ON_NOT_CONFIRMED",
+  "apkInstalled": false,
+  "loginInspected": false,
+  "naverDraftSaves": 0,
+  "naverPublishes": 0,
+  "bandPosts": 0
+}

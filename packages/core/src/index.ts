@@ -15,3 +15,6 @@ export * from './blog';
 export { BlogRegistrationRunner } from './blog-runner';
 export * from './band';
 export { ChannelRegistrationRunner } from './band-runner';
+
+// Explicit fixture export for the local simulator; unused by the Android engine.
+export { createFakeApi } from '@goltou/api-client';

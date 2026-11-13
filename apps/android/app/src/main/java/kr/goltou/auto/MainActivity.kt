@@ -51,7 +51,7 @@ class MainActivity : ComponentActivity() {
         val hidden = FrameLayout(session.context)
         root.addView(hidden, FrameLayout.LayoutParams(-1, -1))
         val relay = DevtoolsRelay.get(filesDir)
-        NodeRuntime.ensureStarted(applicationContext, relay.socketFile, intent.getBooleanExtra("verification-fixture", false), intent.getStringExtra("verification-title"))
+        NodeRuntime.ensureStarted(applicationContext, relay.socketFile)
         val origin = "http://127.0.0.1:${NodeRuntime.port}"
         ui = WebView(session.context).apply {
             setBackgroundColor(Color.WHITE)
@@ -73,8 +73,10 @@ class MainActivity : ComponentActivity() {
         root.addView(visible, FrameLayout.LayoutParams(-1, -1))
         surfaces = SurfaceHost(session.context, hidden, visible) { id -> retained.link.event("surface.hidden", org.json.JSONObject().put("surface", id)) }
         retained.surfaces = surfaces
+        val secureSession = SecureSession(applicationContext)
         link = CoreLink { op, msg, reply ->
             if (op.startsWith("debug.")) retained.handleDebug(op, msg, reply)
+            else if (op.startsWith("session.")) secureSession.handle(op, msg, reply)
             else retained.surfaces.handle(op, msg, reply)
         }
         session.ui = ui; session.surfaces = surfaces; session.link = link; session.root = root

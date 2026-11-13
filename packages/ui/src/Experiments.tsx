@@ -25,9 +25,10 @@ export function ExperimentsScreen({ back }: { back(): void }) {
   }
   const busy = sending || state?.running;
   return <><div className="plain-top"><button onClick={back}>← 설정</button></div><main className="settings-content experiments-content"><h1>실험</h1>
-    <p>디버그 전용 · 한 번에 한 실험. 실제 상품을 쓰지 않습니다. 로그인은 서비스 화면에서 직접 합니다.</p>
+    <p>디버그 전용 · 한 번에 한 실험. 로그인은 사용자가 직접 합니다.</p>
     <p className="warn">블로그는 임시저장까지만, 밴드는 게시 직전까지 확인합니다. 발행·게시 기능은 없습니다.</p>
     {error && <p role="alert">{error}</p>}
+    <section><h2>실제 상품 변환</h2><p>골투 로그인 후 최신 상품 최대 60개를 읽습니다. 요청 사이는 1초 이상이며 등록과 사이트 열기는 하지 않습니다. 수치만 앱 내부 files/wp7/conversion.json에 남깁니다. 밴드 한도는 관측값이 없으면 미확인으로 남깁니다.</p><button disabled={busy} onClick={() => void run('conversion.check')}>변환 점검</button></section>
     <section><h2>로그인 없이 진단</h2><div className="experiment-actions">
       <button disabled={busy} onClick={() => void run('info')}>기기·Node·프로필 확인</button>
       <button disabled={busy} onClick={() => void run('example')}>example.com 제목 읽기</button>

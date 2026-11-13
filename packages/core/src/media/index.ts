@@ -7,13 +7,17 @@ export interface MediaStorage {
 export interface MediaFile { url: string; path: string }
 export interface MediaBatch { files: MediaFile[]; cleanup(): Promise<void> }
 export type MediaFetch = (url: string, init: { redirect: 'manual'; credentials: 'omit'; signal: AbortSignal }) => Promise<{ ok: boolean; arrayBuffer(): Promise<ArrayBuffer> }>;
-export interface MediaDependencies { storage: MediaStorage; fetcher?: MediaFetch }
+export interface MediaDependencies { storage: MediaStorage; fetcher?: MediaFetch; allowUrl?: (url: URL) => boolean }
+export function goltouPhotoUrl(url: URL): boolean {
+  return url.protocol === 'https:' && !url.port && !url.username && !url.password && (url.hostname === 'goltou.kr' || url.hostname.endsWith('.goltou.kr'));
+}
 
 export async function downloadPhotos(urls: readonly string[], apiUrls: readonly string[], dependencies: MediaDependencies, signal?: AbortSignal, progress: (current: number) => void = () => {}): Promise<MediaBatch> {
   const allowed = new Set(apiUrls);
   for (const value of urls) {
     let url: URL; try { url = new URL(value); } catch { throw new Error('API_PHOTO_URL_REQUIRED'); }
     if (!allowed.has(value) || !['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new Error('API_PHOTO_URL_REQUIRED');
+    if (dependencies.allowUrl && !dependencies.allowUrl(url)) throw new Error('PHOTO_HOST_NOT_ALLOWED');
   }
   const directory = await dependencies.storage.createWorkDirectory();
   const files: MediaFile[] = [];
