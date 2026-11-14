@@ -62,7 +62,7 @@ export class AppCore {
   serviceRuntimeReady() { this.scheduleServiceChecks(); }
   private serviceIdle() {
     return !this.disposed && !this.starting && !this.preparing && !this.deleting && !this.state.visibleService && !this.runner.serviceLogin?.active &&
-      (!this.runner.job || ['draft_saved', 'published', 'stopped'].includes(this.runner.job.status));
+      (!this.runner.job || ['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(this.runner.job.status));
   }
   private scheduleServiceChecks() {
     if (!this.runner.serviceLogin || this.disposed) return;
@@ -81,7 +81,7 @@ export class AppCore {
     if (!this.disposed && this.pendingServiceChecks.size) this.serviceTimer = setTimeout(() => { void this.checkNextService(); }, 800);
   }
   private requireServiceIdle() {
-    if (this.starting || this.preparing || this.deleting || this.runner.job && !['draft_saved', 'published', 'stopped', 'login_paused'].includes(this.runner.job.status)) throw new ApiError('conflict', '진행 중인 작업을 먼저 마쳐 주세요.');
+    if (this.starting || this.preparing || this.deleting || this.runner.job && !['draft_saved', 'draft_unverified', 'published', 'stopped', 'login_paused'].includes(this.runner.job.status)) throw new ApiError('conflict', '진행 중인 작업을 먼저 마쳐 주세요.');
   }
   subscribe(listener: (state: AppSnapshot) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   snapshot(): AppSnapshot { return structuredClone(this.state); }
@@ -123,7 +123,7 @@ export class AppCore {
     return this.initialization;
   }
   async auditProducts<T>(run: (api: ApiClient, token: string) => Promise<T>): Promise<T> {
-    if (this.preparing || this.starting || this.state.job && !['draft_saved', 'published', 'stopped'].includes(this.state.job.status)) throw new ApiError('conflict', '진행 중인 작업을 먼저 마쳐 주세요.');
+    if (this.preparing || this.starting || this.state.job && !['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(this.state.job.status)) throw new ApiError('conflict', '진행 중인 작업을 먼저 마쳐 주세요.');
     this.preparing = true;
     try { return await run({ request: (route, input, token) => this.call(route, input, token) }, await this.token()); }
     finally { this.preparing = false; }
@@ -169,7 +169,7 @@ export class AppCore {
     const token = await this.token();
     switch (request.command) {
       case 'logout':
-        if (this.preparing || this.starting || (this.runner.job && (this.runner.job.status === 'record_failed' || !['draft_saved', 'published', 'stopped'].includes(this.runner.job.status) && !this.runner.job.completedSteps.includes(7)))) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
+        if (this.preparing || this.starting || (this.runner.job && (this.runner.job.status === 'record_failed' || !['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(this.runner.job.status) && !this.runner.job.completedSteps.includes(7)))) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
         try { await this.call('/auto/logout', {}, token); } finally { await this.clearSession(); } break;
       case 'products.list': return this.call('/auto/products/list', request.input, token);
       case 'products.get': return this.call('/auto/products/get', request.input, token);
@@ -232,7 +232,7 @@ export class AppCore {
       case 'service.hide': await this.runner.hideService?.(); this.state.visibleService = null; break;
       case 'service.clear': {
         this.requireServiceIdle();
-        if (this.runner.job && !['draft_saved', 'published', 'stopped'].includes(this.runner.job.status)) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
+        if (this.runner.job && !['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(this.runner.job.status)) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
         if (request.input.service !== 'ai' && this.runner.serviceLogin) {
           await this.runner.serviceLogin.clear(request.input.service);
           this.runner.dispose(); this.runner = this.createRunner(); this.bindServiceLogin();
@@ -264,7 +264,7 @@ export class AppCore {
       case 'draft.show': throw new ApiError('invalid', '네이버 블로그 앱의 임시저장함에서 확인해 주세요.');
       case 'bands.list':
         if (this.runner.serviceLogin?.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
-        if (this.starting || this.state.job && (this.state.job.status === 'record_failed' || !['draft_saved', 'published', 'stopped'].includes(this.state.job.status) && !this.state.job.completedSteps.includes(7))) throw new ApiError('conflict', '진행 중인 작업을 먼저 마쳐 주세요.');
+        if (this.starting || this.state.job && (this.state.job.status === 'record_failed' || !['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(this.state.job.status) && !this.state.job.completedSteps.includes(7))) throw new ApiError('conflict', '진행 중인 작업을 먼저 마쳐 주세요.');
         return this.runner.listBands ? this.runner.listBands() : [{ key: 'travel', name: '골투 여행', photoLimit: null, observedAt: null }, { key: 'golf', name: '해외골프 모임', photoLimit: null, observedAt: null }];
       case 'band.show': throw new ApiError('invalid', '작업 화면은 앱 안에서만 확인합니다.');
       case 'band.check': await this.runner.checkBand?.(); return this.snapshot();
@@ -287,7 +287,7 @@ export class AppCore {
     this.emit(); return this.snapshot();
   }
   private requireDeleteIdle() {
-    if (this.deleting || this.starting || this.preparing || this.pendingDeleteUpdate || this.state.job && !['draft_saved', 'published', 'stopped'].includes(this.state.job.status)) throw new ApiError('conflict', '진행 중인 작업과 기록을 먼저 마쳐 주세요.');
+    if (this.deleting || this.starting || this.preparing || this.pendingDeleteUpdate || this.state.job && !['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(this.state.job.status)) throw new ApiError('conflict', '진행 중인 작업과 기록을 먼저 마쳐 주세요.');
   }
   private async ownedPost(postNo: number, token: string) {
     if (!Number.isSafeInteger(postNo) || postNo < 1) throw new ApiError('invalid', '등록 기록을 다시 선택해 주세요.');
@@ -316,7 +316,7 @@ export class AppCore {
     if (this.state.visibleService || this.runner.serviceLogin?.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
     if (this.pendingDeleteUpdate) throw new ApiError('conflict', '삭제 결과 기록을 먼저 마쳐 주세요.');
     if (this.uncertainStart) throw new ApiError('conflict', '이전 기록 시작 요청의 결과를 확인하지 못했습니다. 등록 기록을 확인해 주세요.');
-    if (this.preparing || this.starting || (this.runner.job && (this.runner.job.status === 'record_failed' || !['draft_saved', 'published', 'stopped'].includes(this.runner.job.status) && !this.runner.job.completedSteps.includes(7)))) throw new ApiError('conflict', '한 번에 한 작업만 등록할 수 있습니다.');
+    if (this.preparing || this.starting || (this.runner.job && (this.runner.job.status === 'record_failed' || !['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(this.runner.job.status) && !this.runner.job.completedSteps.includes(7)))) throw new ApiError('conflict', '한 번에 한 작업만 등록할 수 있습니다.');
     if (!input.targets.length || new Set(input.targets.map(t => `${t.channel}:${t.key}`)).size !== input.targets.length) throw new ApiError('invalid', '올릴 곳을 선택해 주세요.');
     if (input.mode === 'publish' && input.publishConfirmed !== true) throw new ApiError('invalid', '발행 전에 한 번 더 확인해 주세요.');
     if (!['draft', 'publish'].includes(input.mode) || input.blogVisibility !== undefined && !['public', 'private'].includes(input.blogVisibility)) throw new ApiError('invalid', '등록 방식과 공개 범위를 확인해 주세요.');

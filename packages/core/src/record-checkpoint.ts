@@ -28,7 +28,7 @@ export class RecordingCheckpoint {
     if (job.status === 'running' && job.pausedAt !== undefined) {
       job.pausedMilliseconds = (job.pausedMilliseconds ?? 0) + Math.max(0, Date.now() - job.pausedAt);
       delete job.pausedAt;
-    } else if (job.status !== 'running' && !['draft_saved', 'published', 'stopped'].includes(job.status)) {
+    } else if (job.status !== 'running' && !['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(job.status)) {
       job.pausedAt ??= Date.now();
     }
     // A discard confirmation must stay answerable while a record is pending.

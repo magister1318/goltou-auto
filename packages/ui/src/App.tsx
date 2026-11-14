@@ -124,7 +124,7 @@ export function App() {
   });
   const job = app?.job;
   const active =
-    !!job && !['draft_saved', 'published', 'stopped'].includes(job.status);
+    !!job && !['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(job.status);
   function go(next: Screen, replace = false) {
     if (next === 'settings') settingsReturn.current = screen === 'preview' ? 'preview' : 'home';
     clearError();
@@ -464,7 +464,9 @@ export function App() {
         <div key={`${t.channel}:${t.key}`}>
           <span>
             {t.channel === 'blog' ? '블로그' : '밴드'} ·{' '}
-            {t.status === 'draft_saved'
+            {t.reason === 'BLOG_DRAFT_SAVED_UNVERIFIED'
+              ? '임시저장 · 내용 재확인 못함'
+              : t.status === 'draft_saved'
               ? '임시저장'
               : t.status === 'published'
                 ? '발행'
@@ -820,13 +822,15 @@ export function App() {
               </main>
             ) : (
               <main className="center">
-                <span className="mark danger">×</span>
+                <span className={job.status === 'draft_unverified' ? 'mark' : 'mark danger'}>{job.status === 'draft_unverified' ? '!' : '×'}</span>
                 <h1>
-                  {job.status === 'stopped'
+                  {job.status === 'draft_unverified'
+                    ? '임시저장은 됐지만 내용을 다시 확인하지 못했습니다'
+                    : job.status === 'stopped'
                     ? '옮기기를 중단했습니다'
                     : '끝까지 옮기지 못했습니다'}
                 </h1>
-                <p>{jobMessage(job)[0]}</p>
+                {job.status !== 'draft_unverified' && <p>{jobMessage(job)[0]}</p>}
                 <p className="meta">{jobMessage(job)[1]}</p>
                 {resultRows}
                 {job.status === 'dialog_paused' && (
@@ -892,7 +896,7 @@ export function App() {
                     다시 로그인
                   </button>
                 </>
-              ) : ['draft_saved', 'published', 'stopped'].includes(
+              ) : ['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(
                   job.status,
                 ) ? (
                 <>
@@ -1063,7 +1067,9 @@ export function App() {
                     className={`status ${deletedPost(post) ? 'muted' : post.status === 'failed' ? 'danger' : post.status === 'published' ? 'green' : post.status === 'draft_saved' ? 'draft-status' : 'muted'}`}
                   >
                     {post.channel === 'blog' ? '블로그' : '밴드'}{' '}
-                    {deletedPost(post)
+                    {post.failReason === 'BLOG_DRAFT_SAVED_UNVERIFIED'
+                      ? '임시저장 · 내용 재확인 못함'
+                      : deletedPost(post)
                       ? '삭제함'
                       : post.status === 'published'
                         ? '발행'
@@ -1091,7 +1097,7 @@ export function App() {
                           글 보기
                         </button>
                       )}
-                      {post.status === 'draft_saved' && (
+                      {(post.status === 'draft_saved' || post.failReason === 'BLOG_DRAFT_SAVED_UNVERIFIED') && (
                         <small>네이버 임시저장함에서 확인</small>
                       )}
                       {post.status === 'failed' &&

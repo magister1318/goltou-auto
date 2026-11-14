@@ -73,13 +73,12 @@ export function LiveProgress({
   const elapsed = Math.max(0, (activeNow(job, now) - (job.startedAt ?? now)) / 1000);
   const remaining = remainingSeconds(job, now, plan);
   const waiting = job.status !== 'running';
-  const stageSeconds = Math.max(0, Math.floor((now - (a?.at ?? job.startedAt ?? now)) / 2000) * 2);
   let headline = job.step === 2 ? '사진 원본을 내려받는 중'
     : job.step === 3 ? '본문을 정리하는 중'
     : a?.opening === 'empty' ? '빈 글 확인 중'
     : a?.opening === 'editor' ? '글쓰기 화면 준비 중' : '네이버 여는 중';
   let subtitle = job.step === 2 ? `사진 ${job.current}/${job.total}장 내려받음`
-    : `화면 응답을 기다립니다 · ${stageSeconds}초`;
+    : `화면 응답을 기다립니다`;
   const animatedFraction = (event: NonNullable<Job['activity']>) => interpolate(event, job.pausedAt ?? now);
   if (a?.stage === 'write' && (job.step === 4 || job.step === 6)) {
     headline =
@@ -96,13 +95,13 @@ export function LiveProgress({
         .filter((v) => v.s.kind === 'text' && v.s.role === 'body') ?? [];
     subtitle =
       a.blockKind === 'photos'
-        ? `${photos.length}장 중 ${(a.photoIndex ?? 0) + 1}번째 · ${Math.floor(animatedFraction(a) * 100)}% · ${stageSeconds}초`
+        ? `${photos.length}장 중 ${(a.photoIndex ?? 0) + 1}번째 · ${Math.floor(animatedFraction(a) * 100)}%`
         : a.blockKind === 'paragraph'
-          ? `${paragraphs.length}문단 중 ${Math.max(1, paragraphs.findIndex((v) => v.i === a.blockIndex) + 1)}번째 문단 · ${stageSeconds}초`
-          : `상품 원문을 순서대로 옮깁니다 · ${stageSeconds}초`;
+          ? `${paragraphs.length}문단 중 ${Math.max(1, paragraphs.findIndex((v) => v.i === a.blockIndex) + 1)}번째 문단`
+          : `상품 원문을 순서대로 옮깁니다`;
   } else if (a?.stage === 'verify' && job.step >= 4) {
     headline = '올라간 내용을 확인하는 중';
-    subtitle = `${job.activityLog?.some(e => e.stage === 'submit') ? '저장 후 다시 대조 · ' : ''}${checks[a.verification ?? 'body']} 확인 · ${stageSeconds}초`;
+    subtitle = `${job.activityLog?.some(e => e.stage === 'submit') ? '저장 후 다시 대조 · ' : ''}${checks[a.verification ?? 'body']} 확인`;
   } else if (a?.stage === 'submit') {
     headline =
       channel === 'band'
@@ -111,7 +110,7 @@ export function LiveProgress({
           ? '임시저장하는 중'
           : '블로그에 발행하는 중';
     subtitle =
-      `${job.mode === 'draft' ? '저장 후 다시 열어 확인합니다.' : '저장 결과를 확인합니다.'} · ${stageSeconds}초`;
+      `${job.mode === 'draft' ? '저장 후 다시 열어 확인합니다.' : '저장 결과를 확인합니다.'}`;
   }
   if (job.step === 5 && a?.stage === 'open') headline = '저장한 글을 다시 여는 중';
   if (waiting) { headline = '선택을 기다리는 중'; subtitle = '아래 안내에서 선택하면 이어갑니다.'; }
