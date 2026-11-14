@@ -11,6 +11,10 @@ export interface JobInput {
   blogVisibility?: import('@goltou/sites').BlogVisibility;
 }
 export interface Job {
+  startedAt?: number;
+  publicationUncertain?: boolean;
+  activity?: import('@goltou/sites').EngineActivity & { at: number };
+  activityLog?: (import('@goltou/sites').EngineActivity & { at: number })[];
   id: number; productNo: number; title: string; mode: Mode; status: JobStatus;
   step: number; current: number; total: number; completedSteps: number[];
   targets: JobInput['targets']; service: Service | null; message: string;
@@ -47,6 +51,9 @@ export interface Commands {
   'posts.delete.confirm': { input: { confirmation: string }; output: AppSnapshot };
   'posts.delete.retryRecord': { input: Record<string, never>; output: AppSnapshot };
   'posts.list': { input: { scope: 'mine' | 'all'; page?: number; pageSize?: number }; output: Page<Post> };
+  'post.open': { input: { url: string }; output: AppSnapshot };
+  'job.cancel': { input: Record<string, never>; output: AppSnapshot };
+  'job.preview': { input: Record<string, never>; output: import('./preparation').PreparedPreview | null };
   'settings.save': { input: Settings; output: AppSnapshot };
   'service.check': { input: { service: Service }; output: AppSnapshot };
   'service.show': { input: { service: Service }; output: AppSnapshot };

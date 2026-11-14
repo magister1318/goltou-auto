@@ -3,7 +3,7 @@ import type { LoginState } from '@goltou/core/protocol';
 export const loginServices = ['naver', 'band'] as const;
 export type LoginService = typeof loginServices[number];
 export const serviceNames = { naver: '네이버', band: '밴드' };
-export const loginLabels = { confirmed: '확인됨', expired: '풀림', unknown: '모름', checking: '확인 중' };
+export const loginLabels = { confirmed: '연결됨', expired: '로그인 필요', unknown: '확인하지 못함', checking: '확인 중' };
 
 export function LoginStatus({ state }: { state: LoginState }) {
   return <span className={`login-state ${state}`}><span className="state-symbol" aria-hidden="true"><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">{state === 'confirmed' ? <path d="m4 8 3 3 5-6"/> : state === 'expired' ? <path d="M8 3v6m0 3h0"/> : <path d="M5.5 5a2.5 2.5 0 0 1 5 0c0 2-2.5 2-2.5 4m0 3h0"/>}</svg></span>{loginLabels[state]}</span>;

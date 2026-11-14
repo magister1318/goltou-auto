@@ -31,6 +31,7 @@ async function fixture(mode = 'mobile') {
   for (const [i, f] of files.entries()) await writeFile(f.path, png(sizes[i]!.width, sizes[i]!.height, i * 40));
   const newList = '<div class="myBandGroupList"><a class="myBandGroupItem" href="#" onclick="throw Error(\'AD_OPENED\')"><span class="adBox">광고</span></a><a class="myBandGroupItem" href="#"><span class="aNewFolder"></span></a><a class="myBandGroupItem" href="/band/111/post"><span class="globalMyBandName">밴드 A</span></a><a class="myBandGroupItem" href="/band/222/post"><span class="globalMyBandName">밴드 B</span></a></div>';
   const server = http.createServer((req, res) => {
+    if (req.url === '/band-post-create') { res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ result_code: mode === 'post-rejected' ? 0 : 1, result_data: { post_key: mode === 'post-wrong-identity' ? 9999 : 1001 } })); return; }
     if (req.url?.startsWith('/photos/')) {
       const square = mode === 'cropped' || mode === 'ratio-mismatch';
       res.writeHead(200, { 'content-type': 'image/png' }).end(png(square ? 90 : 160, 90)); return;
@@ -84,6 +85,24 @@ function workFor(plan: InputPlan, files: { url: string; path: string }[]) {
 const input: JobInput = { productNo: 1, mode: 'draft', targets: [{ channel: 'band', name: '밴드 A', key: '111' }], options: { polish: false, closing: false, linkCard: false } };
 
 describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pages', () => {
+  it.each(['post-rejected', 'post-wrong-identity'])('WP16: %s never reports success or presses again, even with a matching result page', async mode => {
+    const f = await fixture(mode); f.execution.env.submitTimeoutMs = 300;
+    await f.execution.write();
+    await expect(f.execution.publish()).rejects.toThrow('BAND_POST_UNCONFIRMED');
+    await expect(f.execution.publish()).rejects.toThrow('BAND_POST_UNCONFIRMED');
+    expect(await f.page().evaluate('Number(localStorage.getItem("postPresses"))')).toBe(1);
+    expect(f.shown()).toBe(0); expect(f.external()).toBe(0);
+  }, 20000);
+  it('WP16: rejects a changed target before any submit input and exposes content-free progress in insertion order', async () => {
+    const f = await fixture(); await f.execution.write();
+    const events = f.progress.mock.calls.map(([value]) => value.activity).filter(Boolean);
+    expect(events.some(e => e.stage === 'write' && e.blockKind === 'title' && e.phase === 'finish')).toBe(true);
+    expect([...new Set(events.filter(e => e.blockKind === 'photos' && e.phase === 'finish').map(e => e.photoIndex))]).toEqual([0,1,2,3,4]);
+    expect(JSON.stringify(events)).not.toContain(f.plan.steps.find(s => s.kind === 'text')!.text);
+    await f.directory.surface!.open({ url: `${f.baseUrl}/band/222/post`, session: 'band', width: 1280, height: 900, userAgent: 'fixture' });
+    await expect(f.execution.publish()).rejects.toThrow();
+    expect((await f.counts()).posts).toBe(0);
+  }, 20000);
   it.each(['invalid', 'network', 'native-dialog'])('retains the verified composer after a record %s failure, retries only recording and supports discard', async failure => {
     const f = await fixture(failure === 'native-dialog' ? 'native-dialog' : 'mobile');
     let broken = true;
@@ -158,7 +177,7 @@ describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pa
     expect(actual.photos).toEqual(f.files.map(f => path.basename(f.path)));
     expect(compareDocuments(observePlan(f.plan), bandObservation(f.plan, f.files, actual)).matches).toBe(true);
     expect(await f.execution.detectPublished()).toBeNull();
-    expect(await f.counts()).toEqual({ opens: 1, posts: 0, discards: 0 }); expect(f.shown()).toBe(1);
+    expect(await f.counts()).toEqual({ opens: 1, posts: 0, discards: 0 }); expect(f.shown()).toBe(0);
     await f.execution.discard(); expect(await f.counts()).toEqual({ opens: 1, posts: 0, discards: 1 });
     expect((await readBandDocument(f.directory.surface!)).composer).toBe(false); expect(f.external()).toBe(0);
   }, 25000);
@@ -191,11 +210,12 @@ describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pa
     expect(await readBandDocument(f.directory.surface!)).toMatchObject({ body: '', photos: [] });
     expect(await f.counts()).toEqual({ opens: 1, posts: 0, discards: 0 });
   }, 20000);
-  it('detects manual publication only from a new post URL plus re-read content; local automatic publication clicks once', async () => {
+  it('blocks manual publication before submit, then automatically posts once with response and identity proof', async () => {
     const f = await fixture(); await f.execution.write(); await f.execution.stopBeforePost();
     await f.page().getByRole('button', { name: '완료', exact: true }).click();
-    await f.page().waitForURL('**/post/1001');
-    expect(await f.execution.detectPublished()).toBe(`${f.baseUrl}/band/111/post/1001`);
+    await f.page().waitForTimeout(100);
+    expect(await f.execution.detectPublished()).toBeNull();
+    expect((await f.counts()).posts).toBe(0);
     const g = await fixture(); await g.execution.write();
     expect(await g.execution.publish()).toBe(`${g.baseUrl}/band/111/post/1001`);
     expect(await g.execution.publish()).toBe(`${g.baseUrl}/band/111/post/1001`);
@@ -229,6 +249,7 @@ describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pa
     expect(runner.job).toMatchObject({ status: 'stopped_before_post', activeTargetKey: '222' });
     expect(runner.job!.targetResults!.map(t => t.status)).toEqual(['stopped', 'stopped_before_post']);
     const page = f.pages.get(runner.directory.surface!)!;
+    runner.directory.arm('222'); // Explicit fixture-only submit capability.
     await page.getByRole('button', { name: '완료', exact: true }).click(); await page.waitForURL('**/post/1001');
     await runner.checkBand(); await settled(runner); expect(runner.job?.status).toBe('published');
     expect(runner.job?.targetResults?.[1]).toMatchObject({ status: 'published', postUrl: `${f.baseUrl}/band/222/post/1001` });
@@ -328,6 +349,9 @@ describe('WP6 daily limit and real-service boundaries', () => {
     for (let i = 0; i < 3; i++) runner.directory.beforeOpen('111');
     expect(() => runner.directory.beforeOpen('111')).toThrow('BAND_COMPOSER_LIMIT');
     expect(() => runner.directory.beforeOpen('222')).toThrow('BAND_FIRST_ONLY');
+    const releaseDirectory = new BandDirectory(host, 'https://band.us', false, true);
+    releaseDirectory.choices = runner.directory.choices;
+    for (let n = 0; n < 4; n++) expect(() => releaseDirectory.beforeOpen('222')).not.toThrow();
     expect(() => new BandDirectory(host, 'https://band.us', true)).toThrow('LOCAL_BAND_REQUIRED'); runner.dispose();
   });
   it('honors posts/start conflict before any runner start and exposes the band reason', async () => {
@@ -338,7 +362,7 @@ describe('WP6 daily limit and real-service boundaries', () => {
     } };
     const tokens = new MemoryTokenStore(); await tokens.write('synthetic-session');
     const app = new AppCore(api, tokens, () => ({ job: null, start, stop: async () => {}, resume: async () => {}, dispose() {} }));
-    await expect(app.handle({ id: 1, type: 'app', command: 'job.start', input })).rejects.toThrow('밴드 A: 이 밴드의 하루 등록 한도');
+    await expect(app.handle({ id: 1, type: 'app', command: 'job.start', input: { ...input, mode: 'publish', publishConfirmed: true } })).rejects.toThrow('밴드 A: 이 밴드의 하루 등록 한도');
     expect(start).not.toHaveBeenCalled(); app.dispose();
   });
   it('fake API counts pending handoffs toward the daily limit and releases a discarded composition', async () => {

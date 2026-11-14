@@ -34,6 +34,7 @@ describe('fake registration transitions', () => {
   });
 });
 describe('UI/core boundary', () => {
+  const publishInput = { ...input, mode: 'publish' as const, publishConfirmed: true };
   async function fixture() {
     const app = new AppCore(createFakeApi()); const call = (command: AppRequest['command'], value: unknown = {}) => app.handle({ id: 1, type: 'app', command, input: value } as AppRequest);
     await call('login', { loginId: 'manager', password: 'demo', device: { kind: 'android', model: 'test', appVersion: '0.1.0' } });
@@ -42,17 +43,17 @@ describe('UI/core boundary', () => {
   it('keeps bearer tokens out of snapshots and rejects publish without confirmation', async () => {
     const { app, call } = await fixture(); expect(JSON.stringify(app.snapshot())).not.toContain('token');
     await expect(call('job.start', { ...input, mode: 'publish' })).rejects.toMatchObject({ code: 'invalid' });
-    await Promise.all([call('job.start', input), expect(call('job.start', input)).rejects.toMatchObject({ code: 'conflict' })]);
+    await Promise.all([call('job.start', publishInput), expect(call('job.start', publishInput)).rejects.toMatchObject({ code: 'conflict' })]);
     await expect(call('logout')).rejects.toMatchObject({ code: 'conflict' }); app.dispose();
   });
   it('keeps already saved blog records while a band task expires, then resumes the same records', async () => {
-    const { app, call } = await fixture(); await call('simulation.configure', { loginAt: 6 }); await call('job.start', input);
+    const { app, call } = await fixture(); await call('simulation.configure', { loginAt: 6 }); await call('job.start', publishInput);
     await vi.advanceTimersByTimeAsync(500); expect(app.snapshot().job?.status).toBe('login_paused');
     await expect(call('job.resume')).rejects.toMatchObject({ code: 'auth' });
     const before = await call('posts.list', { scope: 'mine' }) as { items: { productNo: number; postNo: number; channel: string; status: string }[] };
-    const records = before.items.filter(p => p.productNo === input.productNo); expect(records).toHaveLength(2); expect(records.find(p => p.channel === 'blog')?.status).toBe('draft_saved');
+    const records = before.items.filter(p => p.productNo === input.productNo); expect(records).toHaveLength(2); expect(records.find(p => p.channel === 'blog')?.status).toBe('published');
     await call('service.check', { service: 'band' }); await call('job.resume'); await vi.advanceTimersByTimeAsync(500);
     const after = await call('posts.list', { scope: 'mine' }) as typeof before;
-    expect(after.items.filter(p => p.productNo === input.productNo).map(p => p.postNo)).toEqual(records.map(p => p.postNo)); expect(app.snapshot().job?.status).toBe('draft_saved'); app.dispose();
+    expect(after.items.filter(p => p.productNo === input.productNo).map(p => p.postNo)).toEqual(records.map(p => p.postNo)); expect(app.snapshot().job?.status).toBe('published'); app.dispose();
   });
 });

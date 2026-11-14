@@ -3,6 +3,7 @@ import type { Surface, SurfaceDialog, SurfaceHost } from '@goltou/surface';
 import { click, compact, point, read, waitFor } from '../dom';
 import { closeComposer, confirmBandPhotos, listBands } from './index';
 import { PhotoOrder, type PhotoProof, type PhotoSize, type PhotoSlot } from './photos';
+import { requestFields } from '../naver-blog/request-fields';
 
 export const bandMobileUA = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
 export const bandEditor = 'textarea._postTextArea, .cke_editable[contenteditable="true"], [contenteditable="true"][role="textbox"]';
@@ -12,7 +13,7 @@ export interface BandPlan {
 }
 export interface BandReadback { body: string; photos: string[]; slots: PhotoSlot[]; uploading: boolean; photoProof?: PhotoProof; composer: boolean; postUrl: string | null; photoLimit: number | null; textLimit: number | null }
 export interface BandChoice { key: string; name: string; photoLimit: number | null; observedAt: string | null }
-export interface BandProgress { characters: number; totalCharacters: number; photos: number; totalPhotos: number; photoUploadMilliseconds?: number; photoUploadSamples?: number }
+export interface BandProgress { characters: number; totalCharacters: number; photos: number; totalPhotos: number; photoUploadMilliseconds?: number; photoUploadSamples?: number; activity?: import('../progress').EngineActivity }
 export function bandText(plan: BandPlan) {
   return plan.steps.flatMap(s => s.kind === 'text' ? [s.text] : s.kind === 'table' ? s.rows.map(r => r.join(' | ')) : []).join('\n\n');
 }
@@ -60,12 +61,46 @@ export class BandDirectory {
   surface: Surface | undefined;
   choices: BandChoice[] = [];
   private opens = 0;
-  constructor(private readonly host: SurfaceHost, readonly baseUrl = 'https://band.us', readonly localPublish = false) {
+  private submit: { key: string; armed: boolean; sent: boolean; succeeded: boolean; post?: string } | undefined;
+  constructor(private readonly host: SurfaceHost, readonly baseUrl = 'https://band.us', readonly localPublish = false, readonly publishEnabled = false) {
     const url = new URL(baseUrl);
     if (localPublish && (url.hostname !== '127.0.0.1' || url.protocol !== 'http:')) throw new Error('LOCAL_BAND_REQUIRED');
     if (!localPublish && url.origin !== 'https://band.us') throw new Error('BAND_ORIGIN_REQUIRED');
   }
-  async getSurface() { return this.surface ??= await this.host.create('band'); }
+  async getSurface() {
+    if (this.surface) return this.surface;
+    const surface = await this.host.create('band');
+    if (!surface.guardRequests) { await surface.close(); throw new Error('BAND_BARRIER_UNAVAILABLE'); }
+    await surface.guardRequests([{ hostname: '*', pathname: '/', prefix: true }], request => {
+      if (['GET', 'HEAD', 'OPTIONS'].includes(request.method)) return true;
+      const u = new URL(request.url);
+      const trusted = this.localPublish ? u.origin === new URL(this.baseUrl).origin : u.protocol === 'https:' && (u.hostname === 'band.us' || u.hostname.endsWith('.band.us'));
+      if (!trusted || request.method !== 'POST') return false;
+      // Uploads are allowed; every other mutation fails closed until the single submit.
+      if (/\/(?:photo|file)\/upload(?:\/[a-z0-9_-]+)?$/i.test(u.pathname)) return true;
+      const isCreate = this.localPublish ? u.pathname === '/band-post-create' : /^\/v[0-9.]+\/band\/post\/create$/.test(u.pathname);
+      const submit = this.submit;
+      if (!isCreate || !submit?.armed || submit.sent || !request.postDataComplete) return false;
+      try {
+        const targets = requestFields(request).fields.filter(([key]) => key === 'band_key');
+        if (targets.length !== 1 || String(targets[0]![1].value) !== submit.key) return false;
+      } catch { return false; }
+      submit.armed = false; submit.sent = true; return true;
+    }, response => {
+      if (!this.submit?.sent || response.method !== 'POST' || !response.url || !/\/(?:band-post-create|post\/create)$/.test(new URL(response.url).pathname)) return;
+      try {
+        const value = JSON.parse(response.body) as { result_code?: unknown; result_data?: { post_key?: unknown } };
+        const post = String(value.result_data?.post_key ?? '');
+        this.submit.succeeded = response.status >= 200 && response.status < 300 && value.result_code === 1 && /^[0-9]+$/.test(post);
+        if (this.submit.succeeded) this.submit.post = post;
+      } catch { this.submit.succeeded = false; }
+    });
+    this.surface = surface; return surface;
+  }
+  arm(key: string) { this.submit = { key, armed: true, sent: false, succeeded: false }; }
+  disarm() { if (this.submit) this.submit.armed = false; }
+  submitted(key: string) { return this.submit?.key === key && this.submit.sent && this.submit.succeeded; }
+  matchesPost(url: string) { return this.submit?.post === new URL(url).pathname.split('/').filter(Boolean).at(-1); }
   sameOrigin(url: URL) {
     return url.origin === new URL(this.baseUrl).origin || (!this.localPublish && url.origin === 'https://www.band.us');
   }
@@ -94,9 +129,9 @@ export class BandDirectory {
   }
   beforeOpen(key: string) {
     if (!this.choices.some(b => b.key === key)) throw new Error('BAND_NOT_OWNED');
-    if (!this.localPublish && this.choices[0]?.key !== key) throw new Error('BAND_FIRST_ONLY');
+    if (!this.localPublish && !this.publishEnabled && this.choices[0]?.key !== key) throw new Error('BAND_FIRST_ONLY');
     // Count attempts before dispatch, including ambiguous responses. Lifetime-wide for this runner.
-    if (!this.localPublish && ++this.opens > 3) throw new Error('BAND_COMPOSER_LIMIT');
+    if (!this.localPublish && !this.publishEnabled && ++this.opens > 3) throw new Error('BAND_COMPOSER_LIMIT');
   }
   observeLimit(key: string, limit: number | null) {
     const choice = this.choices.find(b => b.key === key);
@@ -107,6 +142,7 @@ export interface BandEnvironment {
   directory: BandDirectory; key: string; check(): void; verify(actual: BandReadback): void; progress(value: BandProgress): void;
   sourceDimensions(file: { url: string; path: string }): Promise<PhotoSize>;
   photoTimeoutMs?: number;
+  submitTimeoutMs?: number;
 }
 const same = (a: BandReadback, b: BandReadback) => compact(a.body) === compact(b.body) && JSON.stringify(a.slots) === JSON.stringify(b.slots);
 export class BandExecution {
@@ -121,6 +157,8 @@ export class BandExecution {
   private restartAllowed = false;
   private verified = false;
   private photoOrder: PhotoOrder | undefined;
+  private activity: import('../progress').EngineActivity | undefined;
+  private signal(value: Omit<import('../progress').EngineActivity, 'channel'>) { this.activity = { channel: 'band', ...value }; this.report(this.checkpoint ?? { photos: [] } as unknown as BandReadback); }
   constructor(readonly plan: BandPlan, public files: readonly { url: string; path: string }[], readonly env: BandEnvironment) {
     if (plan.channel !== 'band') throw new Error('BAND_PLAN_REQUIRED');
   }
@@ -130,6 +168,7 @@ export class BandExecution {
     if (!new RegExp(`^/band/${this.env.key}/post/?$`).test(new URL((await this.surface!.readState()).url).pathname)) throw new Error('BAND_TARGET_CHANGED');
   }
   async ensureReady() {
+    this.signal({ stage: 'open', phase: 'start' });
     const s = await this.env.directory.getSurface();
     this.env.check();
     const current = await readBandDocument(s);
@@ -179,6 +218,7 @@ export class BandExecution {
       await this.ensureReady(); current = await readBandDocument(s);
     }
     const text = Array.from(bandText(this.plan));
+    const textSteps = this.plan.steps.map((step, index) => ({ step, index })).filter(v => v.step.kind === 'text' || v.step.kind === 'table');
     await click(s, 'BAND_BODY', bandEditor); await s.pressKey({ key: 'End', modifiers: 2 });
     for (; this.offset < text.length;) {
       await this.guard();
@@ -190,6 +230,12 @@ export class BandExecution {
       current = await readBandDocument(s);
       if (!current.composer || compact(current.body) !== compact(text.slice(0, end).join(''))) { await this.guard(); throw new Error('BAND_INPUT_MISMATCH'); }
       this.offset = end; this.checkpoint = current; this.report(current);
+      let start = 0;
+      for (const { step, index } of textSteps) {
+        const length = Array.from(step.kind === 'text' ? step.text : step.kind === 'table' ? step.rows.map(r => r.join(' | ')).join('\n\n') : '').length;
+        if (this.offset >= start) this.signal({ stage: 'write', phase: this.offset >= start + length ? 'finish' : 'progress', blockIndex: index, blockTotal: this.plan.steps.length, blockKind: step.kind === 'text' && step.role === 'title' ? 'title' : step.kind === 'text' && step.role === 'hashtags' ? 'tags' : 'paragraph', fraction: Math.min(1, (this.offset - start) / Math.max(1, length)) });
+        start += length + 2;
+      }
     }
     const urls = this.photoUrls();
     const files = urls.map(url => { const f = this.files.find(f => f.url === url); if (!f) throw new Error('PREPARED_PHOTOS_MISSING'); return f; });
@@ -201,6 +247,7 @@ export class BandExecution {
       if (!await read<boolean>(s, `return docs.some(({d})=>d.querySelector('input[type="file"]'));`)) await click(s, 'BAND_PHOTO_BUTTON', 'button,label,a', '사진');
       this.photoAttempted = true;
       for (const [index, file] of files.entries()) {
+        this.signal({ stage: 'write', phase: 'start', blockKind: 'photos', photoIndex: index, photoTotal: files.length, fraction: 0 });
         await this.guard();
         this.photoOrder.check((await readBandDocument(s)).slots);
         const started = Date.now();
@@ -208,6 +255,7 @@ export class BandExecution {
         await s.attachFiles('input[type="file"][accept*="image"], input[type="file"]', [file.path]);
         await this.settlePhoto(index + 1);
         this.photoUploadMilliseconds += Date.now() - started; this.photoUploadSamples++;
+        this.signal({ stage: 'write', phase: 'finish', blockKind: 'photos', photoIndex: index, photoTotal: files.length, fraction: 1 });
         this.report(this.checkpoint!);
       }
     }
@@ -246,9 +294,9 @@ export class BandExecution {
   }
   private report(actual: BandReadback) {
     this.env.progress({ characters: this.offset, totalCharacters: Array.from(bandText(this.plan)).length, photos: actual.photos.length, totalPhotos: this.photoUrls().length,
-      photoUploadMilliseconds: this.photoUploadMilliseconds, photoUploadSamples: this.photoUploadSamples });
+      photoUploadMilliseconds: this.photoUploadMilliseconds, photoUploadSamples: this.photoUploadSamples, ...(this.activity ? { activity: this.activity } : {}) });
   }
-  async stopBeforePost() { await this.guard(); this.env.verify(await this.observe()); if (!this.verified) throw new Error('BAND_NOT_VERIFIED'); await this.show(); }
+  async stopBeforePost() { await this.guard(); this.env.verify(await this.observe()); if (!this.verified) throw new Error('BAND_NOT_VERIFIED'); }
   async detectPublished() {
     this.env.check();
     if (!this.verified) return null;
@@ -263,15 +311,19 @@ export class BandExecution {
   }
   async publish() {
     const state = await this.surface!.readState();
-    if (!this.env.directory.localPublish || new URL(state.url).origin !== new URL(this.env.directory.baseUrl).origin || new URL(state.url).hostname !== '127.0.0.1') throw new Error('REAL_BAND_PUBLISH_DISABLED');
-    if (this.postAttempted) { const url = await this.detectPublished(); if (url) return url; throw new Error('BAND_POST_UNCONFIRMED'); }
+    if (!this.env.directory.localPublish && !this.env.directory.publishEnabled || !this.env.directory.sameOrigin(new URL(state.url))) throw new Error('REAL_BAND_PUBLISH_DISABLED');
+    if (this.postAttempted) { const url = this.env.directory.submitted(this.env.key) ? await this.detectPublished() : null; if (url && this.env.directory.matchesPost(url)) return url; throw new Error('BAND_POST_UNCONFIRMED'); }
     await this.guard(); this.env.verify(await this.observe());
     if (!this.verified) throw new Error('BAND_NOT_VERIFIED');
     const control = await point(this.surface!, 'button._btnPostSubmit, button._btnSubmitPost', '완료') ?? await point(this.surface!, 'button._btnPostSubmit, button._btnSubmitPost', '게시');
     if (!control) throw new Error('BAND_POST_CONTROL_MISSING');
     this.postAttempted = true;
-    await this.surface!.click(control.x, control.y);
-    return waitFor(() => this.detectPublished(), 15000);
+    this.signal({ stage: 'submit', phase: 'start', submission: 'publish' });
+    try {
+      await this.surface!.click(control.x, control.y, async () => { await this.guard(); if (!await this.surface!.readClickTarget?.(control.x, control.y, 'button._btnPostSubmit, button._btnSubmitPost')) throw new Error('BAND_POST_CONTROL_CHANGED'); this.env.directory.arm(this.env.key); });
+      return await waitFor(async () => { const url = this.env.directory.submitted(this.env.key) ? await this.detectPublished() : null; return url && this.env.directory.matchesPost(url) ? url : null; }, this.env.submitTimeoutMs ?? 15000);
+    } catch { throw new Error('BAND_POST_UNCONFIRMED'); }
+    finally { this.env.directory.disarm(); }
   }
   async discard() {
     this.env.check();

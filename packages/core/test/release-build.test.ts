@@ -38,7 +38,8 @@ it('builds isolated release assets, strips debug tools and starts the bundled co
   for (const marker of ['publishProbeShape', '"blog.publishProbe"', 'configurePublishProbe:', 'blocked-unconditionally', 'auditConversions', 'experimentTitle: true', 'draftSaveLimit: 1', 'photoPaths:', 'class Experiments', 'delete-test-post', 'BLOG_TEST_DELETE_ALREADY_ATTEMPTED', 'BLOG_TEST_DELETE_CONFIRM_UNCONFIRMED', 'blog.deleteTestPost']) expect(engine.includes(marker), marker).toBe(false);
   const uiFiles = await readdir(path.join(assets, 'ui/assets'));
   const ui = (await Promise.all(uiFiles.filter(file => file.endsWith('.js')).map(file => readFile(path.join(assets, 'ui/assets', file), 'utf8')))).join('\n');
-  expect(ui).toContain('확인하고 글 삭제');
+  expect(ui).toContain('블로그 글을 삭제할까요?');
+  expect(ui).toContain('되돌릴 수 없습니다.');
   expect(ui).not.toContain('삭제 결과만 확인');
   for (const marker of ['이번 비공개 실험 글 삭제', '비공개 차단 프로브 설정', '전체공개 차단 프로브 설정', 'blog.publishProbe', '변환 점검', 'conversion.check', '실험 화면 열기', 'WP1 숨김 브라우저', '가짜 실행 설정', '실험 글 삭제', 'blog.deleteTestPost']) expect(ui.includes(marker), marker).toBe(false);
   expect(uiFiles.some(file => file.startsWith('Experiments-'))).toBe(false);

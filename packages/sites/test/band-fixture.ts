@@ -39,7 +39,10 @@ export function bandFixture(mode = 'mobile') {
         const dialog=document.createElement('div');dialog.className='modalLayerView';dialog.innerHTML='<h1>글 작성을 취소하시겠습니까?</h1><button class="_confirmBtn">확인</button><button class="cancel">취소</button>';
         dialog.querySelector('._confirmBtn').onclick=()=>{count('discards');view.replaceChildren()};dialog.querySelector('.cancel').onclick=()=>dialog.remove();view.append(dialog);
       };
-      view.querySelector('._btnPostSubmit').onclick=()=>{
+      view.querySelector('._btnPostSubmit').onclick=async ()=>{
+        count('postPresses');
+        const result=await fetch('/band-post-create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({band_key:location.pathname.split('/')[2]})});
+        if(!result.ok)return;
         count('posts');const body=text();const photos=Array.from(view.querySelectorAll('img')).map(n=>n.alt);localStorage.setItem('lastPost',JSON.stringify({body,photos}));
         location.href=location.pathname.replace(/\\/$/,'')+'/'+(1000+Number(localStorage.getItem('posts')));
       };

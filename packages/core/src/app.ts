@@ -29,11 +29,12 @@ export class AppCore {
   private disposed = false;
   private preview: { product: Product; options: PostInput['options']; result: PreparedPreview; reverted: string[] } | undefined;
   private uncertainStart = false;
+  private jobPreview: PreparedPreview | null = null;
   private records: { postNo: number; channel: Channel; key: string; status: PostStatus; updates: Map<string, RecordError | null> }[] = [];
   private recordPrivateText: string[] = [];
   private deletionRecording: import('./record-checkpoint').RecordingCheckpoint | undefined;
   private readonly polishSetting: PolishStrengthStore;
-  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { device: () => Promise<import('@goltou/api-client').LoginInput['device']>; deleteHost?: import('@goltou/surface').SurfaceHost; deleteLog?: import('@goltou/sites').DeleteLog; experimentTitle?: boolean; experimentTitleLabel?: string; polishStrength?: PolishStrengthStore }) {
+  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { device: () => Promise<import('@goltou/api-client').LoginInput['device']>; deleteHost?: import('@goltou/surface').SurfaceHost; deleteLog?: import('@goltou/sites').DeleteLog; experimentTitle?: boolean; experimentTitleLabel?: string; polishStrength?: PolishStrengthStore; openExternal?: (url: string) => Promise<void> }) {
     this.polishSetting = runtime?.polishStrength ?? new MemoryPolishStrengthStore();
     const notify = (job: Job) => { if (!this.state.user) return; this.state.job = job; if (!this.runner.serviceLogin && job.status === 'login_paused' && job.service) { this.state.services[job.service] = 'expired'; this.state.visibleService = job.service; } this.emit(); };
     this.createRunner = () => factory ? factory((job, retry) => this.record(job, retry), notify) : new FakeRegistrationRunner(() => this.state.simulation, job => this.record(job), notify);
@@ -105,7 +106,7 @@ export class AppCore {
     await this.deletionRecording.emit(job);
   }
   private async token(): Promise<string> { const token = await this.tokens.read(); if (!token) throw new ApiError('auth', '다시 로그인해 주세요.'); return token; }
-  private async clearSession() { await this.tokens.write(null); this.initialization = Promise.resolve(); this.preview = undefined; this.records = []; this.recordPrivateText = []; this.deleteConfirmation = undefined; this.pendingDeleteUpdate = undefined; delete this.state.postDeletion; this.state.user = null; this.state.settings = null; this.state.job = null; this.emit(); }
+  private async clearSession() { await this.tokens.write(null); this.initialization = Promise.resolve(); this.preview = undefined; this.jobPreview = null; this.records = []; this.recordPrivateText = []; this.deleteConfirmation = undefined; this.pendingDeleteUpdate = undefined; delete this.state.postDeletion; this.state.user = null; this.state.settings = null; this.state.job = null; this.emit(); }
   private async call<P extends keyof import('@goltou/api-client').ApiRoutes>(path: P, input: import('@goltou/api-client').ApiRoutes[P]['input'], token?: string): Promise<import('@goltou/api-client').ApiRoutes[P]['output']> {
     try { return await this.api.request(path, input, token); }
     catch (error) {
@@ -221,13 +222,30 @@ export class AppCore {
       case 'service.check': this.requireServiceIdle(); this.state.services[request.input.service] = request.input.service === 'ai' ? 'unknown' : request.input.service === 'band' && this.runner.checkBandLogin ? await this.runner.checkBandLogin() : request.input.service === 'naver' && this.runner.checkLogin ? await this.runner.checkLogin() : 'confirmed'; break;
       case 'service.show': this.requireServiceIdle(); await this.runner.showService?.(request.input.service); if (!this.runner.serviceLogin) this.state.visibleService = request.input.service; break;
       case 'service.hide': await this.runner.hideService?.(); this.state.visibleService = null; break;
-      case 'service.clear': this.state.services[request.input.service] = 'unknown'; if (this.state.visibleService === request.input.service) this.state.visibleService = null; break;
+      case 'service.clear': {
+        this.requireServiceIdle();
+        if (this.runner.job && !['draft_saved', 'published', 'stopped'].includes(this.runner.job.status)) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
+        if (request.input.service !== 'ai' && this.runner.serviceLogin) {
+          await this.runner.serviceLogin.clear(request.input.service);
+          this.runner.dispose(); this.runner = this.createRunner(); this.bindServiceLogin();
+        }
+        this.state.services[request.input.service] = 'expired'; this.state.visibleService = null; break;
+      }
       case 'simulation.configure': {
         const c = request.input;
         if ((c.tickMs !== undefined && (!Number.isFinite(c.tickMs) || c.tickMs < 10 || c.tickMs > 10000)) || [c.loginAt, c.failAt].some(n => n !== undefined && n !== null && (!Number.isInteger(n) || n < 1 || n > 7))) throw new ApiError('invalid', '가짜 실행 설정을 확인해 주세요.');
         Object.assign(this.state.simulation, c); break;
       }
       case 'job.start': await this.start(request.input, token); return this.snapshot();
+      case 'job.preview': return structuredClone(this.jobPreview);
+      case 'job.cancel':
+        if (!this.runner.cancel) throw new ApiError('invalid', '이 작업은 아직 중단을 지원하지 않습니다.');
+        await this.runner.cancel(); return this.snapshot();
+      case 'post.open': {
+        const url = new URL(request.input.url);
+        if (url.protocol !== 'https:' || url.username || url.password || url.port || !(url.hostname === 'blog.naver.com' || url.hostname === 'm.blog.naver.com' || url.hostname === 'band.us' && /^[/]band[/][0-9]+[/]post[/][0-9]+[/]?$/.test(url.pathname))) throw new ApiError('invalid', '글 주소를 확인해 주세요.');
+        await this.runtime?.openExternal?.(url.href); return this.snapshot();
+      }
       case 'job.stop': await this.runner.stop(); return this.snapshot();
       case 'job.recovery':
         if (!this.runner.recover || typeof request.input.discard !== 'boolean') throw new ApiError('invalid', '자동복구 선택을 확인해 주세요.');
@@ -235,16 +253,12 @@ export class AppCore {
       case 'job.dialog':
         if (!this.runner.answerDialog || typeof request.input.id !== 'string' || typeof request.input.accept !== 'boolean') throw new ApiError('invalid', '확인창 선택을 확인해 주세요.');
         await this.runner.answerDialog(request.input.id, request.input.accept); return this.snapshot();
-      case 'draft.show':
-        if (!this.runner.showDraft) throw new ApiError('invalid', '이 실행기는 실제 임시글을 열 수 없습니다.');
-        await this.runner.showDraft(request.input.title); return this.snapshot();
+      case 'draft.show': throw new ApiError('invalid', '네이버 블로그 앱의 임시저장함에서 확인해 주세요.');
       case 'bands.list':
         if (this.runner.serviceLogin?.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
         if (this.starting || this.state.job && (this.state.job.status === 'record_failed' || !['draft_saved', 'published', 'stopped'].includes(this.state.job.status) && !this.state.job.completedSteps.includes(7))) throw new ApiError('conflict', '진행 중인 작업을 먼저 마쳐 주세요.');
         return this.runner.listBands ? this.runner.listBands() : [{ key: 'travel', name: '골투 여행', photoLimit: null, observedAt: null }, { key: 'golf', name: '해외골프 모임', photoLimit: null, observedAt: null }];
-      case 'band.show':
-        if (!this.runner.showBand) throw new ApiError('invalid', '열 수 있는 밴드 작성기가 없습니다.');
-        await this.runner.showBand(request.input.key); return this.snapshot();
+      case 'band.show': throw new ApiError('invalid', '작업 화면은 앱 안에서만 확인합니다.');
       case 'band.check': await this.runner.checkBand?.(); return this.snapshot();
       case 'band.discard':
         if (!this.runner.discardBand) throw new ApiError('invalid', '버릴 밴드 작성기가 없습니다.');
@@ -290,6 +304,7 @@ export class AppCore {
     }
   }
   private async start(input: JobInput, token: string) {
+    if (input.mode === 'draft' && input.targets.some(t => t.channel === 'band')) throw new ApiError('invalid', '임시저장은 네이버 블로그만 선택할 수 있습니다.');
     if (this.state.visibleService || this.runner.serviceLogin?.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
     if (this.pendingDeleteUpdate) throw new ApiError('conflict', '삭제 결과 기록을 먼저 마쳐 주세요.');
     if (this.uncertainStart) throw new ApiError('conflict', '이전 기록 시작 요청의 결과를 확인하지 못했습니다. 등록 기록을 확인해 주세요.');
@@ -309,6 +324,7 @@ export class AppCore {
       if (input.previewHash && input.previewHash !== product.contentHash) throw new ApiError('invalid', '상품이 바뀌었습니다. 내용을 다시 확인해 주세요.');
       const mismatch = input.targets.map(t => preview.verification[t.channel]).find(v => !v.matches);
       if (mismatch) throw new ApiError('invalid', mismatch.message);
+      this.jobPreview = preview;
       for (const target of input.targets) {
         let postNo: number;
         try { this.uncertainStart = true; ({ postNo } = await this.call('/auto/posts/start', { productNo: input.productNo, channel: target.channel, mode: input.mode, target: { name: target.name, key: target.key }, options: input.options, contentHash: product.contentHash }, token)); this.uncertainStart = false; }

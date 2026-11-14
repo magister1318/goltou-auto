@@ -124,5 +124,5 @@ export async function closeComposer(surface: Surface) {
   } return null;`);
   if (discard) await click(surface, 'BAND_DISCARD', '[role="dialog"] button', discard);
   const remaining = await read<boolean>(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(editor)})).some(visible));`);
-  if (remaining) { await surface.show(); throw new Error('BAND_DISCARD_CONFIRM_REQUIRED'); }
+  if (remaining) throw new Error('BAND_DISCARD_CONFIRM_REQUIRED');
 }

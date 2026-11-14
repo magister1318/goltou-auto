@@ -1,0 +1,15 @@
+{
+  "files": 52,
+  "passed": 596,
+  "failed": 0,
+  "skipped": 0,
+  "simulatorScreenshots": 44,
+  "deviceScreenshots": 9,
+  "deviceScreensPassed": 7,
+  "deviceDraftAttempts": 1,
+  "deviceDraftVerified": 0,
+  "deviceDraftBlocked": 1,
+  "deviceChecksNotRun": 3,
+  "realPublishActions": 0,
+  "realBandPostActions": 0
+}

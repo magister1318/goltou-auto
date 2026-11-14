@@ -34,7 +34,7 @@ export class BlogRegistrationRunner implements RegistrationRunner {
     if (input.mode === 'publish' && input.publishConfirmed !== true) throw new ApiError('invalid', '이 작업의 발행 선택이 필요합니다.');
     await this.execution?.close();
     this.execution = undefined; this.work = work; this.abort = new AbortController();
-    this.job = { id: ++this.serial, productNo: input.productNo, title, mode: input.mode, blogVisibility: input.blogVisibility ?? 'public', targets: input.targets, targetResults: input.targets.map(t => ({ ...t, status: 'running' })), status: 'running', step: 1, current: 0, total: photos, completedSteps: [], service: null, message: '' };
+    this.job = { startedAt: Date.now(), id: ++this.serial, productNo: input.productNo, title, mode: input.mode, blogVisibility: input.blogVisibility ?? 'public', targets: input.targets, targetResults: input.targets.map(t => ({ ...t, status: 'running' })), status: 'running', step: 1, current: 0, total: photos, completedSteps: [], service: null, message: '' };
     try { await this.emit(); this.launch(); } catch (error) { if (!(error instanceof RecordError)) throw error; }
   }
   private async emit() { if (this.job) await this.recording.emit(this.job); }
@@ -96,7 +96,7 @@ export class BlogRegistrationRunner implements RegistrationRunner {
         }
         if (job.step === 5) {
           await this.execution!.saveAndVerify();
-          if (job.mode === 'publish') job.postUrl = await this.execution!.publish();
+          if (job.mode === 'publish') { job.postUrl = await this.execution!.publish(); job.publicationUncertain = false; }
           job.blogReadbackTimings = [...this.execution!.readbackTimings];
           job.blogIdentitySources = [...this.execution!.publishedIdentitySources];
           job.targetResults![0]!.status = job.mode === 'draft' ? 'draft_saved' : 'published';
@@ -116,11 +116,11 @@ export class BlogRegistrationRunner implements RegistrationRunner {
       // Only controlled error codes are persisted; never page text, IDs, URLs or dialog contents.
       job.message = safeFailureCode(error, 'BLOG_FAILED');
       if (pendingDialog) { job.status = 'dialog_paused'; job.dialog = pendingDialog; job.message = 'USER_DIALOG_REQUIRED'; }
-      else if (code === 'LOGIN_OR_EDITOR_LOST') { job.status = 'login_paused'; job.service = 'naver'; await this.emit(); await this.showService('naver').catch(() => {}); }
+      else if (code === 'LOGIN_OR_EDITOR_LOST') { job.status = 'login_paused'; job.service = 'naver'; await this.emit(); }
       else if (code === 'AUTO_RECOVER_CONSENT_REQUIRED') job.status = 'recovery_paused';
       else if (code === 'USER_DIALOG_REQUIRED') { job.status = 'dialog_paused'; const dialog = await this.execution?.dialog(); if (dialog) job.dialog = dialog; }
       else job.status = 'failed';
-      job.failureCode = safeFailureCode(error, 'BLOG_FAILED');
+      job.failureCode = job.publicationUncertain ? 'BLOG_PUBLISH_UNCONFIRMED' : safeFailureCode(error, 'BLOG_FAILED');
       if (job.status === 'failed' && job.targetResults?.[0]?.status === 'running') { job.targetResults[0].status = 'failed'; job.targetResults[0].reason = job.failureCode; }
       job.message = code === 'PHOTO_HOST_NOT_ALLOWED' ? '골투에서 제공하는 주소의 사진만 내려받을 수 있습니다.' : code === 'PHOTO_DOWNLOAD_FAILED' ? '사진을 내려받지 못했습니다. 연결을 확인해 주세요.' : code === 'LOGIN_OR_EDITOR_LOST' ? '로그인 풀림으로 멈춤' : job.status === 'dialog_paused' ? '네이버 확인창의 선택을 기다립니다.' : job.status === 'recovery_paused' ? '작성 중인 글을 버리고 새로 시작할지 선택해 주세요.' : code === 'DRAFT_IDENTITY_AMBIGUOUS' ? '같은 제목의 임시글이 여러 개여서 멈췄습니다.' : code.startsWith('BLOG_READBACK_MISMATCH') ? '다시 읽은 글이 원문과 달라 완료하지 못했습니다.' : code === 'TABLE_DIMENSIONS_UNSTABLE' ? '표 배치를 확인할 수 없어 멈췄습니다.' : code === 'CURSOR_POSITION_UNCONFIRMED' ? '사진을 넣을 커서 위치를 확인하지 못했습니다.' : code === 'DRAFT_SAVE_LIMIT' ? '이번 실행의 임시저장 한도에 도달했습니다.' : '편집기 상태를 확인하지 못해 멈췄습니다. 작성 중인 글은 그대로 두었습니다.';
       if (this.execution?.surface && this.services.capture) {

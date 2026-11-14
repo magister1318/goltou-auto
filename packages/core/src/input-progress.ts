@@ -3,6 +3,18 @@ import type { Job } from './protocol';
 
 /** Upload samples exclude text input, download, pauses and draft readback. */
 export function updateInputProgress(job: Job, value: BlogProgress): void {
+  if (value.activity) {
+    if (value.activity.stage === 'submit' && value.activity.submission === 'publish') job.publicationUncertain = true;
+    const activity = { ...value.activity, at: Date.now() };
+    job.activity = activity;
+    job.activityLog ??= [];
+    if (activity.stage === 'verify' && activity.phase === 'start' && activity.verification === 'title') job.activityLog = job.activityLog.filter(e => e.channel !== activity.channel || e.stage !== 'verify');
+    // One boundary per plan item. Long Band paragraphs report their completed
+    // prefix repeatedly; retaining each copy would grow every snapshot quadratically.
+    const previous = job.activityLog.findIndex(e => e.channel === activity.channel && e.stage === activity.stage && e.phase === activity.phase && e.blockIndex === activity.blockIndex && e.photoIndex === activity.photoIndex && e.verification === activity.verification);
+    if (previous < 0) job.activityLog.push(activity);
+    else if (activity.phase !== 'finish') job.activityLog[previous] = activity;
+  }
   job.current = value.photos; job.total = value.totalPhotos;
   job.characters = value.characters; job.totalCharacters = value.totalCharacters;
   if (value.photoUploadMilliseconds === undefined) delete job.photoUploadMilliseconds;

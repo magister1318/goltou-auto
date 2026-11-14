@@ -3,6 +3,7 @@ import type { SurfaceHost } from '@goltou/surface';
 import type { InputPlan } from './convert';
 import { compact, compareDocuments, observePlan, type Observation } from './verify';
 import type { MediaFile } from './media';
+import { verificationProgress } from './verify-progress';
 
 export interface BlogServices {
   host: SurfaceHost;
@@ -62,8 +63,11 @@ export function blogObservation(plan: InputPlan, files: readonly MediaFile[], ac
 }
 export function createBlogExecution(plan: InputPlan, files: readonly MediaFile[], services: BlogServices,
   hooks: Pick<ConstructorParameters<typeof BlogExecution>[2], 'check' | 'progress' | 'beforeSave' | 'mode' | 'visibility'>) {
-  const execution: BlogExecution = new BlogExecution(plan, files, { ...services, ...hooks, verify: actual => {
+  let last: import('@goltou/sites').BlogProgress = { characters: 0, totalCharacters: 0, photos: 0, totalPhotos: files.length };
+  const progress = (value: import('@goltou/sites').BlogProgress) => { last = value; hooks.progress(value); };
+  const execution: BlogExecution = new BlogExecution(plan, files, { ...services, ...hooks, progress, verify: actual => {
     const comparison = compareDocuments(observePlan(plan), blogObservation(plan, execution.files, actual));
+    verificationProgress('blog', comparison, last, hooks.progress);
     if (!comparison.matches) throw new Error(`BLOG_READBACK_MISMATCH:${comparison.differences.map(d => d.field).join(',')}`);
   } });
   return execution;

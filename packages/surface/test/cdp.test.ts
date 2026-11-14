@@ -121,7 +121,7 @@ describe('CDP Surface', () => {
     expect(f.commands[2]).toMatchObject({ method: 'Fetch.continueRequest', params: { requestId: 'one' } });
     expect(f.commands[3]).toMatchObject({ method: 'Fetch.failRequest', params: { requestId: 'two' } });
     f.event('Fetch.requestPaused', { requestId: 'one', responseStatusCode: 200, request: { url: 'https://blog.naver.com/RabbitWrite.naver' } });
-    await vi.waitFor(() => expect(response).toHaveBeenCalledWith({ status: 200, body: '{"result":{"logNo":9001}}' }));
+    await vi.waitFor(() => expect(response).toHaveBeenCalledWith({ status: 200, body: '{"result":{"logNo":9001}}', url: 'https://blog.naver.com/RabbitWrite.naver', method: 'POST' }));
     expect(JSON.stringify(f.commands)).not.toContain('openType=0');
   });
   it('blocks when the request inspector throws and retains a pre-existing draft barrier', async () => {

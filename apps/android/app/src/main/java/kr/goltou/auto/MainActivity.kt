@@ -88,7 +88,19 @@ class MainActivity : ComponentActivity() {
         retained.surfaces = surfaces
         val secureSession = SecureSession(applicationContext)
         link = CoreLink { op, msg, reply ->
-            if (op == "app.inputState") reply(org.json.JSONObject().put("ready", retained.inputReady()), null)
+            if (op == "app.jobState") {
+                retained.root.post { retained.root.keepScreenOn = msg.optBoolean("running") }
+                reply(org.json.JSONObject(), null)
+            }
+            else if (op == "app.openPost") {
+                val uri = android.net.Uri.parse(msg.getString("url"))
+                check(uri.scheme == "https" && uri.userInfo == null && uri.port == -1 &&
+                    (uri.host in setOf("blog.naver.com", "m.blog.naver.com") ||
+                     uri.host == "band.us" && Regex("^/band/[0-9]+/post/[0-9]+/?$").matches(uri.path ?: "")))
+                retained.root.post { retained.activity?.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, uri)) }
+                reply(org.json.JSONObject(), null)
+            }
+            else if (op == "app.inputState") reply(org.json.JSONObject().put("ready", retained.inputReady()), null)
             else if (op.startsWith("debug.")) retained.handleDebug(op, msg, reply)
             else if (op.startsWith("session.")) secureSession.handle(op, msg, reply)
             else retained.surfaces.handle(op, msg, reply)

@@ -8,7 +8,7 @@ describe('service login presentation', () => {
   it('offers only Naver and Band in both home and settings', () => {
     expect(loginServices).toEqual(['naver', 'band']);
     for (const html of [renderToStaticMarkup(createElement(LoginStrip, { services, open() {} })), renderToStaticMarkup(createElement(ServiceLoginList, { services, busy: false, open() {}, clear() {} }))]) {
-      expect(html).toContain('밴드'); expect(html).toContain('확인됨'); expect(html).toContain('풀림');
+      expect(html).toContain('밴드'); expect(html).toContain('연결됨'); expect(html).toContain('로그인 필요');
       expect(html).not.toMatch(/AI|Google|구글/);
     }
   });

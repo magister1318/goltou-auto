@@ -32,14 +32,14 @@ export interface KeyInput {
   modifiers?: number;
 }
 export interface SurfaceDialog { id: string; kind: 'alert' | 'confirm'; message: string; url?: string }
-export interface RequestRule { hostname: string; pathname: string }
+export interface RequestRule { hostname: string; pathname: string; prefix?: boolean }
 /** Ephemeral transport data. Callers must never persist bodies or headers. */
 export interface GuardedRequest {
   url: string; method: string; postData?: string;
   contentType?: string; hasPostData?: boolean; postDataInline?: boolean;
   postDataFetched?: boolean; postDataComplete?: boolean;
 }
-export interface GuardedResponse { status: number; body: string }
+export interface GuardedResponse { status: number; body: string; url?: string; method?: string }
 
 export interface Surface {
   readonly session: SurfaceSession;

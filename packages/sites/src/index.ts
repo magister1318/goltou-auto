@@ -1,4 +1,5 @@
 export * from './fixture';
+export * from './progress';
 export * from './login';
 export * from './service-login';
 export * from './dom';
