@@ -1,0 +1,318 @@
+<title>골투오토 화면 시안 2차</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&display=swap">
+<style>
+/* Layout: a tappable phone on the left, the reasoning for the current screen on the right; stacks on a phone. */
+:root{
+  --page:#eef1ee; --ink:#18211c; --soft:#5b6a61; --line:#d3dad5; --panel:#ffffff; --accent:#0f5132; --accent-ink:#ffffff; --note:#f5f8f5;
+  --font:"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  /* app mock palette (the app itself is light only) */
+  --g9:#0f5132; --g7:#177a41; --g1:#e8f3ec; --a-ink:#17201b; --a-soft:#66736b; --a-line:#e1e6e2; --a-bg:#ffffff; --warn:#b4560b; --warn-bg:#fdf1e3; --bad:#b3261e; --bad-bg:#fbeceb;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --page:#121713; --ink:#e7ede9; --soft:#9fb0a6; --line:#2c3630; --panel:#1a211c; --accent:#4cc487; --accent-ink:#08130d; --note:#1f2822; color-scheme:dark } }
+:root[data-theme="dark"]{ --page:#121713; --ink:#e7ede9; --soft:#9fb0a6; --line:#2c3630; --panel:#1a211c; --accent:#4cc487; --accent-ink:#08130d; --note:#1f2822; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.6;padding-block:24px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+.top h1{font-size:24px;font-weight:800;margin:0;letter-spacing:-.02em;text-wrap:balance}
+.top p{margin:6px 0 0;color:var(--soft);max-width:62ch}
+.stage{display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap}
+.side{flex:1 1 320px;min-width:0;display:flex;flex-direction:column;gap:16px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+.box h2{font-size:13px;font-weight:700;color:var(--soft);margin:0 0 8px;letter-spacing:.02em}
+.box h3{font-size:17px;font-weight:800;margin:0 0 6px}
+.box ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+.jump{display:flex;flex-wrap:wrap;gap:8px}
+.jump button{font:inherit;font-size:13px;padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--note);color:var(--ink);cursor:pointer}
+.jump button[aria-current="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+.jump button:focus-visible,.phone button:focus-visible{outline:3px solid #3b82f6;outline-offset:2px}
+.ask{border-left:0;background:var(--note)}
+.ask li b{font-weight:700}
+/* phone */
+.phone{flex:0 0 auto;width:min(390px,100%);height:780px;background:var(--a-bg);color:var(--a-ink);border-radius:28px;border:8px solid #1c2420;overflow:hidden;position:relative;display:flex;flex-direction:column;font-size:15px;line-height:1.5}
+:where(.phone button){font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0;text-align:left}
+.scr{flex:1;overflow-y:auto;display:flex;flex-direction:column;min-height:0}
+.hd{background:var(--g9);color:#fff;padding:18px 20px 16px}
+.hd .row{display:flex;justify-content:space-between;align-items:center;font-size:14px}
+.brand{display:flex;gap:8px;align-items:center;font-weight:700}
+.brand i{width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#35d04a,#0b7a1f);display:grid;place-items:center;font-style:normal;font-weight:800;font-size:13px;color:#fff}
+.hd h1{font-size:25px;line-height:1.25;font-weight:800;margin:14px 0 0;letter-spacing:-.02em}
+.conn{display:flex;gap:8px;padding:10px 20px;background:#0b3d26;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:13px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.12);color:#fff !important}
+.chip.need{background:#ffe2bd;color:#6b3300 !important;font-weight:700}
+.dot{width:8px;height:8px;border-radius:50%;background:#6ee7a0}.need .dot{background:#c2570a}
+.pad{padding:16px 20px}
+.search{border:1px solid var(--a-line);border-radius:10px;padding:11px 14px;color:var(--a-soft);font-size:14px}
+.tabs{display:flex;gap:18px;border-bottom:1px solid var(--a-line);margin-top:14px}
+.tabs button{padding:8px 0 10px;color:var(--a-soft);font-size:14px}
+.tabs .on{color:var(--g9) !important;font-weight:700;box-shadow:inset 0 -3px 0 var(--g9)}
+.item{display:flex;gap:14px;padding:16px 0;border-bottom:1px solid var(--a-line);width:100%;align-items:flex-start}
+.item .t{flex:1;min-width:0}
+.item strong{display:block;font-size:16px;line-height:1.35;font-weight:700}
+.item small{display:block;color:var(--a-soft);font-size:13px;margin-top:3px}
+.tag{font-size:12.5px;margin-top:6px;display:inline-block}
+.tag.ok{color:var(--g7);font-weight:700}.tag.none{color:var(--a-soft)}
+.ph{flex:0 0 76px;height:76px;border-radius:8px;background:linear-gradient(180deg,#9fd3f0 0 42%,#4fa85d 42% 70%,#2f8a45 70%)}
+.ph.b{background:linear-gradient(180deg,#f7c59f 0 38%,#3f9d6a 38% 72%,#2a7d52 72%)}
+.ph.c{background:linear-gradient(180deg,#b7c9e8 0 45%,#5aa772 45% 75%,#3d8b59 75%)}
+.nav{display:flex;border-top:1px solid var(--a-line);background:#fff}
+.nav button{flex:1;padding:14px 0;text-align:center;font-size:14px;color:var(--a-soft)}
+.nav .on{color:var(--g9) !important;font-weight:700}
+.back{padding:16px 20px 0;font-size:14px;color:var(--a-soft)}
+.title{font-size:21px;line-height:1.35;font-weight:800;letter-spacing:-.02em;margin:10px 0 4px}
+.meta{color:var(--a-soft);font-size:13.5px}
+.seg{display:flex;background:var(--g1);border-radius:10px;padding:4px;margin:14px 0}
+.seg button{flex:1;text-align:center;padding:8px 0;border-radius:7px;font-size:14px;color:var(--a-soft)}
+.seg .on{background:#fff;color:var(--g9) !important;font-weight:700}
+.big{height:170px;border-radius:10px;background:linear-gradient(180deg,#9fd3f0 0 45%,#4fa85d 45% 72%,#2f8a45 72%);margin:10px 0 4px}
+.big.b{background:linear-gradient(180deg,#f7c59f 0 40%,#3f9d6a 40% 74%,#2a7d52 74%)}
+.cap{font-size:12px;color:var(--a-soft)}
+.opt{display:flex;justify-content:space-between;gap:10px;align-items:center;border:1px solid var(--a-line);border-radius:10px;padding:12px 14px;margin-top:14px;font-size:13.5px;width:100%}
+.opt b{color:var(--g7)}
+.bar{display:flex;gap:10px;padding:12px 16px;border-top:1px solid var(--a-line);background:#fff}
+.btn{flex:1;text-align:center !important;padding:14px 10px !important;border-radius:12px;font-weight:700;font-size:15.5px}
+.btn.p{background:var(--g9) !important;color:#fff !important}
+.btn.s{background:var(--g1) !important;color:var(--g9) !important}
+.btn.d{background:var(--bad) !important;color:#fff !important}
+.btn.q{background:#f0f2f1 !important;color:var(--a-ink) !important}
+.btn small{display:block;font-weight:400;font-size:11.5px;opacity:.85;margin-top:1px}
+/* sheet */
+.dim{position:absolute;inset:0;background:rgba(10,20,14,.45);display:flex;align-items:flex-end;z-index:5}
+.sheet{background:#fff;width:100%;border-radius:20px 20px 0 0;padding:20px 20px 16px;max-height:86%;overflow-y:auto}
+.sheet h2{font-size:19px;font-weight:800;margin:0 0 4px}
+.sheet p{margin:0;color:var(--a-soft);font-size:13.5px}
+.pick{display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--a-line);width:100%}
+.box2{flex:0 0 22px;height:22px;border-radius:6px;border:2px solid #9aa79f;display:grid;place-items:center;margin-top:2px;font-size:14px;color:#fff}
+.on > .box2{background:var(--g7);border-color:var(--g7)}
+.pick .t strong{display:block;font-size:15.5px}
+.pick .t small{color:var(--a-soft);font-size:13px;display:block}
+.pick.off{opacity:.55}
+.two{display:flex;gap:8px;margin-top:8px}
+.two button{flex:1;text-align:center;padding:8px 0;border-radius:8px;border:1px solid var(--a-line) !important;font-size:13.5px}
+.two .on{border-color:var(--g7) !important;background:var(--g1) !important;color:var(--g9) !important;font-weight:700}
+.warnline{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:13.5px;margin-top:14px}
+.acts{display:flex;gap:10px;margin-top:16px}
+/* progress */
+.center{flex:1;display:flex;flex-direction:column;justify-content:center;padding:28px 24px;gap:8px}
+.kicker{font-size:13px;color:var(--a-soft)}
+.huge{font-size:26px;font-weight:800;line-height:1.3;letter-spacing:-.02em}
+.track{height:8px;border-radius:99px;background:var(--g1);overflow:hidden;margin:18px 0 6px}
+.track i{display:block;height:100%;background:var(--g7);border-radius:99px;transition:width .5s}
+.steps{display:flex;flex-direction:column;gap:10px;margin-top:18px;font-size:14.5px}
+.steps div{display:flex;gap:10px;align-items:center;color:var(--a-soft)}
+.steps .done{color:var(--a-ink)}.steps .now{color:var(--g9);font-weight:700}
+.st{width:20px;height:20px;border-radius:50%;border:2px solid #b8c3bc;display:grid;place-items:center;font-size:12px;flex:0 0 20px}
+.done .st{background:var(--g7);border-color:var(--g7);color:#fff}.now .st{border-color:var(--g7)}
+.hint{background:var(--g1);border-radius:10px;padding:12px 14px;font-size:13.5px;margin-top:20px;color:#27503a}
+/* live progress */
+.pg{flex:1;display:flex;flex-direction:column;padding:18px 20px 12px;gap:10px;min-height:0}
+.dest{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--a-soft)}
+.dest span{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:99px;background:#f0f2f1}
+.dest .now{background:var(--g9);color:#fff;font-weight:700}.dest .ok{background:var(--g1);color:var(--g9);font-weight:700}
+.dest em{flex:0 0 14px;height:2px;background:var(--a-line)}
+.pgh{font-size:22px;font-weight:800;letter-spacing:-.02em;line-height:1.3}
+.pgs{font-size:13.5px;color:var(--a-soft);margin-top:-6px;min-height:20px}
+.paper{flex:1;min-height:0;border:1px solid var(--a-line);border-radius:12px;overflow:hidden;position:relative;background:#fbfcfb}
+.paper .in{position:absolute;left:0;right:0;bottom:0;padding:14px 14px 18px;display:flex;flex-direction:column;gap:8px}
+.paper .lab{position:absolute;top:8px;right:8px;z-index:2;font-size:11px;background:rgba(23,32,27,.72);color:#fff;border-radius:99px;padding:3px 9px}
+.paper .fade{position:absolute;left:0;right:0;top:0;height:38px;background:linear-gradient(#fbfcfb,rgba(251,252,251,0));z-index:1}
+.pt{font-size:16px;font-weight:800;line-height:1.35}.pp{font-size:12.5px;line-height:1.55;color:#2a352f}.ptag{font-size:12.5px;color:var(--g7)}
+.car{display:inline-block;width:2px;height:1em;background:var(--g7);vertical-align:-2px;margin-left:1px}
+.pim{height:92px;border-radius:8px;position:relative;overflow:hidden;background:#e7ebe8;flex:0 0 auto}
+.pim b{position:absolute;inset:0;background:linear-gradient(180deg,#9fd3f0 0 45%,#4fa85d 45% 72%,#2f8a45 72%)}
+.pim.v1 b{background:linear-gradient(180deg,#f7c59f 0 40%,#3f9d6a 40% 74%,#2a7d52 74%)}.pim.v2 b{background:linear-gradient(180deg,#b7c9e8 0 45%,#5aa772 45% 75%,#3d8b59 75%)}
+.pim u{position:absolute;left:10px;right:10px;bottom:10px;height:4px;border-radius:9px;background:rgba(0,0,0,.12);overflow:hidden}
+.pim u i{display:block;height:100%;background:var(--g7)}
+.pim s{position:absolute;left:10px;top:9px;font-size:11px;color:#55635b;text-decoration:none}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}.grid3 .pim{height:64px;border-radius:6px}
+.scan{position:absolute;left:0;right:0;height:46px;z-index:2;background:linear-gradient(rgba(23,122,65,0),rgba(23,122,65,.22));border-bottom:2px solid var(--g7)}
+.strip{display:flex;gap:3px}.strip i{flex:1;height:18px;border-radius:4px;background:#e7ebe8;position:relative;overflow:hidden}
+.strip i.up{outline:2px solid var(--g7);outline-offset:-2px}.strip i.ok{background:var(--g7)}
+.strip i.ok.v1{background:#3f9d6a}.strip i.ok.v2{background:#5aa772}
+.rowlab{display:flex;justify-content:space-between;font-size:12px;color:var(--a-soft);margin-bottom:-4px}
+.chk{display:flex;gap:6px;flex-wrap:wrap;font-size:12px}
+.chk span{padding:3px 9px;border-radius:99px;background:#f0f2f1;color:var(--a-soft)}
+.chk .now{background:#fff;box-shadow:inset 0 0 0 1.5px var(--g7);color:var(--g9)}.chk .ok{background:var(--g1);color:var(--g9);font-weight:700}
+.pg .track{margin:2px 0 0;height:6px}.pg .track i{transition:none}
+.mark{width:56px;height:56px;border-radius:50%;background:var(--g1);color:var(--g7);display:grid;place-items:center;font-size:28px;font-weight:800}
+.mark.w{background:var(--warn-bg);color:var(--warn)}.mark.x{background:var(--bad-bg);color:var(--bad)}
+.res{border-top:1px solid var(--a-line);margin-top:18px}
+.res div{display:flex;justify-content:space-between;gap:10px;padding:13px 0;border-bottom:1px solid var(--a-line);font-size:14.5px}
+.res a,.lnk{color:var(--g7) !important;font-weight:700;text-decoration:none}
+.hist .item{flex-direction:column;gap:6px}
+.st2{font-size:13px;font-weight:700}.st2.ok{color:var(--g7)}.st2.dr{color:#3a5f8a}.st2.del{color:var(--a-soft)}.st2.fail{color:var(--bad)}
+.rowact{display:flex;gap:16px;font-size:13.5px}
+.set h3{font-size:13px;color:var(--a-soft);font-weight:700;margin:22px 0 4px}
+.set .ln{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:14px 0;border-bottom:1px solid var(--a-line);width:100%;font-size:15px}
+.set .ln small{color:var(--a-soft);font-size:13px}
+.sw{width:42px;height:24px;border-radius:99px;background:#c6cfc9;position:relative;flex:0 0 42px}.sw::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff}
+.field{border:1px solid var(--a-line);border-radius:10px;padding:13px 14px;color:var(--a-soft);margin-top:10px;font-size:15px}
+.svc{flex:1;display:flex;flex-direction:column;background:#f3f4f3}
+.svcbar{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;background:#fff;border-bottom:1px solid var(--a-line);font-weight:700}
+.fake{margin:22px 18px;background:#fff;border:1px dashed #9aa79f;border-radius:12px;padding:22px 18px;display:flex;flex-direction:column;gap:12px;color:var(--a-soft);font-size:14px}
+.toast{position:absolute;left:16px;right:16px;bottom:84px;background:#17201b;color:#fff;border-radius:12px;padding:12px 16px;font-size:14px;z-index:6;text-align:center}
+@media (max-width:460px){ .phone{border-width:4px;border-radius:20px;height:720px} }
+@media (prefers-reduced-motion:reduce){ .track i{transition:none} }
+</style>
+
+<div class="wrap">
+  <div class="top">
+    <h1>골투오토 화면 시안 2차</h1>
+    <p>직접 눌러 보실 수 있습니다. 실제 앱이 아니라 화면 흐름을 확인하기 위한 그림이며, 상품과 사진은 예시입니다. 승인하신 화면만 구현하겠습니다.</p>
+  </div>
+  <div class="stage">
+    <div class="phone" id="phone" aria-label="앱 화면 시안"></div>
+    <div class="side">
+      <div class="box"><h2>화면 바로 가기</h2><div class="jump" id="jump"></div></div>
+      <div class="box" id="why"></div>
+      <div class="box"><h2>이번 설계의 원칙</h2><ul>
+        <li>네이버와 밴드 화면은 로그인할 때만 보입니다. 로그인이 끝나면 저절로 닫힙니다.</li>
+        <li>글을 옮기는 동안에는 앱이 만든 진행 화면만 보입니다. 사용자가 눌러서 흐름을 깨뜨릴 수 있는 외부 화면이 없습니다.</li>
+        <li>화면마다 가장 중요한 버튼을 아래에 크게 둡니다. 임시저장과 발행은 항상 나란히 보입니다.</li>
+        <li>멈추거나 실패하면 무슨 일이 있었는지와 지금 할 일을 한 문장씩 알려 줍니다. 오류 코드는 보여 주지 않습니다.</li>
+        <li>"모름" 같은 상태는 없앱니다. 앱이 스스로 확인해서 "연결됨" 또는 "로그인 필요"만 보여 줍니다.</li>
+      </ul></div>
+      <div class="box ask"><h2>정해 주실 것</h2><ul>
+        <li><b>밴드 올리는 방식.</b> 지금은 게시 직전에 밴드 화면을 보여 주고 직접 게시하시는 방식입니다. 시안에서는 밴드 화면을 보여 주지 않고, 앱 안 미리보기로 확인한 뒤 "발행"을 누르면 앱이 밴드에도 게시합니다. 밴드에는 임시저장이 없어서 "임시저장"을 고르면 블로그에만 저장됩니다.</li>
+        <li><b>블로그 발행의 기본 공개 범위.</b> 시안은 전체공개가 기본이고 발행할 때마다 바꿀 수 있습니다.</li>
+        <li><b>상품 목록의 사진 위치와 크기</b>, 색과 글자 크기 등 눈에 거슬리는 부분은 어떤 것이든 알려 주세요.</li>
+      </ul></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const st = { screen:'home', band:false, naver:true, sheet:null, pub:{blog:true, band:true, open:'public'}, view:'blog', prog:0, mode:'publish', toast:'' };
+let timer = null;
+const names = { login:'골투 로그인', home:'상품 목록', product:'상품 미리보기', progress:'옮기는 중', done:'완료', connect:'계정 연결', svc:'네이버·밴드 로그인', relogin:'로그인이 풀렸을 때', fail:'실패했을 때', history:'등록 기록', settings:'설정' };
+const why = {
+  login:['골투 로그인','골투 계정으로 한 번만 로그인합니다.',['매니저와 직원만 쓸 수 있다는 안내를 로그인 전에 보여 줍니다.','로그인 실패 시 "아이디 또는 비밀번호가 맞지 않습니다"처럼 원인을 말로 알려 줍니다.']],
+  home:['상품 목록','앱을 열면 바로 옮길 상품을 고릅니다.',['위쪽 두 표시가 블로그와 밴드의 연결 상태입니다. "로그인 필요"만 눈에 띄는 색으로 보이고, 누르면 바로 로그인으로 갑니다.','상품마다 사진, 가격, 이미 올렸는지 여부가 한눈에 보입니다.','"안 올린 상품"만 모아 볼 수 있습니다.']],
+  product:['상품 미리보기','올라갈 글을 그대로 보여 주고, 아래에서 임시저장 또는 발행을 고릅니다.',['지적하신 대로 임시저장과 발행 버튼을 항상 나란히 둡니다.','버튼을 누르면 어디에 올릴지 묻는 창이 아래에서 올라옵니다. 발행은 한 번 더 확인합니다.','블로그용과 밴드용 모습을 바꿔 볼 수 있습니다.','문장 다듬기 같은 선택 기능은 한 줄로 접어 두고, 필요할 때만 엽니다.']],
+  progress:['옮기는 중','글이 만들어지는 모습을 실시간으로 보여 줍니다.',['가운데 창은 네이버나 밴드 화면이 아니라, 앱이 그린 진행 모습입니다. 실제 상품의 글과 사진이 들어가는 순서대로 한 글자, 한 장씩 채워집니다. 누를 수 있는 것은 없습니다.','위 문장은 지금 하는 일을 말하고, 아래 줄에 몇 번째 문단인지, 몇 번째 사진이 몇 퍼센트 올라갔는지가 계속 바뀝니다.','사진 13칸이 한 장씩 채워지고, 다 쓴 뒤에는 원문과 같은지 항목별로 확인하는 모습이 보입니다.','밴드까지 고르면 블로그가 끝난 뒤 밴드 차례로 넘어갑니다.','시안은 실제보다 4배쯤 빠르게 돌아갑니다. 실제로는 2분 안팎입니다.','"중단"을 누르면 쓰던 글을 버릴지 물어봅니다.']],
+  done:['완료','어디에 어떻게 올라갔는지 알려 줍니다.',['"글 보기"는 휴대폰의 네이버 앱이나 브라우저로 엽니다. 앱 안의 숨은 화면을 보여 주지 않습니다.','임시저장이면 "네이버 블로그의 임시저장함에서 확인하세요"라고 안내합니다.']],
+  connect:['계정 연결','블로그와 밴드 로그인 상태를 한 곳에서 봅니다.',['앱이 켜질 때 스스로 확인하므로 "모름"이 없습니다.','비밀번호는 실제 네이버·밴드 화면에만 입력하고 앱은 저장하지 않는다는 점을 짧게 알려 줍니다.']],
+  svc:['네이버·밴드 로그인','외부 화면이 보이는 유일한 순간입니다.',['로그인에 필요한 페이지 밖으로는 이동할 수 없게 막습니다.','로그인이 끝나면 화면이 저절로 닫히고 "연결됨"으로 바뀝니다. "돌아가기"를 찾아 누를 필요가 없습니다.','흰 화면이 뜨지 않도록, 페이지가 다 열린 뒤에만 보여 줍니다.']],
+  relogin:['로그인이 풀렸을 때','옮기던 중 네이버 로그인이 풀린 경우입니다.',['무슨 일인지와 할 일을 한 문장씩 알려 줍니다.','다시 로그인하면 멈춘 곳부터 이어서 진행합니다.']],
+  fail:['실패했을 때','끝까지 옮기지 못한 경우입니다.',['글이 공개됐는지 아닌지를 가장 먼저 알려 줍니다.','오류 코드 대신 "다시 시도"와 "그만두기" 두 가지만 보여 줍니다. 자세한 내용은 등록 기록에 남깁니다.']],
+  history:['등록 기록','내가 옮긴 글과 상태를 봅니다.',['발행한 블로그 글은 "글 보기"와 "글 삭제"가 나옵니다.','실패한 건은 "다시 시도"가 나옵니다.','직원과 관리자는 "전체" 탭에서 모든 사람의 기록을 봅니다.']],
+  settings:['설정','자주 바꾸지 않는 것만 모았습니다.',['계정 연결, 글 끝 문구, 기본 해시태그, 문장 다듬기 기본값입니다.','진단이나 시험용 메뉴는 일반 화면에서 보이지 않습니다.']]
+};
+function go(s){ st.screen=s; st.sheet=null; if(timer){clearInterval(timer);timer=null} draw(); if(s==='progress'){ run(); paint(); } }
+function toast(m){ st.toast=m; draw(); setTimeout(()=>{st.toast='';draw()},1900); }
+const T={title:'다낭 3색 골프 3박 5일 · 5성 호텔',paras:['다낭의 대표 골프장 세 곳을 도는 3박 5일 일정입니다.','1인 1,190,000원부터 · 출발일 12월 3일, 12월 10일 외 4개','숙소는 미케 비치 앞 5성 호텔이며 조식이 포함됩니다.','포함 사항은 그린피, 카트, 캐디, 공항 이동 차량입니다.'],tags:'#다낭골프 #골프투어 #골투',layout:[2,3,4,4],checks:['제목','본문 4문단','사진 13장','가격·날짜 숫자','해시태그']};
+let pg=null;
+function plan(){ const seg=[]; let t=0; const add=(o,d)=>{o.s=t;o.e=t+d;t+=d;seg.push(o)};
+  add({k:'open',site:'blog'},1400); add({k:'title',site:'blog'},T.title.length*45); let n=0;
+  T.paras.forEach((p,i)=>{ add({k:'para',i,site:'blog'},p.length*30+250); for(let j=0;j<T.layout[i];j++) add({k:'photo',n:n++,site:'blog'},820); });
+  add({k:'tags',site:'blog'},T.tags.length*40+200);
+  T.checks.forEach((c,i)=>add({k:'check',i,site:'blog'},560));
+  add({k:'send',site:'blog'},1500);
+  if(st.mode==='publish'&&st.pub.band&&st.band){ add({k:'open',site:'band'},1200); add({k:'btext',site:'band'},1500); for(let j=0;j<13;j++) add({k:'photo',n:j,site:'band'},380); [0,2].forEach((c,i)=>add({k:'check',i:c,site:'band'},520)); add({k:'send',site:'band'},1300); }
+  return {seg,total:t}; }
+function run(){ pg={...plan(),t:0}; timer=setInterval(()=>{ pg.t+=70; if(pg.t>=pg.total+500){clearInterval(timer);timer=null;st.screen='done';draw();return} paint(); },70); }
+const mmss=x=>{x=Math.max(0,Math.round(x));return (x>=60?Math.floor(x/60)+'분 ':'')+(x%60)+'초'};
+function paint(){ if(!pg||!$('#pgIn')) return; const t=Math.min(pg.t,pg.total-1), cur=pg.seg.find(x=>t<x.e)||pg.seg[pg.seg.length-1], site=cur.site, both=pg.seg.some(x=>x.site==='band'), draft=st.mode==='draft';
+  const f=x=>Math.max(0,Math.min(1,(t-x.s)/(x.e-x.s))), segs=pg.seg.filter(x=>x.site===site&&x.s<=t);
+  $('#pgDest').innerHTML=`<span class="${site==='blog'?'now':'ok'}">${site==='blog'?'':'✓ '}블로그 ${draft?'임시저장':'발행'}</span>`+(both?`<em></em><span class="${site==='band'?'now':''}">밴드 게시</span>`:'');
+  const photoDone=segs.filter(x=>x.k==='photo'&&t>=x.e).length, pc=cur.k==='photo'?cur.n+1:0;
+  const H={open:[site==='blog'?'글쓰기 화면을 여는 중':'밴드 글쓰기를 여는 중',site==='blog'?'네이버 블로그':'골프투어 모임'],title:['제목을 쓰는 중',T.title.slice(0,Math.ceil(f(cur)*T.title.length))],para:['본문을 쓰는 중',`4문단 중 ${cur.i+1}번째 문단`],photo:['사진을 올리는 중',`13장 중 ${pc}번째 · ${Math.round(f(cur)*100)}%`],tags:['해시태그를 넣는 중',T.tags],btext:['밴드 글을 쓰는 중','제목과 본문 4문단'],check:['올라간 내용을 확인하는 중',`${T.checks[cur.i]}${cur.i===3?'가 원문과 같은지':' 확인'}`],send:[site==='band'?'밴드에 게시하는 중':draft?'임시저장하는 중':'블로그에 발행하는 중',draft?'공개되지 않습니다':site==='blog'?(st.pub.open==='public'?'전체공개':'비공개'):'골프투어 모임']}[cur.k];
+  $('#pgH').textContent=H[0]; $('#pgS').textContent=H[1];
+  $('#pgLab').textContent=site==='blog'?'지금 만들어지는 블로그 글':'지금 만들어지는 밴드 글';
+  const car='<span class="car"></span>', typed=(x,txt)=>t>=x.e?txt:txt.slice(0,Math.ceil(f(x)*txt.length))+car;
+  const img=x=>{const d=t>=x.e, pop=d?Math.min(1,(t-x.e)/220):0; return `<div class="pim v${x.n%3}">${d?`<b style="opacity:${.35+.65*pop}"></b>`:`<s>사진 ${x.n+1} 올리는 중</s><u><i style="width:${Math.round(f(x)*100)}%"></i></u>`}</div>`};
+  let h='';
+  if(site==='blog'){ segs.forEach(x=>{ if(x.k==='title')h+=`<div class="pt">${typed(x,T.title)}</div>`; else if(x.k==='para')h+=`<div class="pp">${typed(x,T.paras[x.i])}</div>`; else if(x.k==='photo')h+=img(x); else if(x.k==='tags')h+=`<div class="ptag">${typed(x,T.tags)}</div>`; }); }
+  else { const bt=segs.find(x=>x.k==='btext'); if(bt){ const all=['['+T.title+']',...T.paras], k=t>=bt.e?all.length:Math.ceil(f(bt)*all.length); h+=all.slice(0,k).map((p,i)=>`<div class="${i?'pp':'pt'}" style="font-size:${i?12.5:14}px">${p}</div>`).join(''); } const ph=segs.filter(x=>x.k==='photo'); if(ph.length)h+=`<div class="grid3">${ph.map(img).join('')}</div>`; }
+  if(cur.k==='open')h=`<div class="pp" style="color:var(--a-soft)">빈 글을 준비하고 있습니다${'.'.repeat(1+Math.floor(t/350)%3)}</div>`;
+  $('#pgIn').innerHTML=h;
+  const sc=$('#pgScan'); if(cur.k==='check'){ const cs=pg.seg.filter(x=>x.site===site&&x.k==='check'), ff=(t-cs[0].s)/(cs[cs.length-1].e-cs[0].s); sc.hidden=false; sc.style.top=`calc(${Math.round(ff*100)}% - 46px)`; } else sc.hidden=true;
+  $('#pgPc').textContent=`${photoDone}/13`;
+  $('#pgStrip').innerHTML=Array.from({length:13},(_,i)=>`<i class="${i<photoDone?'ok v'+i%3:cur.k==='photo'&&cur.n===i?'up':''}"></i>`).join('');
+  const cks=pg.seg.filter(x=>x.site===site&&x.k==='check'), okN=cks.filter(x=>t>=x.e).length;
+  $('#pgCk').textContent=okN===cks.length?'원문과 같음':okN?`${okN}/${cks.length}`:'글을 다 쓴 뒤 확인합니다';
+  $('#pgChk').innerHTML=cks.map(x=>`<span class="${t>=x.e?'ok':t>=x.s?'now':''}">${t>=x.e?'✓ ':''}${T.checks[x.i]}</span>`).join('');
+  const R=4.2, pct=t/pg.total; $('#pgBar').style.width=(pct*100).toFixed(1)+'%';
+  $('#pgEl').textContent=`${Math.round(pct*100)}% · ${mmss(t*R/1000)} 지남`; $('#pgLeft').textContent=`약 ${mmss((pg.total-t)*R/1000)} 남음`; }
+const chip = (ok,label) => `<button class="chip ${ok?'':'need'}" data-go="connect"><span class="dot"></span>${label} ${ok?'연결됨':'로그인 필요'}</button>`;
+const nav = on => `<div class="nav"><button class="${on==='home'?'on':''}" data-go="home">상품</button><button class="${on==='history'?'on':''}" data-go="history">등록 기록</button><button class="${on==='settings'?'on':''}" data-go="settings">설정</button></div>`;
+const screens = {
+  login:()=>`<div class="scr"><div class="hd"><div class="row"><span class="brand"><i>G</i>골투오토</span></div><h1>골투 계정으로<br>로그인하세요</h1></div><div class="pad"><p class="meta">골투 매니저와 직원만 사용할 수 있습니다.</p><div class="field">아이디</div><div class="field">비밀번호</div></div></div><div class="bar"><button class="btn p" data-go="home">로그인</button></div>`,
+  home:()=>`<div class="scr"><div class="hd"><div class="row"><span class="brand"><i>G</i>골투오토</span><span>김매니저 님</span></div><h1>옮길 상품을<br>고르세요</h1></div><div class="conn">${chip(st.naver,'블로그')}${chip(st.band,'밴드')}</div><div class="pad"><div class="search">상품 이름, 골프장, 지역으로 찾기</div><div class="tabs"><button class="on">전체 16</button><button>안 올린 상품 9</button></div>
+  <button class="item" data-go="product"><span class="t"><strong>다낭 3색 골프 3박 5일 · 5성 호텔</strong><small>베트남 다낭 · 1,190,000원부터 · 출발일 6개</small><span class="tag none">아직 올리지 않음</span></span><span class="ph"></span></button>
+  <button class="item" data-go="product"><span class="t"><strong>방콕 시티호텔 2색 골프 3박 5일</strong><small>태국 방콕 · 990,000원부터 · 출발일 4개</small><span class="tag ok">블로그 11.10 발행</span></span><span class="ph b"></span></button>
+  <button class="item" data-go="product"><span class="t"><strong>후쿠오카 온천 골프 2박 3일</strong><small>일본 후쿠오카 · 1,350,000원부터 · 출발일 3개</small><span class="tag ok">블로그 11.08 · 밴드 11.08</span></span><span class="ph c"></span></button></div></div>${nav('home')}`,
+  product:()=>`<div class="scr"><button class="back" data-go="home">← 상품 목록</button><div class="pad" style="padding-top:0"><div class="title">다낭 3색 골프 3박 5일 · 5성 호텔</div><div class="meta">베트남 다낭 · 1,190,000원부터 · 사진 13장</div>
+  <div class="seg"><button class="${st.view==='blog'?'on':''}" data-view="blog">블로그에 올라갈 모습</button><button class="${st.view==='band'?'on':''}" data-view="band">밴드에 올라갈 모습</button></div>
+  <p style="margin:0">${st.view==='blog'?'다낭의 대표 골프장 세 곳을 도는 3박 5일 일정입니다.':'[다낭 3색 골프 3박 5일] 다낭의 대표 골프장 세 곳을 도는 일정입니다.'}</p><div class="big"></div><div class="cap">사진 1/13</div><p style="margin:10px 0 0">1인 1,190,000원부터 · 출발일 12월 3일, 12월 10일 외 4개</p><div class="big b"></div><div class="cap">사진 2/13</div>
+  <button class="opt" data-go="settings"><span>문장 다듬기 <b>꺼짐</b> · 글 끝 문구 <b>꺼짐</b></span><span class="lnk">바꾸기</span></button></div></div>
+  <div class="bar"><button class="btn s" data-sheet="draft">임시저장<small>공개되지 않음</small></button><button class="btn p" data-sheet="publish">발행<small>바로 공개됨</small></button></div>`,
+  progress:()=>`<div class="scr"><div class="pg"><div class="dest" id="pgDest"></div><div class="pgh" id="pgH"></div><div class="pgs" id="pgS"></div>
+    <div class="rowlab"><span id="pgLab"></span></div><div class="paper"><div class="fade"></div><div class="in" id="pgIn"></div><div class="scan" id="pgScan" hidden></div></div>
+    <div class="rowlab"><span>사진</span><span id="pgPc"></span></div><div class="strip" id="pgStrip"></div>
+    <div class="rowlab"><span>올린 뒤 확인</span><span id="pgCk"></span></div><div class="chk" id="pgChk"></div>
+    <div class="track"><i id="pgBar"></i></div><div class="rowlab" style="margin:0"><span id="pgEl"></span><span id="pgLeft"></span></div></div></div><div class="bar"><button class="btn q" data-sheet="stop">중단</button></div>`,
+  done:()=>`<div class="scr"><div class="center"><span class="mark">✓</span><div class="huge">${st.mode==='draft'?'블로그에 임시저장했습니다':'발행했습니다'}</div><span class="kicker">다낭 3색 골프 3박 5일 · 사진 13장 · 1분 48초</span>
+  <div class="res">${st.mode==='draft'?'<div><span>블로그 · 임시저장</span><span class="kicker">공개되지 않음</span></div>':`<div><span>블로그 · ${st.pub.open==='public'?'전체공개':'비공개'}</span><a href="#" data-toast="휴대폰의 네이버 앱 또는 브라우저로 글을 엽니다">글 보기</a></div>${st.pub.band&&st.band?'<div><span>밴드 · 골프투어 모임</span><a href="#" data-toast="휴대폰의 밴드 앱으로 글을 엽니다">글 보기</a></div>':''}`}</div>
+  ${st.mode==='draft'?'<div class="hint">네이버 블로그 앱의 글쓰기 › 임시저장함에서 확인하고 직접 발행할 수 있습니다.</div>':''}</div></div><div class="bar"><button class="btn s" data-go="history">등록 기록</button><button class="btn p" data-go="home">다른 상품 옮기기</button></div>`,
+  connect:()=>`<div class="scr"><button class="back" data-go="home">← 돌아가기</button><div class="pad" style="padding-top:0"><div class="title">계정 연결</div><p class="meta">글을 올릴 네이버와 밴드에 로그인해 둡니다. 비밀번호는 실제 네이버·밴드 화면에만 입력하며 앱은 저장하지 않습니다.</p>
+  <div class="set"><div class="ln"><span>네이버 블로그<br><small>${st.naver?'연결됨':'로그인이 필요합니다'}</small></span>${st.naver?'<button class="lnk" data-act="outN">연결 끊기</button>':'<button class="btn p" style="flex:0 0 auto;padding:10px 16px !important" data-svc="naver">로그인</button>'}</div>
+  <div class="ln"><span>네이버 밴드<br><small>${st.band?'연결됨 · 글 쓸 수 있는 밴드 2개':'로그인이 필요합니다'}</small></span>${st.band?'<button class="lnk" data-act="outB">연결 끊기</button>':'<button class="btn p" style="flex:0 0 auto;padding:10px 16px !important" data-svc="band">로그인</button>'}</div></div></div></div>`,
+  svc:()=>`<div class="svc"><div class="svcbar"><span>${st.svc==='band'?'밴드':'네이버'} 로그인</span><button class="lnk" data-go="connect">취소</button></div><div class="fake"><strong style="color:#17201b">이 자리에 실제 ${st.svc==='band'?'밴드':'네이버'} 로그인 페이지가 표시됩니다.</strong><span>아이디와 비밀번호, 2단계 인증을 직접 입력합니다. 로그인과 관계없는 페이지로는 이동할 수 없습니다.</span><button class="btn p" data-act="logged">(시안) 로그인을 마친 것으로 보기</button></div><p class="kicker" style="padding:0 18px">로그인이 끝나면 이 화면은 저절로 닫힙니다.</p></div>`,
+  relogin:()=>`<div class="scr"><div class="center"><span class="mark w">!</span><div class="huge">네이버 로그인이<br>풀렸습니다</div><p style="margin:0">옮기던 글은 그대로 두었습니다. 다시 로그인하면 멈춘 곳부터 이어서 진행합니다.</p><span class="kicker">사진 올리는 중 8/13에서 멈춤 · 아직 공개되지 않음</span></div></div><div class="bar"><button class="btn q" data-go="home">나중에 하기</button><button class="btn p" data-svc="naver">다시 로그인</button></div>`,
+  fail:()=>`<div class="scr"><div class="center"><span class="mark x">×</span><div class="huge">끝까지 옮기지<br>못했습니다</div><p style="margin:0">글은 공개되지 않았습니다. 네이버 화면이 평소와 달라 사진을 올리다 멈췄습니다.</p><span class="kicker">다시 시도하면 처음부터 새로 옮깁니다. 같은 문제가 계속되면 담당자에게 알려 주세요.</span></div></div><div class="bar"><button class="btn q" data-go="home">그만두기</button><button class="btn p" data-go="progress">다시 시도</button></div>`,
+  history:()=>`<div class="scr"><div class="pad"><div class="title" style="margin-top:6px">등록 기록</div><div class="tabs"><button class="on">내 기록</button><button>전체</button></div><div class="hist">
+  <div class="item"><strong>다낭 3색 골프 3박 5일 · 5성 호텔</strong><span class="st2 ok">블로그 발행 · 전체공개 · 11.14 13:48</span><span class="rowact"><a class="lnk" href="#" data-toast="휴대폰의 네이버 앱 또는 브라우저로 글을 엽니다">글 보기</a><button class="lnk" style="color:var(--bad) !important" data-sheet="del">글 삭제</button></span></div>
+  <div class="item"><strong>방콕 시티호텔 2색 골프 3박 5일</strong><span class="st2 dr">블로그 임시저장 · 11.13 14:37</span><small style="color:var(--a-soft)">네이버 임시저장함에서 확인</small></div>
+  <div class="item"><strong>후쿠오카 온천 골프 2박 3일</strong><span class="st2 fail">블로그 실패 · 11.12 09:20 · 공개되지 않음</span><span class="rowact"><button class="lnk" data-go="progress">다시 시도</button></span></div>
+  <div class="item"><strong>세부 리조트 골프 3박 4일</strong><span class="st2 del">블로그 삭제함 · 11.11 16:02</span></div></div></div></div>${nav('history')}`,
+  settings:()=>`<div class="scr"><div class="pad set"><div class="title" style="margin-top:6px">설정</div><h3>내 계정</h3><div class="ln"><span>김매니저 · 매니저</span><button class="lnk" data-go="login">로그아웃</button></div>
+  <h3>계정 연결</h3><button class="ln" data-go="connect"><span>네이버 블로그<br><small>${st.naver?'연결됨':'로그인 필요'}</small></span><span class="lnk">관리</span></button><button class="ln" data-go="connect"><span>네이버 밴드<br><small>${st.band?'연결됨':'로그인 필요'}</small></span><span class="lnk">관리</span></button>
+  <h3>글 옵션</h3><div class="ln"><span>문장 다듬기<br><small>맞춤법과 띄어쓰기만 고칩니다</small></span><span class="sw"></span></div><div class="ln"><span>글 끝 문구 넣기<br><small>예약 문의 안내 등</small></span><span class="sw"></span></div><div class="ln"><span>기본 해시태그</span><span class="kicker">#골투</span></div></div></div>${nav('settings')}`
+};
+const sheets = {
+  draft:()=>`<h2>임시저장</h2><p>네이버 블로그의 임시저장함에 저장합니다. 다른 사람에게 보이지 않습니다.</p>
+    <div class="pick on"><span class="box2">✓</span><span class="t"><strong>네이버 블로그</strong><small>${st.naver?'임시저장함에 저장':'로그인이 필요합니다'}</small></span></div>
+    <div class="pick off"><span class="box2"></span><span class="t"><strong>네이버 밴드</strong><small>밴드에는 임시저장이 없어 발행할 때만 올릴 수 있습니다</small></span></div>
+    <div class="acts"><button class="btn q" data-close>취소</button><button class="btn p" data-start="draft">블로그에 임시저장</button></div>`,
+  publish:()=>`<h2>발행</h2><p>고른 곳에 바로 올립니다.</p>
+    <button class="pick ${st.pub.blog?'on':''}" data-tog="blog"><span class="box2">${st.pub.blog?'✓':''}</span><span class="t"><strong>네이버 블로그</strong><small>공개 범위를 고르세요</small></span></button>
+    ${st.pub.blog?`<div class="two"><button class="${st.pub.open==='public'?'on':''}" data-open="public">전체공개</button><button class="${st.pub.open==='private'?'on':''}" data-open="private">비공개</button></div>`:''}
+    ${st.band?`<button class="pick ${st.pub.band?'on':''}" data-tog="band"><span class="box2">${st.pub.band?'✓':''}</span><span class="t"><strong>네이버 밴드 · 골프투어 모임</strong><small>오늘 3건 중 1건 올림</small></span></button>`:`<div class="pick off"><span class="box2"></span><span class="t"><strong>네이버 밴드</strong><small>밴드 로그인이 필요합니다</small></span><button class="lnk" data-svc="band" style="opacity:1">로그인</button></div>`}
+    <div class="acts"><button class="btn q" data-close>취소</button><button class="btn p" data-sheet="confirm">다음</button></div>`,
+  confirm:()=>`<h2>이대로 발행할까요?</h2><p>다낭 3색 골프 3박 5일 · 5성 호텔</p>
+    <div class="res">${st.pub.blog?`<div><span>네이버 블로그</span><strong>${st.pub.open==='public'?'전체공개':'비공개'}</strong></div>`:''}${st.pub.band&&st.band?'<div><span>네이버 밴드</span><strong>골프투어 모임</strong></div>':''}</div>
+    <div class="warnline">발행하면 ${st.pub.open==='public'||(st.pub.band&&st.band)?'바로 다른 사람에게 보입니다':'나만 볼 수 있는 글로 올라갑니다'}. 올린 뒤에는 등록 기록에서 블로그 글을 삭제할 수 있습니다.</div>
+    <div class="acts"><button class="btn q" data-sheet="publish">뒤로</button><button class="btn p" data-start="publish">발행하기</button></div>`,
+  stop:()=>`<h2>옮기기를 중단할까요?</h2><p>쓰던 글은 버립니다. 아직 공개된 것은 없습니다.</p><div class="acts"><button class="btn q" data-close>계속 옮기기</button><button class="btn d" data-go="home">중단</button></div>`,
+  del:()=>`<h2>블로그 글을 삭제할까요?</h2><p>다낭 3색 골프 3박 5일 · 5성 호텔</p><div class="warnline" style="background:var(--bad-bg);color:var(--bad)">네이버 블로그에서 글이 지워지며 되돌릴 수 없습니다.</div><div class="acts"><button class="btn q" data-close>취소</button><button class="btn d" data-act="deleted">삭제</button></div>`
+};
+function draw(){
+  const ph=$('#phone');
+  ph.innerHTML = screens[st.screen]() + (st.sheet?`<div class="dim"><div class="sheet">${sheets[st.sheet]()}</div></div>`:'') + (st.toast?`<div class="toast" role="status">${st.toast}</div>`:'');
+  $('#jump').innerHTML = Object.keys(names).map(k=>`<button data-jump="${k}" aria-current="${k===st.screen}">${names[k]}</button>`).join('');
+  if(st.screen==='progress') paint();
+  const w=why[st.screen]; $('#why').innerHTML=`<h2>지금 보이는 화면</h2><h3>${w[0]}</h3><p style="margin:0 0 8px">${w[1]}</p><ul>${w[2].map(x=>`<li>${x}</li>`).join('')}</ul>`;
+}
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-go],[data-jump],[data-sheet],[data-close],[data-start],[data-tog],[data-open],[data-view],[data-svc],[data-act],[data-toast]'); if(!t) return;
+  if(t.tagName==='A') e.preventDefault();
+  const d=t.dataset;
+  if(d.jump){ if(d.jump==='svc') st.svc=st.svc||'naver'; go(d.jump); }
+  else if(d.go) go(d.go);
+  else if(d.sheet){ st.sheet=d.sheet; draw(); }
+  else if('close' in d){ st.sheet=null; draw(); }
+  else if(d.start){ st.mode=d.start; if(d.start==='draft'&&!st.naver){ st.svc='naver'; go('svc'); return; } go('progress'); }
+  else if(d.tog){ st.pub[d.tog]=!st.pub[d.tog]; draw(); }
+  else if(d.open){ st.pub.open=d.open; draw(); }
+  else if(d.view){ st.view=d.view; draw(); }
+  else if(d.svc){ st.svc=d.svc; go('svc'); }
+  else if(d.toast){ toast(d.toast); }
+  else if(d.act==='logged'){ st[st.svc==='band'?'band':'naver']=true; st.screen='connect'; toast((st.svc==='band'?'밴드':'네이버')+'에 연결했습니다'); }
+  else if(d.act==='outN'){ st.naver=false; draw(); }
+  else if(d.act==='outB'){ st.band=false; draw(); }
+  else if(d.act==='deleted'){ st.sheet=null; toast('블로그 글을 삭제했습니다'); }
+});
+draw();
+</script>
