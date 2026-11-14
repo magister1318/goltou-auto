@@ -36,7 +36,8 @@ export function parsePublishIdentity(response: GuardedResponse): ResponseIdentit
   return { post: [...posts.values()][0] ?? null, postId: [...ids][0] ?? null };
 }
 export interface PublishedPage { url: string; titles: string[] }
-export function resolvePublishIdentity(response: ResponseIdentity, navigationUrls: string[], pages: PublishedPage[], title: string): PublishedPost | null {
+export type PublishIdentitySource = 'response' | 'result-url' | 'title';
+export function resolvePublishEvidence(response: ResponseIdentity, navigationUrls: string[], pages: PublishedPage[], title: string): { post: PublishedPost | null; sources: PublishIdentitySource[] } {
   const source = (urls: string[]) => {
     const posts = new Map(urls.map(postIdentity).filter((p): p is PublishedPost => !!p).map(p => [p.url, p]));
     if (posts.size > 1) throw new Error('BLOG_PUBLISH_ID_AMBIGUOUS');
@@ -44,7 +45,12 @@ export function resolvePublishIdentity(response: ResponseIdentity, navigationUrl
   };
   const matching = pages.filter(p => p.titles.includes(title));
   if (matching.some(p => p.titles.length !== 1)) throw new Error('BLOG_PUBLISH_ID_AMBIGUOUS');
-  const candidates = [response.post, source(navigationUrls), source(matching.map(p => p.url))].filter((p): p is PublishedPost => !!p);
+  const evidence = [response.post, source(navigationUrls), source(matching.map(p => p.url))];
+  const candidates = evidence.filter((p): p is PublishedPost => !!p);
   if (new Set(candidates.map(p => p.url)).size > 1 || response.postId && candidates.some(p => p.postId !== response.postId)) throw new Error('BLOG_PUBLISH_ID_AMBIGUOUS');
-  return candidates[0] ?? null;
+  const names: PublishIdentitySource[] = ['response', 'result-url', 'title'];
+  return { post: candidates[0] ?? null, sources: names.filter((_, index) => !!evidence[index]) };
+}
+export function resolvePublishIdentity(response: ResponseIdentity, navigationUrls: string[], pages: PublishedPage[], title: string): PublishedPost | null {
+  return resolvePublishEvidence(response, navigationUrls, pages, title).post;
 }

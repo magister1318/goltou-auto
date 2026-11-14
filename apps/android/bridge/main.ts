@@ -1,6 +1,6 @@
 // Reference: ../refs/DAF/daf3/apps/mobile/src/core/main.ts (embedded Node startup arguments).
 import path from 'node:path';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { AppCore, ChannelRegistrationRunner, goltouPhotoUrl, NativeBridge, startCore, fileMediaStorage, filePolishStrengthStore, type CoreOptions } from '../../../packages/core/src/index';
 import { createApiClient } from '../../../packages/api-client/src/index';
 import { apiOrigin } from './config';
@@ -42,12 +42,17 @@ const options: CoreOptions = {
   port: Number(argument('port')), token: argument('token'), uiDir: path.join(argument('bundle'), 'ui'),
 };
 async function start() {
-  const runtime = { deleteHost: host, device: () => native.call<import('../../../packages/api-client/src/index').LoginInput['device']>('session.device'), polishStrength: filePolishStrengthStore(path.join(path.dirname(argument('data')), 'polish-strength.txt')), ...(__GOLTOU_DEBUG__ ? { experimentTitle: true, experimentTitleLabel: 'WP14 ' } : {}) };
+  const runtime: NonNullable<ConstructorParameters<typeof AppCore>[4]> = { deleteHost: host, device: () => native.call<import('../../../packages/api-client/src/index').LoginInput['device']>('session.device'), polishStrength: filePolishStrengthStore(path.join(path.dirname(argument('data')), 'polish-strength.txt')), ...(__GOLTOU_DEBUG__ ? { experimentTitle: false, experimentTitleLabel: 'WP14 ' } : {}) };
   const app = new AppCore(createApiClient(apiOrigin, fetch), new AndroidTokenStore(native),
     (checkpoint, notify) => new ChannelRegistrationRunner({ band: options.band!, blog: options.blog! }, checkpoint, notify), options.preparation,
     runtime);
   options.app = app;
   if (__GOLTOU_DEBUG__ && argument('debug') === 'true') {
+    runtime.deleteLog = async value => {
+      const directory = path.join(path.dirname(argument('data')), 'wp14');
+      await mkdir(directory, { recursive: true });
+      await appendFile(path.join(directory, 'record-delete-shape.jsonl'), JSON.stringify(value) + '\n', { mode: 0o600 });
+    };
     const { Experiments } = await import('../../../packages/core/src/experiments');
     const { auditConversions } = await import('../../../packages/core/src/conversion-audit');
     const { deleteTestPost } = await import('../../../packages/core/src/test-post-delete');
@@ -65,6 +70,28 @@ async function start() {
       info: async () => ({ ...await native.call<Record<string, unknown>>('debug.info'), node: process.version }),
       lifecycle: async mode => { await native.call('debug.lifecycle', { mode }); },
       capture: (surface, name) => host.capture(surface, name),
+      inspectRecordedPost: async () => {
+        const { inspectRecordedPost } = await import('./publish-recovery');
+        const ready = async () => {
+          const state = await native.call<{ foreground: boolean; windowFocused: boolean; screenOn: boolean }>('debug.info');
+          if (!state.foreground || !state.windowFocused || !state.screenOn) throw new Error('DEVICE_CONDITION_LOST');
+        };
+        const token = await new AndroidTokenStore(native).read();
+        if (!token) throw new Error('BLOG_POST_READ_REFUSED');
+        await inspectRecordedPost(path.join(path.dirname(argument('data')), 'wp14', 'record-delete-context.json'), createApiClient(apiOrigin, fetch), token, host, ready);
+      },
+      verifyPrivatePublish: async () => {
+        if (app.snapshot().job?.status === 'running') throw new Error('JOB_RUNNING');
+        const { recoverPrivatePublish } = await import('./publish-recovery');
+        const ready = async () => {
+          const state = await native.call<{ foreground: boolean; windowFocused: boolean; screenOn: boolean }>('debug.info');
+          if (!state.foreground || !state.windowFocused || !state.screenOn) throw new Error('DEVICE_CONDITION_LOST');
+        };
+        await ready();
+        const token = await new AndroidTokenStore(native).read();
+        if (!token) throw new Error('BLOG_PUBLISH_RECOVERY_REFUSED');
+        await recoverPrivatePublish(path.join(path.dirname(argument('data')), 'wp14', 'private-publish-context.json'), createApiClient(apiOrigin, fetch), token, host, ready);
+      },
       deleteTestPost: async checkOnly => {
         const { recoverTestPostCleanup, protectCleanupInputs } = await import('./test-post-recovery');
         const ready = async () => {
@@ -87,7 +114,8 @@ async function start() {
       },
       configurePublishProbe: visibility => {
         if (app.snapshot().job?.status === 'running') throw new Error('JOB_RUNNING');
-        runtime.experimentTitleLabel = visibility === 'off' ? 'WP14 private-once ' : `WP14 probe-${visibility} `;
+        runtime.experimentTitle = visibility !== 'off';
+        runtime.experimentTitleLabel = `WP14 probe-${visibility} `;
         if (visibility === 'off') { delete options.blog!.publishProbe; return; }
         options.blog!.publishProbe = { visibility, record: async (request, proof) => {
           const directory = path.join(path.dirname(argument('data')), 'wp14');

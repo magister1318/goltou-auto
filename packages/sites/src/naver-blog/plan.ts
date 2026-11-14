@@ -6,7 +6,7 @@ import { confirmBlogPhotos, prepareBlogEditor } from './index';
 import { ControlNotFoundError } from '../control-failure';
 import { closeTagLayer, protectBlogInputs, requireTagFocus, requireTagLayerClosed, tagInputSelector, tagPanelToggle } from './draft-safety';
 import { finalPublishSelector, guardedPublishClick, inspectPrivateRequest, postIdentity, readVisibility, requireVisibility, selectVisibility, type BlogVisibility, type PublishedPost, type VisibilityProof } from './publish-safety';
-import { parsePublishIdentity, resolvePublishIdentity, type ResponseIdentity, type PublishedPage } from './publish-identity';
+import { parsePublishIdentity, resolvePublishEvidence, type ResponseIdentity, type PublishedPage, type PublishIdentitySource } from './publish-identity';
 
 /** Structural subset of WP4 InputPlan. Sites has no dependency on core or a device API. */
 export interface BlogPlan {
@@ -92,6 +92,7 @@ export class BlogExecution {
   private publishRequestAccepted = false;
   /** Established from unambiguous response or resulting page evidence. Memory only. */
   publishedPost: PublishedPost | undefined;
+  publishedIdentitySources: PublishIdentitySource[] = [];
   publishedVerified = false;
   private get visibility() { return this.env.visibility ?? 'public'; }
   readonly tableModes: ('native' | 'text-list')[] = [];
@@ -482,9 +483,11 @@ export class BlogExecution {
         if (this.publishFailure) throw new Error(this.publishFailure);
         const state = await s.readState();
         const pages = await read<PublishedPage[]>(s, `return docs.map(({d})=>({url:d.location.href,titles:Array.from(d.querySelectorAll('.se-documentTitle .se-text-paragraph')).map(e=>(e.textContent||'').trim())}));`).catch(() => []);
-        const identity = resolvePublishIdentity(this.responsePost, [state.url], pages, this.title.text);
+        const evidence = resolvePublishEvidence(this.responsePost, [state.url], pages, this.title.text);
+        const identity = evidence.post;
         if (!identity || !pages.some(p => postIdentity(p.url)?.url === identity.url && p.titles.length === 1 && p.titles[0] === this.title.text)) return false;
         this.publishedPost = identity;
+        this.publishedIdentitySources = evidence.sources;
         return true;
       }, 30000);
       await this.verifyPublished();
@@ -518,7 +521,7 @@ export class BlogExecution {
     const identities = await read<string[]>(s, `return docs.map(({d})=>d.location.href);`);
     if (!identities.some(url => postIdentity(url)?.url === this.publishedPost!.url)) throw new Error('BLOG_PUBLISH_ID_UNCONFIRMED');
     if (this.visibility === 'private') {
-      const privateMarked = await read<boolean>(s, `return docs.some(({d})=>${JSON.stringify(await ownUrls())}.includes(d.location.href)&&Array.from(d.querySelectorAll('.post_visibility, .blog2_visibility, .post_author, .blog2_container, [data-post-visibility]')).some(e=>visible(e)&&(e.textContent||'').trim()==='비공개'));`);
+      const privateMarked = await read<boolean>(s, `return docs.some(({d})=>${JSON.stringify(await ownUrls())}.includes(d.location.href)&&Array.from(d.querySelectorAll('.post_visibility, .blog2_visibility, .post_author, [data-post-visibility], .se-documentTitle .blog2_container .writer .desc .txt')).some(e=>visible(e)&&(e.textContent||'').trim()==='비공개'));`);
       if (!privateMarked) throw new Error('BLOG_PUBLISHED_PRIVATE_UNCONFIRMED');
     }
     this.env.verify(value);

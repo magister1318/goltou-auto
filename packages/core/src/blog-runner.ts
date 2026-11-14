@@ -94,6 +94,7 @@ export class BlogRegistrationRunner implements RegistrationRunner {
           await this.execution!.saveAndVerify();
           if (job.mode === 'publish') job.postUrl = await this.execution!.publish();
           job.blogReadbackTimings = [...this.execution!.readbackTimings];
+          job.blogIdentitySources = [...this.execution!.publishedIdentitySources];
           job.targetResults![0]!.status = job.mode === 'draft' ? 'draft_saved' : 'published';
           if (job.postUrl) job.targetResults![0]!.postUrl = job.postUrl;
           job.tableModes = [...this.execution!.tableModes]; job.linkCard = this.execution!.linkCard;

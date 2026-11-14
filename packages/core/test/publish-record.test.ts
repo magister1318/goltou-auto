@@ -6,7 +6,7 @@ import { ChannelRegistrationRunner } from '../src/band-runner';
 import { BlogRegistrationRunner } from '../src/blog-runner';
 import { makePreview } from '../src/preparation';
 import type { AppRequest, JobInput } from '../src/protocol';
-const site = vi.hoisted(() => ({ blog: { ensureReady: vi.fn(), write: vi.fn(), saveAndVerify: vi.fn(), publish: vi.fn(), dialog: vi.fn(async () => null), close: vi.fn(), show: vi.fn(), hide: vi.fn(), readbackTimings: [], tableModes: [], linkCard: 'off', publishedPost: { postId: '9001', url: 'https://example.invalid/9001' } as { postId: string; url: string } | undefined } }));
+const site = vi.hoisted(() => ({ blog: { ensureReady: vi.fn(), write: vi.fn(), saveAndVerify: vi.fn(), publish: vi.fn(), dialog: vi.fn(async () => null), close: vi.fn(), show: vi.fn(), hide: vi.fn(), readbackTimings: [], publishedIdentitySources: ['result-url', 'title'], tableModes: [], linkCard: 'off', publishedPost: { postId: '9001', url: 'https://example.invalid/9001' } as { postId: string; url: string } | undefined } }));
 vi.mock('../src/blog', async original => ({ ...await original<object>(), createBlogExecution: () => site.blog }));
 const cleanup: (() => void)[] = [];
 beforeEach(() => { vi.clearAllMocks(); site.blog.publishedPost = { postId: '9001', url: 'https://example.invalid/9001' }; site.blog.publish.mockResolvedValue('https://example.invalid/9001'); });
@@ -60,6 +60,7 @@ describe('verified publish API recording', () => {
   it.each(['blog', 'channel'] as const)('%s records published with the returned URL and retries only the identical API update', async kind => {
     const f = await fixture(kind, 'published');
     expect(f.runner.job?.blogVisibility).toBe('private');
+    expect(f.runner.job?.blogIdentitySources).toEqual(['result-url', 'title']);
     expect(f.updates.filter(update => update.status === 'published')).toEqual([{ postNo: 91, status: 'published', step: 6, failReason: '', postUrl: 'https://example.invalid/9001' }]);
     expect(site.blog.publish).toHaveBeenCalledTimes(1);
     f.repair(); await f.call('job.retryRecord');

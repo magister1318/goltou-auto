@@ -29,7 +29,7 @@ export class AppCore {
   private recordPrivateText: string[] = [];
   private deletionRecording: import('./record-checkpoint').RecordingCheckpoint | undefined;
   private readonly polishSetting: PolishStrengthStore;
-  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { device: () => Promise<import('@goltou/api-client').LoginInput['device']>; deleteHost?: import('@goltou/surface').SurfaceHost; experimentTitle?: boolean; experimentTitleLabel?: string; polishStrength?: PolishStrengthStore }) {
+  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { device: () => Promise<import('@goltou/api-client').LoginInput['device']>; deleteHost?: import('@goltou/surface').SurfaceHost; deleteLog?: import('@goltou/sites').DeleteLog; experimentTitle?: boolean; experimentTitleLabel?: string; polishStrength?: PolishStrengthStore }) {
     this.polishSetting = runtime?.polishStrength ?? new MemoryPolishStrengthStore();
     const notify = (job: Job) => { if (!this.state.user) return; this.state.job = job; if (job.status === 'login_paused' && job.service) { this.state.services[job.service] = 'expired'; this.state.visibleService = job.service; } this.emit(); };
     this.createRunner = () => factory ? factory((job, retry) => this.record(job, retry), notify) : new FakeRegistrationRunner(() => this.state.simulation, job => this.record(job), notify);
@@ -158,7 +158,7 @@ export class AppCore {
           requireDeletablePost(post);
           if (['postUrl', 'productTitle', 'startedAt', 'productNo'].some(key => post[key as keyof typeof post] !== confirmation.post[key as keyof typeof post])) throw new ApiError('conflict', '기록이 바뀌었습니다. 삭제할 글을 다시 확인해 주세요.');
           if (!this.runtime?.deleteHost) throw new ApiError('invalid', '블로그 삭제 기능을 사용할 수 없습니다.');
-          await removeRecordedBlogPost(this.runtime.deleteHost, post);
+          await removeRecordedBlogPost(this.runtime.deleteHost, post, this.runtime.deleteLog);
           this.pendingDeleteUpdate = deletedUpdate(post);
           this.state.postDeletion = { postNo: post.postNo, verifiedGone: true, recorded: false };
           this.emit();

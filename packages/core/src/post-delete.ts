@@ -1,5 +1,5 @@
 import { ApiError, type Post } from '@goltou/api-client';
-import { deleteBlogPost, openPostDeletionRead, verifyPostAbsentFromList, deletePageSource, read, verifyPostGone, type DeletePage } from '@goltou/sites';
+import { deleteBlogPost, openPostDeletionRead, verifyPostAbsentFromList, deletePageSource, read, verifyPostGone, type DeletePage, type DeleteLog } from '@goltou/sites';
 import type { SurfaceHost } from '@goltou/surface';
 
 export { canDeletePost, deletedPost, deletedUpdate, requireDeletablePost } from './post-delete-policy';
@@ -7,21 +7,24 @@ import { requireDeletablePost } from './post-delete-policy';
 
 /** Opens only the record's URL. A prior uncertain click is resolved by reading
  * that URL before any further deletion, including after restarting the app. */
-export async function removeRecordedBlogPost(host: SurfaceHost, post: Post) {
+export async function removeRecordedBlogPost(host: SurfaceHost, post: Post, log: DeleteLog = async () => {}) {
   requireDeletablePost(post);
   const surface = await host.create('naver');
   try {
     await surface.blockRequests?.(['/RabbitWrite.naver', '/RabbitUpdate.naver', '/RabbitTempPostWrite.naver', '/RabbitTempPostUpdate.naver'].map(pathname => ({ hostname: 'blog.naver.com', pathname })));
-    if (await openPostDeletionRead(surface, post.postUrl)) { await verifyPostAbsentFromList(surface, post.postUrl, post.productTitle); return; }
+    await log({ item: 80, pass: 1 });
+    if (await openPostDeletionRead(surface, post.postUrl)) { await log({ item: 81, pass: 1 }); await verifyPostAbsentFromList(surface, post.postUrl, post.productTitle); return; }
     await surface.show();
     const pages = await read<DeletePage[]>(surface, deletePageSource);
     if (!pages.some(p => p.titles.length)) {
       await verifyPostGone(surface, { url: post.postUrl, title: post.productTitle });
       return;
     }
-    await deleteBlogPost(surface, { url: post.postUrl, title: post.productTitle });
+    await deleteBlogPost(surface, { url: post.postUrl, title: post.productTitle }, log);
   } catch (error) {
     const code = error instanceof Error ? error.message : '';
+    const codes = ['OBSERVATION_TIMEOUT', 'SURFACE_NAVIGATION_TIMEOUT', 'BLOG_POST_DELETE_CONFIRM_UNCONFIRMED', 'BLOG_POST_DELETE_READ_ALERT_UNCONFIRMED', 'BLOG_POST_DELETE_LIST_UNCONFIRMED', 'SURFACE_READ_FAILED_OR_SIDE_EFFECT'];
+    await log({ item: 90, pass: 0, actual: codes.indexOf(code) + 1 });
     const reason = code.match(/^BLOG_POST_DELETE_CHECK_(\d+)$/)?.[1];
     const messages: Record<string, string> = {
       '1': '기록에 해당하는 글 한 건을 확인하지 못했습니다.',

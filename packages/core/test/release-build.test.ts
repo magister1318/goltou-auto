@@ -34,7 +34,7 @@ it('builds isolated release assets, strips debug tools and starts the bundled co
   expect(engine).toContain('BLOG_POST_DELETED');
   expect(engine).not.toContain('blog.checkTestPostDeleted');
   expect(engine).not.toContain('.read-dialog');
-  for (const marker of ['recoverTestPostCleanup', 'cleanup-context.json', 'publishResponseShape', 'publish-response-shape.json', 'WP14 private-once']) expect(engine.includes(marker), marker).toBe(false);
+  for (const marker of ['record-delete-context.json', 'record-delete-shape.jsonl', 'blog.inspectRecordedPost', 'recoverPrivatePublish', 'verifyInterruptedPrivatePublish', 'private-publish-context.json', 'blog.verifyPrivatePublish', 'recoverTestPostCleanup', 'cleanup-context.json', 'publishResponseShape', 'publish-response-shape.json', 'WP14 private-once']) expect(engine.includes(marker), marker).toBe(false);
   for (const marker of ['publishProbeShape', '"blog.publishProbe"', 'configurePublishProbe:', 'blocked-unconditionally', 'auditConversions', 'experimentTitle: true', 'draftSaveLimit: 1', 'photoPaths:', 'class Experiments', 'delete-test-post', 'BLOG_TEST_DELETE_ALREADY_ATTEMPTED', 'BLOG_TEST_DELETE_CONFIRM_UNCONFIRMED', 'blog.deleteTestPost']) expect(engine.includes(marker), marker).toBe(false);
   const uiFiles = await readdir(path.join(assets, 'ui/assets'));
   const ui = (await Promise.all(uiFiles.filter(file => file.endsWith('.js')).map(file => readFile(path.join(assets, 'ui/assets', file), 'utf8')))).join('\n');

@@ -89,12 +89,12 @@ describe('production client over a local contract HTTP server', () => {
       await vi.advanceTimersByTimeAsync(1); await promise; expect(signal?.aborted).toBe(true); expect(fetcher).toHaveBeenCalledTimes(1);
     } finally { vi.useRealTimers(); }
   });
-  it('prefixes only the registration title and preserves API prices, dates, courses, URL and hash', async () => {
+  it.each([false, true])('prefixes the registration title only with explicit experiment opt-in (%s)', async experimentTitle => {
     const f = await fixture(); await f.call('login', credentials());
-    const app = new AppCore(f.api, f.tokens, undefined, undefined, { device: async () => credentials().device, experimentTitle: true }); cleanup.push(() => app.dispose());
+    const app = new AppCore(f.api, f.tokens, undefined, undefined, { device: async () => credentials().device, experimentTitle }); cleanup.push(() => app.dispose());
     await app.restoreSession();
     const preview = await app.handle({ type: 'app', id: 2, command: 'preview.prepare', input: { productNo: 77, options: { polish: false, closing: false, linkCard: true } } }) as import('../src/preparation').PreparedPreview;
-    expect(observePlan(preview.blog)).toMatchObject({ title: `[골투오토 실험] ${product.title}`, prices: ['1190000'], departures: ['2026-12-03'], golfCourses: product.golfCourses });
+    expect(observePlan(preview.blog)).toMatchObject({ title: experimentTitle ? `[골투오토 실험] ${product.title}` : product.title, prices: ['1190000'], departures: ['2026-12-03'], golfCourses: product.golfCourses });
     expect(preview.blog.steps).toContainEqual(expect.objectContaining({ kind: 'text', role: 'linkCard', text: product.productUrl }));
     expect(preview.contentHash).toBe(product.contentHash); expect(product.title).toBe('PRIVATE-TITLE');
   });
@@ -171,11 +171,13 @@ describe('conversion metrics and production media restrictions', () => {
     }
     expect(fetcher).not.toHaveBeenCalled(); expect(storage.createWorkDirectory).not.toHaveBeenCalled();
   });
-  it.each([false, true])('applies experiment title and the one-save limit only to the debug engine (%s)', async debug => {
+  it.each([false, true])('keeps ordinary titles by default and the one-save limit only in the debug engine (%s)', async debug => {
     const result = await build({ entryPoints: ['apps/android/bridge/main.ts'], bundle: true, minifySyntax: true, platform: 'node', target: 'node18', format: 'cjs', write: false, external: ['bufferutil', 'utf-8-validate'], define: { __GOLTOU_API_ORIGIN__: JSON.stringify('https://local.invalid'), __GOLTOU_DEBUG__: String(debug) } });
     const source = result.outputFiles[0]!.text;
     expect(/draftSaveLimit:\s*1\b/.test(source)).toBe(debug);
-    expect(/experimentTitle:\s*(?:!0|true)\b/.test(source)).toBe(debug);
+    expect(/experimentTitle:\s*(?:!1|false)\b/.test(source)).toBe(debug);
+    expect(/experimentTitle:\s*(?:!0|true)\b/.test(source)).toBe(false);
+    expect(source.includes('runtime.experimentTitle = visibility !== "off"')).toBe(debug);
   });
   it('builds the actual release engine without fake API, seeded sessions, examples or debug audit code', async () => {
     const result = await build({ entryPoints: ['apps/android/bridge/main.ts'], bundle: true, minifySyntax: true, platform: 'node', target: 'node18', format: 'cjs', write: false, external: ['bufferutil', 'utf-8-validate'], define: { __GOLTOU_API_ORIGIN__: JSON.stringify('https://local.invalid'), __GOLTOU_DEBUG__: 'false' } });

@@ -90,6 +90,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
             }
           }
           j.blogReadbackTimings = [...this.blog.readbackTimings];
+          j.blogIdentitySources = [...this.blog.publishedIdentitySources];
           if (!j.publishProbe) result.status = j.mode === 'draft' ? 'draft_saved' : 'published';
           j.tableModes = [...this.blog.tableModes]; j.linkCard = this.blog.linkCard;
           await this.capture(false, 'draft-verified');

@@ -24,6 +24,8 @@ export interface ExperimentOptions {
   capture(surface: Surface, name: string): Promise<RecordValue>;
   conversionCheck?(check: () => void): Promise<import('./conversion-audit').ConversionAudit>;
   deleteTestPost?(checkOnly?: boolean): Promise<void>;
+  verifyPrivatePublish?(): Promise<void>;
+  inspectRecordedPost?(): Promise<void>;
   configurePublishProbe?(visibility: 'public' | 'private' | 'off'): void;
 }
 
@@ -41,7 +43,7 @@ export class Experiments {
     if (command === 'state') return this.snapshot();
     if (command === 'stop') { this.cancelled = true; return this.snapshot(); }
     if (this.state.running) throw new Error('EXPERIMENT_BUSY');
-    if (!['blog.publishProbe', 'blog.checkTestPostDeleted', 'blog.deleteTestPost', 'conversion.check', 'ai.polish', 'info', 'example', 'evidence', 'show', 'hide', 'login.open', 'login.check', 'band.list', 'blog.run', 'band.run', 'lifecycle'].includes(command)) throw new Error('UNKNOWN_EXPERIMENT');
+    if (!['blog.inspectRecordedPost', 'blog.verifyPrivatePublish', 'blog.publishProbe', 'blog.checkTestPostDeleted', 'blog.deleteTestPost', 'conversion.check', 'ai.polish', 'info', 'example', 'evidence', 'show', 'hide', 'login.open', 'login.check', 'band.list', 'blog.run', 'band.run', 'lifecycle'].includes(command)) throw new Error('UNKNOWN_EXPERIMENT');
     if (command === 'blog.publishProbe') {
       if (!this.options.configurePublishProbe || !['public', 'private', 'off'].includes(String(input.visibility))) throw new Error('DEBUG_ONLY');
       this.options.configurePublishProbe(input.visibility as 'public' | 'private' | 'off');
@@ -100,6 +102,17 @@ export class Experiments {
   private async run(command: string, channel: Channel, input: RecordValue) {
     let active: Surface | undefined;
     try {
+      if (command === 'blog.inspectRecordedPost') {
+        if (!this.options.inspectRecordedPost) throw new Error('DEBUG_ONLY');
+        await this.step('inspect-recorded-post', () => this.options.inspectRecordedPost!());
+        this.state.lastResult = '기록 글 존재 여부 읽기 완료'; return;
+      }
+      if (command === 'blog.verifyPrivatePublish') {
+        if (!this.options.verifyPrivatePublish) throw new Error('DEBUG_ONLY');
+        await this.step('verify-private-publish', () => this.options.verifyPrivatePublish!());
+        this.state.lastResult = '비공개 발행 결과와 원래 기록 확인 완료';
+        return;
+      }
       if (command === 'blog.deleteTestPost' || command === 'blog.checkTestPostDeleted') {
         if (!this.options.deleteTestPost) throw new Error('DEBUG_ONLY');
         await this.step('delete-test-post', () => this.options.deleteTestPost!(command === 'blog.checkTestPostDeleted'));

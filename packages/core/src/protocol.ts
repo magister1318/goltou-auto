@@ -20,6 +20,7 @@ export interface Job {
   testPostDeleted?: boolean;
   publishProbe?: boolean;
   blogReadbackTimings?: { photos: number; milliseconds: number; navigationKeys: number }[];
+  blogIdentitySources?: ('response' | 'result-url' | 'title')[];
   tableModes?: ('native' | 'text-list')[]; linkCard?: 'off' | 'card' | 'url-text';
   dialog?: import('@goltou/surface').SurfaceDialog; evidence?: string;
   failureCode?: string;
