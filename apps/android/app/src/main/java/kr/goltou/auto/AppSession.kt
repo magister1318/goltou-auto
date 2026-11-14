@@ -30,6 +30,7 @@ class AppSession(application: Application) : AndroidViewModel(application) {
     var activity: MainActivity? = null
     var disposed = false
     var foreground = false
+    var backgroundAt: Long = 0
     var creations = 1
     var resumes = 0
     var pauses = 0

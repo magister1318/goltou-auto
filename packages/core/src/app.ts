@@ -23,6 +23,10 @@ export class AppCore {
   private preparing = false;
   private authenticating = false;
   private initialization: Promise<void> | undefined;
+  private serviceTimer: ReturnType<typeof setTimeout> | undefined;
+  private serviceUnsubscribe: (() => void) | undefined;
+  private readonly pendingServiceChecks = new Set<'naver' | 'band'>();
+  private disposed = false;
   private preview: { product: Product; options: PostInput['options']; result: PreparedPreview; reverted: string[] } | undefined;
   private uncertainStart = false;
   private records: { postNo: number; channel: Channel; key: string; status: PostStatus; updates: Map<string, RecordError | null> }[] = [];
@@ -31,11 +35,49 @@ export class AppCore {
   private readonly polishSetting: PolishStrengthStore;
   constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { device: () => Promise<import('@goltou/api-client').LoginInput['device']>; deleteHost?: import('@goltou/surface').SurfaceHost; deleteLog?: import('@goltou/sites').DeleteLog; experimentTitle?: boolean; experimentTitleLabel?: string; polishStrength?: PolishStrengthStore }) {
     this.polishSetting = runtime?.polishStrength ?? new MemoryPolishStrengthStore();
-    const notify = (job: Job) => { if (!this.state.user) return; this.state.job = job; if (job.status === 'login_paused' && job.service) { this.state.services[job.service] = 'expired'; this.state.visibleService = job.service; } this.emit(); };
+    const notify = (job: Job) => { if (!this.state.user) return; this.state.job = job; if (!this.runner.serviceLogin && job.status === 'login_paused' && job.service) { this.state.services[job.service] = 'expired'; this.state.visibleService = job.service; } this.emit(); };
     this.createRunner = () => factory ? factory((job, retry) => this.record(job, retry), notify) : new FakeRegistrationRunner(() => this.state.simulation, job => this.record(job), notify);
     this.runner = this.createRunner();
     if (this.runner.checkLogin) { this.state.realBlog = true; this.state.services.naver = 'unknown'; }
     if (this.runner.listBands) { this.state.realBand = true; this.state.services.band = 'unknown'; }
+    this.bindServiceLogin();
+  }
+  private bindServiceLogin() {
+    this.serviceUnsubscribe?.();
+    this.serviceUnsubscribe = this.runner.serviceLogin?.subscribe(update => {
+      this.state.services[update.service] = update.state;
+      if (update.visible) this.state.visibleService = update.service;
+      else if (this.state.visibleService === update.service) this.state.visibleService = null;
+      if (update.error) this.state.serviceError = update.error; else delete this.state.serviceError;
+      this.emit();
+    });
+    this.scheduleServiceChecks();
+  }
+  /** Native lifecycle supplies only elapsed background time; no platform API in core. */
+  foregrounded(backgroundMs: number) { if (backgroundMs >= 5 * 60 * 1000) this.scheduleServiceChecks(); }
+  serviceRuntimeReady() { this.scheduleServiceChecks(); }
+  private serviceIdle() {
+    return !this.disposed && !this.starting && !this.preparing && !this.deleting && !this.state.visibleService && !this.runner.serviceLogin?.active &&
+      (!this.runner.job || ['draft_saved', 'published', 'stopped'].includes(this.runner.job.status));
+  }
+  private scheduleServiceChecks() {
+    if (!this.runner.serviceLogin || this.disposed) return;
+    if (this.state.realBlog) this.pendingServiceChecks.add('naver');
+    if (this.state.realBand) this.pendingServiceChecks.add('band');
+    clearTimeout(this.serviceTimer);
+    this.serviceTimer = setTimeout(() => { void this.checkNextService(); }, 800);
+  }
+  private async checkNextService() {
+    if (this.disposed || !this.pendingServiceChecks.size) return;
+    if (this.serviceIdle()) {
+      const service = this.pendingServiceChecks.values().next().value!;
+      this.pendingServiceChecks.delete(service);
+      await this.runner.serviceLogin!.check(service);
+    }
+    if (!this.disposed && this.pendingServiceChecks.size) this.serviceTimer = setTimeout(() => { void this.checkNextService(); }, 800);
+  }
+  private requireServiceIdle() {
+    if (this.starting || this.preparing || this.deleting || this.runner.job && !['draft_saved', 'published', 'stopped', 'login_paused'].includes(this.runner.job.status)) throw new ApiError('conflict', '진행 중인 작업을 먼저 마쳐 주세요.');
   }
   subscribe(listener: (state: AppSnapshot) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   snapshot(): AppSnapshot { return structuredClone(this.state); }
@@ -43,9 +85,10 @@ export class AppCore {
   async restoreSession() {
     const { user, settings } = await this.call('/auto/me', {}, await this.token());
     this.state.user = user; this.state.settings = settings; this.emit();
+    this.scheduleServiceChecks();
   }
   private emit() { for (const listener of this.listeners) listener(this.snapshot()); }
-  dispose() { this.runner.dispose(); this.listeners.clear(); }
+  dispose() { this.disposed = true; clearTimeout(this.serviceTimer); this.serviceUnsubscribe?.(); this.runner.dispose(); this.listeners.clear(); }
   /** Debug entry supplies the deletion capability; release exposes no command. */
   async cleanupTestPost(remove: (execution: import('@goltou/sites').BlogExecution) => Promise<void>) {
     const job = this.runner.job, execution = this.runner.blogExecution?.();
@@ -66,7 +109,7 @@ export class AppCore {
   private async call<P extends keyof import('@goltou/api-client').ApiRoutes>(path: P, input: import('@goltou/api-client').ApiRoutes[P]['input'], token?: string): Promise<import('@goltou/api-client').ApiRoutes[P]['output']> {
     try { return await this.api.request(path, input, token); }
     catch (error) {
-      if (error instanceof ApiError && ['auth', 'forbidden'].includes(error.code)) { this.runner.dispose(); await this.clearSession(); this.runner = this.createRunner(); }
+      if (error instanceof ApiError && ['auth', 'forbidden'].includes(error.code)) { this.runner.dispose(); await this.clearSession(); this.runner = this.createRunner(); this.bindServiceLogin(); }
       throw error;
     }
   }
@@ -91,7 +134,7 @@ export class AppCore {
     }
     if (request.command === 'session.get') { await this.initialize(); return this.snapshot(); }
     if (this.preparation?.ai && ((request.command === 'service.show' || request.command === 'service.check' || request.command === 'service.clear') && request.input.service === 'ai' || request.command === 'service.hide' && this.state.visibleService === 'ai')) {
-      if (this.preparing || this.starting || this.state.job?.status === 'running') throw new ApiError('conflict', '진행 중인 작업을 먼저 마쳐 주세요.');
+      if (this.preparing || this.starting || this.runner.serviceLogin?.active || this.state.job?.status === 'running') throw new ApiError('conflict', '진행 중인 작업을 먼저 마쳐 주세요.');
       if (request.command === 'service.show') { await this.preparation.ai.show(); this.state.visibleService = 'ai'; }
       if (request.command === 'service.hide') { await this.preparation.ai.hide(); this.state.visibleService = null; }
       if (request.command === 'service.clear') { await this.preparation.ai.clear(); this.state.visibleService = null; this.preview = undefined; }
@@ -110,6 +153,7 @@ export class AppCore {
         await this.tokens.write(result.token);
         const me = await this.call('/auto/me', {}, result.token);
         this.initialization = Promise.resolve(); this.state.user = me.user; this.state.settings = me.settings;
+        this.scheduleServiceChecks();
         this.emit(); return this.snapshot();
       } finally { request.input.password = ''; request.input.loginId = ''; this.authenticating = false; }
     }
@@ -174,8 +218,8 @@ export class AppCore {
       }
       case 'posts.list': return this.call('/auto/posts/list', request.input, token);
       case 'settings.save': await this.call('/auto/settings/save', request.input, token); this.state.settings = (await this.call('/auto/me', {}, token)).settings; break;
-      case 'service.check': this.state.services[request.input.service] = request.input.service === 'ai' ? 'unknown' : request.input.service === 'band' && this.runner.checkBandLogin ? await this.runner.checkBandLogin() : request.input.service === 'naver' && this.runner.checkLogin ? await this.runner.checkLogin() : 'confirmed'; break;
-      case 'service.show': await this.runner.showService?.(request.input.service); this.state.visibleService = request.input.service; break;
+      case 'service.check': this.requireServiceIdle(); this.state.services[request.input.service] = request.input.service === 'ai' ? 'unknown' : request.input.service === 'band' && this.runner.checkBandLogin ? await this.runner.checkBandLogin() : request.input.service === 'naver' && this.runner.checkLogin ? await this.runner.checkLogin() : 'confirmed'; break;
+      case 'service.show': this.requireServiceIdle(); await this.runner.showService?.(request.input.service); if (!this.runner.serviceLogin) this.state.visibleService = request.input.service; break;
       case 'service.hide': await this.runner.hideService?.(); this.state.visibleService = null; break;
       case 'service.clear': this.state.services[request.input.service] = 'unknown'; if (this.state.visibleService === request.input.service) this.state.visibleService = null; break;
       case 'simulation.configure': {
@@ -195,6 +239,7 @@ export class AppCore {
         if (!this.runner.showDraft) throw new ApiError('invalid', '이 실행기는 실제 임시글을 열 수 없습니다.');
         await this.runner.showDraft(request.input.title); return this.snapshot();
       case 'bands.list':
+        if (this.runner.serviceLogin?.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
         if (this.starting || this.state.job && (this.state.job.status === 'record_failed' || !['draft_saved', 'published', 'stopped'].includes(this.state.job.status) && !this.state.job.completedSteps.includes(7))) throw new ApiError('conflict', '진행 중인 작업을 먼저 마쳐 주세요.');
         return this.runner.listBands ? this.runner.listBands() : [{ key: 'travel', name: '골투 여행', photoLimit: null, observedAt: null }, { key: 'golf', name: '해외골프 모임', photoLimit: null, observedAt: null }];
       case 'band.show':
@@ -208,6 +253,7 @@ export class AppCore {
         if (!this.runner.continueBand) throw new ApiError('invalid', '진행할 밴드 단계가 없습니다.');
         await this.runner.continueBand(); return this.snapshot();
       case 'job.resume':
+        if (this.runner.serviceLogin?.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
         if (this.runner.job?.status === 'login_paused' && this.runner.job.service && this.state.services[this.runner.job.service] !== 'confirmed') throw new ApiError('auth', '로그인 상태를 먼저 확인해 주세요.');
         this.state.visibleService = null; await this.runner.resume(); return this.snapshot();
       case 'job.retryRecord':
@@ -244,6 +290,7 @@ export class AppCore {
     }
   }
   private async start(input: JobInput, token: string) {
+    if (this.state.visibleService || this.runner.serviceLogin?.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
     if (this.pendingDeleteUpdate) throw new ApiError('conflict', '삭제 결과 기록을 먼저 마쳐 주세요.');
     if (this.uncertainStart) throw new ApiError('conflict', '이전 기록 시작 요청의 결과를 확인하지 못했습니다. 등록 기록을 확인해 주세요.');
     if (this.preparing || this.starting || (this.runner.job && (this.runner.job.status === 'record_failed' || !['draft_saved', 'published', 'stopped'].includes(this.runner.job.status) && !this.runner.job.completedSteps.includes(7)))) throw new ApiError('conflict', '한 번에 한 작업만 등록할 수 있습니다.');

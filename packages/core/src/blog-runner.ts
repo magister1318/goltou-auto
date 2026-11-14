@@ -1,5 +1,6 @@
 import { ApiError } from '@goltou/api-client';
-import { loginState, safeFailureCode, type BlogExecution } from '@goltou/sites';
+import { safeFailureCode, type BlogExecution } from '@goltou/sites';
+import { ServiceLoginController } from './service-login';
 import type { Job, JobInput } from './protocol';
 import type { Checkpoint, RegistrationRunner } from './runner';
 import type { PreparationWork } from './preparation';
@@ -10,6 +11,7 @@ import { RecordError, RecordingCheckpoint } from './record-checkpoint';
 /** Android's real blog runner. Band remains outside WP5 and cannot be reported as saved. */
 export class BlogRegistrationRunner implements RegistrationRunner {
   job: Job | null = null;
+  readonly serviceLogin: ServiceLoginController;
   private serial = 0;
   private work: PreparationWork | undefined;
   private execution: BlogExecution | undefined;
@@ -20,9 +22,11 @@ export class BlogRegistrationRunner implements RegistrationRunner {
   private readonly recording: RecordingCheckpoint;
   constructor(private readonly services: BlogServices, checkpoint: Checkpoint, private readonly notify: (job: Job) => void) {
     this.recording = new RecordingCheckpoint(checkpoint, notify);
+    this.serviceLogin = new ServiceLoginController(services.host);
     if (services.localPublish && (!services.editorUrl || new URL(services.editorUrl).hostname !== '127.0.0.1')) throw new Error('LOCAL_EDITOR_REQUIRED');
   }
   async start(input: JobInput, title: string, photos: number, work?: PreparationWork) {
+    if (this.serviceLogin.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
     if (this.job && !['draft_saved', 'published'].includes(this.job.status)) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
     if (input.targets.some(t => t.channel !== 'blog')) throw new ApiError('invalid', '현재 실제 등록은 블로그 한 곳만 지원합니다. 밴드를 꺼 주세요.');
     if (input.targets.length !== 1 || !work) throw new ApiError('invalid', '블로그 입력 준비가 필요합니다.');
@@ -41,6 +45,7 @@ export class BlogRegistrationRunner implements RegistrationRunner {
     this.job.status = 'user_paused'; this.abort.abort(); await this.active; await this.emit();
   }
   async resume() {
+    if (this.serviceLogin.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
     if (!this.job || !['user_paused', 'login_paused', 'failed'].includes(this.job.status)) throw new ApiError('conflict', '먼저 화면의 선택을 마쳐 주세요.');
     await this.execution?.hide(); this.abort = new AbortController(); this.job.status = 'running'; this.job.message = ''; this.job.service = null;
     for (const result of this.job.targetResults ?? []) if (result.status === 'failed') { result.status = 'running'; delete result.reason; }
@@ -60,15 +65,14 @@ export class BlogRegistrationRunner implements RegistrationRunner {
     await this.execution.show();
   }
   async checkLogin() {
-    if (!this.execution?.surface) return 'unknown' as const;
-    return loginState(this.execution.surface);
+    return this.serviceLogin.check('naver');
   }
   async showService(service: import('./protocol').Service) {
     if (service !== 'naver') return;
-    if (!this.execution?.surface) throw new ApiError('invalid', '등록을 시작하면 네이버 로그인 상태를 확인합니다.');
-    await this.execution.show();
+    if (this.job && !['draft_saved', 'published', 'stopped', 'login_paused'].includes(this.job.status)) throw new ApiError('conflict', '로그인으로 멈춘 작업에서만 로그인 화면을 열 수 있습니다.');
+    await this.serviceLogin.show('naver');
   }
-  async hideService() { await this.execution?.hide(); }
+  async hideService() { await this.serviceLogin.cancel(); await this.execution?.hide(); }
   private async run() {
     const job = this.job!;
     const check = () => { this.abort.signal.throwIfAborted(); if (this.disposed) throw new Error('RUNNER_DISPOSED'); };
@@ -112,7 +116,7 @@ export class BlogRegistrationRunner implements RegistrationRunner {
       // Only controlled error codes are persisted; never page text, IDs, URLs or dialog contents.
       job.message = safeFailureCode(error, 'BLOG_FAILED');
       if (pendingDialog) { job.status = 'dialog_paused'; job.dialog = pendingDialog; job.message = 'USER_DIALOG_REQUIRED'; }
-      else if (code === 'LOGIN_OR_EDITOR_LOST') { job.status = 'login_paused'; job.service = 'naver'; await this.execution?.show(); }
+      else if (code === 'LOGIN_OR_EDITOR_LOST') { job.status = 'login_paused'; job.service = 'naver'; await this.emit(); await this.showService('naver').catch(() => {}); }
       else if (code === 'AUTO_RECOVER_CONSENT_REQUIRED') job.status = 'recovery_paused';
       else if (code === 'USER_DIALOG_REQUIRED') { job.status = 'dialog_paused'; const dialog = await this.execution?.dialog(); if (dialog) job.dialog = dialog; }
       else job.status = 'failed';
@@ -138,6 +142,6 @@ export class BlogRegistrationRunner implements RegistrationRunner {
       },
     };
   }
-  dispose() { this.disposed = true; this.abort.abort(); void (this.active ?? Promise.resolve()).then(() => this.work?.cleanup()).catch(() => {}); }
+  dispose() { this.disposed = true; this.abort.abort(); this.serviceLogin.dispose(); void (this.active ?? Promise.resolve()).then(() => this.work?.cleanup()).catch(() => {}); }
   blogExecution() { return this.execution; }
 }

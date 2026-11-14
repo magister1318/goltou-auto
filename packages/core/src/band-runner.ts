@@ -1,5 +1,6 @@
 import { ApiError } from '@goltou/api-client';
-import { loginState, safeFailureCode, BandDirectory, type BandExecution, type BlogExecution, type BandProgress } from '@goltou/sites';
+import { safeFailureCode, BandDirectory, type BandExecution, type BlogExecution, type BandProgress } from '@goltou/sites';
+import { ServiceLoginController } from './service-login';
 import type { Job, JobInput, Service } from './protocol';
 import type { Checkpoint, RegistrationRunner } from './runner';
 import type { PreparationWork } from './preparation';
@@ -12,6 +13,7 @@ import { RecordError, RecordingCheckpoint } from './record-checkpoint';
 export class ChannelRegistrationRunner implements RegistrationRunner {
   job: Job | null = null;
   readonly directory: BandDirectory;
+  readonly serviceLogin: ServiceLoginController;
   private work: PreparationWork | undefined;
   private blog: BlogExecution | undefined;
   private band: BandExecution | undefined;
@@ -27,18 +29,20 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
   constructor(private readonly services: { band: BandServices; blog?: BlogServices }, checkpoint: Checkpoint, private readonly notify: (job: Job) => void) {
     this.recording = new RecordingCheckpoint(checkpoint, notify);
     this.directory = new BandDirectory(services.band.host, services.band.baseUrl, services.band.localPublish);
+    this.serviceLogin = new ServiceLoginController(services.band.host);
   }
   async listBands() {
     if (this.active || this.band && !['stopped', 'published'].includes(this.result()?.status ?? '')) throw new ApiError('conflict', '작성 중인 밴드부터 확인하거나 버려 주세요.');
     try { return await this.directory.list(); }
     catch (error) {
       if (error instanceof Error && /BAND_LOGIN_(LOST|UNCONFIRMED)/.test(error.message)) {
-        await this.directory.surface?.show(); throw new ApiError('auth', '밴드 로그인 상태를 확인하지 못했습니다. 밴드 화면에서 직접 확인해 주세요.');
+        throw new ApiError('auth', '밴드 로그인 상태를 확인하지 못했습니다. 서비스 로그인에서 밴드 화면을 열어 주세요.');
       }
       throw error;
     }
   }
   async start(input: JobInput, title: string, photos: number, work?: PreparationWork) {
+    if (this.serviceLogin.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
     if (this.job && (this.job.status === 'record_failed' || !['draft_saved', 'published', 'stopped'].includes(this.job.status) && !this.job.completedSteps.includes(7))) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
     if (!work?.preview || !input.targets.length) throw new ApiError('invalid', '입력 준비가 필요합니다.');
     if (input.mode === 'publish' && !input.publishConfirmed) throw new ApiError('invalid', '이 작업의 발행 확인이 필요합니다.');
@@ -145,7 +149,9 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     const dialog = await execution?.dialog().catch(() => null);
     if (dialog) { j.status = 'dialog_paused'; j.dialog = dialog; j.service = isBand ? 'band' : 'naver'; j.message = '서비스 확인창에서 선택해 주세요.'; }
     else if (/^(BAND_LOGIN_LOST|BAND_LOGIN_UNCONFIRMED|LOGIN_OR_EDITOR_LOST)$/.test(code)) {
-      j.status = 'login_paused'; j.service = isBand ? 'band' : 'naver'; j.message = '로그인 풀림으로 멈춤'; await execution?.show();
+      j.status = 'login_paused'; j.service = isBand ? 'band' : 'naver'; j.message = '로그인 풀림으로 멈춤';
+      await this.emit();
+      await this.showService(j.service).catch(() => { j.message = '로그인 화면을 열지 못했습니다. 연결을 확인하고 다시 열어 주세요.'; });
     } else if (code === 'BAND_RESTART_REQUIRED' || code === 'AUTO_RECOVER_CONSENT_REQUIRED') {
       j.status = 'recovery_paused'; j.message = '작성 중인 내용이 달라졌습니다. 버리고 같은 화면에서 처음부터 시작할지 선택해 주세요.';
     } else {
@@ -166,6 +172,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     this.job.status = 'user_paused'; this.abort.abort(); await this.active; await this.emit();
   }
   async resume() {
+    if (this.serviceLogin.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
     if (!this.job || !['user_paused', 'login_paused', 'failed'].includes(this.job.status) || this.job.completedSteps.includes(7)) throw new ApiError('conflict', '화면의 선택을 먼저 마쳐 주세요.');
     await this.active; this.abort = new AbortController(); await this.hideService(); this.job.status = 'running'; this.job.service = null; this.job.message = '';
     for (const result of this.job.targetResults ?? []) {
@@ -223,11 +230,14 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     await this.band?.hide(); this.bandIndex++; this.band = undefined;
     this.job!.status = 'user_paused'; this.job!.message = ''; await this.emit(); await this.resume();
   }
-  async checkBandLogin() { try { await this.directory.guard(false); return 'confirmed' as const; } catch (error) { return error instanceof Error && error.message === 'BAND_LOGIN_LOST' ? 'expired' as const : 'unknown' as const; } }
-  async checkLogin() { return this.blog?.surface ? loginState(this.blog.surface) : 'unknown' as const; }
-  async showService(service: Service) { if (service === 'band') await this.directory.surface?.show(); else if (service === 'naver') await this.blog?.show(); }
-  async hideService() { await this.directory.surface?.hide(); await this.blog?.hide(); }
+  async checkBandLogin() { return this.serviceLogin.check('band'); }
+  async checkLogin() { return this.serviceLogin.check('naver'); }
+  async showService(service: Service) {
+    if (this.job && !['draft_saved', 'published', 'stopped', 'login_paused'].includes(this.job.status)) throw new ApiError('conflict', '로그인으로 멈춘 작업에서만 로그인 화면을 열 수 있습니다.');
+    if (service !== 'ai') await this.serviceLogin.show(service);
+  }
+  async hideService() { await this.serviceLogin.cancel(); await this.directory.surface?.hide(); await this.blog?.hide(); }
   async showDraft(title: string) { if (this.job?.title !== title || !this.job.targetResults?.some(t => t.channel === 'blog' && t.status === 'draft_saved')) throw new ApiError('invalid', '이번 실행의 임시글만 열 수 있습니다.'); await this.blog?.show(); }
-  dispose() { this.disposed = true; this.abort.abort(); void (this.active ?? Promise.resolve()).then(() => this.work?.cleanup()).catch(() => {}); }
+  dispose() { this.disposed = true; this.abort.abort(); this.serviceLogin.dispose(); void (this.active ?? Promise.resolve()).then(() => this.work?.cleanup()).catch(() => {}); }
   blogExecution() { return this.blog; }
 }

@@ -243,7 +243,9 @@ describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pa
     const surface = runner.directory.surface!;
     await surface.open({ url: `${f.baseUrl}/login`, session: 'band', width: 1280, height: 900, userAgent: 'fixture' });
     await runner.checkBand(); expect(runner.job).toMatchObject({ status: 'login_paused', service: 'band' });
-    expect(await runner.checkBandLogin()).toBe('expired');
+    // This old loopback host has no native navigation guard or persistent auth profile.
+    // A separate hidden check must fail truthfully, without inspecting/moving the job editor.
+    expect(await runner.checkBandLogin()).toBe('unknown');
     expect(await f.pages.get(surface)!.locator('input').inputValue()).toBe('');
     await surface.open({ url: `${f.baseUrl}/band/111/post`, session: 'band', width: 1280, height: 900, userAgent: 'fixture' });
     await runner.resume(); await settled(runner);

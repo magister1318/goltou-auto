@@ -1,4 +1,4 @@
-import type { GuardedRequest, GuardedResponse, RequestRule, KeyInput, NavigationOptions, Surface, SurfaceDialog, SurfaceOpenOptions, SurfaceSession, SurfaceState } from '../index';
+import type { GuardedRequest, GuardedResponse, RequestRule, KeyInput, NavigationOptions, NavigationPolicy, Surface, SurfaceDialog, SurfaceOpenOptions, SurfaceSession, SurfaceState } from '../index';
 import { inputCharacters } from '../index';
 import { CdpConnection } from './connection';
 export { CdpConnection } from './connection';
@@ -9,6 +9,9 @@ export interface SurfaceLifecycle {
   close(): Promise<void>;
   readDialog?(): Promise<SurfaceDialog | null>;
   respondDialog?(id: string, accept: boolean): Promise<void>;
+  restrictNavigation?(policy: NavigationPolicy): Promise<void>;
+  onUserHidden?(listener: () => void): () => void;
+  onNavigationHidden?(listener: () => void): () => void;
 }
 
 const pause = (ms: number) => new Promise<void>(resolve => setTimeout(resolve, ms));
@@ -283,6 +286,12 @@ export class CdpSurface implements Surface {
     await this.cdp.send('Emulation.setFocusEmulationEnabled', { enabled: false });
     await this.lifecycle.setVisible(true);
   }
+  async restrictNavigation(policy: NavigationPolicy): Promise<void> {
+    if (!this.lifecycle.restrictNavigation) throw new Error('SURFACE_NAVIGATION_GUARD_REQUIRED');
+    await this.lifecycle.restrictNavigation(policy);
+  }
+  onUserHidden(listener: () => void): () => void { return this.lifecycle.onUserHidden?.(listener) ?? (() => {}); }
+  onNavigationHidden(listener: () => void): () => void { return this.lifecycle.onNavigationHidden?.(listener) ?? (() => {}); }
   async hide(): Promise<void> {
     await this.lifecycle.setVisible(false);
     if (this.metrics) await this.cdp.send('Emulation.setDeviceMetricsOverride', this.metrics);
