@@ -11,7 +11,7 @@ vi.mock('../src/blog', async original => ({ ...await original<object>(), createB
 const cleanup: (() => void)[] = [];
 beforeEach(() => { vi.clearAllMocks(); site.blog.publish.mockResolvedValue('https://example.invalid/9001'); });
 afterEach(() => { for (const close of cleanup.splice(0)) close(); });
-async function fixture(kind: 'blog' | 'channel', failStatus?: string) {
+async function fixture(kind: 'blog' | 'channel', failStatus?: string, probe = false) {
   const product: Product = { productNo: 1, title: '[골투오토 실험] 합성 상품', contentsHtml: '<p>합성 안내</p>', images: [], departures: [], golfCourses: [], productUrl: 'https://example.invalid/product', contentHash: 'fixture', country: '', region: '', updatedAt: '' };
   const fake = createFakeApi({ token: 'synthetic', user: fakeAccounts.manager! });
   const updates: PostUpdate[] = []; let failure = failStatus;
@@ -26,18 +26,26 @@ async function fixture(kind: 'blog' | 'channel', failStatus?: string) {
   const preview = makePreview(product, {}), work = { preview, prepared: { preview, files: [] }, download: vi.fn(), arrange: vi.fn(), cleanup: vi.fn() };
   let runner!: ChannelRegistrationRunner | BlogRegistrationRunner;
   const app = new AppCore(api, tokens, (checkpoint, notify) => {
-    const services = { host, publishEnabled: true };
+    const services = { host, publishEnabled: true, ...(probe ? { publishProbe: { visibility: 'private' as const, record: async () => {} } } : {}) };
     runner = kind === 'blog' ? new BlogRegistrationRunner(services, checkpoint, notify) : new ChannelRegistrationRunner({ band: { host }, blog: services }, checkpoint, notify);
     const start = runner.start.bind(runner); runner.start = (input, title, count) => start(input, title, count, work); return runner;
   });
   cleanup.push(() => app.dispose()); await app.restoreSession();
   const call = (command: AppRequest['command'], input: unknown = {}) => app.handle({ id: 1, type: 'app', command, input } as AppRequest);
   const input: JobInput = { productNo: 1, mode: 'publish', blogVisibility: 'private', publishConfirmed: true, targets: [{ channel: 'blog', key: 'local', name: '합성' }], options: { polish: false, closing: false, linkCard: false } };
+  if (probe) site.blog.publish.mockRejectedValue(new Error('BLOG_PUBLISH_PROBE_BLOCKED'));
   await call('job.start', input);
-  await vi.waitFor(() => expect(runner.job?.status).toBe(failStatus === 'published' ? 'record_failed' : 'published'));
+  await vi.waitFor(() => expect(runner.job?.status).toBe(probe ? 'stopped' : failStatus === 'published' ? 'record_failed' : 'published'));
   return { app, runner, call, updates, repair: () => { failure = undefined; } };
 }
 describe('verified publish API recording', () => {
+  it('records a blocked probe as stopped, with no published URL or completion claim', async () => {
+    const f = await fixture('channel', undefined, true);
+    expect(f.runner.job).toMatchObject({ publishProbe: true, status: 'stopped', targetResults: [{ status: 'stopped', reason: 'BLOG_PUBLISH_PROBE_BLOCKED' }] });
+    expect(f.updates.some(update => update.status === 'published' || update.postUrl)).toBe(false);
+    expect(f.updates.at(-1)).toMatchObject({ status: 'stopped', failReason: 'BLOG_PUBLISH_PROBE_BLOCKED', postUrl: '' });
+    expect(site.blog.publish).toHaveBeenCalledTimes(1);
+  });
   it.each(['blog', 'channel'] as const)('%s records published with the returned URL and retries only the identical API update', async kind => {
     const f = await fixture(kind, 'published');
     expect(f.runner.job?.blogVisibility).toBe('private');

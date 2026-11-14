@@ -24,6 +24,7 @@ export interface ExperimentOptions {
   capture(surface: Surface, name: string): Promise<RecordValue>;
   conversionCheck?(check: () => void): Promise<import('./conversion-audit').ConversionAudit>;
   deleteTestPost?(): Promise<void>;
+  configurePublishProbe?(visibility: 'public' | 'private' | 'off'): void;
 }
 
 /** Debug-only, single-flight tools. Never connected to the product API or registration runner. */
@@ -40,7 +41,13 @@ export class Experiments {
     if (command === 'state') return this.snapshot();
     if (command === 'stop') { this.cancelled = true; return this.snapshot(); }
     if (this.state.running) throw new Error('EXPERIMENT_BUSY');
-    if (!['blog.deleteTestPost', 'conversion.check', 'ai.polish', 'info', 'example', 'evidence', 'show', 'hide', 'login.open', 'login.check', 'band.list', 'blog.run', 'band.run', 'lifecycle'].includes(command)) throw new Error('UNKNOWN_EXPERIMENT');
+    if (!['blog.publishProbe', 'blog.deleteTestPost', 'conversion.check', 'ai.polish', 'info', 'example', 'evidence', 'show', 'hide', 'login.open', 'login.check', 'band.list', 'blog.run', 'band.run', 'lifecycle'].includes(command)) throw new Error('UNKNOWN_EXPERIMENT');
+    if (command === 'blog.publishProbe') {
+      if (!this.options.configurePublishProbe || !['public', 'private', 'off'].includes(String(input.visibility))) throw new Error('DEBUG_ONLY');
+      this.options.configurePublishProbe(input.visibility as 'public' | 'private' | 'off');
+      this.state.lastResult = input.visibility === 'off' ? '발행 차단 프로브 해제' : '발행 차단 프로브 설정 · 발행 요청은 항상 차단';
+      return this.snapshot();
+    }
     const channel: Channel = input.channel === 'band' ? 'band' : 'naver';
     if (command.startsWith('login.') && !['band', 'naver'].includes(String(input.channel))) throw new Error('INVALID_CHANNEL');
     if (command === 'band.run' && (!/^\d{1,30}$/.test(String(input.bandKey)) || !['mobile', 'desktop'].includes(String(input.ua)))) throw new Error('SELECT_BAND_AND_UA');

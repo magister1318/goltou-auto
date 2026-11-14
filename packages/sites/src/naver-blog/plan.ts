@@ -1,5 +1,5 @@
 // Reference: ../refs/DAF/daf3/packages/engine-naver-editor/src/insert/info-table.ts (table toolbar/control selectors only; DOM mutations excluded).
-import type { Surface, SurfaceDialog, SurfaceHost } from '@goltou/surface';
+import type { GuardedRequest, Surface, SurfaceDialog, SurfaceHost } from '@goltou/surface';
 import { inputCharacters } from '@goltou/surface';
 import { click, compact, point, read, sleep, waitFor } from '../dom';
 import { confirmBlogPhotos, prepareBlogEditor } from './index';
@@ -23,6 +23,8 @@ export interface BlogEnvironment {
   editorUrl?: string;
   /** Loopback fixtures only. Never bypasses visibility or content verification. */
   localPublish?: boolean;
+  /** Debug shell capability, separate from real publish authorization. ALWAYS blocks. */
+  publishProbe?: { visibility: BlogVisibility; record(request: GuardedRequest, proof: VisibilityProof | undefined): Promise<void> };
   beforeSave(): void;
   check(): void;
   progress(value: BlogProgress): void;
@@ -94,6 +96,7 @@ export class BlogExecution {
     if (plan.channel !== 'blog' || !this.title) throw new Error('BLOG_PLAN_REQUIRED');
     if (env.localPublish && (!env.editorUrl || new URL(env.editorUrl).hostname !== '127.0.0.1')) throw new Error('LOCAL_EDITOR_REQUIRED');
     if (env.visibility !== undefined && !['public', 'private'].includes(env.visibility)) throw new Error('BLOG_VISIBILITY_INVALID');
+    if (env.publishProbe && (env.mode !== 'publish' || env.publishProbe.visibility !== this.visibility)) throw new Error('BLOG_PROBE_CONFIGURATION_MISMATCH');
   }
   async ensureReady() {
     try {
@@ -137,8 +140,16 @@ export class BlogExecution {
     } else {
       if (!this.surface.guardRequests) throw new Error('BLOG_PUBLISH_BARRIER_UNAVAILABLE');
       const hostname = this.env.localPublish ? new URL(this.env.editorUrl!).hostname : 'blog.naver.com';
-      await this.surface.guardRequests(['/RabbitWrite.naver', '/RabbitUpdate.naver'].map(pathname => ({ hostname, pathname })), request => {
+      await this.surface.guardRequests(['/RabbitWrite.naver', '/RabbitUpdate.naver'].map(pathname => ({ hostname, pathname })), async request => {
         const allowedWindow = this.publishArmed; this.publishArmed = false;
+        if (this.env.publishProbe) {
+          // No inspector result, armed window, method, path or visibility can
+          // authorize a probe. Persistence exceptions also leave it blocked.
+          this.publishFailure = 'BLOG_PUBLISH_PROBE_BLOCKED';
+          try { await this.env.publishProbe.record(request, this.requestProof); }
+          catch { this.publishFailure = 'BLOG_PUBLISH_PROBE_EVIDENCE_FAILED'; }
+          return false;
+        }
         if (!allowedWindow || new URL(request.url).pathname !== '/RabbitWrite.naver' || request.method !== 'POST') {
           this.publishFailure = 'BLOG_PUBLISH_REQUEST_NOT_AUTHORIZED'; return false;
         }

@@ -18,6 +18,7 @@ export interface Job {
   photoUploadMilliseconds?: number; photoUploadSamples?: number;
   blogVisibility?: import('@goltou/sites').BlogVisibility;
   testPostDeleted?: boolean;
+  publishProbe?: boolean;
   blogReadbackTimings?: { photos: number; milliseconds: number; navigationKeys: number }[];
   tableModes?: ('native' | 'text-list')[]; linkCard?: 'off' | 'card' | 'url-text';
   dialog?: import('@goltou/surface').SurfaceDialog; evidence?: string;

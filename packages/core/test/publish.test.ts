@@ -15,7 +15,7 @@ import type { InputPlan } from '../src/convert';
 const executablePath = [process.env.CHROMIUM, 'C:/Program Files/Google/Chrome/Application/chrome.exe', '/usr/bin/chromium'].find(p => p && existsSync(p));
 const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const fn of cleanup.splice(0).reverse()) await fn(); });
-async function fixture(failure = '', visibility: 'public' | 'private' = 'private') {
+async function fixture(failure = '', visibility: 'public' | 'private' = 'private', probe = false) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'goltou-publish-'));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
   const files = [1, 2].map(index => ({ url: `https://example.invalid/${index}`, path: path.join(directory, `goltou-1234567890abcdef-${index}.png`) }));
@@ -27,15 +27,15 @@ async function fixture(failure = '', visibility: 'public' | 'private' = 'private
       const panel=document.querySelector('[data-metadata-panel]');
       if(!panel||panel.querySelector('[type=radio]'))return;
       const radios=document.createElement('div');
-      radios.innerHTML='<input type="radio" name="openType" value="2" id="public" checked><label for="public">전체공개</label><input type="radio" name="openType" value="0" id="private"><label for="private">비공개</label>';
+      radios.innerHTML='<input type="radio" name="open_type" value="2" id="public" checked><label for="public">전체공개</label><input type="radio" name="open_type" value="0" id="private"><label for="private">비공개</label>';
       panel.prepend(radios);
       if(${JSON.stringify(failure)}==='radio')radios.querySelector('#private').onclick=e=>{radios.querySelector('#public').checked=true};
       const final=panel.querySelector('[data-click-area="tpb*i.publish"]');
       if(${JSON.stringify(failure)}==='hover')final.onmouseover=()=>{radios.querySelector('#public').checked=true};
       final.onclick=async()=>{
         const snapshot={title:title.textContent,html:main.innerHTML,tags:document.querySelector('.tag_list').innerHTML};
-        const openType=${JSON.stringify(failure)}==='request'?'2':panel.querySelector('[name=openType]:checked').value;
-        try { const response=await fetch('/RabbitWrite.naver',{method:'POST',body:new URLSearchParams({openType,snapshot:JSON.stringify(snapshot)})});
+        const openType=Number(${JSON.stringify(failure)}==='request'?'2':panel.querySelector('[name=open_type]:checked').value);
+        try { const response=await fetch('/RabbitWrite.naver',{method:'POST',body:new URLSearchParams({blogId:'synthetic',documentModel:JSON.stringify(snapshot),mediaResources:'{}',populationParams:JSON.stringify({configuration:{openType}}),productApiVersion:'v1',tokenId:'synthetic'})});
           const result=await response.json();location.href=result.result.postUrl; }catch{}
       };
     });
@@ -44,7 +44,7 @@ async function fixture(failure = '', visibility: 'public' | 'private' = 'private
     if (req.url === '/RabbitWrite.naver') {
       submissions++;
       let body = ''; req.on('data', chunk => { body += String(chunk); });
-      req.on('end', () => { stored = JSON.parse(new URLSearchParams(body).get('snapshot')!); published++;
+      req.on('end', () => { stored = JSON.parse(new URLSearchParams(body).get('documentModel')!); published++;
         res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ isSuccess: true, result: { logNo: '9001', postUrl: url } })); });
     } else res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(editor);
   });
@@ -82,10 +82,22 @@ async function fixture(failure = '', visibility: 'public' | 'private' = 'private
     { kind: 'photos', urls: files.map(file => file.url) },
     { kind: 'table', role: 'departures', rows: [['2026-12-03', '1190000원']] },
   ], discarded: [], notices: [] };
-  const execution = createBlogExecution(plan, files, { host, editorUrl, localPublish: true }, { mode: 'publish', visibility, beforeSave() {}, check() {}, progress() {} });
-  return { execution, url, counts: () => ({ published, deleted, outside, submissions }) };
+  const probed: string[] = [];
+  const execution = createBlogExecution(plan, files, { host, editorUrl, localPublish: true,
+    ...(probe ? { publishProbe: { visibility, record: async (request: import('@goltou/surface').GuardedRequest) => { probed.push(new URL(request.url).pathname); if (failure === 'evidence') throw new Error('DISK_FAILED'); } } } : {}),
+  }, { mode: 'publish', visibility, beforeSave() {}, check() {}, progress() {} });
+  return { execution, url, probed, counts: () => ({ published, deleted, outside, submissions }) };
 }
 describe.runIf(Boolean(executablePath))('publish, verified against synthetic loopback service only', () => {
+  it.each([['private', ''], ['public', ''], ['private', 'request'], ['private', 'evidence']] as const)('probe ALWAYS blocks %s requests (%s), even when inspection would accept or evidence fails', async (visibility, failure) => {
+    const f = await fixture(failure, visibility, true);
+    await f.execution.write(); await f.execution.saveAndVerify();
+    await expect(f.execution.publish()).rejects.toThrow(failure === 'evidence' ? 'BLOG_PUBLISH_PROBE_EVIDENCE_FAILED' : 'BLOG_PUBLISH_PROBE_BLOCKED');
+    expect(f.probed).toEqual(['/RabbitWrite.naver']);
+    expect(f.execution.publishedPost).toBeUndefined();
+    expect(f.counts()).toMatchObject({ published: 0, submissions: 0, outside: 0 });
+    await expect(f.execution.publish()).rejects.toThrow('BLOG_PUBLISH_ALREADY_ATTEMPTED');
+  }, 30000);
   it.each(['private', 'public'] as const)('saves, reopens, publishes once, verifies the final %s view and deletes only that test post', async visibility => {
     const f = await fixture('', visibility);
     await f.execution.write(); await f.execution.saveAndVerify();

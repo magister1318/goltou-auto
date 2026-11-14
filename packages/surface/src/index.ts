@@ -20,7 +20,11 @@ export interface KeyInput {
 export interface SurfaceDialog { id: string; kind: 'alert' | 'confirm'; message: string }
 export interface RequestRule { hostname: string; pathname: string }
 /** Ephemeral transport data. Callers must never persist bodies or headers. */
-export interface GuardedRequest { url: string; method: string; postData?: string }
+export interface GuardedRequest {
+  url: string; method: string; postData?: string;
+  contentType?: string; hasPostData?: boolean; postDataInline?: boolean;
+  postDataFetched?: boolean; postDataComplete?: boolean;
+}
 export interface GuardedResponse { status: number; body: string }
 
 export interface Surface {
@@ -39,7 +43,7 @@ export interface Surface {
   attachFiles(selector: string, absolutePaths: readonly string[]): Promise<void>;
   /** Shell-enforced request barrier, installed before navigation; persists until close. */
   blockRequests?(rules: readonly { hostname: string; pathname: string }[]): Promise<void>;
-  guardRequests?(rules: readonly RequestRule[], inspect: (request: GuardedRequest) => boolean,
+  guardRequests?(rules: readonly RequestRule[], inspect: (request: GuardedRequest) => boolean | Promise<boolean>,
     response: (response: GuardedResponse) => void): Promise<void>;
   readDialog?(): Promise<SurfaceDialog | null>;
   respondDialog?(id: string, accept: boolean): Promise<void>;

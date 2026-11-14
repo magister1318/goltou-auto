@@ -42,14 +42,16 @@ const options: CoreOptions = {
   port: Number(argument('port')), token: argument('token'), uiDir: path.join(argument('bundle'), 'ui'),
 };
 async function start() {
+  const runtime = { device: () => native.call<import('../../../packages/api-client/src/index').LoginInput['device']>('session.device'), polishStrength: filePolishStrengthStore(path.join(path.dirname(argument('data')), 'polish-strength.txt')), ...(__GOLTOU_DEBUG__ ? { experimentTitle: true, experimentTitleLabel: 'WP14 ' } : {}) };
   const app = new AppCore(createApiClient(apiOrigin, fetch), new AndroidTokenStore(native),
     (checkpoint, notify) => new ChannelRegistrationRunner({ band: options.band!, blog: options.blog! }, checkpoint, notify), options.preparation,
-    { device: () => native.call('session.device'), polishStrength: filePolishStrengthStore(path.join(path.dirname(argument('data')), 'polish-strength.txt')), ...(__GOLTOU_DEBUG__ ? { experimentTitle: true, experimentTitleLabel: 'WP14 ' } : {}) });
+    runtime);
   options.app = app;
   if (__GOLTOU_DEBUG__ && argument('debug') === 'true') {
     const { Experiments } = await import('../../../packages/core/src/experiments');
     const { auditConversions } = await import('../../../packages/core/src/conversion-audit');
     const { deleteTestPost } = await import('../../../packages/core/src/test-post-delete');
+    const { publishProbeShape } = await import('./publish-probe');
     options.experiments = new Experiments({
       host, directory: argument('data'),
       photoPaths: Array.from({ length: 5 }, (_, i) => path.join(argument('bundle'), 'fixtures', `sample-${i + 1}.png`)),
@@ -57,6 +59,16 @@ async function start() {
       lifecycle: async mode => { await native.call('debug.lifecycle', { mode }); },
       capture: (surface, name) => host.capture(surface, name),
       deleteTestPost: () => app.cleanupTestPost(deleteTestPost),
+      configurePublishProbe: visibility => {
+        if (app.snapshot().job?.status === 'running') throw new Error('JOB_RUNNING');
+        runtime.experimentTitleLabel = visibility === 'off' ? 'WP14 private-once ' : `WP14 probe-${visibility} `;
+        if (visibility === 'off') { delete options.blog!.publishProbe; return; }
+        options.blog!.publishProbe = { visibility, record: async (request, proof) => {
+          const directory = path.join(path.dirname(argument('data')), 'wp14');
+          await mkdir(directory, { recursive: true });
+          await writeFile(path.join(directory, `probe-${visibility}.json`), JSON.stringify(publishProbeShape(request, proof), null, 2), { mode: 0o600 });
+        } };
+      },
       conversionCheck: check => app.auditProducts((api, token) => auditConversions(api, token, async result => {
         const directory = path.join(path.dirname(argument('data')), 'wp7');
         await mkdir(directory, { recursive: true });

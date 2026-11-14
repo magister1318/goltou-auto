@@ -32,7 +32,7 @@ export class CdpSurface implements Surface {
   private dialogSerial = 0;
   private barrierFailed = false;
   private readonly blockedRequests = new Set<string>();
-  private requestGuard: { paths: Set<string>; inspect: (request: GuardedRequest) => boolean; response: (response: GuardedResponse) => void } | undefined;
+  private requestGuard: { paths: Set<string>; inspect: (request: GuardedRequest) => boolean | Promise<boolean>; response: (response: GuardedResponse) => void } | undefined;
   private readonly acceptedRequests = new Set<string>();
 
   constructor(
@@ -77,7 +77,27 @@ export class CdpSurface implements Surface {
         const path = `${url.hostname}${url.pathname}`;
         blocked = this.blockedRequests.has(path);
         if (!blocked && this.requestGuard?.paths.has(path)) {
-          blocked = !request || !this.requestGuard.inspect(request);
+          const raw = p.request as GuardedRequest & { headers?: Record<string, unknown> };
+          const header = (name: string) => Object.entries(raw.headers ?? {}).find(([key]) => key.toLowerCase() === name)?.[1];
+          const expected = header('content-length');
+          const length = typeof expected === 'string' && /^\d+$/.test(expected) ? Number(expected) : undefined;
+          const inline = typeof raw.postData === 'string';
+          let postData = raw.postData, fetched = false;
+          const mustFetch = raw.hasPostData === true && !inline || length !== undefined && (!inline || Buffer.byteLength(postData!, 'utf8') !== length);
+          if (mustFetch) {
+            // CDP has no Fetch.getRequestPostData. Fetch's networkId addresses
+            // Network.getRequestPostData while this request remains paused.
+            if (typeof p.networkId === 'string') {
+              try {
+                const body = await this.cdp.send<{ postData: string }>('Network.getRequestPostData', { requestId: p.networkId });
+                if (typeof body.postData === 'string') { postData = body.postData; fetched = true; }
+              } catch { /* Missing full data cannot authorize publication. */ }
+            }
+          }
+          const complete = typeof postData === 'string' && (!mustFetch || fetched) && (length === undefined || Buffer.byteLength(postData, 'utf8') === length);
+          blocked = !request || !await this.requestGuard.inspect({ url: raw.url, method: raw.method, ...(complete ? { postData: postData! } : {}),
+            contentType: String(header('content-type') ?? ''), hasPostData: raw.hasPostData === true, postDataInline: inline,
+            postDataFetched: fetched, postDataComplete: complete });
           if (!blocked) this.acceptedRequests.add(requestId);
         }
       } catch { blocked = true; /* Unreadable intercepted requests fail closed. */ }
@@ -86,13 +106,15 @@ export class CdpSurface implements Surface {
       });
   }
 
-  async guardRequests(rules: readonly RequestRule[], inspect: (request: GuardedRequest) => boolean, response: (response: GuardedResponse) => void) {
+  async guardRequests(rules: readonly RequestRule[], inspect: (request: GuardedRequest) => boolean | Promise<boolean>, response: (response: GuardedResponse) => void) {
     if (this.requestGuard) throw new Error('SURFACE_REQUEST_GUARD_ALREADY_SET');
     const paths = new Set(rules.map(rule => {
       if (!/^[a-z0-9.-]+$/.test(rule.hostname) || !/^\/[a-zA-Z0-9/_.-]+$/.test(rule.pathname)) throw new Error('SURFACE_BAD_REQUEST_BARRIER');
       return `${rule.hostname}${rule.pathname}`;
     }));
     this.requestGuard = { paths, inspect, response };
+    // Retain the full body for Network.getRequestPostData if Fetch omits it.
+    await this.cdp.send('Network.enable', { maxPostDataSize: 16 * 1024 * 1024 });
     await this.cdp.send('Fetch.enable', { patterns: [...new Set([...paths, ...this.blockedRequests])].flatMap(path =>
       ['Request', 'Response'].flatMap(requestStage => [path, ...(path.startsWith('127.0.0.1/') ? [path.replace('127.0.0.1/', '127.0.0.1:*/')] : [])]
         .map(pattern => ({ urlPattern: `*://${pattern}*`, requestStage })))) });

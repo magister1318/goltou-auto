@@ -10,6 +10,7 @@ export interface BlogServices {
   localPublish?: boolean;
   publishEnabled?: boolean;
   draftSaveLimit?: number;
+  publishProbe?: NonNullable<import('@goltou/sites').BlogEnvironment['publishProbe']>;
   capture?(surface: import('@goltou/surface').Surface, name: string): Promise<Record<string, unknown>>;
   recordFailure?(failure: { jobId: number; step: number; code: string; evidence: string }): Promise<void>;
 }
