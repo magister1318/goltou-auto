@@ -129,6 +129,8 @@ describe('WP15 on-demand login lifecycle', () => {
     const f = fixture(); f.signals.naver = 'unknown'; const check = f.controller.check('naver');
     await expect(f.controller.show('band')).rejects.toMatchObject({ code: 'conflict' });
     await vi.advanceTimersByTimeAsync(4000); await check; expect(f.host.create).toHaveBeenCalledTimes(1);
+    await f.controller.clear('band'); expect(f.host.clearSession).toHaveBeenCalledOnce();
+    expect(f.host.clearSession).toHaveBeenCalledWith('band'); expect(f.updates.at(-1)).toMatchObject({ service: 'band', state: 'expired' });
   });
 });
 

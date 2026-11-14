@@ -12,6 +12,6 @@ describe('history deletion action', () => {
   });
   it('names the product, warns about Naver removal and restoration, and requires a second confirmation', () => {
     const html = renderToStaticMarkup(createElement(DeleteConfirmation, { title: '합성 상품', busy: false, cancel() {}, confirm() {} }));
-    for (const text of ['합성 상품', '네이버에서 삭제', '복구할 수 없습니다', '취소', '확인하고 글 삭제', 'alertdialog']) expect(html).toContain(text);
+    for (const text of ['합성 상품', '네이버 블로그에서 글이 지워지며', '되돌릴 수 없습니다', '취소', '삭제', 'alertdialog']) expect(html).toContain(text);
   });
 });

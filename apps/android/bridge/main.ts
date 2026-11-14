@@ -8,6 +8,8 @@ declare const __GOLTOU_DEBUG__: boolean;
 import { AndroidTokenStore } from './session';
 import { AiModeClient } from '../../../packages/sites/src/ai-mode';
 import { AndroidSurfaceHost } from './host';
+import { filePreferencesStore } from '../../../packages/core/src/preferences';
+import { fileBlogTitleStore } from '../../../packages/core/src/blog-title-store';
 
 function argument(name: string): string {
   const index = process.argv.indexOf(`--${name}`);
@@ -22,8 +24,9 @@ const ai = new AiModeClient(host);
 const options: CoreOptions = {
   native, host,
   diagnostics: __GOLTOU_DEBUG__,
-  band: { host, ...(__GOLTOU_DEBUG__ ? { capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}) },
+  band: { host, publishEnabled: !__GOLTOU_DEBUG__, ...(__GOLTOU_DEBUG__ ? { capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}) },
   blog: {
+    lastTypedTitle: fileBlogTitleStore(path.join(path.dirname(argument('data')), 'last-blog-title.txt')),
     host, publishEnabled: true, ...(__GOLTOU_DEBUG__ ? { draftSaveLimit: 1, capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}),
     recordFailure: async failure => {
       const directory = path.join(path.dirname(argument('data')), 'wp5');
@@ -42,11 +45,13 @@ const options: CoreOptions = {
   port: Number(argument('port')), token: argument('token'), uiDir: path.join(argument('bundle'), 'ui'),
 };
 async function start() {
-  const runtime: NonNullable<ConstructorParameters<typeof AppCore>[4]> = { deleteHost: host, device: () => native.call<import('../../../packages/api-client/src/index').LoginInput['device']>('session.device'), polishStrength: filePolishStrengthStore(path.join(path.dirname(argument('data')), 'polish-strength.txt')), ...(__GOLTOU_DEBUG__ ? { experimentTitle: false, experimentTitleLabel: 'WP14 ' } : {}) };
+  const runtime: NonNullable<ConstructorParameters<typeof AppCore>[4]> = { openExternal: async url => { await native.call('app.openPost', { url }); }, deleteHost: host, device: () => native.call<import('../../../packages/api-client/src/index').LoginInput['device']>('session.device'), preferences: filePreferencesStore(path.join(path.dirname(argument('data')), 'preferences.json')), polishStrength: filePolishStrengthStore(path.join(path.dirname(argument('data')), 'polish-strength.txt')), ...(__GOLTOU_DEBUG__ ? { experimentTitle: false, experimentTitleLabel: 'WP14 ' } : {}) };
   const app = new AppCore(createApiClient(apiOrigin, fetch), new AndroidTokenStore(native),
     (checkpoint, notify) => new ChannelRegistrationRunner({ band: options.band!, blog: options.blog! }, checkpoint, notify), options.preparation,
     runtime);
   options.app = app;
+  let awake = false;
+  app.subscribe(snapshot => { const next = !!snapshot.job && ['running', 'recovery_paused', 'dialog_paused', 'login_paused'].includes(snapshot.job.status); if (next !== awake) { awake = next; void native.call('app.jobState', { running: next }).catch(() => {}); } });
   void native.ready().then(() => app.serviceRuntimeReady()).catch(() => {});
   native.onEvent('app.foreground', data => { if (typeof data.backgroundMs === 'number') app.foregrounded(data.backgroundMs); });
   if (__GOLTOU_DEBUG__ && argument('debug') === 'true') {

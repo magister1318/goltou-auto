@@ -35,9 +35,10 @@ export class CdpSurface implements Surface {
   private dialog: SurfaceDialog | null = null;
   private dialogSerial = 0;
   private barrierFailed = false;
+  private barrierFailure = '';
   private readonly blockedRequests = new Set<string>();
-  private requestGuard: { paths: Set<string>; inspect: (request: GuardedRequest) => boolean | Promise<boolean>; response: (response: GuardedResponse) => void } | undefined;
-  private readonly acceptedRequests = new Set<string>();
+  private requestGuard: { paths: Set<string>; rules: readonly RequestRule[]; inspect: (request: GuardedRequest) => boolean | Promise<boolean>; response: (response: GuardedResponse) => void; observeResponse?: (request: Pick<GuardedRequest, 'url' | 'method'>) => boolean } | undefined;
+  private readonly acceptedRequests = new Map<string, GuardedRequest>();
 
   constructor(
     readonly session: SurfaceSession,
@@ -45,7 +46,18 @@ export class CdpSurface implements Surface {
     private readonly lifecycle: SurfaceLifecycle,
     private readonly inputDelayMs = 60,
   ) {
-    cdp.on('Fetch.requestPaused', p => { void this.intercept(p).catch(() => { this.barrierFailed = true; }); });
+    cdp.on('Fetch.requestPaused', p => { void this.intercept(p).catch(error => {
+      const message = error instanceof Error ? error.message : '';
+      // Chromium can cancel a paused request before continue/fail is handled.
+      // This exact error means its interception no longer exists. It does not
+      // remove the installed policy, authorize another request or retry a write.
+      if(p.responseStatusCode === undefined && p.responseErrorReason === undefined && /Invalid InterceptionId/i.test(message)) {
+        this.acceptedRequests.delete(String(p.requestId)); return;
+      }
+      this.barrierFailed = true;
+      const kind = /InterceptionId|interception id/i.test(message) ? 'STALE_INTERCEPTION' : /resource.*identifier/i.test(message) ? 'STALE_RESOURCE' : /response body|body.*response/i.test(message) ? 'RESPONSE_BODY' : /CDP_TIMEOUT/.test(message) ? 'TIMEOUT' : 'PROTOCOL';
+      this.barrierFailure = `${p.responseErrorReason !== undefined ? 'ERROR' : p.responseStatusCode !== undefined ? 'RESPONSE' : 'REQUEST'}_${kind}`;
+    }); });
     /*
      * Interception is installed before navigation. A policy never replaces a
      * draft barrier, and an exception never permits a request.
@@ -66,11 +78,12 @@ export class CdpSurface implements Surface {
   private async intercept(p: Record<string, unknown>) {
       const request = p.request as GuardedRequest | undefined;
       const requestId = String(p.requestId);
-      if (p.responseStatusCode !== undefined) {
-        if (this.acceptedRequests.delete(requestId)) {
+      if (p.responseStatusCode !== undefined || p.responseErrorReason !== undefined) {
+        const accepted = this.acceptedRequests.get(requestId); this.acceptedRequests.delete(requestId);
+        if (accepted && p.responseErrorReason === undefined && !['GET', 'HEAD', 'OPTIONS'].includes(accepted.method)) {
           try {
             const result = await this.cdp.send<{ body: string; base64Encoded?: boolean }>('Fetch.getResponseBody', { requestId });
-            this.requestGuard?.response({ status: Number(p.responseStatusCode), body: result.base64Encoded ? Buffer.from(result.body, 'base64').toString('utf8') : result.body });
+            this.requestGuard?.response({ status: Number(p.responseStatusCode), body: result.base64Encoded ? Buffer.from(result.body, 'base64').toString('utf8') : result.body, url: accepted.url, method: accepted.method });
           } finally { await this.cdp.send('Fetch.continueRequest', { requestId }); }
         } else await this.cdp.send('Fetch.continueRequest', { requestId });
         return;
@@ -80,7 +93,7 @@ export class CdpSurface implements Surface {
         const url = new URL(request?.url ?? '');
         const path = `${url.hostname}${url.pathname}`;
         blocked = this.blockedRequests.has(path);
-        if (!blocked && this.requestGuard?.paths.has(path)) {
+        if (!blocked && this.requestGuard?.rules.some(r => (r.hostname === '*' || r.hostname === url.hostname) && (r.prefix ? url.pathname.startsWith(r.pathname) : r.pathname === url.pathname))) {
           const raw = p.request as GuardedRequest & { headers?: Record<string, unknown> };
           const header = (name: string) => Object.entries(raw.headers ?? {}).find(([key]) => key.toLowerCase() === name)?.[1];
           const expected = header('content-length');
@@ -102,7 +115,7 @@ export class CdpSurface implements Surface {
           blocked = !request || !await this.requestGuard.inspect({ url: raw.url, method: raw.method, ...(complete ? { postData: postData! } : {}),
             contentType: String(header('content-type') ?? ''), hasPostData: raw.hasPostData === true, postDataInline: inline,
             postDataFetched: fetched, postDataComplete: complete });
-          if (!blocked) this.acceptedRequests.add(requestId);
+          if (!blocked && (this.requestGuard.observeResponse?.(raw) ?? true)) this.acceptedRequests.set(requestId, { url: raw.url, method: raw.method });
         }
       } catch { blocked = true; /* Unreadable intercepted requests fail closed. */ }
       await this.cdp.send(blocked ? 'Fetch.failRequest' : 'Fetch.continueRequest', {
@@ -110,13 +123,13 @@ export class CdpSurface implements Surface {
       });
   }
 
-  async guardRequests(rules: readonly RequestRule[], inspect: (request: GuardedRequest) => boolean | Promise<boolean>, response: (response: GuardedResponse) => void) {
+  async guardRequests(rules: readonly RequestRule[], inspect: (request: GuardedRequest) => boolean | Promise<boolean>, response: (response: GuardedResponse) => void, observeResponse?: (request: Pick<GuardedRequest, 'url' | 'method'>) => boolean) {
     if (this.requestGuard) throw new Error('SURFACE_REQUEST_GUARD_ALREADY_SET');
     const paths = new Set(rules.map(rule => {
-      if (!/^[a-z0-9.-]+$/.test(rule.hostname) || !/^\/[a-zA-Z0-9/_.-]+$/.test(rule.pathname)) throw new Error('SURFACE_BAD_REQUEST_BARRIER');
+      if (!(rule.hostname === '*' || /^[a-z0-9.-]+$/.test(rule.hostname)) || !/^\/[a-zA-Z0-9/_.-]*$/.test(rule.pathname)) throw new Error('SURFACE_BAD_REQUEST_BARRIER');
       return `${rule.hostname}${rule.pathname}`;
     }));
-    this.requestGuard = { paths, inspect, response };
+    this.requestGuard = { paths, rules: [...rules], inspect, response, ...(observeResponse ? { observeResponse } : {}) };
     // Retain the full body for Network.getRequestPostData if Fetch omits it.
     await this.cdp.send('Network.enable', { maxPostDataSize: 16 * 1024 * 1024 });
     await this.cdp.send('Fetch.enable', { patterns: [...new Set([...paths, ...this.blockedRequests])].flatMap(path =>
@@ -234,7 +247,7 @@ export class CdpSurface implements Surface {
     await this.input('Input.dispatchKeyEvent', { ...params, type: 'keyUp' });
   }
   private async input(method: string, params: Record<string, unknown>): Promise<void> {
-    if (this.barrierFailed) throw new Error('SURFACE_DRAFT_BARRIER_FAILED');
+    if (this.barrierFailed) throw new Error(`SURFACE_DRAFT_BARRIER_FAILED:${this.barrierFailure}`);
     if (this.dialog) throw new Error('SURFACE_DIALOG_PENDING');
     let unsubscribe = () => {};
     const dialog = new Promise<never>((_, reject) => { unsubscribe = this.cdp.on('Page.javascriptDialogOpening', () => reject(new Error('SURFACE_DIALOG_PENDING'))); });

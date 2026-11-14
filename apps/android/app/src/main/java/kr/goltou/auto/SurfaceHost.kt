@@ -212,6 +212,7 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
 
     private fun setVisible(id: String, show: Boolean) {
         val entry = entries[id] ?: error("NO_SURFACE")
+        if (show) check(entry.policy != null) { "ONLY_LOGIN_SURFACE_VISIBLE" }
         if (show && entry.policy != null) check(!entry.loadFailed && entry.loadedUrl == entry.view.url &&
             entry.loadedUrl?.let { entry.policy!!.allows(it) } == true) { "LOGIN_PAGE_NOT_READY" }
         (entry.frame.parent as? ViewGroup)?.removeView(entry.frame)

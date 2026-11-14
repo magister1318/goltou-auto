@@ -12,7 +12,7 @@ describe('paragraph approval preview', () => {
     const result = await polishContent(parseContents(product.contentsHtml), product, async prompt => prompt.includes('주변 풍경') ? '1. 주변 풍경을 보며 쉬어갑니다.' : '1. 안내 문장 2개를 확인하세요.');
     const render = () => renderToStaticMarkup(createElement(PolishComparison, { result, busy: false, onOpen() {}, onRetry() {}, onRevert() {} }));
     const html = render();
-    for (const label of ['다듬음', '유지 · 숫자 포함', '유지 · 서식·일정·요금', '원문 유지: 숫자가 달라짐', 'AI 화면 열기', '다듬기 다시 시도', '숫자·날짜·금액 변경 또는 새 숫자']) expect(html).toContain(label);
+    for (const label of ['다듬음', '유지 · 숫자 포함', '유지 · 서식·일정·요금', '원문 유지: 숫자가 달라짐', '다듬기 안내', '다듬기 다시 시도', '숫자·날짜·금액 변경 또는 새 숫자']) expect(html).toContain(label);
     expect(html).toContain('전송 2'); expect(html).toContain('다듬음 1');
     expect(html.match(/18홀 가격 1190000원/g)).toHaveLength(2);
     expect(html).toContain('쉬어 갑니다.'); expect(html).toContain('쉬어갑니다.');

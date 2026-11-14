@@ -10,7 +10,7 @@ import { RecordError } from '../src/record-checkpoint';
 import type { AppRequest, Job, JobInput } from '../src/protocol';
 
 const site = vi.hoisted(() => ({
-  band: { write: vi.fn(), observe: vi.fn(async () => ({})), stopBeforePost: vi.fn(), detectPublished: vi.fn(async () => null), publish: vi.fn(), dialog: vi.fn(async () => null), show: vi.fn(), hide: vi.fn(), discard: vi.fn() },
+  band: { write: vi.fn(), observe: vi.fn(async () => ({})), stopBeforePost: vi.fn(), detectPublished: vi.fn(async () => null), publish: vi.fn(async () => 'http://127.0.0.1/band/111/post/1001'), dialog: vi.fn(async () => null), show: vi.fn(), hide: vi.fn(), discard: vi.fn() },
   blog: { ensureReady: vi.fn(), write: vi.fn(), saveAndVerify: vi.fn(), publish: vi.fn(), dialog: vi.fn(async () => null), show: vi.fn(), hide: vi.fn(), close: vi.fn(), readbackTimings: [], publishedIdentitySources: [], tableModes: [], linkCard: 'off' },
 }));
 vi.mock('../src/band', async original => ({ ...await original<object>(), createBandExecution: () => site.band }));
@@ -24,7 +24,7 @@ const host: SurfaceHost = { create: vi.fn(), destroy: vi.fn(), clearSession: vi.
 type Kind = 'band' | 'channel-blog' | 'blog';
 async function fixture(kind: Kind, transport: 'fake' | 'http', failure: 'invalid' | 'network') {
   const channel = kind === 'band' ? 'band' : 'blog';
-  const input: JobInput = { productNo: 77, mode: 'draft', targets: [{ channel, name: '로컬', key: '111' }], options: { polish: false, closing: false, linkCard: false } };
+  const input: JobInput = { productNo: 77, mode: channel === 'band' ? 'publish' : 'draft', publishConfirmed: channel === 'band', targets: [{ channel, name: '로컬', key: '111' }], options: { polish: false, closing: false, linkCard: false } };
   const states: Job[] = [], calls: { route: string; input: unknown }[] = [];
   let failed = true, apiMessage = '등록 상태를 확인해 주세요.';
   const fake = createFakeApi({ token, user: fakeAccounts.manager! });
@@ -34,7 +34,7 @@ async function fixture(kind: Kind, transport: 'fake' | 'http', failure: 'invalid
     if (path === '/auto/posts/start') return { postNo: 91 } as ApiRoutes[P]['output'];
     if (path === '/auto/posts/update') {
       const update = value as ApiRoutes['/auto/posts/update']['input'];
-      if (failed && update.status === (channel === 'band' ? 'stopped_before_post' : 'draft_saved')) {
+      if (failed && update.status === (channel === 'band' ? 'published' : 'draft_saved')) {
         if (failure === 'invalid') throw new ApiError('invalid', apiMessage);
         throw new Error(`private transport ${token} ${product.title}`);
       }
@@ -88,7 +88,7 @@ describe('record failures preserve site outcomes and require a record-only retry
   for (const kind of ['band', 'channel-blog', 'blog'] as const) for (const transport of ['fake', 'http'] as const) it.each(['invalid', 'network'] as const)(`${kind}/${transport}: %s`, async failure => {
     const f = await fixture(kind, transport, failure);
     const code = `RECORD_FAILED:${failure === 'invalid' ? 'invalid' : 'server'}`;
-    const outcome = kind === 'band' ? 'stopped_before_post' : 'draft_saved';
+    const outcome = kind === 'band' ? 'published' : 'draft_saved';
     expect(f.runner.job).toMatchObject({ status: 'record_failed', failureCode: code, targetResults: [{ status: outcome }], message: '기록하지 못함' });
     if (failure === 'invalid') expect(f.runner.job?.recordFailure?.message).toBe('등록 상태를 확인해 주세요.');
     else expect(f.runner.job?.recordFailure?.message).toMatch(/연결/);
@@ -100,7 +100,7 @@ describe('record failures preserve site outcomes and require a record-only retry
     await expect(f.call('job.resume')).rejects.toMatchObject({ code: 'conflict' });
     await expect(f.call('job.start', f.input)).rejects.toMatchObject({ code: 'conflict' });
     expect(f.updates()).toEqual(before);
-    if (kind === 'band') { await f.call('band.show', { key: '111' }); expect(site.band.show).toHaveBeenCalledTimes(1); }
+    if (kind === 'band') { await expect(f.call('band.show', { key: '111' })).rejects.toMatchObject({ code: 'invalid' }); expect(site.band.show).not.toHaveBeenCalled(); }
     // Another failed explicit attempt sends one identical update and stays pending.
     await f.call('job.retryRecord');
     expect(f.updates().slice(before.length)).toEqual([before.at(-1)]);
@@ -111,25 +111,24 @@ describe('record failures preserve site outcomes and require a record-only retry
     expect(f.runner.job?.targetResults?.[0]?.status).toBe(outcome);
     expect(f.runner.job?.recordFailure).toBeUndefined();
     expect(f.runner.job?.failureCode).toBeUndefined();
-    expect(f.runner.job?.status).toBe(kind === 'band' ? 'stopped_before_post' : 'user_paused');
+    expect(f.runner.job?.status).toBe('user_paused');
     await expect(f.call('job.retryRecord')).rejects.toMatchObject({ code: 'conflict' });
     expect(f.calls.filter(c => c.route === '/auto/posts/start')).toHaveLength(1);
     expect(f.work.download).toHaveBeenCalledTimes(1);
     expect(f.work.arrange).toHaveBeenCalledTimes(1);
     expect(kind === 'band' ? site.band.write : site.blog.write).toHaveBeenCalledTimes(1);
     if (kind !== 'band') expect(site.blog.saveAndVerify).toHaveBeenCalledTimes(1);
-    expect(site.band.publish).not.toHaveBeenCalled(); expect(site.blog.publish).not.toHaveBeenCalled();
+    expect(site.band.publish).toHaveBeenCalledTimes(kind === 'band' ? 1 : 0); expect(site.blog.publish).not.toHaveBeenCalled();
   });
-  it.each(['invalid', 'network'] as const)('allows discard with a pending %s update and never resends that handoff', async failure => {
+  it.each(['invalid', 'network'] as const)('never discards an already published Band post when its %s record failed', async failure => {
     const f = await fixture('band', 'http', failure);
-    const handoff = f.updates().at(-1);
-    await f.call('band.discard');
-    await vi.waitFor(() => expect(f.runner.job?.status).toBe('stopped'));
-    expect(site.band.discard).toHaveBeenCalledTimes(1);
-    expect(f.runner.job?.targetResults?.[0]?.status).toBe('stopped');
-    expect(f.updates().filter(c => JSON.stringify(c) === JSON.stringify(handoff))).toHaveLength(1);
-    expect(f.runner.job?.recordFailure).toBeUndefined();
-    await expect(f.call('job.retryRecord')).rejects.toMatchObject({ code: 'conflict' });
+    const before = structuredClone(f.updates());
+    await expect(f.call('band.discard')).rejects.toMatchObject({ code: 'conflict' });
+    expect(site.band.discard).not.toHaveBeenCalled();
+    expect(f.runner.job?.targetResults?.[0]?.status).toBe('published');
+    expect(f.updates()).toEqual(before);
+    f.repair(); await f.call('job.retryRecord');
+    expect(site.band.publish).toHaveBeenCalledTimes(1);
   });
   it('rejects concurrent retry clicks without issuing another update', async () => {
     const f = await fixture('band', 'http', 'invalid'); f.repair();

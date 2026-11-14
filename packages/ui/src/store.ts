@@ -39,7 +39,7 @@ function send(message: Record<string, unknown>): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const id = ++serial;
     // A long introduction is still typed at the Surface's human input pace.
-    const timer = setTimeout(() => { pending.delete(id); update({ error: '응답이 늦습니다. 다시 시도해 주세요.' }); reject(new Error('응답 시간 초과')); }, message.command === 'preview.prepare' ? 1800000 : ['service.show', 'service.hide', 'service.check'].includes(String(message.command)) ? 120000 : 30000);
+    const timer = setTimeout(() => { pending.delete(id); update({ error: '응답이 늦습니다. 다시 시도해 주세요.' }); reject(new Error('응답 시간 초과')); }, message.command === 'preview.prepare' ? 1800000 : ['bands.list', 'service.show', 'service.hide', 'service.check'].includes(String(message.command)) ? 120000 : 30000);
     pending.set(id, { resolve, reject, timer }); socket.send(JSON.stringify({ id, ...message }));
   });
 }

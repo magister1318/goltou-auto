@@ -5,8 +5,10 @@ import type { MediaFile } from './media';
 import { compact, compareDocuments, observePlan, type Observation } from './verify';
 import { readFile } from 'node:fs/promises';
 import { imageDimensions } from './media/dimensions';
+import { verificationProgress } from './verify-progress';
 
 export interface BandServices { host: SurfaceHost; baseUrl?: string; localPublish?: boolean;
+  publishEnabled?: boolean;
   capture?(surface: import('@goltou/surface').Surface, name: string): Promise<Record<string, unknown>>;
 }
 /** Composer URLs require the execution's attachment proof; raw counts/names cannot stand in for it. */
@@ -38,9 +40,12 @@ export function bandObservation(plan: InputPlan, files: readonly Pick<MediaFile,
 }
 export function createBandExecution(plan: InputPlan, files: readonly Pick<MediaFile, 'url' | 'path'>[], directory: BandDirectory, key: string,
   hooks: Pick<ConstructorParameters<typeof BandExecution>[2], 'check' | 'progress'>) {
-  const execution: BandExecution = new BandExecution(plan, files, { ...hooks, directory, key,
+  let last: import('@goltou/sites').BandProgress = { characters: 0, totalCharacters: 0, photos: 0, totalPhotos: files.length };
+  const progress = (value: import('@goltou/sites').BandProgress) => { last = value; hooks.progress(value); };
+  const execution: BandExecution = new BandExecution(plan, files, { ...hooks, progress, directory, key,
     sourceDimensions: async file => imageDimensions(await readFile(file.path)), verify: actual => {
     const result = compareDocuments(observePlan(plan), bandObservation(plan, execution.files, actual));
+    verificationProgress('band', result, last, hooks.progress);
     if (!result.matches) throw new Error(`BAND_READBACK_MISMATCH:${result.differences.map(d => d.field).join(',')}`);
   } });
   return execution;

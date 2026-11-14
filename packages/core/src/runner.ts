@@ -6,6 +6,7 @@ export interface RegistrationRunner {
   readonly serviceLogin?: import('./service-login').ServiceLoginController;
   start(input: JobInput, title: string, photos: number, preparation?: PreparationWork): Promise<void>;
   stop(): Promise<void>;
+  cancel?(): Promise<void>;
   resume(): Promise<void>;
   retryRecord?(): Promise<void>;
   dispose(): void;
@@ -40,7 +41,7 @@ export class FakeRegistrationRunner implements RegistrationRunner {
     if (this.job && ['running', 'login_paused', 'user_paused', 'failed'].includes(this.job.status)) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
     this.photos = photos; this.loginTriggered = false; this.failureTriggered = false;
     this.preparation = preparation; this.abort = new AbortController();
-    this.job = { id: ++this.serial, productNo: input.productNo, title, mode: input.mode, targets: input.targets, status: 'running', step: 1, current: 0, total: 1, completedSteps: [], service: null, message: '' };
+    this.job = { startedAt: Date.now(), id: ++this.serial, productNo: input.productNo, title, mode: input.mode, targets: input.targets, status: 'running', step: 1, current: 0, total: 1, completedSteps: [], service: null, message: '' };
     await this.publish(); this.schedule();
   }
   async stop(): Promise<void> {
@@ -51,6 +52,7 @@ export class FakeRegistrationRunner implements RegistrationRunner {
     if (!this.job || !['user_paused', 'login_paused', 'failed'].includes(this.job.status)) throw new ApiError('conflict', '이어 할 작업이 없습니다.');
     this.abort = new AbortController(); this.job.status = 'running'; this.job.service = null; this.job.message = ''; await this.publish(); this.schedule();
   }
+  async cancel() { await this.stop(); if (this.job) { this.job.status = 'stopped'; await this.preparation?.cleanup(); await this.publish(); } }
   dispose(): void {
     clearTimeout(this.timer); this.abort.abort();
     void (this.inFlight ?? Promise.resolve()).then(() => this.preparation?.cleanup()).catch(() => {

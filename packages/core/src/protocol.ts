@@ -11,6 +11,13 @@ export interface JobInput {
   blogVisibility?: import('@goltou/sites').BlogVisibility;
 }
 export interface Job {
+  startedAt?: number;
+  pausedAt?: number;
+  pausedMilliseconds?: number;
+  publicationUncertain?: boolean;
+  ownRecoveryDiscarded?: boolean;
+  activity?: import('@goltou/sites').EngineActivity & { at: number };
+  activityLog?: (import('@goltou/sites').EngineActivity & { at: number })[];
   id: number; productNo: number; title: string; mode: Mode; status: JobStatus;
   step: number; current: number; total: number; completedSteps: number[];
   targets: JobInput['targets']; service: Service | null; message: string;
@@ -34,6 +41,8 @@ export interface AppSnapshot { serviceError?: string; postDeletion?: { postNo: n
 /** Platform-neutral contract; Android implements it with a Keystore-encrypted native channel. */
 export interface TokenStore { read(): Promise<string | null>; write(token: string | null): Promise<void> }
 export interface Commands {
+  'preferences.get': { input: Record<string, never>; output: import('./preferences').Preferences };
+  'preferences.save': { input: import('./preferences').Preferences; output: import('./preferences').Preferences };
   'polish.setting.get': { input: Record<string, never>; output: import('@goltou/api-client').PolishStrength };
   'polish.setting.save': { input: { strength: import('@goltou/api-client').PolishStrength }; output: import('@goltou/api-client').PolishStrength };
   'session.get': { input: Record<string, never>; output: AppSnapshot };
@@ -47,6 +56,9 @@ export interface Commands {
   'posts.delete.confirm': { input: { confirmation: string }; output: AppSnapshot };
   'posts.delete.retryRecord': { input: Record<string, never>; output: AppSnapshot };
   'posts.list': { input: { scope: 'mine' | 'all'; page?: number; pageSize?: number }; output: Page<Post> };
+  'post.open': { input: { url: string }; output: AppSnapshot };
+  'job.cancel': { input: Record<string, never>; output: AppSnapshot };
+  'job.preview': { input: Record<string, never>; output: import('./preparation').PreparedPreview | null };
   'settings.save': { input: Settings; output: AppSnapshot };
   'service.check': { input: { service: Service }; output: AppSnapshot };
   'service.show': { input: { service: Service }; output: AppSnapshot };

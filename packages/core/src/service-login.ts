@@ -87,8 +87,8 @@ export class ServiceLoginController {
       this.emit(service, 'checking');
       try {
         const state = await this.signal(await this.load(service, serviceCheckUrls[service]));
-        this.emit(service, state); return state;
-      } catch { this.emit(service, 'unknown'); return 'unknown'; }
+        this.emit(service, state, state === 'unknown' ? '연결 상태를 확인하지 못했습니다. 다시 확인을 눌러 주세요.' : undefined); return state;
+      } catch { this.emit(service, 'unknown', '연결 상태를 확인하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 확인을 눌러 주세요.'); return 'unknown'; }
     });
   }
   show(service: LoginService): Promise<void> {
@@ -160,6 +160,14 @@ export class ServiceLoginController {
       this.visible = null; this.emit(service, 'checking');
       try { this.emit(service, await this.signal(await this.load(service, serviceCheckUrls[service]))); }
       catch { this.emit(service, 'unknown'); }
+    });
+  }
+  clear(service: LoginService): Promise<void> {
+    if (this.visible) return Promise.reject(new ApiError('conflict', '로그인 화면을 먼저 닫아 주세요.'));
+    return this.run(async () => {
+      await this.drop(service);
+      try { await this.host.clearSession(service); this.emit(service, 'expired'); }
+      catch { this.emit(service, 'unknown', '연결을 끊지 못했습니다. 다시 확인해 주세요.'); throw new ApiError('server', '연결을 끊지 못했습니다. 다시 확인해 주세요.'); }
     });
   }
   dispose() {

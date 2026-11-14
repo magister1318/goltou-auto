@@ -15,9 +15,10 @@ export interface BlogPlan {
 }
 export type BlogToken = { kind: 'text'; text: string } | { kind: 'photo'; identity: string };
 export interface BlogReadback { title: string; tokens: BlogToken[]; tags: string[] }
-export interface BlogProgress { characters: number; totalCharacters: number; photos: number; totalPhotos: number; photoUploadMilliseconds?: number; photoUploadSamples?: number }
+export interface BlogProgress { characters: number; totalCharacters: number; photos: number; totalPhotos: number; photoUploadMilliseconds?: number; photoUploadSamples?: number; activity?: import('../progress').EngineActivity; ownRecoveryDiscarded?: boolean }
 export interface BlogEnvironment {
   host: SurfaceHost;
+  lastTypedTitle?: { read(): Promise<string | null>; write(title: string): Promise<void> };
   mode?: 'draft' | 'publish';
   visibility?: BlogVisibility;
   publishEnabled?: boolean;
@@ -70,6 +71,8 @@ export class BlogExecution {
   surface: Surface | undefined;
   private index = 0;
   private executingStep: BlogPlan['steps'][number] | undefined;
+  private activity: import('../progress').EngineActivity | undefined;
+  private signal(value: Omit<import('../progress').EngineActivity, 'channel'>) { this.activity = { channel: 'blog', ...value }; this.report(); }
   private offset = 0;
   private characters = 0;
   private photos = 0;
@@ -81,6 +84,15 @@ export class BlogExecution {
   private reopened = false;
   private verified = false;
   private recoveryConsent = false;
+  private ownRecoveryDiscarded = false;
+  private async prepare() {
+    const lastTypedTitle = await this.env.lastTypedTitle?.read().catch(() => null);
+    await prepareBlogEditor(this.surface!, this.env.check, {
+      autoRecover: this.recoveryConsent ? 'decline-with-user-consent' : 'stop', lastTypedTitle: lastTypedTitle ?? null,
+      onOwnRecoveryDiscarded: () => { this.ownRecoveryDiscarded = true; this.report(); },
+    });
+    this.recoveryConsent = false;
+  }
   private atomic = false;
   private publishInteraction = false;
   private publishArmed = false;
@@ -105,13 +117,15 @@ export class BlogExecution {
     if (env.publishProbe && (env.mode !== 'publish' || env.publishProbe.visibility !== this.visibility)) throw new Error('BLOG_PROBE_CONFIGURATION_MISMATCH');
   }
   async ensureReady() {
+    this.signal({ stage: 'open', phase: 'start', opening: this.surface ? 'empty' : 'navigate' });
     try {
     if (!this.surface) await this.fresh();
     else {
       await this.guard();
-      await prepareBlogEditor(this.surface, this.env.check, { autoRecover: this.recoveryConsent ? 'decline-with-user-consent' : 'stop' });
+      await this.prepare();
       this.recoveryConsent = false; this.checkpoint = await readBlogDocument(this.surface);
     }
+    this.signal({ stage: 'open', phase: 'finish', opening: 'empty' });
     } finally { if (this.surface) await closeTagLayer(this.surface); }
   }
   consentToDiscard() { this.recoveryConsent = true; }
@@ -126,9 +140,17 @@ export class BlogExecution {
     const ready = await read<boolean>(this.surface!, `return !docs.some(({d})=>d.querySelector('input[type="password"]')||d.location.hostname==='nid.naver.com')&&docs.some(({d})=>d.querySelector('.se-documentTitle'));`);
     if (!ready) throw new Error('LOGIN_OR_EDITOR_LOST');
   }
-  private async fresh() {
+  private async fresh(readback = false) {
     const previous = this.surface;
     this.surface = await this.env.host.create('naver');
+    // Loading a saved draft emits documentChanged too. Its three-second
+    // autosave debounce must not recreate an unfinished composition during
+    // readback or while waiting to publish. Install before navigation and
+    // before the publication guard, retaining that guard's response checks.
+    if (readback) {
+      if (!this.surface.blockRequests) throw new Error('BLOG_READBACK_BARRIER_UNAVAILABLE');
+      await this.surface.blockRequests([{ hostname: 'blog.naver.com', pathname: '/RabbitAutoSaveWrite.naver' }]);
+    }
     protectBlogInputs(this.surface, async (x, y) => {
       if (!this.publishInteraction || this.env.mode !== 'publish') return false;
       const proof = await readVisibility(this.surface!, this.visibility);
@@ -174,6 +196,7 @@ export class BlogExecution {
     }
     // Keep the previous composition until the new editor is available. Never close on stop/failure.
     await this.surface.open({ url: this.env.editorUrl ?? 'https://blog.naver.com/GoBlogWrite.naver', session: 'naver', width: 1280, height: 900, userAgent: ua });
+    this.signal({ stage: 'open', phase: 'progress', opening: 'editor' });
     // The outer document's load can precede SmartEditor's iframe. Missing editor
     // during that interval is not evidence that the authenticated session expired.
     await waitFor(async () => {
@@ -186,7 +209,8 @@ export class BlogExecution {
       return state;
     }, 30000);
     await this.guard();
-    await prepareBlogEditor(this.surface, this.env.check, { autoRecover: this.recoveryConsent ? 'decline-with-user-consent' : 'stop' });
+    this.signal({ stage: 'open', phase: 'progress', opening: 'empty' });
+    await this.prepare();
     this.recoveryConsent = false;
     this.checkpoint = await readBlogDocument(this.surface);
     if (previous) await this.env.host.destroy(previous);
@@ -194,7 +218,8 @@ export class BlogExecution {
   private report() {
     const totalCharacters = this.plan.steps.reduce((n, s) => n + (s.kind === 'text' ? Array.from(s.text).length : s.kind === 'table' ? s.rows.flat().reduce((a, t) => a + Array.from(t).length, 0) : 0), 0);
     this.env.progress({ characters: this.characters, totalCharacters, photos: this.photos, totalPhotos: this.files.length,
-      photoUploadMilliseconds: this.photoUploadMilliseconds, photoUploadSamples: this.photoUploadSamples });
+      ...(this.ownRecoveryDiscarded ? { ownRecoveryDiscarded: true } : {}),
+      photoUploadMilliseconds: this.photoUploadMilliseconds, photoUploadSamples: this.photoUploadSamples, ...(this.activity ? { activity: this.activity } : {}) });
   }
   private async type(text: string, resume = false) {
     const chars = inputCharacters(text);
@@ -210,6 +235,7 @@ export class BlogExecution {
       offset = end; this.characters += Array.from(chars.slice(start, end).join('')).length;
       if (resume) this.offset = offset;
       if (!this.atomic) this.checkpoint = await readBlogDocument(this.surface!);
+      if (this.activity?.stage === 'write' && this.executingStep?.kind === 'text') this.activity = { ...this.activity, phase: 'progress', fraction: Math.min(.99, offset / Math.max(1, chars.length)) };
       this.report();
     }
   }
@@ -277,13 +303,14 @@ export class BlogExecution {
       } else if (this.checkpoint) {
         await this.fresh(); this.index = 0; this.offset = 0; this.characters = 0; this.photos = 0; this.tableModes.length = 0; this.atomic = false;
         this.photoUploadMilliseconds = 0; this.photoUploadSamples = 0;
-      } else await prepareBlogEditor(this.surface, this.env.check, { autoRecover: this.recoveryConsent ? 'decline-with-user-consent' : 'stop' });
+      } else await this.prepare();
       this.recoveryConsent = false;
     }
     const s = this.surface!;
     for (; this.index < this.plan.steps.length; this.index++, this.offset = 0) {
       await this.guard(); const step = this.plan.steps[this.index]!;
       this.executingStep = step;
+      if (step.kind !== 'break') this.signal({ stage: 'write', phase: 'start', blockIndex: this.index, blockTotal: this.plan.steps.length, blockKind: step.kind === 'photos' ? 'photos' : step.kind === 'table' ? 'table' : step.role === 'title' ? 'title' : step.role === 'hashtags' ? 'tags' : 'paragraph', fraction: 0 });
       if (step.kind === 'text' && step.role === 'title') {
         if (!this.offset) await click(s, 'BLOG_TITLE', titleSelector);
         await this.type(step.text, true);
@@ -294,6 +321,7 @@ export class BlogExecution {
       } else if (step.kind === 'photos') {
         this.atomic = true;
         for (const url of step.urls) {
+          this.signal({ ...this.activity!, stage: 'write', phase: 'start', photoIndex: this.photos, photoTotal: this.files.length, fraction: 0 });
           await this.guard();
           const started = Date.now();
           await this.endOfBody();
@@ -304,6 +332,7 @@ export class BlogExecution {
           await confirmBlogPhotos(s, this.photos + 1, this.env.check);
           await s.pressKey({ key: 'ArrowDown' }); await this.endOfBody();
           this.photos++;
+          this.signal({ ...this.activity!, stage: 'write', phase: 'finish', fraction: 1 });
           this.photoUploadMilliseconds += Date.now() - started; this.photoUploadSamples++;
           this.report();
         }
@@ -341,6 +370,8 @@ export class BlogExecution {
         }
       }
       await this.guard(); this.checkpoint = await readBlogDocument(s); this.atomic = false; this.report();
+      if (step.kind === 'text' && step.role === 'title' && this.checkpoint.title === step.text) await this.env.lastTypedTitle?.write(step.text).catch(() => {});
+      if (step.kind !== 'break') this.signal({ ...this.activity!, stage: 'write', phase: 'finish', fraction: 1 });
     }
     this.executingStep = undefined;
     this.env.verify(await this.observe());
@@ -436,6 +467,7 @@ export class BlogExecution {
       this.env.check(); this.env.beforeSave();
       // Mark BEFORE sending input. Ambiguous transport responses never cause another save.
       this.saveAttempted = true;
+      this.signal({ stage: 'submit', phase: 'start', submission: 'draft' });
       try {
         await requireTagLayerClosed(this.surface!);
         await click(this.surface!, 'BLOG_SAVE', 'button[data-click-area="tpb.save"]');
@@ -448,7 +480,7 @@ export class BlogExecution {
       await sleep(800);
       await this.guard();
     }
-    if (!this.reopened) { await this.fresh(); this.reopened = true; }
+    if (!this.reopened) { await this.fresh(true); this.reopened = true; }
     await this.guard();
     const s = this.surface!;
     const opened = await read<boolean>(s, `return docs.some(({d})=>Array.from(d.querySelectorAll('[aria-label="임시저장된 글"]')).some(visible));`);
@@ -462,6 +494,7 @@ export class BlogExecution {
   }
   async publish() {
     if (this.env.mode !== 'publish' || !this.verified || !this.env.publishEnabled && !this.env.localPublish) throw new Error('REAL_PUBLISH_DISABLED');
+    this.signal({ stage: 'submit', phase: 'start', submission: 'publish' });
     if (this.publishAttempted) throw new Error('BLOG_PUBLISH_ALREADY_ATTEMPTED');
     await this.guard(); this.env.verify(await this.observe());
     const s = this.surface!;
@@ -531,5 +564,5 @@ export class BlogExecution {
   }
   async show() { await this.surface?.show(); }
   async hide() { await this.surface?.hide(); }
-  async close() { if (this.surface) await this.env.host.destroy(this.surface); }
+  async close() { if (this.surface) { await this.env.host.destroy(this.surface); this.surface = undefined; } }
 }

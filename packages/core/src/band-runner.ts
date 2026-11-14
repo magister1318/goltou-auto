@@ -28,7 +28,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
   private readonly recording: RecordingCheckpoint;
   constructor(private readonly services: { band: BandServices; blog?: BlogServices }, checkpoint: Checkpoint, private readonly notify: (job: Job) => void) {
     this.recording = new RecordingCheckpoint(checkpoint, notify);
-    this.directory = new BandDirectory(services.band.host, services.band.baseUrl, services.band.localPublish);
+    this.directory = new BandDirectory(services.band.host, services.band.baseUrl, services.band.localPublish, services.band.publishEnabled);
     this.serviceLogin = new ServiceLoginController(services.band.host);
   }
   async listBands() {
@@ -36,7 +36,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     try { return await this.directory.list(); }
     catch (error) {
       if (error instanceof Error && /BAND_LOGIN_(LOST|UNCONFIRMED)/.test(error.message)) {
-        throw new ApiError('auth', '밴드 로그인 상태를 확인하지 못했습니다. 서비스 로그인에서 밴드 화면을 열어 주세요.');
+        throw new ApiError('auth', '밴드 목록을 확인하지 못했습니다.');
       }
       throw error;
     }
@@ -48,15 +48,15 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     if (input.mode === 'publish' && !input.publishConfirmed) throw new ApiError('invalid', '이 작업의 발행 확인이 필요합니다.');
     const bands = input.targets.filter(t => t.channel === 'band');
     if (this.services.blog?.publishProbe && (bands.length || input.mode !== 'publish' || input.blogVisibility !== this.services.blog.publishProbe.visibility)) throw new ApiError('invalid', '발행 차단 프로브의 블로그 공개 범위를 확인해 주세요.');
-    if (bands.length && input.mode === 'publish' && !this.services.band.localPublish) throw new ApiError('invalid', '실제 밴드 자동 게시가 차단되어 있습니다. 임시저장 방식을 선택해 주세요.');
+    if (bands.length && input.mode === 'publish' && !this.services.band.localPublish && !this.services.band.publishEnabled) throw new ApiError('invalid', '이 시험 빌드에서는 실제 밴드 게시를 시험하지 않습니다.');
     if (bands.some(t => !this.directory.choices.some(b => b.key === t.key))) throw new ApiError('invalid', '내 밴드 목록에서 다시 골라 주세요.');
-    if (!this.services.band.localPublish && bands.some(t => t.key !== this.directory.choices[0]?.key)) throw new ApiError('invalid', '이번 실기기 확인은 첫 밴드만 허용합니다.');
+    if (!this.services.band.localPublish && !this.services.band.publishEnabled && bands.some(t => t.key !== this.directory.choices[0]?.key)) throw new ApiError('invalid', '이번 실기기 확인은 첫 밴드만 허용합니다.');
     const blogs = input.targets.filter(t => t.channel === 'blog');
     if (blogs.length > 1 || blogs.length && !this.services.blog) throw new ApiError('invalid', '블로그 실행 설정을 확인해 주세요.');
     if (blogs.length && !this.services.blog?.localPublish && !this.services.blog?.publishEnabled && (input.mode !== 'draft' || !title.startsWith('[골투오토 실험]'))) throw new ApiError('invalid', '실제 네이버 발행 설정을 확인해 주세요.');
     this.work = work; this.abort = new AbortController(); this.band = undefined; this.bandIndex = 0; this.discardPending = false; this.blogSkipped = false; this.saves = 0;
     await this.blog?.close(); this.blog = undefined;
-    this.job = { id: ++this.serial, productNo: input.productNo, title, mode: input.mode, blogVisibility: input.blogVisibility ?? 'public', targets: structuredClone(input.targets), targetResults: input.targets.map(t => ({ ...t, status: 'running' })), status: 'running', step: 1, current: 0, total: photos, completedSteps: [], service: null, message: '' };
+    this.job = { startedAt: Date.now(), id: ++this.serial, productNo: input.productNo, title, mode: input.mode, blogVisibility: input.blogVisibility ?? 'public', targets: structuredClone(input.targets), targetResults: input.targets.map(t => ({ ...t, status: 'running' })), status: 'running', step: 1, current: 0, total: photos, completedSteps: [], service: null, message: '' };
     if (this.services.blog?.publishProbe) { this.job.publishProbe = true; this.job.message = '발행 차단 프로브'; }
     try { await this.emit(); this.launch(); } catch (error) { if (!(error instanceof RecordError)) throw error; }
   }
@@ -87,10 +87,10 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
           await this.blog.saveAndVerify();
           const result = j.targetResults!.find(t => t.channel === 'blog')!;
           if (j.mode === 'publish') {
-            try { result.postUrl = await this.blog.publish(); }
+            try { result.postUrl = await this.blog.publish(); j.publicationUncertain = false; }
             catch (error) {
               if (!j.publishProbe || !(error instanceof Error) || error.message !== 'BLOG_PUBLISH_PROBE_BLOCKED') throw error;
-              result.status = 'stopped'; result.reason = 'BLOG_PUBLISH_PROBE_BLOCKED';
+              j.publicationUncertain = false; result.status = 'stopped'; result.reason = 'BLOG_PUBLISH_PROBE_BLOCKED';
             }
           }
           j.blogReadbackTimings = [...this.blog.readbackTimings];
@@ -118,10 +118,13 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
               j.status = 'stopped_before_post'; j.secondsLeft = 0; j.message = '게시 전 멈춤 · 밴드 화면에서 확인하고 게시하거나 버려 주세요.';
               await this.emit(); return;
             }
-            result.postUrl = await this.band.publish(); result.status = 'published'; await this.emit();
+            result.postUrl = await this.band.publish(); j.publicationUncertain = false; result.status = 'published'; await this.emit();
           }
         }
-        if (j.step === 7) await this.work!.cleanup();
+        if (j.step === 7) {
+          if (j.targetResults?.some(t => t.channel === 'blog' && ['draft_saved', 'published'].includes(t.status))) await this.blog?.close();
+          await this.work!.cleanup();
+        }
         this.check(); if (!j.completedSteps.includes(j.step)) j.completedSteps.push(j.step);
         if (j.step === 7) {
           const results = j.targetResults!;
@@ -143,7 +146,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
   private async fail(error: unknown) {
     if (error instanceof RecordError) return;
     const j = this.job!; const code = error instanceof Error ? error.message : 'BAND_FAILED';
-    j.failureCode = safeFailureCode(error, 'CHANNEL_FAILED');
+    j.failureCode = j.publicationUncertain ? j.step === 6 ? 'BAND_POST_UNCONFIRMED' : 'BLOG_PUBLISH_UNCONFIRMED' : safeFailureCode(error, 'CHANNEL_FAILED');
     const isBand = j.step === 6;
     const execution = isBand ? this.band : this.blog;
     const dialog = await execution?.dialog().catch(() => null);
@@ -151,7 +154,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     else if (/^(BAND_LOGIN_LOST|BAND_LOGIN_UNCONFIRMED|LOGIN_OR_EDITOR_LOST)$/.test(code)) {
       j.status = 'login_paused'; j.service = isBand ? 'band' : 'naver'; j.message = '로그인 풀림으로 멈춤';
       await this.emit();
-      await this.showService(j.service).catch(() => { j.message = '로그인 화면을 열지 못했습니다. 연결을 확인하고 다시 열어 주세요.'; });
+
     } else if (code === 'BAND_RESTART_REQUIRED' || code === 'AUTO_RECOVER_CONSENT_REQUIRED') {
       j.status = 'recovery_paused'; j.message = '작성 중인 내용이 달라졌습니다. 버리고 같은 화면에서 처음부터 시작할지 선택해 주세요.';
     } else {
@@ -171,7 +174,16 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     if (!this.job || !['running', 'login_paused', 'recovery_paused', 'dialog_paused'].includes(this.job.status)) return;
     this.job.status = 'user_paused'; this.abort.abort(); await this.active; await this.emit();
   }
+  async cancel() {
+    if (!this.job || !['running', 'login_paused', 'user_paused', 'failed', 'channel_paused', 'recovery_paused'].includes(this.job.status) || this.job.publicationUncertain || this.job.activity?.stage === 'submit' || this.job.failureCode === 'BAND_POST_UNCONFIRMED') throw new ApiError('conflict', '저장 또는 게시 결과를 먼저 확인해 주세요.');
+    await this.stop();
+    if (this.band) await this.band.discard();
+    await this.blog?.close(); await this.work?.cleanup();
+    for (const target of this.job.targetResults ?? []) if (!['draft_saved', 'published'].includes(target.status)) target.status = 'stopped';
+    this.job.status = 'stopped'; await this.emit();
+  }
   async resume() {
+    if (this.job?.publicationUncertain || this.job?.failureCode === 'BAND_POST_UNCONFIRMED' || this.job?.failureCode?.startsWith('BLOG_PUBLISH_')) throw new ApiError('conflict', '게시됐는지 먼저 확인해 주세요. 같은 작업을 다시 게시하지 않습니다.');
     if (this.serviceLogin.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
     if (!this.job || !['user_paused', 'login_paused', 'failed'].includes(this.job.status) || this.job.completedSteps.includes(7)) throw new ApiError('conflict', '화면의 선택을 먼저 마쳐 주세요.');
     await this.active; this.abort = new AbortController(); await this.hideService(); this.job.status = 'running'; this.job.service = null; this.job.message = '';
@@ -190,8 +202,11 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
   }
   async recover(discard: boolean) {
     if (this.job?.status !== 'recovery_paused') throw new ApiError('conflict', '다시 시작할 내용이 없습니다.');
+    await this.active;
+    if (!discard) { await this.cancel(); return; }
     this.job.status = 'user_paused';
-    if (discard) { if (this.job.step === 6) this.band?.allowRestart(); else this.blog?.consentToDiscard(); await this.resume(); } else await this.emit();
+    if (this.job.step === 6) this.band?.allowRestart(); else this.blog?.consentToDiscard();
+    delete this.job.failureCode; await this.resume();
   }
   async answerDialog(id: string, accept: boolean) {
     if (this.job?.status !== 'dialog_paused' || this.job.dialog?.id !== id) throw new ApiError('conflict', '확인창이 바뀌었습니다.');
@@ -220,6 +235,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     } catch (error) { await this.fail(error); }
   }
   async discardBand() {
+    if (this.result()?.status === 'published') throw new ApiError('conflict', '이미 게시한 글은 작성 취소로 지울 수 없습니다. 등록 기록을 확인해 주세요.');
     if (!this.job || this.job.step !== 6 || !['stopped_before_post', 'record_failed', 'failed', 'user_paused', 'recovery_paused'].includes(this.job.status) || !this.band) throw new ApiError('conflict', '버릴 작성기가 없습니다.');
     try {
       this.discardPending = true; await this.band.discard(); this.discardPending = false;

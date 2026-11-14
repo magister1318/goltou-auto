@@ -10,7 +10,7 @@ export function ExperimentsScreen({ back }: { back(): void }) {
   const [ua, setUa] = useState('desktop');
   const [sending, setSending] = useState(false);
   const [declineAutoRecover, setDeclineAutoRecover] = useState(false);
-  const labels = { confirmed: '로그인됨', expired: '풀림', unknown: '모름' };
+  const labels = { confirmed: '연결됨', expired: '로그인 필요', unknown: '확인하지 못함' };
   useEffect(() => {
     let active = true;
     const refresh = () => { void experiment('state').then(v => { if (active) setState(v); }).catch(() => {}); };

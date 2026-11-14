@@ -1,0 +1,91 @@
+{
+  "files": 56,
+  "passed": 610,
+  "failed": 0,
+  "skipped": 0,
+  "previousReview": {
+    "passed": 513,
+    "skipped": 83,
+    "previousIncorrectReportWithdrawn": true
+  },
+  "ownerDecision": "2026-11-14 20:44 KST: discard only when readable leftover title exactly equals last locally typed title",
+  "ownerFollowup": {
+    "draftStartActions": 2,
+    "runs": [
+      {
+        "run": 3,
+        "done": false,
+        "failed": true,
+        "startToDoneSeconds": null,
+        "sheetAppeared": false,
+        "samples": 78,
+        "wallMilliseconds": 77372,
+        "choiceWaitMillisecondsApprox": 0,
+        "activeMillisecondsApprox": 77372,
+        "longestVisibleUnchangedMilliseconds": 2020,
+        "percentFinite": true,
+        "percentMonotonic": true,
+        "maxLivePercent": 89.9,
+        "textRegressions": 0,
+        "photoRegressions": 0,
+        "pillRegressions": 0,
+        "maxPhotos": 12,
+        "maxPills": 5,
+        "maxSampleIntervalMilliseconds": 1132
+      },
+      {
+        "run": 4,
+        "done": true,
+        "failed": false,
+        "startToDoneSeconds": 198.26,
+        "sheetAppeared": false,
+        "samples": 199,
+        "wallMilliseconds": 198260,
+        "choiceWaitMillisecondsApprox": 0,
+        "activeMillisecondsApprox": 198260,
+        "longestVisibleUnchangedMilliseconds": 2902,
+        "percentFinite": true,
+        "percentMonotonic": true,
+        "maxLivePercent": 95.1,
+        "textRegressions": 0,
+        "photoRegressions": 0,
+        "pillRegressions": 0,
+        "maxPhotos": 8,
+        "maxPills": 5,
+        "maxSampleIntervalMilliseconds": 1196
+      }
+    ],
+    "contactSheet": {
+      "frames": 8,
+      "width": 2340,
+      "height": 2566,
+      "complete": true
+    },
+    "metricsContainProductOrAccountText": false,
+    "realPublishActions": 0,
+    "realBandPostActions": 0,
+    "realSavedPostDeleteActions": 0,
+    "ownTitleDecisionLiveVerified": false,
+    "consecutiveSuccessfulDraftPairVerified": false,
+    "blogSurfacesAfterRun4": 0
+  },
+  "verification": {
+    "install": true,
+    "typecheck": true,
+    "tests": true,
+    "build": true,
+    "assembleDebug": true,
+    "finalApkInstalled": true,
+    "finalHomeVerified": true,
+    "finalSourceTargetedTests": {
+      "passed": 6,
+      "failed": 0,
+      "excluded": 20
+    },
+    "unreadableTitleTargetedTests": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    }
+  }
+}

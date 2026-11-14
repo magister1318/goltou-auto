@@ -60,6 +60,37 @@ describe('WP0 readers in a fresh local browser fixture', () => {
       const mouse = vi.fn(async (x: number, y: number) => { await page.mouse.click(x, y); });
       expect(await prepareBlogEditor({ ...surface, click: mouse }, () => {}, { autoRecover: 'decline-with-user-consent' })).toEqual({ empty: true, autoRecoverDeclined: true });
       expect(mouse).toHaveBeenCalledTimes(1);
+      // A prompt may expose its own title. Compare exactly, and never infer
+      // ownership from the empty editor's title or a matching substring.
+      for (const [title, remembered, automatic] of [
+        ['앱의 제목', '앱의 제목', true], ['다른 제목', '앱의 제목', false],
+        ['앱의 제목 ', '앱의 제목', false], ['', '앱의 제목', false],
+        ['앱의 제목', null, false],
+      ] as const) {
+        await page.goto('https://blog.naver.com/GoBlogWrite.naver');
+        if (title) await page.locator('.se-popup-alert-confirm').evaluate((e, text) => {
+          const title = document.createElement('div'); title.className = 'se-documentTitle';
+          const p = document.createElement('p'); p.className = 'se-text-paragraph'; p.textContent = text;
+          title.append(p); e.append(title);
+        }, title);
+        const note = vi.fn(); mouse.mockClear();
+        const result = prepareBlogEditor({ ...surface, click: mouse }, () => {}, { lastTypedTitle: remembered, onOwnRecoveryDiscarded: note });
+        if (automatic) {
+          await expect(result).resolves.toEqual({ empty: true, autoRecoverDeclined: true });
+          expect(mouse).toHaveBeenCalledTimes(1); expect(note).toHaveBeenCalledTimes(1);
+        } else {
+          await expect(result).rejects.toThrow('AUTO_RECOVER_CONSENT_REQUIRED');
+          expect(mouse).not.toHaveBeenCalled(); expect(note).not.toHaveBeenCalled();
+          expect(await page.locator('.se-popup-alert-confirm').count()).toBe(1);
+        }
+      }
+      await page.goto('https://blog.naver.com/GoBlogWrite.naver'); mouse.mockClear();
+      const unreadable = { ...surface, click: mouse, evaluateReadOnly: async <T>(expression: string): Promise<T> => {
+        if (expression.includes('const titles=')) throw Error('TITLE_READ_UNAVAILABLE');
+        return surface.evaluateReadOnly<T>(expression);
+      } };
+      await expect(prepareBlogEditor(unreadable, () => {}, { lastTypedTitle: '앱의 제목' })).rejects.toThrow('AUTO_RECOVER_CONSENT_REQUIRED');
+      expect(mouse).not.toHaveBeenCalled();
       fixture = 'naver'; await page.goto('https://blog.naver.com/GoBlogWrite.naver');
       mouse.mockClear();
       await expect(prepareBlogEditor({ ...surface, click: mouse }, () => {}, { autoRecover: 'decline-with-user-consent' })).rejects.toThrow('EDITOR_NOT_EMPTY');
@@ -73,5 +104,5 @@ describe('WP0 readers in a fresh local browser fixture', () => {
       await closeComposer({ ...surface, click }); expect(click).toHaveBeenCalledTimes(1);
       await context.close();
     } finally { await browser.close(); }
-  }, 20000);
+  }, 30000);
 });
