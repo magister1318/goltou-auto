@@ -1,11 +1,12 @@
 // Reference: ../refs/DAF/daf3/packages/engine-naver-editor/src/insert/info-table.ts (table toolbar/control selectors only; DOM mutations excluded).
-import type { GuardedRequest, Surface, SurfaceDialog, SurfaceHost } from '@goltou/surface';
+import type { GuardedRequest, GuardedResponse, Surface, SurfaceDialog, SurfaceHost } from '@goltou/surface';
 import { inputCharacters } from '@goltou/surface';
 import { click, compact, point, read, sleep, waitFor } from '../dom';
 import { confirmBlogPhotos, prepareBlogEditor } from './index';
 import { ControlNotFoundError } from '../control-failure';
 import { closeTagLayer, protectBlogInputs, requireTagFocus, requireTagLayerClosed, tagInputSelector, tagPanelToggle } from './draft-safety';
 import { finalPublishSelector, guardedPublishClick, inspectPrivateRequest, postIdentity, readVisibility, requireVisibility, selectVisibility, type BlogVisibility, type PublishedPost, type VisibilityProof } from './publish-safety';
+import { parsePublishIdentity, resolvePublishIdentity, type ResponseIdentity, type PublishedPage } from './publish-identity';
 
 /** Structural subset of WP4 InputPlan. Sites has no dependency on core or a device API. */
 export interface BlogPlan {
@@ -25,6 +26,7 @@ export interface BlogEnvironment {
   localPublish?: boolean;
   /** Debug shell capability, separate from real publish authorization. ALWAYS blocks. */
   publishProbe?: { visibility: BlogVisibility; record(request: GuardedRequest, proof: VisibilityProof | undefined): Promise<void> };
+  recordPublishResponse?(response: GuardedResponse): Promise<void>;
   beforeSave(): void;
   check(): void;
   progress(value: BlogProgress): void;
@@ -35,9 +37,10 @@ const bodySelector = '.se-component.se-text .se-text-paragraph';
 const ua = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 
 /** Read document order, cells and uploaded filenames independently of the input plan. */
-export async function readBlogDocument(surface: Surface): Promise<BlogReadback> {
+export async function readBlogDocument(surface: Surface, documentUrls?: readonly string[]): Promise<BlogReadback> {
   return read(surface, `
-    const d=docs.find(({d})=>d.querySelector('.se-documentTitle'))?.d;
+    const allowed=${JSON.stringify(documentUrls ?? null)};
+    const d=docs.find(({d})=>(!allowed||allowed.includes(d.location.href))&&d.querySelector('.se-documentTitle'))?.d;
     if(!d) throw Error('LOGIN_OR_EDITOR_LOST');
     const text=e=>{const nodes=Array.from(e.querySelectorAll('.__se-node'));return nodes.length?nodes.map(n=>n.textContent||'').join(''):(e.querySelector('.se-placeholder')?'':e.textContent||'');};
     const main=d.querySelector('.se-main-container')||d.querySelector('.se-content')||d.querySelector('.se-viewer');
@@ -84,8 +87,10 @@ export class BlogExecution {
   private publishAttempted = false;
   private requestProof: VisibilityProof | undefined;
   private publishFailure = '';
-  private responsePost: PublishedPost | undefined;
-  /** Set only from this execution's successful publish response. Memory only. */
+  private responsePost: ResponseIdentity = { post: null, postId: null };
+  private responseEvidence: Promise<void> = Promise.resolve();
+  private publishRequestAccepted = false;
+  /** Established from unambiguous response or resulting page evidence. Memory only. */
   publishedPost: PublishedPost | undefined;
   publishedVerified = false;
   private get visibility() { return this.env.visibility ?? 'public'; }
@@ -156,23 +161,14 @@ export class BlogExecution {
         if (this.visibility === 'private' && (!this.requestProof || !inspectPrivateRequest(request, this.requestProof))) {
           this.publishFailure = 'BLOG_PRIVATE_REQUEST_UNCONFIRMED'; return false;
         }
+        this.publishRequestAccepted = true;
         return true;
       }, response => {
+        this.responseEvidence = Promise.resolve().then(() => this.env.recordPublishResponse?.(response)).catch(() => { this.publishFailure = 'BLOG_PUBLISH_RESPONSE_EVIDENCE_FAILED'; });
         try {
-          if (response.status !== 200) throw new Error();
-          const parsed = JSON.parse(response.body) as { isSuccess?: boolean; result?: { logNo?: unknown; postUrl?: unknown; url?: unknown }; logNo?: unknown; postUrl?: unknown };
-          if (parsed.isSuccess === false) throw new Error();
-          const result = parsed.result ?? parsed;
-          const id = String(result.logNo ?? '');
-          const rawUrl = 'postUrl' in result ? result.postUrl : undefined;
-          const rawOther = 'url' in result ? result.url : undefined;
-          const identity = postIdentity(typeof rawUrl === 'string' ? rawUrl : typeof rawOther === 'string' ? rawOther : '');
-          if (!/^[0-9]+$/.test(id)) throw new Error();
-          if (identity && identity.postId !== id) throw new Error();
-          // Some responses return only logNo. Correlate the resulting URL later.
-          this.responsePost = { postId: id, url: identity?.url ?? '' };
-          if (identity) this.publishedPost = identity;
-        } catch { this.publishFailure = 'BLOG_PUBLISH_RESPONSE_UNCONFIRMED'; }
+          this.responsePost = parsePublishIdentity(response);
+          if (this.responsePost.post) this.publishedPost = this.responsePost.post;
+        } catch (error) { this.publishFailure = error instanceof Error ? error.message : 'BLOG_PUBLISH_RESPONSE_UNCONFIRMED'; }
       });
     }
     // Keep the previous composition until the new editor is available. Never close on stop/failure.
@@ -481,10 +477,13 @@ export class BlogExecution {
       await waitFor(async () => {
         this.env.check();
         if (this.publishFailure) throw new Error(this.publishFailure);
-        if (!this.responsePost) return false;
-        const urls = await read<string[]>(s, `return docs.map(({d})=>d.location.href);`).catch(() => []);
-        const identity = urls.map(postIdentity).find(v => v?.postId === this.responsePost!.postId);
-        if (!identity || this.responsePost.url && identity.url !== this.responsePost.url) return false;
+        if (!this.publishRequestAccepted) return false;
+        await this.responseEvidence;
+        if (this.publishFailure) throw new Error(this.publishFailure);
+        const state = await s.readState();
+        const pages = await read<PublishedPage[]>(s, `return docs.map(({d})=>({url:d.location.href,titles:Array.from(d.querySelectorAll('.se-documentTitle .se-text-paragraph')).map(e=>(e.textContent||'').trim())}));`).catch(() => []);
+        const identity = resolvePublishIdentity(this.responsePost, [state.url], pages, this.title.text);
+        if (!identity || !pages.some(p => postIdentity(p.url)?.url === identity.url && p.titles.length === 1 && p.titles[0] === this.title.text)) return false;
         this.publishedPost = identity;
         return true;
       }, 30000);
@@ -499,12 +498,18 @@ export class BlogExecution {
     if (!this.publishedPost) throw new Error('BLOG_PUBLISH_ID_UNCONFIRMED');
     const s = this.surface!;
     const started = Date.now(); let navigationKeys = 0;
+    const ownUrls = async () => (await read<string[]>(s, `return docs.map(({d})=>d.location.href);`)).filter(url => postIdentity(url)?.url === this.publishedPost!.url);
     const value = await waitFor(async () => {
       this.env.check();
-      const actual = await readBlogDocument(s).catch(() => null);
+      const urls = await ownUrls();
+      const actual = await readBlogDocument(s, urls).catch(() => null);
       if (!actual) return false;
       if (actual.tokens.every(t => t.kind !== 'photo' || t.identity)) return actual;
-      const focus = await point(s, titleSelector);
+      const focus = await read<{ x: number; y: number } | null>(s, `for(const {d,x,y} of docs) {
+        if(!${JSON.stringify(urls)}.includes(d.location.href))continue;
+        const e=d.querySelector(${JSON.stringify(titleSelector)});if(!e||!visible(e))continue;
+        const r=e.getBoundingClientRect();return {x:x+r.left+r.width/2,y:y+r.top+r.height/2};
+      }return null;`);
       if (!focus || !await s.readClickTarget?.(focus.x, focus.y, titleSelector)) throw new Error('BLOG_PUBLISHED_FOCUS_UNCONFIRMED');
       await s.click(focus.x, focus.y);
       await s.pressKey({ key: 'PageDown' }); navigationKeys++;
@@ -513,7 +518,7 @@ export class BlogExecution {
     const identities = await read<string[]>(s, `return docs.map(({d})=>d.location.href);`);
     if (!identities.some(url => postIdentity(url)?.url === this.publishedPost!.url)) throw new Error('BLOG_PUBLISH_ID_UNCONFIRMED');
     if (this.visibility === 'private') {
-      const privateMarked = await read<boolean>(s, `return docs.some(({d})=>Array.from(d.querySelectorAll('.post_visibility, .blog2_visibility, .post_author, .blog2_container, [data-post-visibility]')).some(e=>visible(e)&&(e.textContent||'').trim()==='비공개'));`);
+      const privateMarked = await read<boolean>(s, `return docs.some(({d})=>${JSON.stringify(await ownUrls())}.includes(d.location.href)&&Array.from(d.querySelectorAll('.post_visibility, .blog2_visibility, .post_author, .blog2_container, [data-post-visibility]')).some(e=>visible(e)&&(e.textContent||'').trim()==='비공개'));`);
       if (!privateMarked) throw new Error('BLOG_PUBLISHED_PRIVATE_UNCONFIRMED');
     }
     this.env.verify(value);

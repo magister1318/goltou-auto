@@ -16,6 +16,6 @@
 | WP11 | 문장 다듬기 강도 (이번 사용자 지시) | 구현·시험 완료, 초안 PR 검토 대기. [보고서](../reports/WP11-polish-strength.md) |
 | WP12 | [release build](WP12-release.md) | 구현·시험·APK 검사 완료, 초안 PR 검토 대기. 실기기 설치는 지시로 생략. [보고서](../reports/WP12-release.md) · [배포 안내](../release.md) |
 | WP13 | [screen finish](WP13-screen-finish.md) | 구현·시험·실기기 6장·시뮬레이터 17장 확인 완료, 초안 PR 검토 대기. 런처 캡처 생략. [보고서](../reports/WP13-screen-finish.md) |
-| WP14 | [발행 방식과 비공개 확인](WP14-publish.md) | 차단 프로브 2회로 공개 범위 대응 확인·수정. 비공개 발행 한 번 뒤 응답 식별 실패로 중단. 화면 비공개 확인, 전체 검증·삭제 미완료. 소유자 수동 삭제 필요. [보고서](../reports/WP14-publish.md) |
+| WP14 | [발행 방식과 비공개 확인](WP14-publish.md) | 제목·사진 13장 순서·상품 숫자 대조 완료, 해시태그 읽기 불일치. 디버그 삭제 오류로 중단, 글 잔존 확인·소유자 수동 삭제 필요. 발행 식별 보완은 합성 시험만 확인. [보고서](../reports/WP14-publish.md) |
 
 지시서는 시작할 때 이 폴더에 추가합니다. 보고서는 `docs/reports/WPn.md`.

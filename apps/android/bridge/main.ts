@@ -52,13 +52,39 @@ async function start() {
     const { auditConversions } = await import('../../../packages/core/src/conversion-audit');
     const { deleteTestPost } = await import('../../../packages/core/src/test-post-delete');
     const { publishProbeShape } = await import('./publish-probe');
+    const { publishResponseShape } = await import('./publish-response-shape');
+    options.blog!.recordPublishResponse = async response => {
+      const shape = publishResponseShape(response);
+      const directory = path.join(path.dirname(argument('data')), 'wp14');
+      await mkdir(directory, { recursive: true });
+      await writeFile(path.join(directory, 'publish-response-shape.json'), JSON.stringify(shape), { mode: 0o600 });
+    };
     options.experiments = new Experiments({
       host, directory: argument('data'),
       photoPaths: Array.from({ length: 5 }, (_, i) => path.join(argument('bundle'), 'fixtures', `sample-${i + 1}.png`)),
       info: async () => ({ ...await native.call<Record<string, unknown>>('debug.info'), node: process.version }),
       lifecycle: async mode => { await native.call('debug.lifecycle', { mode }); },
       capture: (surface, name) => host.capture(surface, name),
-      deleteTestPost: () => app.cleanupTestPost(deleteTestPost),
+      deleteTestPost: async () => {
+        const { recoverTestPostCleanup, protectCleanupInputs } = await import('./test-post-recovery');
+        const ready = async () => {
+          const state = await native.call<{ foreground: boolean; windowFocused: boolean; screenOn: boolean }>('debug.info');
+          if (!state.foreground || !state.windowFocused || !state.screenOn) throw new Error('DEVICE_CONDITION_LOST');
+        };
+        await ready();
+        if (app.snapshot().job) return app.cleanupTestPost(async execution => {
+          if (!execution.surface) throw new Error('BLOG_TEST_DELETE_REFUSED');
+          protectCleanupInputs(execution.surface, ready);
+          await deleteTestPost(execution, async value => {
+            const directory = path.join(path.dirname(argument('data')), 'wp14');
+            await mkdir(directory, { recursive: true });
+            await writeFile(path.join(directory, 'cleanup-shape.json'), JSON.stringify(value), { mode: 0o600 });
+          });
+        });
+        const token = await new AndroidTokenStore(native).read();
+        if (!token) throw new Error('BLOG_TEST_DELETE_REFUSED');
+        await recoverTestPostCleanup(path.join(path.dirname(argument('data')), 'wp14', 'cleanup-context.json'), createApiClient(apiOrigin, fetch), token, host, ready);
+      },
       configurePublishProbe: visibility => {
         if (app.snapshot().job?.status === 'running') throw new Error('JOB_RUNNING');
         runtime.experimentTitleLabel = visibility === 'off' ? 'WP14 private-once ' : `WP14 probe-${visibility} `;

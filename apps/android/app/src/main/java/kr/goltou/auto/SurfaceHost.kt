@@ -26,7 +26,7 @@ import org.json.JSONArray
 
 class SurfaceHost(private val context: Context, private val hidden: FrameLayout, private val visible: FrameLayout,
     private val onUserHidden: (String) -> Unit) {
-    private data class PendingDialog(val id: String, val kind: String, val message: String, val result: JsResult)
+    private data class PendingDialog(val id: String, val kind: String, val message: String, val url: String, val result: JsResult)
     private data class Entry(val view: WebView, val session: String, var frame: View, var dialog: PendingDialog? = null)
     private var dialogSerial = 0
     private val entries = mutableMapOf<String, Entry>()
@@ -58,7 +58,7 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
             "surface.dialog" -> {
                 val pending = entries[msg.getString("surface")]?.dialog
                 reply(JSONObject().put("dialog", if (pending == null) JSONObject.NULL else JSONObject()
-                    .put("id", pending.id).put("kind", pending.kind).put("message", pending.message)), null)
+                    .put("id", pending.id).put("kind", pending.kind).put("message", pending.message).put("url", pending.url)), null)
                 return
             }
             "surface.dialog.answer" -> {
@@ -131,15 +131,15 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
         view.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(message: ConsoleMessage): Boolean =
                 !BuildConfig.DEBUG || super.onConsoleMessage(message)
-            private fun forward(kind: String, message: String, result: JsResult): Boolean {
+            private fun forward(kind: String, url: String, message: String, result: JsResult): Boolean {
                 val entry = entries[id] ?: return false
                 check(entry.dialog == null) { "DIALOG_ALREADY_PENDING" }
                 // Hold the JS result for an explicit choice in the app UI. No automatic default.
-                entry.dialog = PendingDialog((++dialogSerial).toString(), kind, message, result)
+                entry.dialog = PendingDialog((++dialogSerial).toString(), kind, message, url, result)
                 return true
             }
-            override fun onJsAlert(view: WebView, url: String, message: String, result: JsResult) = forward("alert", message, result)
-            override fun onJsConfirm(view: WebView, url: String, message: String, result: JsResult) = forward("confirm", message, result)
+            override fun onJsAlert(view: WebView, url: String, message: String, result: JsResult) = forward("alert", url, message, result)
+            override fun onJsConfirm(view: WebView, url: String, message: String, result: JsResult) = forward("confirm", url, message, result)
         }
         view.isFocusable = false
         view.isFocusableInTouchMode = false

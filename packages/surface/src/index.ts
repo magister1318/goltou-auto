@@ -17,7 +17,7 @@ export interface KeyInput {
   /** CDP bit mask: Alt=1, Control=2, Meta=4, Shift=8. */
   modifiers?: number;
 }
-export interface SurfaceDialog { id: string; kind: 'alert' | 'confirm'; message: string }
+export interface SurfaceDialog { id: string; kind: 'alert' | 'confirm'; message: string; url?: string }
 export interface RequestRule { hostname: string; pathname: string }
 /** Ephemeral transport data. Callers must never persist bodies or headers. */
 export interface GuardedRequest {

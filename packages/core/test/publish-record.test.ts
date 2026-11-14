@@ -6,10 +6,10 @@ import { ChannelRegistrationRunner } from '../src/band-runner';
 import { BlogRegistrationRunner } from '../src/blog-runner';
 import { makePreview } from '../src/preparation';
 import type { AppRequest, JobInput } from '../src/protocol';
-const site = vi.hoisted(() => ({ blog: { ensureReady: vi.fn(), write: vi.fn(), saveAndVerify: vi.fn(), publish: vi.fn(), dialog: vi.fn(async () => null), close: vi.fn(), show: vi.fn(), hide: vi.fn(), readbackTimings: [], tableModes: [], linkCard: 'off', publishedPost: { postId: '9001', url: 'https://example.invalid/9001' } } }));
+const site = vi.hoisted(() => ({ blog: { ensureReady: vi.fn(), write: vi.fn(), saveAndVerify: vi.fn(), publish: vi.fn(), dialog: vi.fn(async () => null), close: vi.fn(), show: vi.fn(), hide: vi.fn(), readbackTimings: [], tableModes: [], linkCard: 'off', publishedPost: { postId: '9001', url: 'https://example.invalid/9001' } as { postId: string; url: string } | undefined } }));
 vi.mock('../src/blog', async original => ({ ...await original<object>(), createBlogExecution: () => site.blog }));
 const cleanup: (() => void)[] = [];
-beforeEach(() => { vi.clearAllMocks(); site.blog.publish.mockResolvedValue('https://example.invalid/9001'); });
+beforeEach(() => { vi.clearAllMocks(); site.blog.publishedPost = { postId: '9001', url: 'https://example.invalid/9001' }; site.blog.publish.mockResolvedValue('https://example.invalid/9001'); });
 afterEach(() => { for (const close of cleanup.splice(0)) close(); });
 async function fixture(kind: 'blog' | 'channel', failStatus?: string, probe = false) {
   const product: Product = { productNo: 1, title: '[골투오토 실험] 합성 상품', contentsHtml: '<p>합성 안내</p>', images: [], departures: [], golfCourses: [], productUrl: 'https://example.invalid/product', contentHash: 'fixture', country: '', region: '', updatedAt: '' };
@@ -34,11 +34,22 @@ async function fixture(kind: 'blog' | 'channel', failStatus?: string, probe = fa
   const call = (command: AppRequest['command'], input: unknown = {}) => app.handle({ id: 1, type: 'app', command, input } as AppRequest);
   const input: JobInput = { productNo: 1, mode: 'publish', blogVisibility: 'private', publishConfirmed: true, targets: [{ channel: 'blog', key: 'local', name: '합성' }], options: { polish: false, closing: false, linkCard: false } };
   if (probe) site.blog.publish.mockRejectedValue(new Error('BLOG_PUBLISH_PROBE_BLOCKED'));
+  if (failStatus === 'unconfirmed') { site.blog.publishedPost = undefined; site.blog.publish.mockRejectedValue(new Error('BLOG_PUBLISH_RESPONSE_UNCONFIRMED')); }
   await call('job.start', input);
-  await vi.waitFor(() => expect(runner.job?.status).toBe(probe ? 'stopped' : failStatus === 'published' ? 'record_failed' : 'published'));
+  await vi.waitFor(() => expect(runner.job?.status).toBe(probe ? 'stopped' : failStatus === 'unconfirmed' ? 'failed' : failStatus === 'published' ? 'record_failed' : 'published'));
   return { app, runner, call, updates, repair: () => { failure = undefined; } };
 }
 describe('verified publish API recording', () => {
+  it('records only confirmed cleanup on the original failed record, even without a response identity', async () => {
+    const f = await fixture('channel', 'unconfirmed');
+    const remove = vi.fn(async () => { throw new Error('BLOG_TEST_DELETE_REFUSED'); });
+    await expect(f.app.cleanupTestPost(remove)).rejects.toThrow('BLOG_TEST_DELETE_REFUSED');
+    expect(f.runner.job?.testPostDeleted).toBeUndefined();
+    expect(f.updates.at(-1)?.failReason).toBe('BLOG_PUBLISH_RESPONSE_UNCONFIRMED');
+    await f.app.cleanupTestPost(async () => {});
+    expect(f.updates.at(-1)).toMatchObject({ postNo: 91, status: 'stopped', failReason: 'BLOG_TEST_POST_DELETED', postUrl: '' });
+    expect(site.blog.publish).toHaveBeenCalledTimes(1);
+  });
   it('records a blocked probe as stopped, with no published URL or completion claim', async () => {
     const f = await fixture('channel', undefined, true);
     expect(f.runner.job).toMatchObject({ publishProbe: true, status: 'stopped', targetResults: [{ status: 'stopped', reason: 'BLOG_PUBLISH_PROBE_BLOCKED' }] });

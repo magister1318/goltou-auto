@@ -15,10 +15,10 @@ import type { InputPlan } from '../src/convert';
 const executablePath = [process.env.CHROMIUM, 'C:/Program Files/Google/Chrome/Application/chrome.exe', '/usr/bin/chromium'].find(p => p && existsSync(p));
 const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const fn of cleanup.splice(0).reverse()) await fn(); });
-async function fixture(failure = '', visibility: 'public' | 'private' = 'private', probe = false) {
+async function fixture(failure = '', visibility: 'public' | 'private' = 'private', probe = false, cleanupPhotos = false) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'goltou-publish-'));
   cleanup.push(() => rm(directory, { recursive: true, force: true }));
-  const files = [1, 2].map(index => ({ url: `https://example.invalid/${index}`, path: path.join(directory, `goltou-1234567890abcdef-${index}.png`) }));
+  const files = Array.from({ length: cleanupPhotos ? 13 : 2 }, (_, i) => i + 1).map(index => ({ url: `https://example.invalid/${index}`, path: path.join(directory, `goltou-1234567890abcdef-${index}.png`) }));
   for (const file of files) await writeFile(file.path, new Uint8Array([137, 80, 78, 71]));
   let stored = { title: '', html: '', tags: '' }, published = 0, deleted = false, outside = 0, submissions = 0;
   const url = 'https://blog.naver.com/synthetic_fixture/9001';
@@ -36,7 +36,7 @@ async function fixture(failure = '', visibility: 'public' | 'private' = 'private
         const snapshot={title:title.textContent,html:main.innerHTML,tags:document.querySelector('.tag_list').innerHTML};
         const openType=Number(${JSON.stringify(failure)}==='request'?'2':panel.querySelector('[name=open_type]:checked').value);
         try { const response=await fetch('/RabbitWrite.naver',{method:'POST',body:new URLSearchParams({blogId:'synthetic',documentModel:JSON.stringify(snapshot),mediaResources:'{}',populationParams:JSON.stringify({configuration:{openType}}),productApiVersion:'v1',tokenId:'synthetic'})});
-          const result=await response.json();location.href=result.result.postUrl; }catch{}
+          await response.text();location.href=${JSON.stringify(failure === 'title-source' ? 'https://blog.naver.com/synthetic-shell' : url)}; }catch{}
       };
     });
   </script>`);
@@ -45,7 +45,7 @@ async function fixture(failure = '', visibility: 'public' | 'private' = 'private
       submissions++;
       let body = ''; req.on('data', chunk => { body += String(chunk); });
       req.on('end', () => { stored = JSON.parse(new URLSearchParams(body).get('documentModel')!); published++;
-        res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ isSuccess: true, result: { logNo: '9001', postUrl: url } })); });
+        res.writeHead(200, { 'content-type': 'application/json' }).end(failure === 'unknown-response' || failure === 'title-source' ? '{"undocumented":true}' : failure === 'bad-response' ? 'unknown syntax' : JSON.stringify({ isSuccess: true, result: { logNo: '9001', postUrl: url } })); });
     } else res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(editor);
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -58,6 +58,8 @@ async function fixture(failure = '', visibility: 'public' | 'private' = 'private
     const target = new URL(route.request().url());
     if (target.hostname === '127.0.0.1') return route.continue();
     if (target.hostname === 'blog.naver.com' && target.pathname.startsWith('/photos/')) return route.fulfill({ body: '' });
+    if (target.href === 'https://blog.naver.com/synthetic-shell') return route.fulfill({ contentType: 'text/html', body: `<div class="se-documentTitle"><p class="se-text-paragraph">${stored.title}</p></div><div class="se-viewer">stale editor content</div><iframe src="${url}"></iframe>` });
+    if (target.hostname === 'blog.naver.com' && target.pathname === '/PostList.naver') return route.fulfill({ contentType: 'text/html', body: '<main data-post-list><a href="/synthetic_fixture/9002">other synthetic post</a></main>' });
     if (target.href === 'https://blog.naver.com/delete-fixture') { deleted = true; return route.fulfill({ body: '{}' }); }
     if (target.href === url) {
       const html = deleted ? '<div data-post-deleted>삭제된 글입니다</div>' : `<div class="se-documentTitle"><p class="se-text-paragraph">${stored.title}</p></div><div class="se-viewer">${failure === 'content' ? stored.html.replace('1190000','1190001') : stored.html}</div><div class="tag_list">${stored.tags}</div><div class="post_visibility">${visibility === 'private' ? '비공개' : '전체공개'}</div><button onclick="if(confirm('정말 삭제하시겠습니까?'))fetch('/delete-fixture',{method:'POST'})">삭제</button>`;
@@ -77,7 +79,7 @@ async function fixture(failure = '', visibility: 'public' | 'private' = 'private
     destroy: (surface: Surface) => surface.close(), clearSession: async () => { throw new Error('UNUSED'); },
   };
   const plan: InputPlan = { channel: 'blog', steps: [
-    { kind: 'text', role: 'title', text: '[골투오토 실험] 합성 발행 시험' }, { kind: 'break' },
+    { kind: 'text', role: 'title', text: '[골투오토 실험] WP14 private-once 합성 발행 시험' }, { kind: 'break' },
     { kind: 'text', role: 'body', text: '본문 15 안내' }, { kind: 'break' },
     { kind: 'photos', urls: files.map(file => file.url) },
     { kind: 'table', role: 'departures', rows: [['2026-12-03', '1190000원']] },
@@ -99,15 +101,24 @@ describe.runIf(Boolean(executablePath))('publish, verified against synthetic loo
     await expect(f.execution.publish()).rejects.toThrow('BLOG_PUBLISH_ALREADY_ATTEMPTED');
   }, 30000);
   it.each(['private', 'public'] as const)('saves, reopens, publishes once, verifies the final %s view and deletes only that test post', async visibility => {
-    const f = await fixture('', visibility);
+    const f = await fixture('', visibility, false, true);
     await f.execution.write(); await f.execution.saveAndVerify();
     expect(await f.execution.publish()).toBe(f.url);
     expect(f.execution.publishedVerified).toBe(true);
     expect(f.execution.publishedPost).toEqual({ postId: '9001', url: f.url });
     await expect(f.execution.publish()).rejects.toThrow('BLOG_PUBLISH_ALREADY_ATTEMPTED');
-    await deleteTestPost(f.execution);
-    expect(f.counts()).toEqual({ published: 1, deleted: true, outside: 0, submissions: 1 });
+    if (visibility === 'private') await deleteTestPost(f.execution);
+    else await expect(deleteTestPost(f.execution)).rejects.toThrow('BLOG_TEST_DELETE_REFUSED');
+    expect(f.counts()).toEqual({ published: 1, deleted: visibility === 'private', outside: 0, submissions: 1 });
     await expect(deleteTestPost(f.execution)).rejects.toThrow();
+  }, 30000);
+  it.each(['unknown-response', 'bad-response', 'title-source'])('verifies once from independent resulting page evidence for %s without republishing', async failure => {
+    const f = await fixture(failure);
+    await f.execution.write(); await f.execution.saveAndVerify();
+    expect(await f.execution.publish()).toBe(f.url);
+    expect(f.execution.publishedVerified).toBe(true);
+    expect(f.counts()).toMatchObject({ published: 1, submissions: 1, outside: 0 });
+    await expect(f.execution.publish()).rejects.toThrow('BLOG_PUBLISH_ALREADY_ATTEMPTED');
   }, 30000);
   it.each([['radio', 'BLOG_VISIBILITY_NOT_PRIVATE'], ['hover', 'BLOG_VISIBILITY_NOT_PRIVATE'], ['request', 'BLOG_PRIVATE_REQUEST_UNCONFIRMED']] as const)('blocks %s failure without publishing', async (failure, code) => {
     const f = await fixture(failure);
@@ -116,7 +127,7 @@ describe.runIf(Boolean(executablePath))('publish, verified against synthetic loo
     expect(f.counts()).toMatchObject({ published: 0, submissions: 0, outside: 0 });
   }, 30000);
   it('does not report published when the resulting numbers differ; retains the exact receipt for cleanup', async () => {
-    const f = await fixture('content');
+    const f = await fixture('content', 'private', false, true);
     await f.execution.write(); await f.execution.saveAndVerify();
     await expect(f.execution.publish()).rejects.toThrow('BLOG_READBACK_MISMATCH');
     expect(f.execution.publishedVerified).toBe(false);

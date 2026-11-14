@@ -11,6 +11,7 @@ export interface BlogServices {
   publishEnabled?: boolean;
   draftSaveLimit?: number;
   publishProbe?: NonNullable<import('@goltou/sites').BlogEnvironment['publishProbe']>;
+  recordPublishResponse?: NonNullable<import('@goltou/sites').BlogEnvironment['recordPublishResponse']>;
   capture?(surface: import('@goltou/surface').Surface, name: string): Promise<Record<string, unknown>>;
   recordFailure?(failure: { jobId: number; step: number; code: string; evidence: string }): Promise<void>;
 }

@@ -42,6 +42,8 @@ class AppSession(application: Application) : AndroidViewModel(application) {
         when (op) {
             "debug.info" -> reply(surfaces.info().put("activityCreations", creations)
                 .put("resumes", resumes).put("pauses", pauses).put("foreground", foreground)
+                .put("windowFocused", activity?.hasWindowFocus() == true)
+                .put("screenOn", (context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager).isInteractive && activity?.window?.decorView?.display?.state == android.view.Display.STATE_ON)
                 .put("uiReadyMs", uiReadyMs)
                 .put("model", Build.MODEL).put("androidSdk", Build.VERSION.SDK_INT)
                 .put("shellElapsedMs", SystemClock.elapsedRealtime() - started), null)

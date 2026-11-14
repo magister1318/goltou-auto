@@ -46,7 +46,7 @@ export class CdpSurface implements Surface {
      * Interception is installed before navigation. A policy never replaces a
      * draft barrier, and an exception never permits a request.
      */
-    cdp.on('Page.javascriptDialogOpening', p => { this.dialog = { id: String(++this.dialogSerial), kind: p.type === 'alert' ? 'alert' : 'confirm', message: String(p.message ?? '') }; });
+    cdp.on('Page.javascriptDialogOpening', p => { this.dialog = { id: String(++this.dialogSerial), kind: p.type === 'alert' ? 'alert' : 'confirm', message: String(p.message ?? ''), ...(typeof p.url === 'string' ? { url: p.url } : {}) }; });
     cdp.on('Page.javascriptDialogClosed', () => { this.dialog = null; });
     cdp.on('Page.frameNavigated', params => {
       const frame = params.frame as { parentId?: string; loaderId?: string } | undefined;

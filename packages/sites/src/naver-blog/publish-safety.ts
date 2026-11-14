@@ -86,10 +86,12 @@ export function postIdentity(url: string): PublishedPost | null {
   try {
     const u = new URL(url);
     if (u.protocol !== 'https:' || !['blog.naver.com', 'm.blog.naver.com'].includes(u.hostname) || u.username || u.password || u.port) return null;
+    if (['blogId', 'logNo'].some(key => u.searchParams.getAll(key).length > 1)) return null;
     const path = /^\/([A-Za-z0-9_-]+)\/([0-9]+)$/.exec(u.pathname);
     const id = path?.[2] ?? (u.pathname === '/PostView.naver' ? u.searchParams.get('logNo') : null);
     const blog = path?.[1] ?? u.searchParams.get('blogId');
     if (!id || !/^[0-9]+$/.test(id) || !blog || !/^[A-Za-z0-9_-]+$/.test(blog)) return null;
+    if (path && (u.searchParams.has('logNo') && u.searchParams.get('logNo') !== id || u.searchParams.has('blogId') && u.searchParams.get('blogId') !== blog)) return null;
     return { postId: id, url: `https://blog.naver.com/${blog}/${id}` };
   } catch { return null; }
 }

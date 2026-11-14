@@ -44,7 +44,7 @@ export class AppCore {
   /** Debug entry supplies the deletion capability; release exposes no command. */
   async cleanupTestPost(remove: (execution: import('@goltou/sites').BlogExecution) => Promise<void>) {
     const job = this.runner.job, execution = this.runner.blogExecution?.();
-    if (this.starting || !job || job.status === 'running' || !execution?.publishedPost || job.mode !== 'publish' || !job.title.startsWith('[골투오토 실험]') || job.testPostDeleted) throw new ApiError('invalid', '이번 작업의 실험 발행 글만 삭제할 수 있습니다.');
+    if (this.starting || !job || job.status === 'running' || !execution || job.mode !== 'publish' || !job.title.startsWith('[골투오토 실험]') || job.testPostDeleted) throw new ApiError('invalid', '이번 작업의 실험 발행 글만 삭제할 수 있습니다.');
     await remove(execution);
     job.testPostDeleted = true; job.status = 'stopped'; job.message = '실험 글 삭제 확인';
     const result = job.targetResults?.find(t => t.channel === 'blog');
