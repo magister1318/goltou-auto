@@ -7,6 +7,7 @@ import { ControlNotFoundError } from '../control-failure';
 import { closeTagLayer, protectBlogInputs, requireTagFocus, requireTagLayerClosed, tagInputSelector, tagPanelToggle } from './draft-safety';
 import { finalPublishSelector, guardedPublishClick, inspectPrivateRequest, postIdentity, readVisibility, requireVisibility, selectVisibility, type BlogVisibility, type PublishedPost, type VisibilityProof } from './publish-safety';
 import { parsePublishIdentity, resolvePublishEvidence, type ResponseIdentity, type PublishedPage, type PublishIdentitySource } from './publish-identity';
+import { closeDraftEntries, draftEntries, draftItem, draftSaveReceipt, identifySavedDraft, openDraftEntries, type DraftEntry } from './draft-identity';
 
 /** Structural subset of WP4 InputPlan. Sites has no dependency on core or a device API. */
 export interface BlogPlan {
@@ -81,6 +82,10 @@ export class BlogExecution {
   readonly readbackTimings: { photos: number; milliseconds: number; navigationKeys: number }[] = [];
   private checkpoint: BlogReadback | undefined;
   private saveAttempted = false;
+  private draftsBefore: DraftEntry[] = [];
+  private saveAcknowledged = false;
+  private savedDraftId: string | undefined;
+  draftIdentity: { existingSameTitle: number; source: 'response-id' | 'list-change' } | undefined;
   private reopened = false;
   private verified = false;
   private recoveryConsent = false;
@@ -165,10 +170,14 @@ export class BlogExecution {
       // Read-only loaded editor script inspection: new publication and update
       // use RabbitWrite/RabbitUpdate; draft save uses RabbitTempPostWrite/Update.
       await this.surface.blockRequests(['/RabbitWrite.naver', '/RabbitUpdate.naver'].map(pathname => ({ hostname: 'blog.naver.com', pathname })));
-    } else {
-      if (!this.surface.guardRequests) throw new Error('BLOG_PUBLISH_BARRIER_UNAVAILABLE');
+    }
+    {
+      // One guard retains the publication barrier and observes only this save's receipt.
+      if (!this.surface.guardRequests) throw new Error('BLOG_REQUEST_BARRIER_UNAVAILABLE');
       const hostname = this.env.localPublish ? new URL(this.env.editorUrl!).hostname : 'blog.naver.com';
-      await this.surface.guardRequests(['/RabbitWrite.naver', '/RabbitUpdate.naver'].map(pathname => ({ hostname, pathname })), async request => {
+      await this.surface.guardRequests(['/RabbitWrite.naver', '/RabbitUpdate.naver', '/RabbitTempPostWrite.naver'].map(pathname => ({ hostname, pathname })), async request => {
+        if (new URL(request.url).pathname === '/RabbitTempPostWrite.naver') return this.saveAttempted && !readback && request.method === 'POST';
+        if ((this.env.mode ?? 'draft') === 'draft') return false;
         const allowedWindow = this.publishArmed; this.publishArmed = false;
         if (this.env.publishProbe) {
           // No inspector result, armed window, method, path or visibility can
@@ -187,6 +196,12 @@ export class BlogExecution {
         this.publishRequestAccepted = true;
         return true;
       }, response => {
+        if (response.url && new URL(response.url).pathname === '/RabbitTempPostWrite.naver') {
+          const receipt = draftSaveReceipt(response);
+          this.saveAcknowledged ||= receipt.saved;
+          this.savedDraftId = receipt.id;
+          return;
+        }
         this.responseEvidence = Promise.resolve().then(() => this.env.recordPublishResponse?.(response)).catch(() => { this.publishFailure = 'BLOG_PUBLISH_RESPONSE_EVIDENCE_FAILED'; });
         try {
           this.responsePost = parsePublishIdentity(response);
@@ -464,6 +479,8 @@ export class BlogExecution {
     if (!this.saveAttempted) {
       this.env.verify(await this.observe());
       await requireTagLayerClosed(this.surface!);
+      this.draftsBefore = await openDraftEntries(this.surface!, true);
+      await closeDraftEntries(this.surface!);
       this.env.check(); this.env.beforeSave();
       // Mark BEFORE sending input. Ambiguous transport responses never cause another save.
       this.saveAttempted = true;
@@ -483,12 +500,22 @@ export class BlogExecution {
     if (!this.reopened) { await this.fresh(true); this.reopened = true; }
     await this.guard();
     const s = this.surface!;
-    const opened = await read<boolean>(s, `return docs.some(({d})=>Array.from(d.querySelectorAll('[aria-label="임시저장된 글"]')).some(visible));`);
-    if (!opened) await click(s, 'BLOG_DRAFT_LIST', 'button[data-click-area="tpb*s.count"]');
-    const selector = '[aria-label="임시저장된 글"] > li button[data-click-area="tpb*s.tlist"] strong';
-    const count = await waitFor(() => read<number | null>(s, `const n=docs.reduce((n,{d})=>n+Array.from(d.querySelectorAll(${JSON.stringify(selector)})).filter(e=>(e.textContent||'').trim()===${JSON.stringify(this.title.text)}).length,0);return n||null;`), 15000);
-    if (count !== 1) throw new Error('DRAFT_IDENTITY_AMBIGUOUS');
-    await this.guard(); await click(s, 'BLOG_DRAFT_ITEM', selector, this.title.text);
+    let after: DraftEntry[];
+    try { after = await openDraftEntries(s, true); }
+    catch { throw new Error(this.saveAcknowledged ? 'BLOG_DRAFT_SAVED_UNVERIFIED' : 'DRAFT_SAVE_UNCONFIRMED'); }
+    const identity = identifySavedDraft(this.draftsBefore, after, this.title.text, this.savedDraftId);
+    if (!identity) throw new Error(this.saveAcknowledged || after.filter(e => e.title === this.title.text).length > this.draftsBefore.filter(e => e.title === this.title.text).length ? 'BLOG_DRAFT_SAVED_UNVERIFIED' : 'DRAFT_SAVE_UNCONFIRMED');
+    this.draftIdentity = { existingSameTitle: this.draftsBefore.filter(e => e.title === this.title.text).length, source: identity.source };
+    await this.guard();
+    const selector = `${draftItem.split(' > li')[0]} > li:nth-child(${identity.index + 1}) button[data-click-area="tpb*s.tlist"]`;
+    const matches = async () => {
+      this.env.check();
+      if (JSON.stringify(await draftEntries(s)) !== JSON.stringify(after)) throw new Error('BLOG_DRAFT_SAVED_UNVERIFIED');
+    };
+    await matches();
+    const target = await point(s, selector);
+    if (!target) throw new Error('BLOG_DRAFT_SAVED_UNVERIFIED');
+    await s.click(target.x, target.y, matches);
     await waitFor(async () => (await readBlogDocument(s)).title === this.title.text, 15000);
     const observed = await this.observe(); this.env.verify(observed); this.verified = true; return observed;
   }

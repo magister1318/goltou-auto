@@ -8,6 +8,7 @@ import { createBandExecution, type BandServices } from './band';
 import { createBlogExecution, type BlogServices } from './blog';
 import { updateInputProgress } from './input-progress';
 import { RecordError, RecordingCheckpoint } from './record-checkpoint';
+import { markDraftUnverified } from './draft-unverified';
 
 /** One product, blog first, then exactly one Band composer at a time. */
 export class ChannelRegistrationRunner implements RegistrationRunner {
@@ -43,7 +44,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
   }
   async start(input: JobInput, title: string, photos: number, work?: PreparationWork) {
     if (this.serviceLogin.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
-    if (this.job && (this.job.status === 'record_failed' || !['draft_saved', 'published', 'stopped'].includes(this.job.status) && !this.job.completedSteps.includes(7))) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
+    if (this.job && (this.job.status === 'record_failed' || !['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(this.job.status) && !this.job.completedSteps.includes(7))) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
     if (!work?.preview || !input.targets.length) throw new ApiError('invalid', '입력 준비가 필요합니다.');
     if (input.mode === 'publish' && !input.publishConfirmed) throw new ApiError('invalid', '이 작업의 발행 확인이 필요합니다.');
     const bands = input.targets.filter(t => t.channel === 'band');
@@ -85,6 +86,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
         if (j.step === 4 && this.blog) { this.blog.files = this.work!.prepared!.files; await this.blog.write(); }
         if (j.step === 5 && this.blog) {
           await this.blog.saveAndVerify();
+          if (this.blog.draftIdentity) j.blogDraftIdentity = this.blog.draftIdentity;
           const result = j.targetResults!.find(t => t.channel === 'blog')!;
           if (j.mode === 'publish') {
             try { result.postUrl = await this.blog.publish(); j.publicationUncertain = false; }
@@ -146,6 +148,9 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
   private async fail(error: unknown) {
     if (error instanceof RecordError) return;
     const j = this.job!; const code = error instanceof Error ? error.message : 'BAND_FAILED';
+    if (code === 'BLOG_DRAFT_SAVED_UNVERIFIED') {
+      markDraftUnverified(j); await this.emit(); return;
+    }
     j.failureCode = j.publicationUncertain ? j.step === 6 ? 'BAND_POST_UNCONFIRMED' : 'BLOG_PUBLISH_UNCONFIRMED' : safeFailureCode(error, 'CHANNEL_FAILED');
     const isBand = j.step === 6;
     const execution = isBand ? this.band : this.blog;
@@ -249,7 +254,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
   async checkBandLogin() { return this.serviceLogin.check('band'); }
   async checkLogin() { return this.serviceLogin.check('naver'); }
   async showService(service: Service) {
-    if (this.job && !['draft_saved', 'published', 'stopped', 'login_paused'].includes(this.job.status)) throw new ApiError('conflict', '로그인으로 멈춘 작업에서만 로그인 화면을 열 수 있습니다.');
+    if (this.job && !['draft_saved', 'draft_unverified', 'published', 'stopped', 'login_paused'].includes(this.job.status)) throw new ApiError('conflict', '로그인으로 멈춘 작업에서만 로그인 화면을 열 수 있습니다.');
     if (service !== 'ai') await this.serviceLogin.show(service);
   }
   async hideService() { await this.serviceLogin.cancel(); await this.directory.surface?.hide(); await this.blog?.hide(); }

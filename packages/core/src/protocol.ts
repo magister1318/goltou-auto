@@ -2,7 +2,7 @@ import type { Channel, LoginInput, Mode, Page, Post, PostInput, Product, Product
 export type Service = 'naver' | 'band' | 'ai';
 export type LoginState = 'confirmed' | 'expired' | 'unknown' | 'checking';
 export type BlogVisibility = import('@goltou/sites').BlogVisibility;
-export type JobStatus = 'running' | 'login_paused' | 'user_paused' | 'recovery_paused' | 'dialog_paused' | 'channel_paused' | 'record_failed' | 'failed' | 'draft_saved' | 'published' | 'stopped_before_post' | 'stopped';
+export type JobStatus = 'running' | 'login_paused' | 'user_paused' | 'recovery_paused' | 'dialog_paused' | 'channel_paused' | 'record_failed' | 'failed' | 'draft_saved' | 'draft_unverified' | 'published' | 'stopped_before_post' | 'stopped';
 export interface TargetResult { channel: Channel; key: string; name: string; status: import('@goltou/api-client').PostStatus; postUrl?: string; reason?: string }
 export const steps = ['로그인 확인', '사진 내려받기', '본문 정리', '블로그에 쓰기', '블로그 임시저장과 확인', '밴드에 쓰기', '결과 기록'] as const;
 export interface JobInput {
@@ -27,6 +27,7 @@ export interface Job {
   testPostDeleted?: boolean;
   publishProbe?: boolean;
   blogReadbackTimings?: { photos: number; milliseconds: number; navigationKeys: number }[];
+  blogDraftIdentity?: { existingSameTitle: number; source: 'response-id' | 'list-change' };
   blogIdentitySources?: ('response' | 'result-url' | 'title')[];
   tableModes?: ('native' | 'text-list')[]; linkCard?: 'off' | 'card' | 'url-text';
   dialog?: import('@goltou/surface').SurfaceDialog; evidence?: string;
