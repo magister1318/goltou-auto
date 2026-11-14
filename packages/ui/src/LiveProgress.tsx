@@ -159,6 +159,7 @@ export function LiveProgress({
       <p className="meta" aria-live="polite">
         {subtitle}
       </p>
+      {job.ownRecoveryDiscarded && <p className="meta recovery-note" role="status">앱이 남긴 쓰다 만 글을 정리했습니다.</p>}
       <span className="meta">
         지금 만들어지는 {channel === 'blog' ? '블로그' : '밴드'} 글
       </span>

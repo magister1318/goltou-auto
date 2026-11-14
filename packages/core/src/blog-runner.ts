@@ -110,7 +110,7 @@ export class BlogRegistrationRunner implements RegistrationRunner {
           if (job.postUrl) job.targetResults![0]!.postUrl = job.postUrl;
           job.tableModes = [...this.execution!.tableModes]; job.linkCard = this.execution!.linkCard;
         }
-        if (job.step === 7) await this.work!.cleanup();
+        if (job.step === 7) { await this.execution!.close(); await this.work!.cleanup(); }
         check(); job.completedSteps.push(job.step);
         if (job.step === 7) { job.status = job.mode === 'draft' ? 'draft_saved' : 'published'; job.message = job.mode === 'draft' ? '새 편집기에서 임시글을 다시 열어 원문 대조를 마쳤습니다.' : '발행된 글에서 원문 대조를 마쳤습니다.'; job.secondsLeft = 0; await this.emit(); return; }
         job.step++; job.current = 0; delete job.secondsLeft; job.message = job.step === 6 ? '밴드 선택 없음' : ''; await this.emit();

@@ -4,23 +4,27 @@ import path from 'node:path';
 import { attach, output } from './review-device-ux-v2.mjs';
 
 const number = process.argv[2];
-if (!['2', '3'].includes(number)) throw Error('RUN_2_OR_3_REQUIRED');
+if (!['3', '4'].includes(number)) throw Error('RUN_3_OR_4_REQUIRED');
 const latch = path.join(output, `run${number}-attempted`);
 if (existsSync(latch)) throw Error('THIS_RUN_ALREADY_ATTEMPTED');
-if (number === '3' && !existsSync(path.join(output, 'run2-attempted'))) throw Error('RUN_2_REQUIRED_FIRST');
+if (number === '4' && !existsSync(path.join(output, 'progress-metrics-3.json'))) throw Error('RUN_3_REQUIRED_FIRST');
 const d = await attach();
 const samples = [];
 const save = () => writeFileSync(path.join(output, `progress-metrics-${number}.json`), JSON.stringify(samples, null, 2));
 try {
+  const resume = await d.read(`document.querySelector('.sheet')?.getAttribute('aria-label')==='네이버에 쓰다 만 글이 있습니다'`);
+  if (!resume && await d.read(`[...document.querySelectorAll('h1')].some(e=>e.textContent==='블로그에 임시저장했습니다')`)) await d.click('.screen-progress button', '다른 상품 옮기기');
+  if (!resume) {
   await d.wait(`!!document.querySelector('.screen-home')&&document.querySelectorAll('.product-row').length>1`);
-  // The previous run chose the first row. Choose the second through real input.
-  const selector = await d.read(`(()=>{const row=document.querySelectorAll('.product-row')[1];return '.product-row:nth-child('+([...row.parentElement.children].indexOf(row)+1)+')'})()`);
+  // A different product avoids selecting older drafts with the same title.
+  const selector = await d.read(`(()=>{const row=document.querySelectorAll('.product-row')[${number === '4' ? 2 : 1}];return '.product-row:nth-child('+([...row.parentElement.children].indexOf(row)+1)+')'})()`);
   await d.click(selector);
   await d.wait(`!!document.querySelector('.converted-content')&&!document.querySelector('.bar .btn').disabled`);
   await d.click('.bar .secondary');
+  }
   writeFileSync(latch, 'One authorized blog draft attempt reserved before input; never repeat this run.');
   const start = Date.now();
-  await d.click('.sheet button', '블로그에 임시저장');
+  if (!resume) await d.click('.sheet button', '블로그에 임시저장');
   await d.wait(`!!document.querySelector('.screen-progress')`);
   let shot = 0, lastShot = -5000, recoverySeen = false;
   for (let sample = 0; Date.now() - start < 20 * 60 * 1000; sample++) {
@@ -41,11 +45,15 @@ try {
         photos:document.querySelectorAll('.photo-strip .ok').length,
         pills:document.querySelectorAll('.check-pills .ok').length};})()`);
     const at = Date.now() - start;
-    samples.push({ ...state, at }); save();
+    samples.push({ ...state, at, startedAt: start, resumed: resume }); save();
     if (at - lastShot >= 4900 || state.done || state.failed) {
       d.capture(`run${number}-${String(shot++).padStart(2, '0')}`); lastShot = at;
     }
-    if (state.recovery && !recoverySeen) { recoverySeen = true; console.log(JSON.stringify({ recoveryConsentRequired: true, run: number })); }
+    if (state.recovery && !recoverySeen) {
+      recoverySeen = true; console.log(JSON.stringify({ recoverySeen: true, run: number }));
+      // Owner authorized this exact app path for both attempts in this session.
+      await d.click('.sheet button', '버리고 새로 쓰기');
+    }
     if (state.done || state.failed || !state.live && !state.paused) {
       d.capture(`run${number}-${state.done ? 'done' : 'ended'}`);
       console.log(JSON.stringify({ run: number, done: state.done, failed: state.failed, samples: samples.length, screenshots: shot, milliseconds: at, recoverySeen }));

@@ -35,8 +35,9 @@ async function fixture(mode = '', extra: { tags?: boolean; photos?: number; phot
   let external = 0;
   await context.route('**/*', route => { if (new URL(route.request().url()).hostname !== '127.0.0.1') { external++; return route.abort(); } return route.continue(); });
   const pages = new Map<Surface, import('playwright-core').Page>();
+  const readbackBarriers = vi.fn();
   const host: SurfaceHost = {
-    async create() { const page = await context.newPage(); page.on('dialog', () => {}); const cdp = await connection(page); const s = new CdpSurface('naver', cdp as unknown as CdpConnection, { setVisible: async () => {}, close: async () => page.close() }, 0); pages.set(s, page); return s; },
+    async create() { const page = await context.newPage(); page.on('dialog', () => {}); const cdp = await connection(page); const s = new CdpSurface('naver', cdp as unknown as CdpConnection, { setVisible: async () => {}, close: async () => page.close() }, 0); const block=s.blockRequests.bind(s); s.blockRequests=async rules=>{readbackBarriers(rules,page.url());await block(rules);}; pages.set(s, page); return s; },
     async destroy(surface) { await surface.close(); }, async clearSession() { throw Error('NO_CLEAR'); },
   };
   async function connection(page: import('playwright-core').Page) {
@@ -54,10 +55,26 @@ async function fixture(mode = '', extra: { tags?: boolean; photos?: number; phot
   const plan: InputPlan = { channel: 'blog', steps, discarded: [], notices: [] };
   const beforeSave = vi.fn(), check = vi.fn(), progress = vi.fn();
   const execution = createBlogExecution(plan, files, { host, editorUrl, localPublish: true }, { check, progress, beforeSave });
-  return { execution, plan, files, pages, host, editorUrl, check, beforeSave, progress, external: () => external,
+  return { execution, plan, files, pages, host, editorUrl, check, beforeSave, progress, readbackBarriers, external: () => external,
     counts: async (surface = execution.surface!) => pages.get(surface)!.evaluate<{ saves: number; publishes: number }>("({saves:Number(localStorage.getItem('saves')),publishes:Number(localStorage.getItem('publishes'))})") };
 }
 describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback editor only', () => {
+  it('prevents readback from recreating an autosave, retains the saved draft, and opens the next editor without consent', async () => {
+    const f = await fixture('autosave-readback');
+    f.plan.steps = [{ kind: 'text', role: 'title', text: '저장 후 자동저장 예시' }, { kind: 'text', role: 'body', text: '본문' }];
+    let remembered: string | null = null;
+    const store = { read: async () => remembered, write: async (title: string) => { remembered = title; } };
+    const execution = createBlogExecution(f.plan, [], { host: f.host, editorUrl: f.editorUrl, lastTypedTitle: store }, { check: f.check, progress: f.progress, beforeSave: f.beforeSave });
+    await execution.write(); expect(remembered).toBe('저장 후 자동저장 예시');
+    await execution.saveAndVerify();
+    await new Promise(r => setTimeout(r, 3400));
+    const page = f.pages.get(execution.surface!)!;
+    expect(await page.evaluate(`({attempted:localStorage.getItem('autosaveAttempted'),blocked:localStorage.getItem('autosaveBlocked'),leftover:localStorage.getItem('leftover'),drafts:JSON.parse(localStorage.getItem('drafts')||'[]').length})`)).toEqual({ attempted: 'yes', blocked: 'yes', leftover: null, drafts: 1 });
+    expect(f.external()).toBe(0); expect(f.beforeSave).toHaveBeenCalledTimes(1);
+    await execution.close();
+    const next = createBlogExecution(f.plan, [], { host: f.host, editorUrl: f.editorUrl, lastTypedTitle: store }, { check: f.check, progress: f.progress, beforeSave: f.beforeSave });
+    await expect(next.ensureReady()).resolves.toBeUndefined();
+  }, 20000);
   it.each([false, true])('WP16 recovery consent %s stops cleanly or resumes the same job and surface', async discard => {
     const f = await fixture('restore');
     f.plan.steps = [{ kind: 'text', role: 'title', text: '[골투오토 실험] 복구 예시' }, { kind: 'text', role: 'body', text: '복구 안내 확인' }];
@@ -190,6 +207,7 @@ describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback e
     expect(before.tokens.filter(t => t.kind === 'photo')).toHaveLength(5);
     expect(compareDocuments(observePlan(f.plan), blogObservation(f.plan, f.files, before)).matches).toBe(true);
     await f.execution.saveAndVerify(); expect(f.beforeSave).toHaveBeenCalledTimes(1);
+    expect(f.readbackBarriers).toHaveBeenCalledWith([{ hostname: 'blog.naver.com', pathname: '/RabbitAutoSaveWrite.naver' }], 'about:blank');
     expect(await f.counts()).toEqual({ saves: 1, publishes: 0 }); expect(f.external()).toBe(0);
     const original = f.execution.surface!;
     f.execution.surface = { readState: async () => ({ url: 'https://blog.naver.com/never-requested', title: '', loading: false }) } as Surface;
@@ -271,8 +289,8 @@ describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback e
     await runner.resume();
     for (let i = 0; i < 200 && runner.job?.status === 'running'; i++) await new Promise(resolve => setTimeout(resolve, 50));
     expect(runner.job?.status).toBe('draft_saved'); expect(downloaded).toBe(1); expect(cleaned).toBe(1);
+    expect([...f.pages.values()].every(p => p.isClosed())).toBe(true);
     expect(states.filter(j => j.completedSteps.includes(5)).every(j => j.completedSteps.includes(4))).toBe(true);
-    await runner.showDraft('[골투오토 실험] WP5 통합');
     await expect(runner.start({ ...input, targets: [...input.targets, { channel: 'band', name: '금지', key: 'band' }] }, '예시', 0, work)).rejects.toMatchObject({ code: 'invalid' });
     runner.dispose();
   }, 30000);

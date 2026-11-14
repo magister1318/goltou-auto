@@ -121,7 +121,10 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
             result.postUrl = await this.band.publish(); j.publicationUncertain = false; result.status = 'published'; await this.emit();
           }
         }
-        if (j.step === 7) await this.work!.cleanup();
+        if (j.step === 7) {
+          if (j.targetResults?.some(t => t.channel === 'blog' && ['draft_saved', 'published'].includes(t.status))) await this.blog?.close();
+          await this.work!.cleanup();
+        }
         this.check(); if (!j.completedSteps.includes(j.step)) j.completedSteps.push(j.step);
         if (j.step === 7) {
           const results = j.targetResults!;

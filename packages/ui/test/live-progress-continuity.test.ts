@@ -93,3 +93,17 @@ it('allocates writing by character and photo work, with a finite estimate at zer
   expect(remainingSeconds(job, 0, preview)).toBeGreaterThan(80);
   expect(Number.isFinite(remainingSeconds(job, 0, preview))).toBe(true);
 });
+
+it('keeps the short own-leftover note on the progress screen after subsequent engine updates', async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const host = document.createElement('div'); document.body.append(host);
+  const root = createRoot(host);
+  const job = { id: 5, step: 1, status: 'running', targets: [{ channel: 'blog' }] } as unknown as Job;
+  const progress = { characters: 0, totalCharacters: 0, photos: 0, totalPhotos: 0 };
+  try {
+    updateInputProgress(job, { ...progress, ownRecoveryDiscarded: true });
+    updateInputProgress(job, progress);
+    await act(async () => root.render(createElement(LiveProgress, { job, preview: null })));
+    expect(host.querySelector('.recovery-note')?.textContent).toBe('앱이 남긴 쓰다 만 글을 정리했습니다.');
+  } finally { await act(async () => root.unmount()); }
+});

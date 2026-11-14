@@ -39,6 +39,8 @@ export interface BlogEditorOptions {
   /** Set only after the user agrees in the app to discard the auto-recovered unsaved composition.
    * Never authorizes deleting saved drafts or published posts. The default stops without clicking. */
   autoRecover?: 'stop' | 'decline-with-user-consent';
+  lastTypedTitle?: string | null;
+  onOwnRecoveryDiscarded?(): void;
 }
 async function requireBlogEditor(surface: Surface) {
   const ready = await read<boolean>(surface, `return !docs.some(({d})=>d.querySelector('input[type="password"]')||/nid\\.naver\\.com/.test(d.location.hostname))&&docs.some(({d})=>d.querySelector('.se-documentTitle'));`);
@@ -59,10 +61,20 @@ export async function prepareBlogEditor(surface: Surface, check: () => void, opt
   await sleep(900); check();
   const restore = await read<number>(surface, `return docs.reduce((n,{d})=>n+Array.from(d.querySelectorAll('.se-popup-alert-confirm')).filter(e=>visible(e)&&/작성 중인 글이 있습니다/.test(e.textContent||'')&&/이어서 작성/.test(e.textContent||'')).length,0);`);
   if (restore) {
-    if (restore !== 1 || options.autoRecover !== 'decline-with-user-consent') throw new Error('AUTO_RECOVER_CONSENT_REQUIRED');
+    // Read only a title explicitly displayed by the recovery prompt. A blank
+    // editor behind the modal is not the leftover. Never restore it to inspect
+    // its body, inspect page state, or collect the autosave response document.
+    const title = await read<string | null>(surface, `
+      const titles=docs.flatMap(({d})=>Array.from(d.querySelectorAll('.se-popup-alert-confirm')).filter(visible).flatMap(e=>Array.from(e.querySelectorAll('.se-documentTitle .se-text-paragraph'))).filter(visible));
+      if(titles.length!==1||titles[0].querySelector('.se-placeholder'))return null;
+      const nodes=Array.from(titles[0].querySelectorAll('.__se-node'));
+      return (nodes.length?nodes.map(e=>e.textContent||'').join(''):titles[0].textContent||'')||null;`).catch(() => null);
+    const own = !!title && !!options.lastTypedTitle && title === options.lastTypedTitle;
+    if (restore !== 1 || !own && options.autoRecover !== 'decline-with-user-consent') throw new Error('AUTO_RECOVER_CONSENT_REQUIRED');
     check();
     await click(surface, 'BLOG_RESTORE_CANCEL', '.se-popup-alert-confirm .se-popup-button-cancel', '취소');
     await waitFor(() => read(surface, `return !docs.some(({d})=>Array.from(d.querySelectorAll('.se-popup-alert-confirm')).some(visible));`));
+    if (own) options.onOwnRecoveryDiscarded?.();
   }
   await waitFor(() => read(surface, `return docs.some(({d})=>d.querySelector(${JSON.stringify(bodySelector)}));`), 30000);
   const help = await read<boolean>(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll('.se-help-panel-close-button')).some(visible));`);

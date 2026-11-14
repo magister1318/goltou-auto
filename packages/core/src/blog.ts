@@ -7,6 +7,7 @@ import { verificationProgress } from './verify-progress';
 
 export interface BlogServices {
   host: SurfaceHost;
+  lastTypedTitle?: import('./blog-title-store').BlogTitleStore;
   editorUrl?: string;
   localPublish?: boolean;
   publishEnabled?: boolean;

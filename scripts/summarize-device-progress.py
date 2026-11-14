@@ -5,8 +5,8 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 run = int(sys.argv[1])
-if run not in (2, 3):
-    raise ValueError('RUN_2_OR_3_REQUIRED')
+if run not in (3, 4):
+    raise ValueError('RUN_3_OR_4_REQUIRED')
 folder = Path(__file__).resolve().parents[2] / 'runs' / 'wp16-shots'
 samples = json.loads((folder / f'progress-metrics-{run}.json').read_text(encoding='utf-8'))
 live = [sample for sample in samples if sample['live']]
@@ -32,6 +32,8 @@ for index, sample in enumerate(samples):
 
 summary = {
     'run': run, 'done': samples[-1]['done'], 'failed': samples[-1]['failed'],
+    'startToDoneSeconds': samples[-1]['at'] / 1000 if samples[-1]['done'] else None,
+    'sheetAppeared': any(s['recovery'] for s in samples),
     'samples': len(samples), 'wallMilliseconds': samples[-1]['at'],
     'choiceWaitMillisecondsApprox': pause_ms,
     'activeMillisecondsApprox': samples[-1]['at'] - pause_ms,
@@ -47,12 +49,20 @@ summary = {
 }
 (folder / f'run{run}-summary.json').write_text(json.dumps(summary, indent=2), encoding='utf-8')
 print(json.dumps(summary, indent=2))
+lines = []
+for number in (3, 4):
+    source = folder / f'run{number}-summary.json'
+    if not source.exists():
+        continue
+    item = json.loads(source.read_text(encoding='utf-8'))
+    lines.append(f"Run {number}: done={item['done']}, failed={item['failed']}, start-to-done seconds={item['startToDoneSeconds']}, observed seconds={item['wallMilliseconds']/1000:.3f}, choice wait seconds={item['choiceWaitMillisecondsApprox']/1000:.3f}, longest unchanged seconds (choice wait and overall clocks excluded)={item['longestVisibleUnchangedMilliseconds']/1000:.3f}, finite percent={item['percentFinite']}, monotonic percent={item['percentMonotonic']}, text regressions={item['textRegressions']}, pill regressions={item['pillRegressions']}, sheet appeared={item['sheetAppeared']}")
+(folder / 'run-summary.txt').write_text('\n'.join(lines) + '\n', encoding='utf-8')
 if not samples[-1]['done']:
-    sys.exit('FINAL_RUN_NOT_DONE')
+    sys.exit(0)  # Report a failure honestly; never label its last frame "done".
 
 # Exclude the choice wait from the evenly spaced work frames. File timestamps
 # align the real screencaps with nearby sampled states without reading content.
-start = (folder / f'run{run}-attempted').stat().st_mtime
+start = samples[0]['startedAt'] / 1000
 frames = []
 for file in sorted(folder.glob(f'run{run}-[0-9][0-9].png')):
     at = (file.stat().st_mtime - start) * 1000

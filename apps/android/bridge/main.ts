@@ -9,6 +9,7 @@ import { AndroidTokenStore } from './session';
 import { AiModeClient } from '../../../packages/sites/src/ai-mode';
 import { AndroidSurfaceHost } from './host';
 import { filePreferencesStore } from '../../../packages/core/src/preferences';
+import { fileBlogTitleStore } from '../../../packages/core/src/blog-title-store';
 
 function argument(name: string): string {
   const index = process.argv.indexOf(`--${name}`);
@@ -25,6 +26,7 @@ const options: CoreOptions = {
   diagnostics: __GOLTOU_DEBUG__,
   band: { host, publishEnabled: !__GOLTOU_DEBUG__, ...(__GOLTOU_DEBUG__ ? { capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}) },
   blog: {
+    lastTypedTitle: fileBlogTitleStore(path.join(path.dirname(argument('data')), 'last-blog-title.txt')),
     host, publishEnabled: true, ...(__GOLTOU_DEBUG__ ? { draftSaveLimit: 1, capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}),
     recordFailure: async failure => {
       const directory = path.join(path.dirname(argument('data')), 'wp5');

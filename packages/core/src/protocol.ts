@@ -15,6 +15,7 @@ export interface Job {
   pausedAt?: number;
   pausedMilliseconds?: number;
   publicationUncertain?: boolean;
+  ownRecoveryDiscarded?: boolean;
   activity?: import('@goltou/sites').EngineActivity & { at: number };
   activityLog?: (import('@goltou/sites').EngineActivity & { at: number })[];
   id: number; productNo: number; title: string; mode: Mode; status: JobStatus;
