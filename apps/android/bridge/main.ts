@@ -42,7 +42,7 @@ const options: CoreOptions = {
   port: Number(argument('port')), token: argument('token'), uiDir: path.join(argument('bundle'), 'ui'),
 };
 async function start() {
-  const runtime = { device: () => native.call<import('../../../packages/api-client/src/index').LoginInput['device']>('session.device'), polishStrength: filePolishStrengthStore(path.join(path.dirname(argument('data')), 'polish-strength.txt')), ...(__GOLTOU_DEBUG__ ? { experimentTitle: true, experimentTitleLabel: 'WP14 ' } : {}) };
+  const runtime = { deleteHost: host, device: () => native.call<import('../../../packages/api-client/src/index').LoginInput['device']>('session.device'), polishStrength: filePolishStrengthStore(path.join(path.dirname(argument('data')), 'polish-strength.txt')), ...(__GOLTOU_DEBUG__ ? { experimentTitle: true, experimentTitleLabel: 'WP14 ' } : {}) };
   const app = new AppCore(createApiClient(apiOrigin, fetch), new AndroidTokenStore(native),
     (checkpoint, notify) => new ChannelRegistrationRunner({ band: options.band!, blog: options.blog! }, checkpoint, notify), options.preparation,
     runtime);
@@ -65,14 +65,14 @@ async function start() {
       info: async () => ({ ...await native.call<Record<string, unknown>>('debug.info'), node: process.version }),
       lifecycle: async mode => { await native.call('debug.lifecycle', { mode }); },
       capture: (surface, name) => host.capture(surface, name),
-      deleteTestPost: async () => {
+      deleteTestPost: async checkOnly => {
         const { recoverTestPostCleanup, protectCleanupInputs } = await import('./test-post-recovery');
         const ready = async () => {
           const state = await native.call<{ foreground: boolean; windowFocused: boolean; screenOn: boolean }>('debug.info');
           if (!state.foreground || !state.windowFocused || !state.screenOn) throw new Error('DEVICE_CONDITION_LOST');
         };
         await ready();
-        if (app.snapshot().job) return app.cleanupTestPost(async execution => {
+        if (app.snapshot().job && !checkOnly) return app.cleanupTestPost(async execution => {
           if (!execution.surface) throw new Error('BLOG_TEST_DELETE_REFUSED');
           protectCleanupInputs(execution.surface, ready);
           await deleteTestPost(execution, async value => {
@@ -83,7 +83,7 @@ async function start() {
         });
         const token = await new AndroidTokenStore(native).read();
         if (!token) throw new Error('BLOG_TEST_DELETE_REFUSED');
-        await recoverTestPostCleanup(path.join(path.dirname(argument('data')), 'wp14', 'cleanup-context.json'), createApiClient(apiOrigin, fetch), token, host, ready);
+        await recoverTestPostCleanup(path.join(path.dirname(argument('data')), 'wp14', 'cleanup-context.json'), createApiClient(apiOrigin, fetch), token, host, ready, checkOnly);
       },
       configurePublishProbe: visibility => {
         if (app.snapshot().job?.status === 'running') throw new Error('JOB_RUNNING');

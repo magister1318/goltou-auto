@@ -23,7 +23,7 @@ export interface ExperimentOptions {
   lifecycle(mode: string): Promise<void>;
   capture(surface: Surface, name: string): Promise<RecordValue>;
   conversionCheck?(check: () => void): Promise<import('./conversion-audit').ConversionAudit>;
-  deleteTestPost?(): Promise<void>;
+  deleteTestPost?(checkOnly?: boolean): Promise<void>;
   configurePublishProbe?(visibility: 'public' | 'private' | 'off'): void;
 }
 
@@ -41,7 +41,7 @@ export class Experiments {
     if (command === 'state') return this.snapshot();
     if (command === 'stop') { this.cancelled = true; return this.snapshot(); }
     if (this.state.running) throw new Error('EXPERIMENT_BUSY');
-    if (!['blog.publishProbe', 'blog.deleteTestPost', 'conversion.check', 'ai.polish', 'info', 'example', 'evidence', 'show', 'hide', 'login.open', 'login.check', 'band.list', 'blog.run', 'band.run', 'lifecycle'].includes(command)) throw new Error('UNKNOWN_EXPERIMENT');
+    if (!['blog.publishProbe', 'blog.checkTestPostDeleted', 'blog.deleteTestPost', 'conversion.check', 'ai.polish', 'info', 'example', 'evidence', 'show', 'hide', 'login.open', 'login.check', 'band.list', 'blog.run', 'band.run', 'lifecycle'].includes(command)) throw new Error('UNKNOWN_EXPERIMENT');
     if (command === 'blog.publishProbe') {
       if (!this.options.configurePublishProbe || !['public', 'private', 'off'].includes(String(input.visibility))) throw new Error('DEBUG_ONLY');
       this.options.configurePublishProbe(input.visibility as 'public' | 'private' | 'off');
@@ -100,9 +100,9 @@ export class Experiments {
   private async run(command: string, channel: Channel, input: RecordValue) {
     let active: Surface | undefined;
     try {
-      if (command === 'blog.deleteTestPost') {
+      if (command === 'blog.deleteTestPost' || command === 'blog.checkTestPostDeleted') {
         if (!this.options.deleteTestPost) throw new Error('DEBUG_ONLY');
-        await this.step('delete-test-post', this.options.deleteTestPost);
+        await this.step('delete-test-post', () => this.options.deleteTestPost!(command === 'blog.checkTestPostDeleted'));
         this.state.lastResult = '실험 글 삭제와 기록 갱신 확인'; return;
       }
       if (command === 'conversion.check') {

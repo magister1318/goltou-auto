@@ -23,6 +23,7 @@ const keys: Record<string, { code: string; vk: number; text?: string }> = {
 
 /** Shared WebSocket CDP implementation; lifecycle belongs to the device shell. */
 export class CdpSurface implements Surface {
+  readAppFocus?: () => Promise<boolean>;
   private closed = false;
   private navigationError: string | undefined;
   private metrics: { width: number; height: number; deviceScaleFactor: number; mobile: boolean } | undefined;

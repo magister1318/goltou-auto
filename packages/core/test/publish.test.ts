@@ -62,7 +62,7 @@ async function fixture(failure = '', visibility: 'public' | 'private' = 'private
     if (target.hostname === 'blog.naver.com' && target.pathname === '/PostList.naver') return route.fulfill({ contentType: 'text/html', body: '<main data-post-list><a href="/synthetic_fixture/9002">other synthetic post</a></main>' });
     if (target.href === 'https://blog.naver.com/delete-fixture') { deleted = true; return route.fulfill({ body: '{}' }); }
     if (target.href === url) {
-      const html = deleted ? '<div data-post-deleted>삭제된 글입니다</div>' : `<div class="se-documentTitle"><p class="se-text-paragraph">${stored.title}</p></div><div class="se-viewer">${failure === 'content' ? stored.html.replace('1190000','1190001') : stored.html}</div><div class="tag_list">${stored.tags}</div><div class="post_visibility">${visibility === 'private' ? '비공개' : '전체공개'}</div><div class="area_btn_postedit"><a href="#" class="_deletePost" onclick="event.preventDefault();if(confirm('정말 삭제하시겠습니까?'))fetch('/delete-fixture',{method:'POST'})">삭제</a></div>`;
+      const html = deleted ? '<div data-post-deleted>삭제된 글입니다</div>' : `<div class="se-documentTitle"><p class="se-text-paragraph">${stored.title}</p></div><div class="se-viewer">${failure === 'content' ? stored.html.replace('1190000','1190001') : stored.html}</div><div class="tag_list">${stored.tags}</div><div class="post_visibility">${visibility === 'private' ? '비공개' : '전체공개'}</div><div class="area_btn_postedit"><a href="#">수정</a><a href="#" class="_deletePost" onclick="event.preventDefault();if(confirm('삭제된 글은 복구할 수 없습니다. 삭제하시겠습니까?'))fetch('/delete-fixture',{method:'POST'})">삭제</a></div>`;
       return route.fulfill({ contentType: 'text/html; charset=utf-8', body: html });
     }
     outside++; return route.abort();

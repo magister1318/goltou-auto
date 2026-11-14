@@ -35,6 +35,8 @@ export interface Surface {
   /** Read-only expression, including element geometry. Never use to edit the page. */
   evaluateReadOnly<T>(expression: string): Promise<T>;
   /** Read the actual hit-tested element, including occluding elements and frames. */
+  /** Native foreground, window focus and screen-on signals. Read only. */
+  readAppFocus?(): Promise<boolean>;
   readClickTarget?(x: number, y: number, selector: string): Promise<boolean>;
   /** Re-read a safety condition immediately before mousePressed, after hover/delay. */
   click(x: number, y: number, beforePress?: () => Promise<void>): Promise<void>;

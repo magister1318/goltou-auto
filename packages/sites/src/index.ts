@@ -8,3 +8,5 @@ export * from './naver-blog/publish-safety';
 export * from './band';
 export * from './band/plan';
 export * from './ai-mode';
+
+export * from './naver-blog/delete';

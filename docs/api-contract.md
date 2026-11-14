@@ -97,6 +97,8 @@ WP14: 블로그 공개 범위 `public`/`private`는 앱 작업의 `blogVisibilit
 - 기록 갱신이 실패하면 앱은 사이트의 입력·대조 결과를 보존하고 `RECORD_FAILED:<API 코드>`와 안전한 한국어 API 안내를 표시합니다. 자동 재요청하지 않으며 사용자가 `기록 다시 시도`를 눌렀을 때 같은 `postNo`와 동일 갱신 본문만 재전송합니다. 사이트 입력·저장·게시를 다시 실행하지 않습니다. 서버 반영 및 실제 계정에서의 새 상태 수용 확인은 별도 작업입니다.
 
 - 본인 기록만 고칠 수 있습니다. `published`와 `draft_saved`에서 `running`으로 되돌릴 수 없습니다.
+- 블로그 발행 글의 주소와 목록에서 부재를 모두 확인한 뒤 본인 기록을 `published → stopped`, `failReason: "BLOG_POST_DELETED"`, 빈 `postUrl`로 갱신한다. `finishedAt`은 삭제 기록 시각이며 앱은 “삭제함”과 그 시각을 표시한다. 기존 서버의 허용 전이와 필드로 표현하며 새 상태를 추가하지 않는다. 실패 시 사이트 삭제를 반복하지 않고 같은 갱신만 사용자가 다시 시도한다.
+- `productTitle`은 현재 상품의 제목이다. 별도 발행 제목 스냅샷이 없으므로 일반 삭제는 `productChanged = false`일 때만 이 제목을 발행 제목으로 사용한다. 상품이 바뀌면 거부한다.
 - WP14 디버그 실험 글을 삭제하고 부재까지 확인한 경우 같은 기록을 `stopped`, `failReason: "BLOG_TEST_POST_DELETED"`, 빈 `postUrl`로 갱신한다. 계약에 `deleted`가 없어 사용하는 실험 종료 상태다. 삭제 확인 전에는 이 상태를 쓰지 않는다. 이 갱신 실패도 기존의 기록 전용 수동 재시도 규칙을 따른다.
 
 ### `POST /auto/posts/list`

@@ -29,7 +29,7 @@ export interface Job {
   bandPhotoVerification?: { order: 'matched'; ratio: 'matched' | 'unavailable'; counts: number[]; sources: { width: number; height: number }[]; thumbnails: { width: number; height: number }[] };
 }
 export interface Simulation { tickMs: number; loginAt: number | null; failAt: number | null }
-export interface AppSnapshot { user: User | null; settings: Settings | null; services: Record<Service, LoginState>; visibleService: Service | null; job: Job | null; simulation: Simulation; realBlog?: boolean; realBand?: boolean }
+export interface AppSnapshot { postDeletion?: { postNo: number; verifiedGone: boolean; recorded: boolean; at?: string }; user: User | null; settings: Settings | null; services: Record<Service, LoginState>; visibleService: Service | null; job: Job | null; simulation: Simulation; realBlog?: boolean; realBand?: boolean }
 /** Platform-neutral contract; Android implements it with a Keystore-encrypted native channel. */
 export interface TokenStore { read(): Promise<string | null>; write(token: string | null): Promise<void> }
 export interface Commands {
@@ -42,6 +42,9 @@ export interface Commands {
   'products.get': { input: { productNo: number }; output: Product };
   'preview.prepare': { input: { productNo: number; options: PostInput['options']; retryPolish?: boolean }; output: import('./preparation').PreparedPreview };
   'preview.revert': { input: { productNo: number; paragraphId: string }; output: import('./preparation').PreparedPreview };
+  'posts.delete.prepare': { input: { postNo: number }; output: { confirmation: string; productTitle: string } };
+  'posts.delete.confirm': { input: { confirmation: string }; output: AppSnapshot };
+  'posts.delete.retryRecord': { input: Record<string, never>; output: AppSnapshot };
   'posts.list': { input: { scope: 'mine' | 'all'; page?: number; pageSize?: number }; output: Page<Post> };
   'settings.save': { input: Settings; output: AppSnapshot };
   'service.check': { input: { service: Service }; output: AppSnapshot };
