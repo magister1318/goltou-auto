@@ -42,6 +42,23 @@ async function fixture(handler?: (command: Command, socket: WebSocket) => boolea
 }
 
 describe('CDP Surface', () => {
+  it.each([{ x: 0, y: 0 }, { x: 12, y: 340 }])('uses the outer document scroll for hit testing even when CDP metrics describe a scrolled iframe (%j)', async scroll => {
+    const f = await fixture((command, socket) => {
+      let result: unknown;
+      if (command.method === 'Runtime.evaluate') result = { result: { value: scroll } };
+      else if (command.method === 'Page.getLayoutMetrics') result = { cssVisualViewport: { pageX: 0, pageY: 1647 } };
+      else if (command.method === 'DOM.getNodeForLocation') result = { backendNodeId: 91 };
+      else if (command.method === 'DOM.resolveNode') result = { object: { objectId: 'synthetic-node' } };
+      else if (command.method === 'Runtime.callFunctionOn') result = { result: { value: true } };
+      else return false;
+      socket.send(JSON.stringify({ id: command.id, result })); return true;
+    });
+    expect(await f.surface.readClickTarget(490, 895, 'body')).toBe(true);
+    expect(f.commands.find(c => c.method === 'DOM.getNodeForLocation')?.params).toMatchObject({ x: 490 + scroll.x, y: 895 + scroll.y });
+    expect(f.commands.filter(c => c.method === 'Runtime.evaluate' || c.method === 'Runtime.callFunctionOn').every(c => c.params.throwOnSideEffect === true)).toBe(true);
+    expect(f.commands.some(c => c.method.startsWith('Input.'))).toBe(false);
+    expect(f.commands.at(-1)?.method).toBe('Runtime.releaseObject');
+  });
   it.each(['missing', 'truncated', 'unavailable'] as const)('obtains omitted/full paused POST data or fails closed (%s)', async mode => {
     const inspect = vi.fn(request => request.postDataComplete === true && request.postData === 'openType=0');
     const f = await fixture((command, socket) => {

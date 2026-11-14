@@ -32,10 +32,15 @@ describe('debug cleanup page identity without a response receipt', () => {
   const receipt = { postId: '9001', url: page.url };
   const dialog: SurfaceDialog = { id: 'synthetic', kind: 'confirm', message: '정말 삭제하시겠습니까?', url: page.url };
   it('accepts only the expected delete confirmation from this post', () => expect(() => requireTestDeleteConfirmation(dialog, receipt)).not.toThrow());
+  it('accepts the observed PC post deletion warning with its fixed line break', () => {
+    expect(() => requireTestDeleteConfirmation({ ...dialog, message: '삭제된 글은 복구할 수 없습니다.\n삭제하시겠습니까?' }, receipt)).not.toThrow();
+  });
   const invalidDialogs: (SurfaceDialog | null | undefined)[] = [
     null, undefined, { ...dialog, kind: 'alert' }, { id: dialog.id, kind: dialog.kind, message: dialog.message },
     { ...dialog, url: page.url.replace('9001', '9002') }, { ...dialog, url: page.url.replace('synthetic', 'other') },
     { ...dialog, message: '다른 작업을 확인하시겠습니까?' }, { ...dialog, message: '정말 삭제하시겠습니까? 추가 문구' },
+    { ...dialog, message: '삭제된 글은 복구할 수 없습니다.\n삭제하시겠습니까? 다른 작업' },
+    { ...dialog, message: '이 글은 공지로 등록되어 있어 삭제하실 경우\n공지도 함께 삭제됩니다. 삭제하시겠습니까?' },
   ];
   it.each(invalidDialogs.map(value => ({ value })))('refuses an unknown, unrelated or changed confirmation (%#)', ({ value }) => expect(() => requireTestDeleteConfirmation(value, receipt)).toThrow('BLOG_TEST_DELETE_CONFIRM_UNCONFIRMED'));
 });

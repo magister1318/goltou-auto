@@ -28,6 +28,7 @@ export function ExperimentsScreen({ back }: { back(): void }) {
     <p>디버그 전용 · 한 번에 한 실험. 로그인은 사용자가 직접 합니다.</p>
     <p className="warn">예시 블로그는 임시저장까지만, 밴드는 게시 직전까지 확인합니다. 발행 차단 프로브도 실제 발행 요청을 항상 막습니다.</p>
     {error && <p role="alert">{error}</p>}
+    <section><h2>이번 비공개 실험 글</h2><p>복구 문맥과 제목·비공개·사진 13장이 모두 일치하는 WP14 글 한 건만 삭제합니다.</p><button disabled={busy} onClick={() => void run('blog.deleteTestPost')}>이번 비공개 실험 글 삭제</button></section>
     <section><h2>발행 차단 프로브</h2><p>설정 뒤 실제 상품을 블로그만·발행 방식·같은 공개 범위로 시작합니다. 최종 요청은 무조건 차단하고 구조만 앱 안에 기록합니다.</p><div className="experiment-actions">
       <button disabled={busy} onClick={() => void run('blog.publishProbe', { visibility: 'private' })}>비공개 차단 프로브 설정</button>
       <button disabled={busy} onClick={() => void run('blog.publishProbe', { visibility: 'public' })}>전체공개 차단 프로브 설정</button>

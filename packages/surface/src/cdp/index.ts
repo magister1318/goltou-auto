@@ -169,9 +169,12 @@ export class CdpSurface implements Surface {
   }
 
   async readClickTarget(x: number, y: number, selector: string): Promise<boolean> {
-    // This DOM command takes document coordinates; Input takes viewport coordinates.
-    const metrics = await this.cdp.send<{ cssVisualViewport: { pageX: number; pageY: number } }>('Page.getLayoutMetrics');
-    const node = await this.cdp.send<{ backendNodeId?: number }>('DOM.getNodeForLocation', { x: Math.round(x + metrics.cssVisualViewport.pageX), y: Math.round(y + metrics.cssVisualViewport.pageY), includeUserAgentShadowDOM: false, ignorePointerEventsNone: false });
+    // Points from read() use the outer document's layout viewport. Android CDP
+    // can report the focused iframe's scroll in Page.getLayoutMetrics instead.
+    // Adding that offset double-counts its scroll and can hit outside the view.
+    const scroll = await this.evaluateReadOnly<{ x: number; y: number }>('({x:scrollX,y:scrollY})');
+    if (![x, y, scroll?.x, scroll?.y].every(Number.isFinite)) throw new Error('SURFACE_HIT_TEST_FAILED');
+    const node = await this.cdp.send<{ backendNodeId?: number }>('DOM.getNodeForLocation', { x: Math.round(x + scroll.x), y: Math.round(y + scroll.y), includeUserAgentShadowDOM: false, ignorePointerEventsNone: false });
     if (!node.backendNodeId) return false;
     const { object } = await this.cdp.send<{ object: { objectId?: string } }>('DOM.resolveNode', { backendNodeId: node.backendNodeId });
     if (!object.objectId) return false;

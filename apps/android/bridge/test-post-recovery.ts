@@ -31,22 +31,31 @@ export async function recoverTestPostCleanup(file: string, api: ApiClient, token
   const actual = await waitFor(async () => {
     const value = await readBlogDocument(surface);
     if (value.tokens.filter(t => t.kind === 'photo' && t.identity).length === 13) return value;
-    if (!await read<boolean>(surface, testPostFocusSource) || !await surface.readClickTarget?.(600, 450, 'body')) refuse();
+    const center = await read<{ x: number; y: number }>(surface, 'return {x:innerWidth/2,y:innerHeight/2};');
+    if (!await read<boolean>(surface, testPostFocusSource) || !await surface.readClickTarget?.(center.x, center.y, 'body')) refuse();
     await surface.pressKey({ key: 'PageDown' }); await sleep(150);
     return false;
   }, 30000);
   const comparison = compareDocuments(observePlan(preview.blog), blogObservation(preview.blog, context.files, actual));
-  const evidence = { comparison: { matches: comparison.matches, fields: comparison.differences.map(d => d.field), photos: comparison.counts.photos }, urlPattern: '/N/N', deleted: false, recorded: false };
+  type CleanupStep = Parameters<NonNullable<Parameters<typeof deleteTestPost>[1]>>[0];
+  const evidence = {
+    comparison: { matches: comparison.matches, fields: comparison.differences.map(d => d.field), photos: comparison.counts.photos },
+    urlPattern: '/N/N', deleted: false, verifiedGone: false, recorded: false, cleanup: [] as CleanupStep[],
+  };
   await writeFile(file + '.result', JSON.stringify(evidence), { mode: 0o600 });
   const execution = new BlogExecution(preview.blog, context.files, { host, beforeSave() { refuse(); }, check() {}, progress() {}, verify() { refuse(); } });
   execution.surface = surface;
   if (identity.url !== context.url) refuse();
   // Persist the one-shot latch before touching delete; a restart cannot retry it.
   await writeFile(file, '{}', { mode: 0o600 });
-  await deleteTestPost(execution, async value => { await writeFile(file + '.result', JSON.stringify({ ...evidence, cleanup: value }), { mode: 0o600 }); });
+  await deleteTestPost(execution, async value => { evidence.cleanup.push(value); await writeFile(file + '.result', JSON.stringify(evidence), { mode: 0o600 }); });
   evidence.deleted = true;
+  evidence.verifiedGone = true;
   await writeFile(file + '.result', JSON.stringify(evidence), { mode: 0o600 });
   await api.request('/auto/posts/update', { postNo: context.postNo, status: 'stopped', step: matches[0]!.step, failReason: 'BLOG_TEST_POST_DELETED', postUrl: '' }, token);
+  const after = await api.request('/auto/posts/list', { scope: 'mine', page: 1, pageSize: 100 }, token);
+  const saved = after.items.filter(r => r.postNo === context.postNo && r.productNo === context.productNo && r.startedAt === context.startedAt);
+  if (saved.length !== 1 || saved[0]!.status !== 'stopped' || saved[0]!.failReason !== 'BLOG_TEST_POST_DELETED' || saved[0]!.postUrl) throw new Error('BLOG_TEST_DELETE_RECORD_UNCONFIRMED');
   evidence.recorded = true;
   await writeFile(file + '.result', JSON.stringify(evidence), { mode: 0o600 });
 }
