@@ -11,7 +11,7 @@ import type { AppRequest, Job, JobInput } from '../src/protocol';
 
 const site = vi.hoisted(() => ({
   band: { write: vi.fn(), observe: vi.fn(async () => ({})), stopBeforePost: vi.fn(), detectPublished: vi.fn(async () => null), publish: vi.fn(), dialog: vi.fn(async () => null), show: vi.fn(), hide: vi.fn(), discard: vi.fn() },
-  blog: { ensureReady: vi.fn(), write: vi.fn(), saveAndVerify: vi.fn(), publish: vi.fn(), dialog: vi.fn(async () => null), show: vi.fn(), hide: vi.fn(), close: vi.fn(), readbackTimings: [], tableModes: [], linkCard: 'off' },
+  blog: { ensureReady: vi.fn(), write: vi.fn(), saveAndVerify: vi.fn(), publish: vi.fn(), dialog: vi.fn(async () => null), show: vi.fn(), hide: vi.fn(), close: vi.fn(), readbackTimings: [], publishedIdentitySources: [], tableModes: [], linkCard: 'off' },
 }));
 vi.mock('../src/band', async original => ({ ...await original<object>(), createBandExecution: () => site.band }));
 vi.mock('../src/blog', async original => ({ ...await original<object>(), createBlogExecution: () => site.blog }));

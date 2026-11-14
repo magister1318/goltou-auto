@@ -1,10 +1,12 @@
 // Reference: ../refs/DAF/daf3/packages/engine-naver-editor/src/insert/info-table.ts (table toolbar/control selectors only; DOM mutations excluded).
-import type { Surface, SurfaceDialog, SurfaceHost } from '@goltou/surface';
+import type { GuardedRequest, GuardedResponse, Surface, SurfaceDialog, SurfaceHost } from '@goltou/surface';
 import { inputCharacters } from '@goltou/surface';
 import { click, compact, point, read, sleep, waitFor } from '../dom';
 import { confirmBlogPhotos, prepareBlogEditor } from './index';
 import { ControlNotFoundError } from '../control-failure';
 import { closeTagLayer, protectBlogInputs, requireTagFocus, requireTagLayerClosed, tagInputSelector, tagPanelToggle } from './draft-safety';
+import { finalPublishSelector, guardedPublishClick, inspectPrivateRequest, postIdentity, readVisibility, requireVisibility, selectVisibility, type BlogVisibility, type PublishedPost, type VisibilityProof } from './publish-safety';
+import { parsePublishIdentity, resolvePublishEvidence, type ResponseIdentity, type PublishedPage, type PublishIdentitySource } from './publish-identity';
 
 /** Structural subset of WP4 InputPlan. Sites has no dependency on core or a device API. */
 export interface BlogPlan {
@@ -17,9 +19,14 @@ export interface BlogProgress { characters: number; totalCharacters: number; pho
 export interface BlogEnvironment {
   host: SurfaceHost;
   mode?: 'draft' | 'publish';
+  visibility?: BlogVisibility;
+  publishEnabled?: boolean;
   editorUrl?: string;
-  /** Production callers leave this false. Publication is allowed only on a loopback fixture. */
+  /** Loopback fixtures only. Never bypasses visibility or content verification. */
   localPublish?: boolean;
+  /** Debug shell capability, separate from real publish authorization. ALWAYS blocks. */
+  publishProbe?: { visibility: BlogVisibility; record(request: GuardedRequest, proof: VisibilityProof | undefined): Promise<void> };
+  recordPublishResponse?(response: GuardedResponse): Promise<void>;
   beforeSave(): void;
   check(): void;
   progress(value: BlogProgress): void;
@@ -30,12 +37,13 @@ const bodySelector = '.se-component.se-text .se-text-paragraph';
 const ua = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 
 /** Read document order, cells and uploaded filenames independently of the input plan. */
-export async function readBlogDocument(surface: Surface): Promise<BlogReadback> {
+export async function readBlogDocument(surface: Surface, documentUrls?: readonly string[]): Promise<BlogReadback> {
   return read(surface, `
-    const d=docs.find(({d})=>d.querySelector('.se-documentTitle'))?.d;
+    const allowed=${JSON.stringify(documentUrls ?? null)};
+    const d=docs.find(({d})=>(!allowed||allowed.includes(d.location.href))&&d.querySelector('.se-documentTitle'))?.d;
     if(!d) throw Error('LOGIN_OR_EDITOR_LOST');
     const text=e=>{const nodes=Array.from(e.querySelectorAll('.__se-node'));return nodes.length?nodes.map(n=>n.textContent||'').join(''):(e.querySelector('.se-placeholder')?'':e.textContent||'');};
-    const main=d.querySelector('.se-main-container')||d.querySelector('.se-content');
+    const main=d.querySelector('.se-main-container')||d.querySelector('.se-content')||d.querySelector('.se-viewer');
     const tokens=[];
     for(const e of main?.querySelectorAll('.se-component')||[]) {
       if(e.classList.contains('se-documentTitle')) continue;
@@ -54,7 +62,7 @@ export async function readBlogDocument(surface: Surface): Promise<BlogReadback> 
       } else { tokens.push({kind:'text',text:'UNSUPPORTED_EDITOR_COMPONENT'}); }
     }
     return {title:text(d.querySelector(${JSON.stringify(titleSelector)})).trim(),tokens,
-      tags:Array.from(d.querySelectorAll('.tag_list .tag, .se-tag-list .se-tag, [data-goltou-tag], [class^="tag_textarea__"] span[class*="tag__"][aria-label]')).map(e=>(e.textContent||'').replace(/^#/,'').trim())};`);
+      tags:Array.from(d.querySelectorAll('.wrap_tag a.itemTagfont, .tag_list .tag, .se-tag-list .se-tag, .post_tag .item, [data-goltou-tag], [class^="tag_textarea__"] span[class*="tag__"][aria-label]')).map(e=>(e.textContent||'').replace(/^#/,'').trim())};`);
 }
 const same = (a: BlogReadback, b: BlogReadback) => compact(a.title) === compact(b.title) && JSON.stringify(a.tokens.map(t => t.kind === 'text' ? ['text', compact(t.text)] : ['photo', t.identity])) === JSON.stringify(b.tokens.map(t => t.kind === 'text' ? ['text', compact(t.text)] : ['photo', t.identity])) && JSON.stringify(a.tags) === JSON.stringify(b.tags);
 
@@ -74,11 +82,27 @@ export class BlogExecution {
   private verified = false;
   private recoveryConsent = false;
   private atomic = false;
+  private publishInteraction = false;
+  private publishArmed = false;
+  private publishAttempted = false;
+  private requestProof: VisibilityProof | undefined;
+  private publishFailure = '';
+  private responsePost: ResponseIdentity = { post: null, postId: null };
+  private responseEvidence: Promise<void> = Promise.resolve();
+  private publishRequestAccepted = false;
+  /** Established from unambiguous response or resulting page evidence. Memory only. */
+  publishedPost: PublishedPost | undefined;
+  publishedIdentitySources: PublishIdentitySource[] = [];
+  publishedVerified = false;
+  private get visibility() { return this.env.visibility ?? 'public'; }
   readonly tableModes: ('native' | 'text-list')[] = [];
   linkCard: 'off' | 'card' | 'url-text' = 'off';
   private get title() { return this.plan.steps.find(s => s.kind === 'text' && s.role === 'title') as Extract<BlogPlan['steps'][number], { kind: 'text' }>; }
   constructor(readonly plan: BlogPlan, public files: readonly { url: string; path: string }[], private readonly env: BlogEnvironment) {
     if (plan.channel !== 'blog' || !this.title) throw new Error('BLOG_PLAN_REQUIRED');
+    if (env.localPublish && (!env.editorUrl || new URL(env.editorUrl).hostname !== '127.0.0.1')) throw new Error('LOCAL_EDITOR_REQUIRED');
+    if (env.visibility !== undefined && !['public', 'private'].includes(env.visibility)) throw new Error('BLOG_VISIBILITY_INVALID');
+    if (env.publishProbe && (env.mode !== 'publish' || env.publishProbe.visibility !== this.visibility)) throw new Error('BLOG_PROBE_CONFIGURATION_MISMATCH');
   }
   async ensureReady() {
     try {
@@ -105,12 +129,48 @@ export class BlogExecution {
   private async fresh() {
     const previous = this.surface;
     this.surface = await this.env.host.create('naver');
-    protectBlogInputs(this.surface);
+    protectBlogInputs(this.surface, async (x, y) => {
+      if (!this.publishInteraction || this.env.mode !== 'publish') return false;
+      const proof = await readVisibility(this.surface!, this.visibility);
+      if (proof.target && await this.surface!.readClickTarget?.(x, y, proof.target.selector)) return true;
+      if (!this.publishArmed || !await this.surface!.readClickTarget?.(x, y, finalPublishSelector)) return false;
+      requireVisibility(proof, this.visibility);
+      this.requestProof = proof;
+      return true;
+    });
     if ((this.env.mode ?? 'draft') === 'draft') {
       if (!this.surface.blockRequests) throw new Error('BLOG_DRAFT_BARRIER_UNAVAILABLE');
       // Read-only loaded editor script inspection: new publication and update
       // use RabbitWrite/RabbitUpdate; draft save uses RabbitTempPostWrite/Update.
       await this.surface.blockRequests(['/RabbitWrite.naver', '/RabbitUpdate.naver'].map(pathname => ({ hostname: 'blog.naver.com', pathname })));
+    } else {
+      if (!this.surface.guardRequests) throw new Error('BLOG_PUBLISH_BARRIER_UNAVAILABLE');
+      const hostname = this.env.localPublish ? new URL(this.env.editorUrl!).hostname : 'blog.naver.com';
+      await this.surface.guardRequests(['/RabbitWrite.naver', '/RabbitUpdate.naver'].map(pathname => ({ hostname, pathname })), async request => {
+        const allowedWindow = this.publishArmed; this.publishArmed = false;
+        if (this.env.publishProbe) {
+          // No inspector result, armed window, method, path or visibility can
+          // authorize a probe. Persistence exceptions also leave it blocked.
+          this.publishFailure = 'BLOG_PUBLISH_PROBE_BLOCKED';
+          try { await this.env.publishProbe.record(request, this.requestProof); }
+          catch { this.publishFailure = 'BLOG_PUBLISH_PROBE_EVIDENCE_FAILED'; }
+          return false;
+        }
+        if (!allowedWindow || new URL(request.url).pathname !== '/RabbitWrite.naver' || request.method !== 'POST') {
+          this.publishFailure = 'BLOG_PUBLISH_REQUEST_NOT_AUTHORIZED'; return false;
+        }
+        if (this.visibility === 'private' && (!this.requestProof || !inspectPrivateRequest(request, this.requestProof))) {
+          this.publishFailure = 'BLOG_PRIVATE_REQUEST_UNCONFIRMED'; return false;
+        }
+        this.publishRequestAccepted = true;
+        return true;
+      }, response => {
+        this.responseEvidence = Promise.resolve().then(() => this.env.recordPublishResponse?.(response)).catch(() => { this.publishFailure = 'BLOG_PUBLISH_RESPONSE_EVIDENCE_FAILED'; });
+        try {
+          this.responsePost = parsePublishIdentity(response);
+          if (this.responsePost.post) this.publishedPost = this.responsePost.post;
+        } catch (error) { this.publishFailure = error instanceof Error ? error.message : 'BLOG_PUBLISH_RESPONSE_UNCONFIRMED'; }
+      });
     }
     // Keep the previous composition until the new editor is available. Never close on stop/failure.
     await this.surface.open({ url: this.env.editorUrl ?? 'https://blog.naver.com/GoBlogWrite.naver', session: 'naver', width: 1280, height: 900, userAgent: ua });
@@ -401,13 +461,73 @@ export class BlogExecution {
     const observed = await this.observe(); this.env.verify(observed); this.verified = true; return observed;
   }
   async publish() {
-    const state = await this.surface!.readState();
-    if (!this.verified || !this.env.localPublish || !this.env.editorUrl || new URL(this.env.editorUrl).hostname !== '127.0.0.1' || new URL(state.url).hostname !== '127.0.0.1') throw new Error('REAL_PUBLISH_DISABLED');
+    if (this.env.mode !== 'publish' || !this.verified || !this.env.publishEnabled && !this.env.localPublish) throw new Error('REAL_PUBLISH_DISABLED');
+    if (this.publishAttempted) throw new Error('BLOG_PUBLISH_ALREADY_ATTEMPTED');
     await this.guard(); this.env.verify(await this.observe());
-    await click(this.surface!, 'BLOG_PUBLISH', 'button[data-click-area="tpb.publish"]');
-    const after = await this.surface!.waitForNavigation();
-    if (new URL(after.url).hostname !== '127.0.0.1' || !/\/published\//.test(new URL(after.url).pathname)) throw new Error('PUBLISH_URL_UNCONFIRMED');
-    return after.url;
+    const s = this.surface!;
+    try {
+      await click(s, 'BLOG_PUBLISH', tagPanelToggle);
+      this.publishInteraction = true;
+      await selectVisibility(s, this.visibility);
+      this.requestProof = await readVisibility(s, this.visibility);
+      requireVisibility(this.requestProof, this.visibility);
+      this.publishArmed = true;
+      // Latch before input; failures, timeouts, stop/resume never republish.
+      this.publishAttempted = true;
+      await guardedPublishClick(s, this.visibility, this.env.check, proof => { this.requestProof = proof; });
+      await waitFor(async () => {
+        this.env.check();
+        if (this.publishFailure) throw new Error(this.publishFailure);
+        if (!this.publishRequestAccepted) return false;
+        await this.responseEvidence;
+        if (this.publishFailure) throw new Error(this.publishFailure);
+        const state = await s.readState();
+        const pages = await read<PublishedPage[]>(s, `return docs.map(({d})=>({url:d.location.href,titles:Array.from(d.querySelectorAll('.se-documentTitle .se-text-paragraph')).map(e=>(e.textContent||'').trim())}));`).catch(() => []);
+        const evidence = resolvePublishEvidence(this.responsePost, [state.url], pages, this.title.text);
+        const identity = evidence.post;
+        if (!identity || !pages.some(p => postIdentity(p.url)?.url === identity.url && p.titles.length === 1 && p.titles[0] === this.title.text)) return false;
+        this.publishedPost = identity;
+        this.publishedIdentitySources = evidence.sources;
+        return true;
+      }, 30000);
+      await this.verifyPublished();
+      return this.publishedPost!.url;
+    } finally {
+      this.publishArmed = false; this.publishInteraction = false;
+      if (!this.publishedPost && !await this.dialog()) await closeTagLayer(s);
+    }
+  }
+  async verifyPublished() {
+    if (!this.publishedPost) throw new Error('BLOG_PUBLISH_ID_UNCONFIRMED');
+    const s = this.surface!;
+    const started = Date.now(); let navigationKeys = 0;
+    const ownUrls = async () => (await read<string[]>(s, `return docs.map(({d})=>d.location.href);`)).filter(url => postIdentity(url)?.url === this.publishedPost!.url);
+    const value = await waitFor(async () => {
+      this.env.check();
+      const urls = await ownUrls();
+      const actual = await readBlogDocument(s, urls).catch(() => null);
+      if (!actual) return false;
+      if (actual.tokens.every(t => t.kind !== 'photo' || t.identity)) return actual;
+      const focus = await read<{ x: number; y: number } | null>(s, `for(const {d,x,y} of docs) {
+        if(!${JSON.stringify(urls)}.includes(d.location.href))continue;
+        const e=d.querySelector(${JSON.stringify(titleSelector)});if(!e||!visible(e))continue;
+        const r=e.getBoundingClientRect();return {x:x+r.left+r.width/2,y:y+r.top+r.height/2};
+      }return null;`);
+      if (!focus || !await s.readClickTarget?.(focus.x, focus.y, titleSelector)) throw new Error('BLOG_PUBLISHED_FOCUS_UNCONFIRMED');
+      await s.click(focus.x, focus.y);
+      await s.pressKey({ key: 'PageDown' }); navigationKeys++;
+      return false;
+    }, Math.max(30000, this.files.length * 2000));
+    const identities = await read<string[]>(s, `return docs.map(({d})=>d.location.href);`);
+    if (!identities.some(url => postIdentity(url)?.url === this.publishedPost!.url)) throw new Error('BLOG_PUBLISH_ID_UNCONFIRMED');
+    if (this.visibility === 'private') {
+      const privateMarked = await read<boolean>(s, `return docs.some(({d})=>${JSON.stringify(await ownUrls())}.includes(d.location.href)&&Array.from(d.querySelectorAll('.post_visibility, .blog2_visibility, .post_author, [data-post-visibility], .se-documentTitle .blog2_container .writer .desc .txt')).some(e=>visible(e)&&(e.textContent||'').trim()==='비공개'));`);
+      if (!privateMarked) throw new Error('BLOG_PUBLISHED_PRIVATE_UNCONFIRMED');
+    }
+    this.env.verify(value);
+    this.readbackTimings.push({ photos: value.tokens.filter(t => t.kind === 'photo').length, milliseconds: Date.now() - started, navigationKeys });
+    this.publishedVerified = true;
+    return value;
   }
   async show() { await this.surface?.show(); }
   async hide() { await this.surface?.hide(); }

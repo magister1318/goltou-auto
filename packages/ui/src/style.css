@@ -218,3 +218,6 @@ progress::-webkit-progress-value { background:var(--green); }
 .polish-row button { grid-column: 1 / -1; text-align: left; color: var(--green); }
 
 .failure-detail { overflow-wrap: anywhere; }
+
+.channel-result { flex-wrap:wrap; }
+.channel-result .publish-confirm { flex-basis:100%; margin:12px 0; }

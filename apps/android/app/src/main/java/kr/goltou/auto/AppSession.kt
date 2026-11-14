@@ -37,11 +37,17 @@ class AppSession(application: Application) : AndroidViewModel(application) {
     var uiReadyMs: Long = 0
     fun markUiReady() { if (uiReadyMs == 0L) uiReadyMs = SystemClock.elapsedRealtime() - started }
 
+    fun inputReady(): Boolean = foreground && activity?.hasWindowFocus() == true &&
+        (context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager).isInteractive &&
+        activity?.window?.decorView?.display?.state == android.view.Display.STATE_ON
+
     fun handleDebug(op: String, msg: JSONObject, reply: (JSONObject?, String?) -> Unit) {
         check(BuildConfig.DEBUG) { "DEBUG_ONLY" }
         when (op) {
             "debug.info" -> reply(surfaces.info().put("activityCreations", creations)
                 .put("resumes", resumes).put("pauses", pauses).put("foreground", foreground)
+                .put("windowFocused", activity?.hasWindowFocus() == true)
+                .put("screenOn", (context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager).isInteractive && activity?.window?.decorView?.display?.state == android.view.Display.STATE_ON)
                 .put("uiReadyMs", uiReadyMs)
                 .put("model", Build.MODEL).put("androidSdk", Build.VERSION.SDK_INT)
                 .put("shellElapsedMs", SystemClock.elapsedRealtime() - started), null)

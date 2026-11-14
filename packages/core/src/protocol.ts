@@ -1,12 +1,14 @@
 import type { Channel, LoginInput, Mode, Page, Post, PostInput, Product, ProductQuery, ProductSummary, Settings, User } from '@goltou/api-client';
 export type Service = 'naver' | 'band' | 'ai';
 export type LoginState = 'confirmed' | 'expired' | 'unknown';
+export type BlogVisibility = import('@goltou/sites').BlogVisibility;
 export type JobStatus = 'running' | 'login_paused' | 'user_paused' | 'recovery_paused' | 'dialog_paused' | 'channel_paused' | 'record_failed' | 'failed' | 'draft_saved' | 'published' | 'stopped_before_post' | 'stopped';
 export interface TargetResult { channel: Channel; key: string; name: string; status: import('@goltou/api-client').PostStatus; postUrl?: string; reason?: string }
 export const steps = ['로그인 확인', '사진 내려받기', '본문 정리', '블로그에 쓰기', '블로그 임시저장과 확인', '밴드에 쓰기', '결과 기록'] as const;
 export interface JobInput {
   productNo: number; mode: Mode; targets: { channel: Channel; name: string; key: string }[];
   options: PostInput['options']; publishConfirmed?: boolean; previewHash?: string;
+  blogVisibility?: import('@goltou/sites').BlogVisibility;
 }
 export interface Job {
   id: number; productNo: number; title: string; mode: Mode; status: JobStatus;
@@ -14,7 +16,11 @@ export interface Job {
   targets: JobInput['targets']; service: Service | null; message: string;
   characters?: number; totalCharacters?: number; secondsLeft?: number; postUrl?: string;
   photoUploadMilliseconds?: number; photoUploadSamples?: number;
+  blogVisibility?: import('@goltou/sites').BlogVisibility;
+  testPostDeleted?: boolean;
+  publishProbe?: boolean;
   blogReadbackTimings?: { photos: number; milliseconds: number; navigationKeys: number }[];
+  blogIdentitySources?: ('response' | 'result-url' | 'title')[];
   tableModes?: ('native' | 'text-list')[]; linkCard?: 'off' | 'card' | 'url-text';
   dialog?: import('@goltou/surface').SurfaceDialog; evidence?: string;
   failureCode?: string;
@@ -24,7 +30,7 @@ export interface Job {
   bandPhotoVerification?: { order: 'matched'; ratio: 'matched' | 'unavailable'; counts: number[]; sources: { width: number; height: number }[]; thumbnails: { width: number; height: number }[] };
 }
 export interface Simulation { tickMs: number; loginAt: number | null; failAt: number | null }
-export interface AppSnapshot { user: User | null; settings: Settings | null; services: Record<Service, LoginState>; visibleService: Service | null; job: Job | null; simulation: Simulation; realBlog?: boolean; realBand?: boolean }
+export interface AppSnapshot { postDeletion?: { postNo: number; verifiedGone: boolean; recorded: boolean; at?: string }; user: User | null; settings: Settings | null; services: Record<Service, LoginState>; visibleService: Service | null; job: Job | null; simulation: Simulation; realBlog?: boolean; realBand?: boolean }
 /** Platform-neutral contract; Android implements it with a Keystore-encrypted native channel. */
 export interface TokenStore { read(): Promise<string | null>; write(token: string | null): Promise<void> }
 export interface Commands {
@@ -37,6 +43,9 @@ export interface Commands {
   'products.get': { input: { productNo: number }; output: Product };
   'preview.prepare': { input: { productNo: number; options: PostInput['options']; retryPolish?: boolean }; output: import('./preparation').PreparedPreview };
   'preview.revert': { input: { productNo: number; paragraphId: string }; output: import('./preparation').PreparedPreview };
+  'posts.delete.prepare': { input: { postNo: number }; output: { confirmation: string; productTitle: string } };
+  'posts.delete.confirm': { input: { confirmation: string }; output: AppSnapshot };
+  'posts.delete.retryRecord': { input: Record<string, never>; output: AppSnapshot };
   'posts.list': { input: { scope: 'mine' | 'all'; page?: number; pageSize?: number }; output: Page<Post> };
   'settings.save': { input: Settings; output: AppSnapshot };
   'service.check': { input: { service: Service }; output: AppSnapshot };

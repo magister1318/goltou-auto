@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./post-delete-policy": "./src/post-delete-policy.ts",
     "./protocol": "./src/protocol.ts",
     "./photo-url": "./src/photo-url.ts",
     "./experiments": "./src/experiments.ts"

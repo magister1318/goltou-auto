@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { requireDeletablePost, removeRecordedBlogPost, deletedUpdate } from './post-delete';
 import { ApiError, type ApiClient, type Channel, type PostStatus, type Product, type PostInput } from '@goltou/api-client';
 import { FakeRegistrationRunner, type RegistrationRunner } from './runner';
 import type { AppRequest, AppSnapshot, Job, JobInput, TokenStore } from './protocol';
@@ -14,6 +16,9 @@ export class AppCore {
   private readonly listeners = new Set<(state: AppSnapshot) => void>();
   private runner: RegistrationRunner;
   private readonly createRunner: () => RegistrationRunner;
+  private deleting = false;
+  private deleteConfirmation: { key: string; post: import('@goltou/api-client').Post } | undefined;
+  private pendingDeleteUpdate: import('@goltou/api-client').PostUpdate | undefined;
   private starting = false;
   private preparing = false;
   private authenticating = false;
@@ -22,8 +27,9 @@ export class AppCore {
   private uncertainStart = false;
   private records: { postNo: number; channel: Channel; key: string; status: PostStatus; updates: Map<string, RecordError | null> }[] = [];
   private recordPrivateText: string[] = [];
+  private deletionRecording: import('./record-checkpoint').RecordingCheckpoint | undefined;
   private readonly polishSetting: PolishStrengthStore;
-  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { device: () => Promise<import('@goltou/api-client').LoginInput['device']>; experimentTitle?: boolean; polishStrength?: PolishStrengthStore }) {
+  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { device: () => Promise<import('@goltou/api-client').LoginInput['device']>; deleteHost?: import('@goltou/surface').SurfaceHost; deleteLog?: import('@goltou/sites').DeleteLog; experimentTitle?: boolean; experimentTitleLabel?: string; polishStrength?: PolishStrengthStore }) {
     this.polishSetting = runtime?.polishStrength ?? new MemoryPolishStrengthStore();
     const notify = (job: Job) => { if (!this.state.user) return; this.state.job = job; if (job.status === 'login_paused' && job.service) { this.state.services[job.service] = 'expired'; this.state.visibleService = job.service; } this.emit(); };
     this.createRunner = () => factory ? factory((job, retry) => this.record(job, retry), notify) : new FakeRegistrationRunner(() => this.state.simulation, job => this.record(job), notify);
@@ -40,8 +46,23 @@ export class AppCore {
   }
   private emit() { for (const listener of this.listeners) listener(this.snapshot()); }
   dispose() { this.runner.dispose(); this.listeners.clear(); }
+  /** Debug entry supplies the deletion capability; release exposes no command. */
+  async cleanupTestPost(remove: (execution: import('@goltou/sites').BlogExecution) => Promise<void>) {
+    const job = this.runner.job, execution = this.runner.blogExecution?.();
+    if (this.starting || !job || job.status === 'running' || !execution || job.mode !== 'publish' || !job.title.startsWith('[골투오토 실험]') || job.testPostDeleted) throw new ApiError('invalid', '이번 작업의 실험 발행 글만 삭제할 수 있습니다.');
+    await remove(execution);
+    job.testPostDeleted = true; job.status = 'stopped'; job.message = '실험 글 삭제 확인';
+    const result = job.targetResults?.find(t => t.channel === 'blog');
+    if (!result) throw new Error('BLOG_TEST_DELETE_RECORD_MISSING');
+    result.status = 'stopped'; result.reason = 'BLOG_TEST_POST_DELETED'; delete result.postUrl;
+    delete job.postUrl;
+    // The same checkpoint/retry path updates the original record only.
+    const { RecordingCheckpoint } = await import('./record-checkpoint');
+    this.deletionRecording = new RecordingCheckpoint((value, retry) => this.record(value, retry), value => { this.state.job = value; this.emit(); });
+    await this.deletionRecording.emit(job);
+  }
   private async token(): Promise<string> { const token = await this.tokens.read(); if (!token) throw new ApiError('auth', '다시 로그인해 주세요.'); return token; }
-  private async clearSession() { await this.tokens.write(null); this.initialization = Promise.resolve(); this.preview = undefined; this.records = []; this.recordPrivateText = []; this.state.user = null; this.state.settings = null; this.state.job = null; this.emit(); }
+  private async clearSession() { await this.tokens.write(null); this.initialization = Promise.resolve(); this.preview = undefined; this.records = []; this.recordPrivateText = []; this.deleteConfirmation = undefined; this.pendingDeleteUpdate = undefined; delete this.state.postDeletion; this.state.user = null; this.state.settings = null; this.state.job = null; this.emit(); }
   private async call<P extends keyof import('@goltou/api-client').ApiRoutes>(path: P, input: import('@goltou/api-client').ApiRoutes[P]['input'], token?: string): Promise<import('@goltou/api-client').ApiRoutes[P]['output']> {
     try { return await this.api.request(path, input, token); }
     catch (error) {
@@ -61,6 +82,7 @@ export class AppCore {
     finally { this.preparing = false; }
   }
   async handle(request: AppRequest): Promise<unknown> {
+    if (this.deleting && !['session.get', 'posts.list', 'products.list', 'products.get'].includes(request.command)) throw new ApiError('conflict', '글 삭제가 진행 중입니다.');
     if (request.command === 'polish.setting.get') return this.polishSetting.read();
     if (request.command === 'polish.setting.save') {
       const strength = request.input.strength;
@@ -119,6 +141,37 @@ export class AppCore {
         preview.result = makePreview(preview.product, this.convertOptions(preview.options), undefined, preview.result.polish, preview.reverted);
         return structuredClone(preview.result);
       }
+      case 'posts.delete.prepare': {
+        this.requireDeleteIdle();
+        const post = await this.ownedPost(request.input.postNo, token);
+        requireDeletablePost(post);
+        const key = randomUUID(); this.deleteConfirmation = { key, post };
+        return { confirmation: key, productTitle: post.productTitle };
+      }
+      case 'posts.delete.confirm': {
+        this.requireDeleteIdle();
+        const confirmation = this.deleteConfirmation; this.deleteConfirmation = undefined;
+        if (!confirmation || confirmation.key !== request.input.confirmation) throw new ApiError('invalid', '삭제할 글을 다시 선택하고 확인해 주세요.');
+        this.deleting = true;
+        try {
+          const post = await this.ownedPost(confirmation.post.postNo, token);
+          requireDeletablePost(post);
+          if (['postUrl', 'productTitle', 'startedAt', 'productNo'].some(key => post[key as keyof typeof post] !== confirmation.post[key as keyof typeof post])) throw new ApiError('conflict', '기록이 바뀌었습니다. 삭제할 글을 다시 확인해 주세요.');
+          if (!this.runtime?.deleteHost) throw new ApiError('invalid', '블로그 삭제 기능을 사용할 수 없습니다.');
+          await removeRecordedBlogPost(this.runtime.deleteHost, post, this.runtime.deleteLog);
+          this.pendingDeleteUpdate = deletedUpdate(post);
+          this.state.postDeletion = { postNo: post.postNo, verifiedGone: true, recorded: false };
+          this.emit();
+          await this.saveDeletion(token);
+        } finally { this.deleting = false; }
+        return this.snapshot();
+      }
+      case 'posts.delete.retryRecord': {
+        if (this.deleting || !this.pendingDeleteUpdate) throw new ApiError('conflict', '다시 기록할 삭제 결과가 없습니다.');
+        this.deleting = true;
+        try { await this.saveDeletion(token); } finally { this.deleting = false; }
+        return this.snapshot();
+      }
       case 'posts.list': return this.call('/auto/posts/list', request.input, token);
       case 'settings.save': await this.call('/auto/settings/save', request.input, token); this.state.settings = (await this.call('/auto/me', {}, token)).settings; break;
       case 'service.check': this.state.services[request.input.service] = request.input.service === 'ai' ? 'unknown' : request.input.service === 'band' && this.runner.checkBandLogin ? await this.runner.checkBandLogin() : request.input.service === 'naver' && this.runner.checkLogin ? await this.runner.checkLogin() : 'confirmed'; break;
@@ -158,17 +211,45 @@ export class AppCore {
         if (this.runner.job?.status === 'login_paused' && this.runner.job.service && this.state.services[this.runner.job.service] !== 'confirmed') throw new ApiError('auth', '로그인 상태를 먼저 확인해 주세요.');
         this.state.visibleService = null; await this.runner.resume(); return this.snapshot();
       case 'job.retryRecord':
+        if (this.deletionRecording && this.runner.job?.testPostDeleted) { await this.deletionRecording.retry(this.runner.job); return this.snapshot(); }
         if (!this.runner.retryRecord) throw new ApiError('invalid', '다시 시도할 기록이 없습니다.');
         await this.runner.retryRecord(); return this.snapshot();
       default: throw new ApiError('invalid', '지원하지 않는 요청입니다.');
     }
     this.emit(); return this.snapshot();
   }
+  private requireDeleteIdle() {
+    if (this.deleting || this.starting || this.preparing || this.pendingDeleteUpdate || this.state.job && !['draft_saved', 'published', 'stopped'].includes(this.state.job.status)) throw new ApiError('conflict', '진행 중인 작업과 기록을 먼저 마쳐 주세요.');
+  }
+  private async ownedPost(postNo: number, token: string) {
+    if (!Number.isSafeInteger(postNo) || postNo < 1) throw new ApiError('invalid', '등록 기록을 다시 선택해 주세요.');
+    for (let page = 1; ; page++) {
+      const result = await this.call('/auto/posts/list', { scope: 'mine', page, pageSize: 50 }, token);
+      const matches = result.items.filter(p => p.postNo === postNo);
+      if (matches.length === 1) return matches[0]!;
+      if (!result.items.length || page * 50 >= result.total) break;
+    }
+    throw new ApiError('forbidden', '내 등록 기록에서 찾을 수 없는 글은 삭제할 수 없습니다.');
+  }
+  private async saveDeletion(token: string) {
+    const update = this.pendingDeleteUpdate!;
+    try {
+      await this.call('/auto/posts/update', update, token);
+      const saved = await this.ownedPost(update.postNo, token);
+      if (saved.status !== update.status || saved.failReason !== update.failReason || saved.postUrl !== '' || !saved.finishedAt) throw new ApiError('server', '삭제 기록을 다시 읽어 확인하지 못했습니다.');
+      this.state.postDeletion = { postNo: update.postNo, verifiedGone: true, recorded: true, at: saved.finishedAt };
+      this.pendingDeleteUpdate = undefined; this.emit();
+    } catch (error) {
+      throw new RecordError(error, [token]);
+    }
+  }
   private async start(input: JobInput, token: string) {
+    if (this.pendingDeleteUpdate) throw new ApiError('conflict', '삭제 결과 기록을 먼저 마쳐 주세요.');
     if (this.uncertainStart) throw new ApiError('conflict', '이전 기록 시작 요청의 결과를 확인하지 못했습니다. 등록 기록을 확인해 주세요.');
     if (this.preparing || this.starting || (this.runner.job && (this.runner.job.status === 'record_failed' || !['draft_saved', 'published', 'stopped'].includes(this.runner.job.status) && !this.runner.job.completedSteps.includes(7)))) throw new ApiError('conflict', '한 번에 한 작업만 등록할 수 있습니다.');
     if (!input.targets.length || new Set(input.targets.map(t => `${t.channel}:${t.key}`)).size !== input.targets.length) throw new ApiError('invalid', '올릴 곳을 선택해 주세요.');
     if (input.mode === 'publish' && input.publishConfirmed !== true) throw new ApiError('invalid', '발행 전에 한 번 더 확인해 주세요.');
+    if (!['draft', 'publish'].includes(input.mode) || input.blogVisibility !== undefined && !['public', 'private'].includes(input.blogVisibility)) throw new ApiError('invalid', '등록 방식과 공개 범위를 확인해 주세요.');
     this.starting = true; this.records = [];
     try {
       const product = this.forRegistration(await this.call('/auto/products/get', { productNo: input.productNo }, token));
@@ -194,14 +275,14 @@ export class AppCore {
       throw error;
     } finally { this.starting = false; }
   }
-  private forRegistration(product: Product): Product { return this.runtime?.experimentTitle ? { ...product, title: `[골투오토 실험] ${product.title}` } : product; }
+  private forRegistration(product: Product): Product { return this.runtime?.experimentTitle ? { ...product, title: `[골투오토 실험] ${this.runtime.experimentTitleLabel ?? ''}${product.title}` } : product; }
   private convertOptions(options: PostInput['options']) {
     return { closing: options.closing, closingText: this.state.settings?.closingText ?? '', linkCard: options.linkCard, hashtags: this.state.settings?.defaultHashtags ?? [], polishStrength: options.polishStrength ?? 'spelling' };
   }
   private async record(job: Job, retry = false) {
     const token = await this.token();
     for (const record of this.records) {
-      if (['draft_saved', 'published'].includes(record.status)) continue;
+      if (['draft_saved', 'published'].includes(record.status) && !(record.channel === 'blog' && job.testPostDeleted && record.status === 'published')) continue;
       const saved = job.completedSteps.includes(record.channel === 'blog' ? 5 : 6);
       const result = job.targetResults?.find(t => t.channel === record.channel && t.key === record.key);
       const status: PostStatus = (result?.status === 'running' && job.status === 'user_paused' ? 'stopped' : result?.status) ?? (saved ? (record.channel === 'band' && job.mode === 'draft' ? 'stopped_before_post' : job.mode === 'draft' ? 'draft_saved' : 'published') : job.status === 'failed' ? 'failed' : job.status === 'user_paused' ? 'stopped' : 'running');

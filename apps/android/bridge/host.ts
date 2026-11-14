@@ -53,6 +53,7 @@ export class AndroidSurfaceHost implements SurfaceHost {
           await this.native.call('surface.destroy', { surface: id });
         },
       });
+      surface.readAppFocus = async () => (await this.native.call<{ ready: boolean }>('app.inputState')).ready;
       unsubscribe = this.native.onEvent('surface.hidden', data => {
         if (data.surface === id) void surface.hide().catch(() => {});
       });

@@ -17,7 +17,15 @@ export interface KeyInput {
   /** CDP bit mask: Alt=1, Control=2, Meta=4, Shift=8. */
   modifiers?: number;
 }
-export interface SurfaceDialog { id: string; kind: 'alert' | 'confirm'; message: string }
+export interface SurfaceDialog { id: string; kind: 'alert' | 'confirm'; message: string; url?: string }
+export interface RequestRule { hostname: string; pathname: string }
+/** Ephemeral transport data. Callers must never persist bodies or headers. */
+export interface GuardedRequest {
+  url: string; method: string; postData?: string;
+  contentType?: string; hasPostData?: boolean; postDataInline?: boolean;
+  postDataFetched?: boolean; postDataComplete?: boolean;
+}
+export interface GuardedResponse { status: number; body: string }
 
 export interface Surface {
   readonly session: SurfaceSession;
@@ -27,13 +35,18 @@ export interface Surface {
   /** Read-only expression, including element geometry. Never use to edit the page. */
   evaluateReadOnly<T>(expression: string): Promise<T>;
   /** Read the actual hit-tested element, including occluding elements and frames. */
+  /** Native foreground, window focus and screen-on signals. Read only. */
+  readAppFocus?(): Promise<boolean>;
   readClickTarget?(x: number, y: number, selector: string): Promise<boolean>;
-  click(x: number, y: number): Promise<void>;
+  /** Re-read a safety condition immediately before mousePressed, after hover/delay. */
+  click(x: number, y: number, beforePress?: () => Promise<void>): Promise<void>;
   typeText(text: string): Promise<void>;
   pressKey(input: KeyInput): Promise<void>;
   attachFiles(selector: string, absolutePaths: readonly string[]): Promise<void>;
   /** Shell-enforced request barrier, installed before navigation; persists until close. */
   blockRequests?(rules: readonly { hostname: string; pathname: string }[]): Promise<void>;
+  guardRequests?(rules: readonly RequestRule[], inspect: (request: GuardedRequest) => boolean | Promise<boolean>,
+    response: (response: GuardedResponse) => void): Promise<void>;
   readDialog?(): Promise<SurfaceDialog | null>;
   respondDialog?(id: string, accept: boolean): Promise<void>;
   show(): Promise<void>;

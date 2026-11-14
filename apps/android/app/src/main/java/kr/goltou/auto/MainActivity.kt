@@ -86,7 +86,8 @@ class MainActivity : ComponentActivity() {
         retained.surfaces = surfaces
         val secureSession = SecureSession(applicationContext)
         link = CoreLink { op, msg, reply ->
-            if (op.startsWith("debug.")) retained.handleDebug(op, msg, reply)
+            if (op == "app.inputState") reply(org.json.JSONObject().put("ready", retained.inputReady()), null)
+            else if (op.startsWith("debug.")) retained.handleDebug(op, msg, reply)
             else if (op.startsWith("session.")) secureSession.handle(op, msg, reply)
             else retained.surfaces.handle(op, msg, reply)
         }

@@ -30,10 +30,17 @@ it('builds isolated release assets, strips debug tools and starts the bundled co
   expect(version).toContain(`versionName=${manifest.version}`);
   expect(version).toContain(`versionCode=${manifest.versionCode}`);
   const engine = await readFile(path.join(assets, 'engine.cjs'), 'utf8');
-  for (const marker of ['auditConversions', 'experimentTitle: true', 'draftSaveLimit: 1', 'photoPaths:', 'class Experiments']) expect(engine).not.toContain(marker);
+  expect(engine).toContain('BLOG_POST_DELETE_CHECK_');
+  expect(engine).toContain('BLOG_POST_DELETED');
+  expect(engine).not.toContain('blog.checkTestPostDeleted');
+  expect(engine).not.toContain('.read-dialog');
+  for (const marker of ['record-delete-context.json', 'record-delete-shape.jsonl', 'blog.inspectRecordedPost', 'recoverPrivatePublish', 'verifyInterruptedPrivatePublish', 'private-publish-context.json', 'blog.verifyPrivatePublish', 'recoverTestPostCleanup', 'cleanup-context.json', 'publishResponseShape', 'publish-response-shape.json', 'WP14 private-once']) expect(engine.includes(marker), marker).toBe(false);
+  for (const marker of ['publishProbeShape', '"blog.publishProbe"', 'configurePublishProbe:', 'blocked-unconditionally', 'auditConversions', 'experimentTitle: true', 'draftSaveLimit: 1', 'photoPaths:', 'class Experiments', 'delete-test-post', 'BLOG_TEST_DELETE_ALREADY_ATTEMPTED', 'BLOG_TEST_DELETE_CONFIRM_UNCONFIRMED', 'blog.deleteTestPost']) expect(engine.includes(marker), marker).toBe(false);
   const uiFiles = await readdir(path.join(assets, 'ui/assets'));
   const ui = (await Promise.all(uiFiles.filter(file => file.endsWith('.js')).map(file => readFile(path.join(assets, 'ui/assets', file), 'utf8')))).join('\n');
-  for (const marker of ['변환 점검', 'conversion.check', '실험 화면 열기', 'WP1 숨김 브라우저', '가짜 실행 설정']) expect(ui).not.toContain(marker);
+  expect(ui).toContain('확인하고 글 삭제');
+  expect(ui).not.toContain('삭제 결과만 확인');
+  for (const marker of ['이번 비공개 실험 글 삭제', '비공개 차단 프로브 설정', '전체공개 차단 프로브 설정', 'blog.publishProbe', '변환 점검', 'conversion.check', '실험 화면 열기', 'WP1 숨김 브라우저', '가짜 실행 설정', '실험 글 삭제', 'blog.deleteTestPost']) expect(ui.includes(marker), marker).toBe(false);
   expect(uiFiles.some(file => file.startsWith('Experiments-'))).toBe(false);
 
   // No login, API calls, external page or CDP connection is needed to boot the release core.

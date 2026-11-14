@@ -20,6 +20,7 @@ export interface RegistrationRunner {
   discardBand?(): Promise<void>;
   continueBand?(): Promise<void>;
   checkBandLogin?(): Promise<'confirmed' | 'expired' | 'unknown'>;
+  blogExecution?(): import('@goltou/sites').BlogExecution | undefined;
 }
 export type Checkpoint = (job: Job, retryRecord?: boolean) => Promise<void>;
 /** Site steps remain simulated. An injected preparation performs real media/body work. */

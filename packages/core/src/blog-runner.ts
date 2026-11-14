@@ -26,11 +26,11 @@ export class BlogRegistrationRunner implements RegistrationRunner {
     if (this.job && !['draft_saved', 'published'].includes(this.job.status)) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
     if (input.targets.some(t => t.channel !== 'blog')) throw new ApiError('invalid', '현재 실제 등록은 블로그 한 곳만 지원합니다. 밴드를 꺼 주세요.');
     if (input.targets.length !== 1 || !work) throw new ApiError('invalid', '블로그 입력 준비가 필요합니다.');
-    if (!this.services.localPublish && (input.mode !== 'draft' || !title.startsWith('[골투오토 실험]'))) throw new ApiError('invalid', '실제 네이버는 실험 제목의 임시저장만 허용합니다.');
+    if (!this.services.localPublish && !this.services.publishEnabled && (input.mode !== 'draft' || !title.startsWith('[골투오토 실험]'))) throw new ApiError('invalid', '실제 네이버 발행 설정을 확인해 주세요.');
     if (input.mode === 'publish' && input.publishConfirmed !== true) throw new ApiError('invalid', '이 작업의 발행 선택이 필요합니다.');
     await this.execution?.close();
     this.execution = undefined; this.work = work; this.abort = new AbortController();
-    this.job = { id: ++this.serial, productNo: input.productNo, title, mode: input.mode, targets: input.targets, targetResults: input.targets.map(t => ({ ...t, status: 'running' })), status: 'running', step: 1, current: 0, total: photos, completedSteps: [], service: null, message: '' };
+    this.job = { id: ++this.serial, productNo: input.productNo, title, mode: input.mode, blogVisibility: input.blogVisibility ?? 'public', targets: input.targets, targetResults: input.targets.map(t => ({ ...t, status: 'running' })), status: 'running', step: 1, current: 0, total: photos, completedSteps: [], service: null, message: '' };
     try { await this.emit(); this.launch(); } catch (error) { if (!(error instanceof RecordError)) throw error; }
   }
   private async emit() { if (this.job) await this.recording.emit(this.job); }
@@ -78,7 +78,7 @@ export class BlogRegistrationRunner implements RegistrationRunner {
         if (job.step === 1) {
           const preview = this.work!.preview;
           if (!preview) throw new Error('PREPARATION_REQUIRED');
-          this.execution ??= createBlogExecution(preview.blog, [], this.services, { ...this.hooks(check), mode: job.mode });
+          this.execution ??= createBlogExecution(preview.blog, [], this.services, { ...this.hooks(check), mode: job.mode, visibility: job.blogVisibility ?? 'public' });
           await this.execution.ensureReady();
         }
         if (job.step === 2) await this.work!.download(this.abort.signal, n => { job.current = n; job.message = `사진 ${n} / ${job.total}`; this.notify(structuredClone(job)); });
@@ -92,15 +92,16 @@ export class BlogRegistrationRunner implements RegistrationRunner {
         }
         if (job.step === 5) {
           await this.execution!.saveAndVerify();
-          job.blogReadbackTimings = [...this.execution!.readbackTimings];
           if (job.mode === 'publish') job.postUrl = await this.execution!.publish();
+          job.blogReadbackTimings = [...this.execution!.readbackTimings];
+          job.blogIdentitySources = [...this.execution!.publishedIdentitySources];
           job.targetResults![0]!.status = job.mode === 'draft' ? 'draft_saved' : 'published';
           if (job.postUrl) job.targetResults![0]!.postUrl = job.postUrl;
           job.tableModes = [...this.execution!.tableModes]; job.linkCard = this.execution!.linkCard;
         }
         if (job.step === 7) await this.work!.cleanup();
         check(); job.completedSteps.push(job.step);
-        if (job.step === 7) { job.status = job.mode === 'draft' ? 'draft_saved' : 'published'; job.message = '새 편집기에서 임시글을 다시 열어 원문 대조를 마쳤습니다.'; job.secondsLeft = 0; await this.emit(); return; }
+        if (job.step === 7) { job.status = job.mode === 'draft' ? 'draft_saved' : 'published'; job.message = job.mode === 'draft' ? '새 편집기에서 임시글을 다시 열어 원문 대조를 마쳤습니다.' : '발행된 글에서 원문 대조를 마쳤습니다.'; job.secondsLeft = 0; await this.emit(); return; }
         job.step++; job.current = 0; delete job.secondsLeft; job.message = job.step === 6 ? '밴드 선택 없음' : ''; await this.emit();
       }
     } catch (error) {
@@ -138,4 +139,5 @@ export class BlogRegistrationRunner implements RegistrationRunner {
     };
   }
   dispose() { this.disposed = true; this.abort.abort(); void (this.active ?? Promise.resolve()).then(() => this.work?.cleanup()).catch(() => {}); }
+  blogExecution() { return this.execution; }
 }

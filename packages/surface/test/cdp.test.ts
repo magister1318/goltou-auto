@@ -42,6 +42,72 @@ async function fixture(handler?: (command: Command, socket: WebSocket) => boolea
 }
 
 describe('CDP Surface', () => {
+  it.each([{ x: 0, y: 0 }, { x: 12, y: 340 }])('uses the outer document scroll for hit testing even when CDP metrics describe a scrolled iframe (%j)', async scroll => {
+    const f = await fixture((command, socket) => {
+      let result: unknown;
+      if (command.method === 'Runtime.evaluate') result = { result: { value: scroll } };
+      else if (command.method === 'Page.getLayoutMetrics') result = { cssVisualViewport: { pageX: 0, pageY: 1647 } };
+      else if (command.method === 'DOM.getNodeForLocation') result = { backendNodeId: 91 };
+      else if (command.method === 'DOM.resolveNode') result = { object: { objectId: 'synthetic-node' } };
+      else if (command.method === 'Runtime.callFunctionOn') result = { result: { value: true } };
+      else return false;
+      socket.send(JSON.stringify({ id: command.id, result })); return true;
+    });
+    expect(await f.surface.readClickTarget(490, 895, 'body')).toBe(true);
+    expect(f.commands.find(c => c.method === 'DOM.getNodeForLocation')?.params).toMatchObject({ x: 490 + scroll.x, y: 895 + scroll.y });
+    expect(f.commands.filter(c => c.method === 'Runtime.evaluate' || c.method === 'Runtime.callFunctionOn').every(c => c.params.throwOnSideEffect === true)).toBe(true);
+    expect(f.commands.some(c => c.method.startsWith('Input.'))).toBe(false);
+    expect(f.commands.at(-1)?.method).toBe('Runtime.releaseObject');
+  });
+  it.each(['missing', 'truncated', 'unavailable'] as const)('obtains omitted/full paused POST data or fails closed (%s)', async mode => {
+    const inspect = vi.fn(request => request.postDataComplete === true && request.postData === 'openType=0');
+    const f = await fixture((command, socket) => {
+      if (command.method !== 'Network.getRequestPostData') return false;
+      socket.send(JSON.stringify({ id: command.id, ...(mode === 'unavailable' ? { error: { message: 'unavailable' } } : { result: { postData: 'openType=0' } }) })); return true;
+    });
+    await f.surface.guardRequests([{ hostname: 'blog.naver.com', pathname: '/RabbitWrite.naver' }], inspect, () => {});
+    f.event('Fetch.requestPaused', { requestId: 'fetch-one', networkId: 'network-one', request: { url: 'https://blog.naver.com/RabbitWrite.naver', method: 'POST', hasPostData: true,
+      ...(mode === 'truncated' ? { postData: 'openType=' } : {}), headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': '10' } } });
+    await vi.waitFor(() => expect(f.commands).toHaveLength(4));
+    expect(f.commands[2]).toMatchObject({ method: 'Network.getRequestPostData', params: { requestId: 'network-one' } });
+    expect(f.commands[3]!.method).toBe(mode === 'unavailable' ? 'Fetch.failRequest' : 'Fetch.continueRequest');
+    expect(inspect.mock.calls[0]![0]).toMatchObject({ postDataInline: mode === 'truncated', postDataFetched: mode !== 'unavailable', postDataComplete: mode !== 'unavailable' });
+  });
+  it('blocks async probe requests, including updates, even when evidence throws', async () => {
+    const f = await fixture();
+    await f.surface.guardRequests(['/RabbitWrite.naver', '/RabbitUpdate.naver'].map(pathname => ({ hostname: 'blog.naver.com', pathname })), async () => { await Promise.resolve(); throw new Error('DISK_FAILED'); }, () => { throw new Error('UNEXPECTED_RESPONSE'); });
+    for (const path of ['RabbitWrite', 'RabbitUpdate']) f.event('Fetch.requestPaused', { requestId: path, request: { url: `https://blog.naver.com/${path}.naver`, method: 'POST' } });
+    await vi.waitFor(() => expect(f.commands.filter(c => c.method === 'Fetch.failRequest')).toHaveLength(2));
+  });
+  it('runs the final read-back after hovering and sends no press if the condition changed', async () => {
+    const f = await fixture();
+    await expect(f.surface.click(10, 20, async () => { throw new Error('BLOG_VISIBILITY_NOT_PRIVATE'); })).rejects.toThrow('BLOG_VISIBILITY_NOT_PRIVATE');
+    expect(f.commands).toEqual([expect.objectContaining({ method: 'Input.dispatchMouseEvent', params: { type: 'mouseMoved', x: 10, y: 20 } })]);
+  });
+  it('allows one inspected job request, rejects repeats/updates, and reads only its response in memory', async () => {
+    let armed = true;
+    const inspect = vi.fn(request => { const allow = armed && request.method === 'POST' && request.postData === 'openType=0'; armed = false; return allow; });
+    const response = vi.fn();
+    const f = await fixture((command, socket) => {
+      if (command.method !== 'Fetch.getResponseBody') return false;
+      socket.send(JSON.stringify({ id: command.id, result: { body: '{"result":{"logNo":9001}}' } })); return true;
+    });
+    await f.surface.guardRequests([{ hostname: 'blog.naver.com', pathname: '/RabbitWrite.naver' }], inspect, response);
+    for (const id of ['one', 'two']) f.event('Fetch.requestPaused', { requestId: id, request: { url: 'https://blog.naver.com/RabbitWrite.naver', method: 'POST', postData: 'openType=0' } });
+    await vi.waitFor(() => expect(f.commands).toHaveLength(4));
+    expect(f.commands[2]).toMatchObject({ method: 'Fetch.continueRequest', params: { requestId: 'one' } });
+    expect(f.commands[3]).toMatchObject({ method: 'Fetch.failRequest', params: { requestId: 'two' } });
+    f.event('Fetch.requestPaused', { requestId: 'one', responseStatusCode: 200, request: { url: 'https://blog.naver.com/RabbitWrite.naver' } });
+    await vi.waitFor(() => expect(response).toHaveBeenCalledWith({ status: 200, body: '{"result":{"logNo":9001}}' }));
+    expect(JSON.stringify(f.commands)).not.toContain('openType=0');
+  });
+  it('blocks when the request inspector throws and retains a pre-existing draft barrier', async () => {
+    const f = await fixture();
+    await f.surface.blockRequests([{ hostname: 'blog.naver.com', pathname: '/RabbitUpdate.naver' }]);
+    await f.surface.guardRequests([{ hostname: 'blog.naver.com', pathname: '/RabbitWrite.naver' }], () => { throw new Error('unknown'); }, () => {});
+    for (const path of ['RabbitWrite', 'RabbitUpdate']) f.event('Fetch.requestPaused', { requestId: path, request: { url: `https://blog.naver.com/${path}.naver` } });
+    await vi.waitFor(() => expect(f.commands.filter(c => c.method === 'Fetch.failRequest')).toHaveLength(2));
+  });
   it('fails real submission at Fetch while allowing the distinct draft-save paths and preserving request privacy', async () => {
     const f = await fixture();
     await f.surface.blockRequests(['/RabbitWrite.naver', '/RabbitUpdate.naver'].map(pathname => ({ hostname: 'blog.naver.com', pathname })));

@@ -43,15 +43,17 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     if (!work?.preview || !input.targets.length) throw new ApiError('invalid', '입력 준비가 필요합니다.');
     if (input.mode === 'publish' && !input.publishConfirmed) throw new ApiError('invalid', '이 작업의 발행 확인이 필요합니다.');
     const bands = input.targets.filter(t => t.channel === 'band');
+    if (this.services.blog?.publishProbe && (bands.length || input.mode !== 'publish' || input.blogVisibility !== this.services.blog.publishProbe.visibility)) throw new ApiError('invalid', '발행 차단 프로브의 블로그 공개 범위를 확인해 주세요.');
     if (bands.length && input.mode === 'publish' && !this.services.band.localPublish) throw new ApiError('invalid', '실제 밴드 자동 게시가 차단되어 있습니다. 임시저장 방식을 선택해 주세요.');
     if (bands.some(t => !this.directory.choices.some(b => b.key === t.key))) throw new ApiError('invalid', '내 밴드 목록에서 다시 골라 주세요.');
     if (!this.services.band.localPublish && bands.some(t => t.key !== this.directory.choices[0]?.key)) throw new ApiError('invalid', '이번 실기기 확인은 첫 밴드만 허용합니다.');
     const blogs = input.targets.filter(t => t.channel === 'blog');
     if (blogs.length > 1 || blogs.length && !this.services.blog) throw new ApiError('invalid', '블로그 실행 설정을 확인해 주세요.');
-    if (blogs.length && !this.services.blog?.localPublish && (input.mode !== 'draft' || !title.startsWith('[골투오토 실험]'))) throw new ApiError('invalid', '실제 네이버는 실험 제목의 임시저장만 허용합니다.');
-    this.work = work; this.abort = new AbortController(); this.band = undefined; this.bandIndex = 0; this.discardPending = false; this.blogSkipped = false;
+    if (blogs.length && !this.services.blog?.localPublish && !this.services.blog?.publishEnabled && (input.mode !== 'draft' || !title.startsWith('[골투오토 실험]'))) throw new ApiError('invalid', '실제 네이버 발행 설정을 확인해 주세요.');
+    this.work = work; this.abort = new AbortController(); this.band = undefined; this.bandIndex = 0; this.discardPending = false; this.blogSkipped = false; this.saves = 0;
     await this.blog?.close(); this.blog = undefined;
-    this.job = { id: ++this.serial, productNo: input.productNo, title, mode: input.mode, targets: structuredClone(input.targets), targetResults: input.targets.map(t => ({ ...t, status: 'running' })), status: 'running', step: 1, current: 0, total: photos, completedSteps: [], service: null, message: '' };
+    this.job = { id: ++this.serial, productNo: input.productNo, title, mode: input.mode, blogVisibility: input.blogVisibility ?? 'public', targets: structuredClone(input.targets), targetResults: input.targets.map(t => ({ ...t, status: 'running' })), status: 'running', step: 1, current: 0, total: photos, completedSteps: [], service: null, message: '' };
+    if (this.services.blog?.publishProbe) { this.job.publishProbe = true; this.job.message = '발행 차단 프로브'; }
     try { await this.emit(); this.launch(); } catch (error) { if (!(error instanceof RecordError)) throw error; }
   }
   private result() { return this.job?.targetResults?.filter(t => t.channel === 'band')[this.bandIndex]; }
@@ -71,7 +73,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
       while (j.step <= 7) {
         this.check();
         if (j.step === 1 && j.targets.some(t => t.channel === 'blog')) {
-          this.blog ??= createBlogExecution(this.work!.preview!.blog, [], this.services.blog!, { mode: j.mode, check: this.check, progress: this.progress, beforeSave: () => { if (++this.saves > (this.services.blog?.draftSaveLimit ?? 3)) throw new Error('DRAFT_SAVE_LIMIT'); } });
+          this.blog ??= createBlogExecution(this.work!.preview!.blog, [], this.services.blog!, { mode: j.mode, visibility: j.blogVisibility ?? 'public', check: this.check, progress: this.progress, beforeSave: () => { if (++this.saves > (this.services.blog?.draftSaveLimit ?? 3)) throw new Error('DRAFT_SAVE_LIMIT'); } });
           await this.blog.ensureReady();
         }
         if (j.step === 2) await this.work!.download(this.abort.signal, n => { j.current = n; this.notify(structuredClone(j)); });
@@ -79,10 +81,17 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
         if (j.step === 4 && this.blog) { this.blog.files = this.work!.prepared!.files; await this.blog.write(); }
         if (j.step === 5 && this.blog) {
           await this.blog.saveAndVerify();
-          j.blogReadbackTimings = [...this.blog.readbackTimings];
           const result = j.targetResults!.find(t => t.channel === 'blog')!;
-          if (j.mode === 'publish') result.postUrl = await this.blog.publish();
-          result.status = j.mode === 'draft' ? 'draft_saved' : 'published';
+          if (j.mode === 'publish') {
+            try { result.postUrl = await this.blog.publish(); }
+            catch (error) {
+              if (!j.publishProbe || !(error instanceof Error) || error.message !== 'BLOG_PUBLISH_PROBE_BLOCKED') throw error;
+              result.status = 'stopped'; result.reason = 'BLOG_PUBLISH_PROBE_BLOCKED';
+            }
+          }
+          j.blogReadbackTimings = [...this.blog.readbackTimings];
+          j.blogIdentitySources = [...this.blog.publishedIdentitySources];
+          if (!j.publishProbe) result.status = j.mode === 'draft' ? 'draft_saved' : 'published';
           j.tableModes = [...this.blog.tableModes]; j.linkCard = this.blog.linkCard;
           await this.capture(false, 'draft-verified');
         }
@@ -220,4 +229,5 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
   async hideService() { await this.directory.surface?.hide(); await this.blog?.hide(); }
   async showDraft(title: string) { if (this.job?.title !== title || !this.job.targetResults?.some(t => t.channel === 'blog' && t.status === 'draft_saved')) throw new ApiError('invalid', '이번 실행의 임시글만 열 수 있습니다.'); await this.blog?.show(); }
   dispose() { this.disposed = true; this.abort.abort(); void (this.active ?? Promise.resolve()).then(() => this.work?.cleanup()).catch(() => {}); }
+  blogExecution() { return this.blog; }
 }
