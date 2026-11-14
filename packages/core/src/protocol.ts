@@ -1,12 +1,14 @@
 import type { Channel, LoginInput, Mode, Page, Post, PostInput, Product, ProductQuery, ProductSummary, Settings, User } from '@goltou/api-client';
 export type Service = 'naver' | 'band' | 'ai';
 export type LoginState = 'confirmed' | 'expired' | 'unknown';
+export type BlogVisibility = import('@goltou/sites').BlogVisibility;
 export type JobStatus = 'running' | 'login_paused' | 'user_paused' | 'recovery_paused' | 'dialog_paused' | 'channel_paused' | 'record_failed' | 'failed' | 'draft_saved' | 'published' | 'stopped_before_post' | 'stopped';
 export interface TargetResult { channel: Channel; key: string; name: string; status: import('@goltou/api-client').PostStatus; postUrl?: string; reason?: string }
 export const steps = ['로그인 확인', '사진 내려받기', '본문 정리', '블로그에 쓰기', '블로그 임시저장과 확인', '밴드에 쓰기', '결과 기록'] as const;
 export interface JobInput {
   productNo: number; mode: Mode; targets: { channel: Channel; name: string; key: string }[];
   options: PostInput['options']; publishConfirmed?: boolean; previewHash?: string;
+  blogVisibility?: import('@goltou/sites').BlogVisibility;
 }
 export interface Job {
   id: number; productNo: number; title: string; mode: Mode; status: JobStatus;
@@ -14,6 +16,8 @@ export interface Job {
   targets: JobInput['targets']; service: Service | null; message: string;
   characters?: number; totalCharacters?: number; secondsLeft?: number; postUrl?: string;
   photoUploadMilliseconds?: number; photoUploadSamples?: number;
+  blogVisibility?: import('@goltou/sites').BlogVisibility;
+  testPostDeleted?: boolean;
   blogReadbackTimings?: { photos: number; milliseconds: number; navigationKeys: number }[];
   tableModes?: ('native' | 'text-list')[]; linkCard?: 'off' | 'card' | 'url-text';
   dialog?: import('@goltou/surface').SurfaceDialog; evidence?: string;

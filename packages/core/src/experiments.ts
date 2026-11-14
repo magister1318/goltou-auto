@@ -23,6 +23,7 @@ export interface ExperimentOptions {
   lifecycle(mode: string): Promise<void>;
   capture(surface: Surface, name: string): Promise<RecordValue>;
   conversionCheck?(check: () => void): Promise<import('./conversion-audit').ConversionAudit>;
+  deleteTestPost?(): Promise<void>;
 }
 
 /** Debug-only, single-flight tools. Never connected to the product API or registration runner. */
@@ -39,7 +40,7 @@ export class Experiments {
     if (command === 'state') return this.snapshot();
     if (command === 'stop') { this.cancelled = true; return this.snapshot(); }
     if (this.state.running) throw new Error('EXPERIMENT_BUSY');
-    if (!['conversion.check', 'ai.polish', 'info', 'example', 'evidence', 'show', 'hide', 'login.open', 'login.check', 'band.list', 'blog.run', 'band.run', 'lifecycle'].includes(command)) throw new Error('UNKNOWN_EXPERIMENT');
+    if (!['blog.deleteTestPost', 'conversion.check', 'ai.polish', 'info', 'example', 'evidence', 'show', 'hide', 'login.open', 'login.check', 'band.list', 'blog.run', 'band.run', 'lifecycle'].includes(command)) throw new Error('UNKNOWN_EXPERIMENT');
     const channel: Channel = input.channel === 'band' ? 'band' : 'naver';
     if (command.startsWith('login.') && !['band', 'naver'].includes(String(input.channel))) throw new Error('INVALID_CHANNEL');
     if (command === 'band.run' && (!/^\d{1,30}$/.test(String(input.bandKey)) || !['mobile', 'desktop'].includes(String(input.ua)))) throw new Error('SELECT_BAND_AND_UA');
@@ -92,6 +93,11 @@ export class Experiments {
   private async run(command: string, channel: Channel, input: RecordValue) {
     let active: Surface | undefined;
     try {
+      if (command === 'blog.deleteTestPost') {
+        if (!this.options.deleteTestPost) throw new Error('DEBUG_ONLY');
+        await this.step('delete-test-post', this.options.deleteTestPost);
+        this.state.lastResult = '실험 글 삭제와 기록 갱신 확인'; return;
+      }
       if (command === 'conversion.check') {
         if (!this.options.conversionCheck) throw new Error('DEBUG_ONLY');
         const result = await this.step('conversion-metrics', () => this.options.conversionCheck!(this.check), value => ({ products: value.items.length, completed: value.completed, failures: value.items.filter(i => i.failureCode).length }));

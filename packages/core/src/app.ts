@@ -22,8 +22,9 @@ export class AppCore {
   private uncertainStart = false;
   private records: { postNo: number; channel: Channel; key: string; status: PostStatus; updates: Map<string, RecordError | null> }[] = [];
   private recordPrivateText: string[] = [];
+  private deletionRecording: import('./record-checkpoint').RecordingCheckpoint | undefined;
   private readonly polishSetting: PolishStrengthStore;
-  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { device: () => Promise<import('@goltou/api-client').LoginInput['device']>; experimentTitle?: boolean; polishStrength?: PolishStrengthStore }) {
+  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { device: () => Promise<import('@goltou/api-client').LoginInput['device']>; experimentTitle?: boolean; experimentTitleLabel?: string; polishStrength?: PolishStrengthStore }) {
     this.polishSetting = runtime?.polishStrength ?? new MemoryPolishStrengthStore();
     const notify = (job: Job) => { if (!this.state.user) return; this.state.job = job; if (job.status === 'login_paused' && job.service) { this.state.services[job.service] = 'expired'; this.state.visibleService = job.service; } this.emit(); };
     this.createRunner = () => factory ? factory((job, retry) => this.record(job, retry), notify) : new FakeRegistrationRunner(() => this.state.simulation, job => this.record(job), notify);
@@ -40,6 +41,21 @@ export class AppCore {
   }
   private emit() { for (const listener of this.listeners) listener(this.snapshot()); }
   dispose() { this.runner.dispose(); this.listeners.clear(); }
+  /** Debug entry supplies the deletion capability; release exposes no command. */
+  async cleanupTestPost(remove: (execution: import('@goltou/sites').BlogExecution) => Promise<void>) {
+    const job = this.runner.job, execution = this.runner.blogExecution?.();
+    if (this.starting || !job || job.status === 'running' || !execution?.publishedPost || job.mode !== 'publish' || !job.title.startsWith('[골투오토 실험]') || job.testPostDeleted) throw new ApiError('invalid', '이번 작업의 실험 발행 글만 삭제할 수 있습니다.');
+    await remove(execution);
+    job.testPostDeleted = true; job.status = 'stopped'; job.message = '실험 글 삭제 확인';
+    const result = job.targetResults?.find(t => t.channel === 'blog');
+    if (!result) throw new Error('BLOG_TEST_DELETE_RECORD_MISSING');
+    result.status = 'stopped'; result.reason = 'BLOG_TEST_POST_DELETED'; delete result.postUrl;
+    delete job.postUrl;
+    // The same checkpoint/retry path updates the original record only.
+    const { RecordingCheckpoint } = await import('./record-checkpoint');
+    this.deletionRecording = new RecordingCheckpoint((value, retry) => this.record(value, retry), value => { this.state.job = value; this.emit(); });
+    await this.deletionRecording.emit(job);
+  }
   private async token(): Promise<string> { const token = await this.tokens.read(); if (!token) throw new ApiError('auth', '다시 로그인해 주세요.'); return token; }
   private async clearSession() { await this.tokens.write(null); this.initialization = Promise.resolve(); this.preview = undefined; this.records = []; this.recordPrivateText = []; this.state.user = null; this.state.settings = null; this.state.job = null; this.emit(); }
   private async call<P extends keyof import('@goltou/api-client').ApiRoutes>(path: P, input: import('@goltou/api-client').ApiRoutes[P]['input'], token?: string): Promise<import('@goltou/api-client').ApiRoutes[P]['output']> {
@@ -158,6 +174,7 @@ export class AppCore {
         if (this.runner.job?.status === 'login_paused' && this.runner.job.service && this.state.services[this.runner.job.service] !== 'confirmed') throw new ApiError('auth', '로그인 상태를 먼저 확인해 주세요.');
         this.state.visibleService = null; await this.runner.resume(); return this.snapshot();
       case 'job.retryRecord':
+        if (this.deletionRecording && this.runner.job?.testPostDeleted) { await this.deletionRecording.retry(this.runner.job); return this.snapshot(); }
         if (!this.runner.retryRecord) throw new ApiError('invalid', '다시 시도할 기록이 없습니다.');
         await this.runner.retryRecord(); return this.snapshot();
       default: throw new ApiError('invalid', '지원하지 않는 요청입니다.');
@@ -169,6 +186,7 @@ export class AppCore {
     if (this.preparing || this.starting || (this.runner.job && (this.runner.job.status === 'record_failed' || !['draft_saved', 'published', 'stopped'].includes(this.runner.job.status) && !this.runner.job.completedSteps.includes(7)))) throw new ApiError('conflict', '한 번에 한 작업만 등록할 수 있습니다.');
     if (!input.targets.length || new Set(input.targets.map(t => `${t.channel}:${t.key}`)).size !== input.targets.length) throw new ApiError('invalid', '올릴 곳을 선택해 주세요.');
     if (input.mode === 'publish' && input.publishConfirmed !== true) throw new ApiError('invalid', '발행 전에 한 번 더 확인해 주세요.');
+    if (!['draft', 'publish'].includes(input.mode) || input.blogVisibility !== undefined && !['public', 'private'].includes(input.blogVisibility)) throw new ApiError('invalid', '등록 방식과 공개 범위를 확인해 주세요.');
     this.starting = true; this.records = [];
     try {
       const product = this.forRegistration(await this.call('/auto/products/get', { productNo: input.productNo }, token));
@@ -194,14 +212,14 @@ export class AppCore {
       throw error;
     } finally { this.starting = false; }
   }
-  private forRegistration(product: Product): Product { return this.runtime?.experimentTitle ? { ...product, title: `[골투오토 실험] ${product.title}` } : product; }
+  private forRegistration(product: Product): Product { return this.runtime?.experimentTitle ? { ...product, title: `[골투오토 실험] ${this.runtime.experimentTitleLabel ?? ''}${product.title}` } : product; }
   private convertOptions(options: PostInput['options']) {
     return { closing: options.closing, closingText: this.state.settings?.closingText ?? '', linkCard: options.linkCard, hashtags: this.state.settings?.defaultHashtags ?? [], polishStrength: options.polishStrength ?? 'spelling' };
   }
   private async record(job: Job, retry = false) {
     const token = await this.token();
     for (const record of this.records) {
-      if (['draft_saved', 'published'].includes(record.status)) continue;
+      if (['draft_saved', 'published'].includes(record.status) && !(record.channel === 'blog' && job.testPostDeleted && record.status === 'published')) continue;
       const saved = job.completedSteps.includes(record.channel === 'blog' ? 5 : 6);
       const result = job.targetResults?.find(t => t.channel === record.channel && t.key === record.key);
       const status: PostStatus = (result?.status === 'running' && job.status === 'user_paused' ? 'stopped' : result?.status) ?? (saved ? (record.channel === 'band' && job.mode === 'draft' ? 'stopped_before_post' : job.mode === 'draft' ? 'draft_saved' : 'published') : job.status === 'failed' ? 'failed' : job.status === 'user_paused' ? 'stopped' : 'running');

@@ -1,4 +1,4 @@
-import type { KeyInput, NavigationOptions, Surface, SurfaceDialog, SurfaceOpenOptions, SurfaceSession, SurfaceState } from '../index';
+import type { GuardedRequest, GuardedResponse, RequestRule, KeyInput, NavigationOptions, Surface, SurfaceDialog, SurfaceOpenOptions, SurfaceSession, SurfaceState } from '../index';
 import { inputCharacters } from '../index';
 import { CdpConnection } from './connection';
 export { CdpConnection } from './connection';
@@ -32,6 +32,8 @@ export class CdpSurface implements Surface {
   private dialogSerial = 0;
   private barrierFailed = false;
   private readonly blockedRequests = new Set<string>();
+  private requestGuard: { paths: Set<string>; inspect: (request: GuardedRequest) => boolean; response: (response: GuardedResponse) => void } | undefined;
+  private readonly acceptedRequests = new Set<string>();
 
   constructor(
     readonly session: SurfaceSession,
@@ -39,17 +41,11 @@ export class CdpSurface implements Surface {
     private readonly lifecycle: SurfaceLifecycle,
     private readonly inputDelayMs = 60,
   ) {
-    cdp.on('Fetch.requestPaused', p => {
-      const request = p.request as { url?: string } | undefined;
-      let blocked = true;
-      try {
-        const url = new URL(request?.url ?? '');
-        blocked = this.blockedRequests.has(`${url.hostname}${url.pathname}`);
-      } catch { /* Unreadable intercepted requests fail closed. */ }
-      void cdp.send(blocked ? 'Fetch.failRequest' : 'Fetch.continueRequest', {
-        requestId: p.requestId, ...(blocked ? { errorReason: 'BlockedByClient' } : {}),
-      }).catch(() => { this.barrierFailed = true; });
-    });
+    cdp.on('Fetch.requestPaused', p => { void this.intercept(p).catch(() => { this.barrierFailed = true; }); });
+    /*
+     * Interception is installed before navigation. A policy never replaces a
+     * draft barrier, and an exception never permits a request.
+     */
     cdp.on('Page.javascriptDialogOpening', p => { this.dialog = { id: String(++this.dialogSerial), kind: p.type === 'alert' ? 'alert' : 'confirm', message: String(p.message ?? '') }; });
     cdp.on('Page.javascriptDialogClosed', () => { this.dialog = null; });
     cdp.on('Page.frameNavigated', params => {
@@ -62,6 +58,44 @@ export class CdpSurface implements Surface {
         this.loaded.add(params.loaderId);
       }
     });
+  }
+  private async intercept(p: Record<string, unknown>) {
+      const request = p.request as GuardedRequest | undefined;
+      const requestId = String(p.requestId);
+      if (p.responseStatusCode !== undefined) {
+        if (this.acceptedRequests.delete(requestId)) {
+          try {
+            const result = await this.cdp.send<{ body: string; base64Encoded?: boolean }>('Fetch.getResponseBody', { requestId });
+            this.requestGuard?.response({ status: Number(p.responseStatusCode), body: result.base64Encoded ? Buffer.from(result.body, 'base64').toString('utf8') : result.body });
+          } finally { await this.cdp.send('Fetch.continueRequest', { requestId }); }
+        } else await this.cdp.send('Fetch.continueRequest', { requestId });
+        return;
+      }
+      let blocked = true;
+      try {
+        const url = new URL(request?.url ?? '');
+        const path = `${url.hostname}${url.pathname}`;
+        blocked = this.blockedRequests.has(path);
+        if (!blocked && this.requestGuard?.paths.has(path)) {
+          blocked = !request || !this.requestGuard.inspect(request);
+          if (!blocked) this.acceptedRequests.add(requestId);
+        }
+      } catch { blocked = true; /* Unreadable intercepted requests fail closed. */ }
+      await this.cdp.send(blocked ? 'Fetch.failRequest' : 'Fetch.continueRequest', {
+        requestId: p.requestId, ...(blocked ? { errorReason: 'BlockedByClient' } : {}),
+      });
+  }
+
+  async guardRequests(rules: readonly RequestRule[], inspect: (request: GuardedRequest) => boolean, response: (response: GuardedResponse) => void) {
+    if (this.requestGuard) throw new Error('SURFACE_REQUEST_GUARD_ALREADY_SET');
+    const paths = new Set(rules.map(rule => {
+      if (!/^[a-z0-9.-]+$/.test(rule.hostname) || !/^\/[a-zA-Z0-9/_.-]+$/.test(rule.pathname)) throw new Error('SURFACE_BAD_REQUEST_BARRIER');
+      return `${rule.hostname}${rule.pathname}`;
+    }));
+    this.requestGuard = { paths, inspect, response };
+    await this.cdp.send('Fetch.enable', { patterns: [...new Set([...paths, ...this.blockedRequests])].flatMap(path =>
+      ['Request', 'Response'].flatMap(requestStage => [path, ...(path.startsWith('127.0.0.1/') ? [path.replace('127.0.0.1/', '127.0.0.1:*/')] : [])]
+        .map(pattern => ({ urlPattern: `*://${pattern}*`, requestStage })))) });
   }
 
   async blockRequests(rules: readonly { hostname: string; pathname: string }[]): Promise<void> {
@@ -145,10 +179,11 @@ export class CdpSurface implements Surface {
     throw new Error('SURFACE_NAVIGATION_TIMEOUT');
   }
 
-  async click(x: number, y: number): Promise<void> {
+  async click(x: number, y: number, beforePress?: () => Promise<void>): Promise<void> {
     if (![x, y].every(Number.isFinite)) throw new Error('SURFACE_BAD_COORDINATES');
     await this.input('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
     await pause(this.inputDelayMs);
+    await beforePress?.();
     await this.input('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
     await pause(this.inputDelayMs);
     await this.input('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });

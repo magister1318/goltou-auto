@@ -176,7 +176,7 @@ describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback e
     await expect(f.execution.publish()).rejects.toThrow('REAL_PUBLISH_DISABLED');
     f.execution.surface = original;
     await f.execution.saveAndVerify(); expect(f.beforeSave).toHaveBeenCalledTimes(1);
-    await expect(f.execution.publish()).resolves.toMatch(/127\.0\.0\.1.*\/published\/local$/);
+    await expect(f.execution.publish()).rejects.toThrow('REAL_PUBLISH_DISABLED');
   }, 40000);
   it('uses a recorded text list fallback, keeps closing/link/tag options, and rejects reordered photos and changed facts', async () => {
     const f = await fixture('bad-table', { tags: true }); await f.execution.write();

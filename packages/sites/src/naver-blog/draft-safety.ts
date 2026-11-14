@@ -20,21 +20,21 @@ export async function requireTagFocus(surface: Surface): Promise<void> {
 
 /** Guard the actual Surface entry points used by EVERY executor/helper input.
  * Keep surface identity/lifecycle intact for the shell. No page handlers or DOM are changed. */
-export function protectBlogInputs(surface: Surface): void {
+export function protectBlogInputs(surface: Surface, allowLayerClick?: (x: number, y: number) => Promise<boolean>): void {
   const press = surface.pressKey.bind(surface), mouse = surface.click.bind(surface), type = surface.typeText.bind(surface);
   surface.pressKey = async input => {
     const safe = await read<boolean>(surface, `${layerRead} ${focusRead} return !open||tagFocused;`);
     if (!safe) throw new Error('BLOG_TAG_FOCUS_LOST');
     await press(input);
   };
-  surface.click = async (x, y) => {
+  surface.click = async (x, y, beforePress) => {
     if (await tagLayerOpen(surface)) {
       // elementFromPoint is rejected by CDP throwOnSideEffect (layout flush).
       // Use the Surface's read-only compositor hit test, never approximate rectangles.
       const safe = await surface.readClickTarget?.(x, y, `${tagInputSelector}, ${tagPanelToggle}`).catch(() => false);
-      if (!safe) throw new Error('BLOG_TAG_FOCUS_LOST');
+      if (!safe && !await allowLayerClick?.(x, y)) throw new Error('BLOG_TAG_FOCUS_LOST');
     }
-    await mouse(x, y);
+    await mouse(x, y, beforePress);
   };
   surface.typeText = async text => {
     const open = await tagLayerOpen(surface);

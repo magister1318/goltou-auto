@@ -48,10 +48,10 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     if (!this.services.band.localPublish && bands.some(t => t.key !== this.directory.choices[0]?.key)) throw new ApiError('invalid', '이번 실기기 확인은 첫 밴드만 허용합니다.');
     const blogs = input.targets.filter(t => t.channel === 'blog');
     if (blogs.length > 1 || blogs.length && !this.services.blog) throw new ApiError('invalid', '블로그 실행 설정을 확인해 주세요.');
-    if (blogs.length && !this.services.blog?.localPublish && (input.mode !== 'draft' || !title.startsWith('[골투오토 실험]'))) throw new ApiError('invalid', '실제 네이버는 실험 제목의 임시저장만 허용합니다.');
+    if (blogs.length && !this.services.blog?.localPublish && !this.services.blog?.publishEnabled && (input.mode !== 'draft' || !title.startsWith('[골투오토 실험]'))) throw new ApiError('invalid', '실제 네이버 발행 설정을 확인해 주세요.');
     this.work = work; this.abort = new AbortController(); this.band = undefined; this.bandIndex = 0; this.discardPending = false; this.blogSkipped = false;
     await this.blog?.close(); this.blog = undefined;
-    this.job = { id: ++this.serial, productNo: input.productNo, title, mode: input.mode, targets: structuredClone(input.targets), targetResults: input.targets.map(t => ({ ...t, status: 'running' })), status: 'running', step: 1, current: 0, total: photos, completedSteps: [], service: null, message: '' };
+    this.job = { id: ++this.serial, productNo: input.productNo, title, mode: input.mode, blogVisibility: input.blogVisibility ?? 'public', targets: structuredClone(input.targets), targetResults: input.targets.map(t => ({ ...t, status: 'running' })), status: 'running', step: 1, current: 0, total: photos, completedSteps: [], service: null, message: '' };
     try { await this.emit(); this.launch(); } catch (error) { if (!(error instanceof RecordError)) throw error; }
   }
   private result() { return this.job?.targetResults?.filter(t => t.channel === 'band')[this.bandIndex]; }
@@ -71,7 +71,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
       while (j.step <= 7) {
         this.check();
         if (j.step === 1 && j.targets.some(t => t.channel === 'blog')) {
-          this.blog ??= createBlogExecution(this.work!.preview!.blog, [], this.services.blog!, { mode: j.mode, check: this.check, progress: this.progress, beforeSave: () => { if (++this.saves > (this.services.blog?.draftSaveLimit ?? 3)) throw new Error('DRAFT_SAVE_LIMIT'); } });
+          this.blog ??= createBlogExecution(this.work!.preview!.blog, [], this.services.blog!, { mode: j.mode, visibility: j.blogVisibility ?? 'public', check: this.check, progress: this.progress, beforeSave: () => { if (++this.saves > (this.services.blog?.draftSaveLimit ?? 3)) throw new Error('DRAFT_SAVE_LIMIT'); } });
           await this.blog.ensureReady();
         }
         if (j.step === 2) await this.work!.download(this.abort.signal, n => { j.current = n; this.notify(structuredClone(j)); });
@@ -79,9 +79,9 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
         if (j.step === 4 && this.blog) { this.blog.files = this.work!.prepared!.files; await this.blog.write(); }
         if (j.step === 5 && this.blog) {
           await this.blog.saveAndVerify();
-          j.blogReadbackTimings = [...this.blog.readbackTimings];
           const result = j.targetResults!.find(t => t.channel === 'blog')!;
           if (j.mode === 'publish') result.postUrl = await this.blog.publish();
+          j.blogReadbackTimings = [...this.blog.readbackTimings];
           result.status = j.mode === 'draft' ? 'draft_saved' : 'published';
           j.tableModes = [...this.blog.tableModes]; j.linkCard = this.blog.linkCard;
           await this.capture(false, 'draft-verified');
@@ -220,4 +220,5 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
   async hideService() { await this.directory.surface?.hide(); await this.blog?.hide(); }
   async showDraft(title: string) { if (this.job?.title !== title || !this.job.targetResults?.some(t => t.channel === 'blog' && t.status === 'draft_saved')) throw new ApiError('invalid', '이번 실행의 임시글만 열 수 있습니다.'); await this.blog?.show(); }
   dispose() { this.disposed = true; this.abort.abort(); void (this.active ?? Promise.resolve()).then(() => this.work?.cleanup()).catch(() => {}); }
+  blogExecution() { return this.blog; }
 }

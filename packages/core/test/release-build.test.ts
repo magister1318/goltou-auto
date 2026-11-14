@@ -30,10 +30,10 @@ it('builds isolated release assets, strips debug tools and starts the bundled co
   expect(version).toContain(`versionName=${manifest.version}`);
   expect(version).toContain(`versionCode=${manifest.versionCode}`);
   const engine = await readFile(path.join(assets, 'engine.cjs'), 'utf8');
-  for (const marker of ['auditConversions', 'experimentTitle: true', 'draftSaveLimit: 1', 'photoPaths:', 'class Experiments']) expect(engine).not.toContain(marker);
+  for (const marker of ['auditConversions', 'experimentTitle: true', 'draftSaveLimit: 1', 'photoPaths:', 'class Experiments', 'delete-test-post', 'BLOG_TEST_DELETE_ALREADY_ATTEMPTED', 'BLOG_TEST_DELETE_CONFIRM_UNCONFIRMED', 'blog.deleteTestPost']) expect(engine).not.toContain(marker);
   const uiFiles = await readdir(path.join(assets, 'ui/assets'));
   const ui = (await Promise.all(uiFiles.filter(file => file.endsWith('.js')).map(file => readFile(path.join(assets, 'ui/assets', file), 'utf8')))).join('\n');
-  for (const marker of ['변환 점검', 'conversion.check', '실험 화면 열기', 'WP1 숨김 브라우저', '가짜 실행 설정']) expect(ui).not.toContain(marker);
+  for (const marker of ['변환 점검', 'conversion.check', '실험 화면 열기', 'WP1 숨김 브라우저', '가짜 실행 설정', '실험 글 삭제', 'blog.deleteTestPost']) expect(ui).not.toContain(marker);
   expect(uiFiles.some(file => file.startsWith('Experiments-'))).toBe(false);
 
   // No login, API calls, external page or CDP connection is needed to boot the release core.

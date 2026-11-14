@@ -24,7 +24,7 @@ const options: CoreOptions = {
   diagnostics: __GOLTOU_DEBUG__,
   band: { host, ...(__GOLTOU_DEBUG__ ? { capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}) },
   blog: {
-    host, ...(__GOLTOU_DEBUG__ ? { draftSaveLimit: 1, capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}),
+    host, publishEnabled: true, ...(__GOLTOU_DEBUG__ ? { draftSaveLimit: 1, capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}),
     recordFailure: async failure => {
       const directory = path.join(path.dirname(argument('data')), 'wp5');
       await mkdir(directory, { recursive: true });
@@ -44,17 +44,19 @@ const options: CoreOptions = {
 async function start() {
   const app = new AppCore(createApiClient(apiOrigin, fetch), new AndroidTokenStore(native),
     (checkpoint, notify) => new ChannelRegistrationRunner({ band: options.band!, blog: options.blog! }, checkpoint, notify), options.preparation,
-    { device: () => native.call('session.device'), polishStrength: filePolishStrengthStore(path.join(path.dirname(argument('data')), 'polish-strength.txt')), ...(__GOLTOU_DEBUG__ ? { experimentTitle: true } : {}) });
+    { device: () => native.call('session.device'), polishStrength: filePolishStrengthStore(path.join(path.dirname(argument('data')), 'polish-strength.txt')), ...(__GOLTOU_DEBUG__ ? { experimentTitle: true, experimentTitleLabel: 'WP14 ' } : {}) });
   options.app = app;
   if (__GOLTOU_DEBUG__ && argument('debug') === 'true') {
     const { Experiments } = await import('../../../packages/core/src/experiments');
     const { auditConversions } = await import('../../../packages/core/src/conversion-audit');
+    const { deleteTestPost } = await import('../../../packages/core/src/test-post-delete');
     options.experiments = new Experiments({
       host, directory: argument('data'),
       photoPaths: Array.from({ length: 5 }, (_, i) => path.join(argument('bundle'), 'fixtures', `sample-${i + 1}.png`)),
       info: async () => ({ ...await native.call<Record<string, unknown>>('debug.info'), node: process.version }),
       lifecycle: async mode => { await native.call('debug.lifecycle', { mode }); },
       capture: (surface, name) => host.capture(surface, name),
+      deleteTestPost: () => app.cleanupTestPost(deleteTestPost),
       conversionCheck: check => app.auditProducts((api, token) => auditConversions(api, token, async result => {
         const directory = path.join(path.dirname(argument('data')), 'wp7');
         await mkdir(directory, { recursive: true });
