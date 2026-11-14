@@ -14,7 +14,7 @@ export async function loginState(surface: Surface): Promise<LoginState> {
   } while (Date.now() < deadline);
   return 'unknown';
 }
-async function detectLoginState(surface: Surface): Promise<LoginState> {
+export async function detectLoginState(surface: Surface): Promise<LoginState> {
   // Return a three-state decision only, never cookie names/values, body samples, account names or identifiers.
   return read<LoginState>(surface, `
     const host=location.hostname, path=location.pathname;

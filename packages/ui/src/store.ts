@@ -8,7 +8,11 @@ let socket: WebSocket;
 let serial = 0;
 function update(next: Partial<State>) { state = { ...state, ...next }; for (const listener of listeners) listener(); }
 export function useStore() { return useSyncExternalStore(listener => { listeners.add(listener); return () => { listeners.delete(listener); }; }, () => state); }
-export function clearError() { update({ error: '' }); }
+export function clearError() {
+  const snapshot = state.snapshot ? { ...state.snapshot } : null;
+  if (snapshot) delete snapshot.serviceError;
+  update({ error: '', snapshot });
+}
 export function connect() {
   // The launch token is only a bootstrap secret. Goltou tokens never cross this channel.
   history.replaceState({ screen: 'login' }, '', location.pathname);
@@ -35,7 +39,7 @@ function send(message: Record<string, unknown>): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const id = ++serial;
     // A long introduction is still typed at the Surface's human input pace.
-    const timer = setTimeout(() => { pending.delete(id); update({ error: '응답이 늦습니다. 다시 시도해 주세요.' }); reject(new Error('응답 시간 초과')); }, message.command === 'preview.prepare' ? 1800000 : 30000);
+    const timer = setTimeout(() => { pending.delete(id); update({ error: '응답이 늦습니다. 다시 시도해 주세요.' }); reject(new Error('응답 시간 초과')); }, message.command === 'preview.prepare' ? 1800000 : ['service.show', 'service.hide', 'service.check'].includes(String(message.command)) ? 120000 : 30000);
     pending.set(id, { resolve, reject, timer }); socket.send(JSON.stringify({ id, ...message }));
   });
 }

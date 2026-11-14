@@ -82,7 +82,9 @@ class MainActivity : ComponentActivity() {
         root.addView(ui, FrameLayout.LayoutParams(-1, -1))
         val visible = FrameLayout(session.context).apply { visibility = View.GONE }
         root.addView(visible, FrameLayout.LayoutParams(-1, -1))
-        surfaces = SurfaceHost(session.context, hidden, visible) { id -> retained.link.event("surface.hidden", org.json.JSONObject().put("surface", id)) }
+        surfaces = SurfaceHost(session.context, hidden, visible,
+            { id -> retained.link.event("surface.hidden", org.json.JSONObject().put("surface", id)) },
+            { id -> retained.link.event("surface.navigationHidden", org.json.JSONObject().put("surface", id)) })
         retained.surfaces = surfaces
         val secureSession = SecureSession(applicationContext)
         link = CoreLink { op, msg, reply ->
@@ -125,8 +127,19 @@ class MainActivity : ComponentActivity() {
         })
     }
 
-    override fun onResume() { super.onResume(); if (::session.isInitialized) { session.foreground = true; session.resumes++ } }
-    override fun onPause() { if (::session.isInitialized) { session.foreground = false; session.pauses++ }; super.onPause() }
+    override fun onResume() {
+        super.onResume()
+        if (::session.isInitialized) {
+            session.foreground = true; session.resumes++
+            val elapsed = if (session.backgroundAt == 0L) 0 else android.os.SystemClock.elapsedRealtime() - session.backgroundAt
+            if (::link.isInitialized) link.event("app.foreground", org.json.JSONObject().put("backgroundMs", elapsed))
+            session.backgroundAt = 0
+        }
+    }
+    override fun onPause() {
+        if (::session.isInitialized) { session.foreground = false; session.pauses++; session.backgroundAt = android.os.SystemClock.elapsedRealtime() }
+        super.onPause()
+    }
     override fun onDestroy() {
         if (::session.isInitialized && session.activity === this) {
             session.activity = null

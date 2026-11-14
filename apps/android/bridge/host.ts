@@ -43,20 +43,28 @@ export class AndroidSurfaceHost implements SurfaceHost {
       if (!endpoint) throw new Error('DEVTOOLS_TARGET_NOT_FOUND');
       const cdp = await CdpConnection.connect(endpoint, { socketPath: this.socketPath });
       let unsubscribe = () => {};
+      const hiddenListeners = new Set<() => void>();
+      const navigationListeners = new Set<() => void>();
+      let unsubscribeNavigation = () => {};
       const surface = new CdpSurface(session, cdp, {
+        restrictNavigation: async policy => { await this.native.call('surface.navigation', { surface: id, policy }); },
+        onUserHidden: listener => { hiddenListeners.add(listener); return () => { hiddenListeners.delete(listener); }; },
+        onNavigationHidden: listener => { navigationListeners.add(listener); return () => { navigationListeners.delete(listener); }; },
         readDialog: async () => (await this.native.call<{ dialog: import('../../../packages/surface/src/index').SurfaceDialog | null }>('surface.dialog', { surface: id })).dialog,
         respondDialog: async (dialog, accept) => { await this.native.call('surface.dialog.answer', { surface: id, dialog, accept }); },
         setVisible: async visible => { await this.native.call('surface.visible', { surface: id, visible }); },
         close: async () => {
           unsubscribe();
+          unsubscribeNavigation();
           this.surfaces.delete(surface);
           await this.native.call('surface.destroy', { surface: id });
         },
       });
       surface.readAppFocus = async () => (await this.native.call<{ ready: boolean }>('app.inputState')).ready;
       unsubscribe = this.native.onEvent('surface.hidden', data => {
-        if (data.surface === id) void surface.hide().catch(() => {});
+        if (data.surface === id) void surface.hide().catch(() => {}).then(() => { for (const listener of hiddenListeners) listener(); });
       });
+      unsubscribeNavigation = this.native.onEvent('surface.navigationHidden', data => { if (data.surface === id) for (const listener of navigationListeners) listener(); });
       this.surfaces.set(surface, id);
       return surface;
     } catch (error) {

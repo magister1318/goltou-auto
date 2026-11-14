@@ -17,5 +17,6 @@
 | WP12 | [release build](WP12-release.md) | 구현·시험·APK 검사 완료, 초안 PR 검토 대기. 실기기 설치는 지시로 생략. [보고서](../reports/WP12-release.md) · [배포 안내](../release.md) |
 | WP13 | [screen finish](WP13-screen-finish.md) | 구현·시험·실기기 6장·시뮬레이터 17장 확인 완료, 초안 PR 검토 대기. 런처 캡처 생략. [보고서](../reports/WP13-screen-finish.md) |
 | WP14 | [발행 방식과 비공개 확인](WP14-publish.md) | 비공개 1건 발행·결과 URL/제목 식별. 비공개 표시 수정 뒤 동일 글 검증·기록 복구. 일반 삭제·주소/목록 부재·서버 삭제 기록 확인 완료. [보고서](../reports/WP14-publish.md) |
+| WP15 | [서비스 로그인 실제 동작](WP15-service-login.md) | 구현·루트 580개·Android 4개 시험·빌드 완료. 실기기 자동 상태 확인과 두 서비스 안내 자동 복귀 확인. 초안 PR 검토 대기. [보고서](../reports/WP15-service-login.md) |
 
 지시서는 시작할 때 이 폴더에 추가합니다. 보고서는 `docs/reports/WPn.md`.

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WebSocketServer, type WebSocket } from 'ws';
-import { CdpConnection, CdpSurface } from '../src/cdp';
+import { CdpConnection, CdpSurface, type SurfaceLifecycle } from '../src/cdp';
 
 interface Command { id: number; method: string; params: Record<string, unknown> }
 const cleanup: (() => Promise<void>)[] = [];
@@ -29,19 +29,42 @@ async function fixture(handler?: (command: Command, socket: WebSocket) => boolea
   const connection = await CdpConnection.connect(`ws://127.0.0.1:${address.port}`);
   let visible = false;
   let closed = 0;
-  const surface = new CdpSurface('naver', connection, {
+  const lifecycle: SurfaceLifecycle = {
     setVisible: async value => { visible = value; }, close: async () => { closed++; },
-  }, 0);
+  };
+  const surface = new CdpSurface('naver', connection, lifecycle, 0);
   cleanup.push(async () => {
     connection.close();
     for (const client of server.clients) client.terminate();
     await new Promise<void>(resolve => server.close(() => resolve()));
   });
-  return { surface, connection, commands, visibility: () => visible, closed: () => closed,
+  return { surface, lifecycle, connection, commands, visibility: () => visible, closed: () => closed,
     event: (method: string, params: Record<string, unknown>) => { for (const socket of server.clients) socket.send(JSON.stringify({ method, params })); } };
 }
 
 describe('CDP Surface', () => {
+  it('requires native navigation enforcement and delegates only policy and hide events, without request interception', async () => {
+    const f = await fixture();
+    const policy = { allowed: [{ hostname: 'nid.naver.com', pathname: '/nidlogin.login' }], landing: [], fallbackUrl: 'https://nid.naver.com/nidlogin.login' };
+    await expect(f.surface.restrictNavigation(policy)).rejects.toThrow('SURFACE_NAVIGATION_GUARD_REQUIRED');
+    f.lifecycle.restrictNavigation = vi.fn(async () => {});
+    const cancel = vi.fn(), landing = vi.fn(), unsubscribe = vi.fn();
+    f.lifecycle.onUserHidden = fn => { fn(); return unsubscribe; };
+    f.lifecycle.onNavigationHidden = fn => { fn(); return unsubscribe; };
+    await f.surface.restrictNavigation(policy); expect(f.lifecycle.restrictNavigation).toHaveBeenCalledWith(policy);
+    f.surface.onUserHidden(cancel)(); f.surface.onNavigationHidden(landing)();
+    expect(cancel).toHaveBeenCalledOnce(); expect(landing).toHaveBeenCalledOnce(); expect(unsubscribe).toHaveBeenCalledTimes(2);
+    expect(f.commands).toEqual([]);
+  });
+  it('rejects a canceled navigation without accepting a complete previous page', async () => {
+    const f = await fixture((command, socket) => {
+      if (command.method !== 'Page.navigate') return false;
+      socket.send(JSON.stringify({ id: command.id, result: { errorText: 'net::ERR_ABORTED' } }));
+      return true;
+    });
+    await expect(f.surface.open({ url: 'https://example.com/', session: 'naver', width: 412, height: 800, userAgent: 'fixture' })).rejects.toThrow('net::ERR_ABORTED');
+    expect(f.visibility()).toBe(false);
+  });
   it.each([{ x: 0, y: 0 }, { x: 12, y: 340 }])('uses the outer document scroll for hit testing even when CDP metrics describe a scrolled iframe (%j)', async scroll => {
     const f = await fixture((command, socket) => {
       let result: unknown;

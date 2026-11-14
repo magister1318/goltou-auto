@@ -47,6 +47,8 @@ async function start() {
     (checkpoint, notify) => new ChannelRegistrationRunner({ band: options.band!, blog: options.blog! }, checkpoint, notify), options.preparation,
     runtime);
   options.app = app;
+  void native.ready().then(() => app.serviceRuntimeReady()).catch(() => {});
+  native.onEvent('app.foreground', data => { if (typeof data.backgroundMs === 'number') app.foregrounded(data.backgroundMs); });
   if (__GOLTOU_DEBUG__ && argument('debug') === 'true') {
     runtime.deleteLog = async value => {
       const directory = path.join(path.dirname(argument('data')), 'wp14');

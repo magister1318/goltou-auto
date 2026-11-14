@@ -14,6 +14,10 @@ import android.webkit.JsResult
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebResourceError
+import android.webkit.WebResourceResponse
+import android.os.Message
+import java.io.ByteArrayInputStream
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
@@ -25,11 +29,12 @@ import org.json.JSONObject
 import org.json.JSONArray
 
 class SurfaceHost(private val context: Context, private val hidden: FrameLayout, private val visible: FrameLayout,
-    private val onUserHidden: (String) -> Unit) {
+    private val onUserHidden: (String) -> Unit, private val onNavigationHidden: (String) -> Unit) {
     private data class PendingDialog(val id: String, val kind: String, val message: String, val url: String, val result: JsResult)
-    private data class Entry(val view: WebView, val session: String, var frame: View, var dialog: PendingDialog? = null)
+    private data class Entry(val view: WebView, val session: String, var frame: View, val bootstrapUrl: String, var dialog: PendingDialog? = null,
+        @Volatile var policy: NavigationPolicy? = null, var loadedUrl: String? = null, var loadFailed: Boolean = false)
     private var dialogSerial = 0
-    private val entries = mutableMapOf<String, Entry>()
+    private val entries = java.util.concurrent.ConcurrentHashMap<String, Entry>()
     private val sessions = setOf("naver", "band", "ai")
     private val clearing = mutableSetOf<String>()
 
@@ -55,6 +60,21 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
             "surface.create" -> create(msg)
             "surface.destroy" -> destroy(msg.getString("surface"))
             "surface.visible" -> setVisible(msg.getString("surface"), msg.getBoolean("visible"))
+            "surface.navigation" -> {
+                val entry = entries[msg.getString("surface")] ?: error("NO_SURFACE")
+                check(entry.policy == null) { "NAVIGATION_POLICY_ALREADY_SET" }
+                val policy = msg.getJSONObject("policy")
+                fun routes(name: String): List<NavigationRoute> {
+                    val rows = policy.getJSONArray(name)
+                    return (0 until rows.length()).map { i -> rows.getJSONObject(i).let {
+                        NavigationRoute(it.getString("hostname"), it.getString("pathname"), it.optBoolean("prefix"))
+                    } }
+                }
+                val parsed = NavigationPolicy(routes("allowed"), routes("landing"), policy.getString("fallbackUrl"))
+                check(parsed.allows(parsed.fallbackUrl)) { "INVALID_NAVIGATION_FALLBACK" }
+                entry.policy = parsed
+                entry.view.settings.setSupportMultipleWindows(true)
+            }
             "surface.dialog" -> {
                 val pending = entries[msg.getString("surface")]?.dialog
                 reply(JSONObject().put("dialog", if (pending == null) JSONObject.NULL else JSONObject()
@@ -120,8 +140,46 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
             javaScriptCanOpenWindowsAutomatically = false
         }
         view.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean =
-                request.isForMainFrame && request.url.scheme !in setOf("http", "https")
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                val entry = entries[id] ?: return true
+                val policy = entry.policy ?: return request.isForMainFrame && request.url.scheme !in setOf("http", "https")
+                val url = request.url.toString()
+                if (policy.isLanding(url) && request.isForMainFrame) {
+                    // Authentication may redirect home; its contents are checked hidden only.
+                    if (entry.frame.parent === visible) { setVisible(id, false); onNavigationHidden(id) }
+                    return false
+                }
+                return !policy.allows(url)
+            }
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                val policy = entries[id]?.policy ?: return null
+                // Also covers main-frame POSTs, which shouldOverrideUrlLoading omits.
+                if (request.isForMainFrame && !policy.allows(request.url.toString()) && !policy.isLanding(request.url.toString())) {
+                    view.post { entries[id]?.let { if (it.frame.parent === visible) setVisible(id, false); it.view.loadUrl(policy.fallbackUrl) } }
+                    return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
+                }
+                return null
+            }
+            override fun onPageStarted(view: WebView, url: String, favicon: android.graphics.Bitmap?) {
+                val entry = entries[id] ?: return
+                // Target discovery can precede this callback on the first profile load.
+                // The initial hidden marker must not cancel the first real navigation.
+                if (url == entry.bootstrapUrl && entry.frame.parent !== visible) return
+                entry.loadedUrl = null; entry.loadFailed = false
+                val policy = entry.policy ?: return
+                if (policy.isLanding(url)) { if (entry.frame.parent === visible) { setVisible(id, false); onNavigationHidden(id) } }
+                else if (!policy.allows(url)) {
+                    if (entry.frame.parent === visible) setVisible(id, false)
+                    view.stopLoading(); view.loadUrl(policy.fallbackUrl)
+                }
+            }
+            override fun onPageFinished(view: WebView, url: String) { entries[id]?.let { if (!it.loadFailed) it.loadedUrl = url } }
+            override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                if (request.isForMainFrame) entries[id]?.let { it.loadFailed = true; it.loadedUrl = null; if (it.frame.parent === visible) setVisible(id, false) }
+            }
+            override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
+                if (request.isForMainFrame) entries[id]?.let { it.loadFailed = true; it.loadedUrl = null; if (it.frame.parent === visible) setVisible(id, false) }
+            }
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
                 destroy(id)
                 return true
@@ -129,10 +187,12 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
         }
         // Page dialogs remain user-controlled when shown; no automatic confirmations.
         view.webChromeClient = object : WebChromeClient() {
+            override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean = false
             override fun onConsoleMessage(message: ConsoleMessage): Boolean =
                 !BuildConfig.DEBUG || super.onConsoleMessage(message)
             private fun forward(kind: String, url: String, message: String, result: JsResult): Boolean {
                 val entry = entries[id] ?: return false
+                if (entry.policy != null) return false // The real login page owns its visible alerts/consent.
                 check(entry.dialog == null) { "DIALOG_ALREADY_PENDING" }
                 // Hold the JS result for an explicit choice in the app UI. No automatic default.
                 entry.dialog = PendingDialog((++dialogSerial).toString(), kind, message, url, result)
@@ -143,14 +203,17 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
         }
         view.isFocusable = false
         view.isFocusableInTouchMode = false
-        val entry = Entry(view, session, view)
+        val bootstrapUrl = "about:blank#${Uri.encode(msg.getString("marker"))}"
+        val entry = Entry(view, session, view, bootstrapUrl)
         entries[id] = entry
         hidden.addView(view, FrameLayout.LayoutParams(1280, 900))
-        view.loadUrl("about:blank#${Uri.encode(msg.getString("marker"))}")
+        view.loadUrl(bootstrapUrl)
     }
 
     private fun setVisible(id: String, show: Boolean) {
         val entry = entries[id] ?: error("NO_SURFACE")
+        if (show && entry.policy != null) check(!entry.loadFailed && entry.loadedUrl == entry.view.url &&
+            entry.loadedUrl?.let { entry.policy!!.allows(it) } == true) { "LOGIN_PAGE_NOT_READY" }
         (entry.frame.parent as? ViewGroup)?.removeView(entry.frame)
         (entry.view.parent as? ViewGroup)?.removeView(entry.view)
         entry.view.isFocusable = show

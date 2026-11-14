@@ -13,11 +13,12 @@ describe('service login presentation', () => {
     }
   });
   it.each(loginServices)('explains %s password handling and the way back', service => {
-    for (const state of ['confirmed', 'expired', 'unknown'] as const) {
+    for (const state of ['confirmed', 'expired', 'unknown', 'checking'] as const) {
       const html = renderToStaticMarkup(createElement(ServiceGuide, { service, state }));
       expect(html).toContain(loginLabels[state]); expect(html).toContain(`login-state ${state}`);
       expect(html).toContain('페이지에만 직접 입력하고 앱은 저장하지 않습니다');
       expect(html).toContain('골투오토로 돌아오기'); expect(html).toContain('골투 서버로 보내지 않습니다');
+      expect(html).toContain('자동으로 돌아옵니다'); expect(html).toContain('취소할 때만');
       expect(html).not.toMatch(/가짜|시뮬레이션|여기에 열립니다/);
     }
   });

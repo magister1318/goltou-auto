@@ -3,6 +3,7 @@ import type { Job, JobInput, Simulation } from './protocol';
 import type { PreparationWork } from './preparation';
 export interface RegistrationRunner {
   readonly job: Job | null;
+  readonly serviceLogin?: import('./service-login').ServiceLoginController;
   start(input: JobInput, title: string, photos: number, preparation?: PreparationWork): Promise<void>;
   stop(): Promise<void>;
   resume(): Promise<void>;

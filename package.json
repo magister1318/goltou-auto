@@ -16,6 +16,7 @@
     "device:pull": "node scripts/device-pull.mjs"
   },
   "devDependencies": {
+    "@types/jsdom": "21.1.7",
     "@types/node": "18.19.100",
     "@types/react": "19.1.6",
     "@types/react-dom": "19.1.6",
