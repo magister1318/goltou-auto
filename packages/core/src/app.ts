@@ -6,6 +6,7 @@ import type { AppRequest, AppSnapshot, Job, JobInput, TokenStore } from './proto
 import { makePreview, preparePreview, preparationWork, type PreparationServices, type PreparedPreview } from './preparation';
 import { RecordError } from './record-checkpoint';
 import { MemoryPolishStrengthStore, type PolishStrengthStore } from './polish/setting';
+import { MemoryPreferencesStore, validPreferences, type PreferencesStore } from './preferences';
 export class MemoryTokenStore implements TokenStore {
   private token: string | null = null;
   async read() { return this.token; }
@@ -34,8 +35,10 @@ export class AppCore {
   private recordPrivateText: string[] = [];
   private deletionRecording: import('./record-checkpoint').RecordingCheckpoint | undefined;
   private readonly polishSetting: PolishStrengthStore;
-  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { device: () => Promise<import('@goltou/api-client').LoginInput['device']>; deleteHost?: import('@goltou/surface').SurfaceHost; deleteLog?: import('@goltou/sites').DeleteLog; experimentTitle?: boolean; experimentTitleLabel?: string; polishStrength?: PolishStrengthStore; openExternal?: (url: string) => Promise<void> }) {
+  private readonly preferences: PreferencesStore;
+  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { device: () => Promise<import('@goltou/api-client').LoginInput['device']>; deleteHost?: import('@goltou/surface').SurfaceHost; deleteLog?: import('@goltou/sites').DeleteLog; experimentTitle?: boolean; experimentTitleLabel?: string; polishStrength?: PolishStrengthStore; preferences?: PreferencesStore; openExternal?: (url: string) => Promise<void> }) {
     this.polishSetting = runtime?.polishStrength ?? new MemoryPolishStrengthStore();
+    this.preferences = runtime?.preferences ?? new MemoryPreferencesStore();
     const notify = (job: Job) => { if (!this.state.user) return; this.state.job = job; if (!this.runner.serviceLogin && job.status === 'login_paused' && job.service) { this.state.services[job.service] = 'expired'; this.state.visibleService = job.service; } this.emit(); };
     this.createRunner = () => factory ? factory((job, retry) => this.record(job, retry), notify) : new FakeRegistrationRunner(() => this.state.simulation, job => this.record(job), notify);
     this.runner = this.createRunner();
@@ -127,6 +130,11 @@ export class AppCore {
   }
   async handle(request: AppRequest): Promise<unknown> {
     if (this.deleting && !['session.get', 'posts.list', 'products.list', 'products.get'].includes(request.command)) throw new ApiError('conflict', '글 삭제가 진행 중입니다.');
+    if (request.command === 'preferences.get') return this.preferences.read();
+    if (request.command === 'preferences.save') {
+      if (!validPreferences(request.input)) throw new ApiError('invalid', '글 옵션을 다시 확인해 주세요.');
+      await this.preferences.write(request.input); return this.preferences.read();
+    }
     if (request.command === 'polish.setting.get') return this.polishSetting.read();
     if (request.command === 'polish.setting.save') {
       const strength = request.input.strength;

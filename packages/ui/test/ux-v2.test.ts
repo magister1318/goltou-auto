@@ -28,6 +28,12 @@ const job = {
   activityLog: [],
 } as Job;
 describe('WP16 live progress and plain failure guidance', () => {
+  it('keeps the first photo finite with zero measurements, including its exact start instant', () => {
+    const firstPhoto: Job = { ...job, photoUploadMilliseconds: 0, photoUploadSamples: 0, activity: { ...job.activity!, blockKind: 'photos', photoIndex: 0, photoTotal: 13 } };
+    let previous = 0.46;
+    for(const now of [0,1,80,1000,10000]) { const value = progressFraction(firstPhoto, now, previous); expect(Number.isFinite(value)).toBe(true); expect(value).toBeGreaterThanOrEqual(previous); previous=value; }
+    expect(Number.isFinite(progressFraction(firstPhoto, 0, NaN))).toBe(true);
+  });
   it('interpolates continuously, never regresses and never reaches 100 before completion', () => {
     const values = [0, 100, 1000, 10000, 1000000].map((now) =>
       progressFraction(job, now),
@@ -36,6 +42,8 @@ describe('WP16 live progress and plain failure guidance', () => {
     expect(values[4]).toBeLessThan(1);
     expect(progressFraction({ ...job, step: 1 }, 100, 0.8)).toBe(0.8);
     expect(progressFraction({ ...job, step: 7 }, 1e9)).toBeLessThan(1);
+    const opening = { ...job, step: 1, activity: { ...job.activity!, stage: 'open' as const } };
+    expect(progressFraction(opening, 1000)).toBeGreaterThan(progressFraction(opening, 0));
   });
   it('rebuilds from job state and shows thumbnails only after the corresponding engine completion', () => {
     const activity = {

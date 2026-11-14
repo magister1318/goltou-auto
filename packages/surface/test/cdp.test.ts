@@ -43,6 +43,34 @@ async function fixture(handler?: (command: Command, socket: WebSocket) => boolea
 }
 
 describe('CDP Surface', () => {
+  it('does not read a membership response body, but keeps armed publication response failures closed', async () => {
+    const f = await fixture((command, socket) => {
+      if(command.method === 'Fetch.continueRequest' && command.params.requestId === 'cancelled') {
+        socket.send(JSON.stringify({ id: command.id, error: { message: 'Invalid InterceptionId.' } })); return true;
+      }
+      if(command.method !== 'Fetch.getResponseBody')return false;
+      socket.send(JSON.stringify({ id: command.id, error: { message: 'RESPONSE_BODY_UNAVAILABLE' } })); return true;
+    });
+    const inspect = vi.fn(() => true);
+    await f.surface.guardRequests([{hostname:'*',pathname:'/',prefix:true}], inspect, () => {}, request => request.url.endsWith('/post/create'));
+    const emit = async (id: string, url: string, failed = false) => {
+      f.event('Fetch.requestPaused',{requestId:id,request:{url,method:'POST'}});
+      await vi.waitFor(()=>expect(f.commands.some(c=>c.method==='Fetch.continueRequest'&&c.params.requestId===id)).toBe(true));
+      f.event('Fetch.requestPaused',{requestId:id,...(failed?{responseErrorReason:'Failed'}:{responseStatusCode:200}),request:{url,method:'POST'}});
+      await vi.waitFor(()=>expect(f.commands.filter(c=>c.method==='Fetch.continueRequest'&&c.params.requestId===id)).toHaveLength(2));
+    };
+    await emit('read','https://api-kr.band.us/v2.3.0/get_band_list');
+    await emit('read-error','https://api-kr.band.us/v2.3.0/get_band_list',true);
+    expect(inspect).toHaveBeenCalledTimes(2); // an error response is not a second outgoing request
+    expect(f.commands.some(c=>c.method==='Fetch.getResponseBody')).toBe(false);
+    await expect(f.surface.click(10,10)).resolves.toBeUndefined();
+    f.event('Fetch.requestPaused',{requestId:'cancelled',request:{url:'https://band.us/cancelled-read',method:'GET'}});
+    await vi.waitFor(()=>expect(f.commands.some(c=>c.method==='Fetch.continueRequest'&&c.params.requestId==='cancelled')).toBe(true));
+    await expect(f.surface.click(10,10)).resolves.toBeUndefined();
+    await emit('publish','https://api-kr.band.us/v2.3.0/band/post/create');
+    expect(f.commands.filter(c=>c.method==='Fetch.getResponseBody')).toHaveLength(1);
+    await expect(f.surface.click(10,10)).rejects.toThrow('SURFACE_DRAFT_BARRIER_FAILED');
+  });
   it('requires native navigation enforcement and delegates only policy and hide events, without request interception', async () => {
     const f = await fixture();
     const policy = { allowed: [{ hostname: 'nid.naver.com', pathname: '/nidlogin.login' }], landing: [], fallbackUrl: 'https://nid.naver.com/nidlogin.login' };

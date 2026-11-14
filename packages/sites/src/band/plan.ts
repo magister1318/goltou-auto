@@ -76,6 +76,9 @@ export class BandDirectory {
       const u = new URL(request.url);
       const trusted = this.localPublish ? u.origin === new URL(this.baseUrl).origin : u.protocol === 'https:' && (u.hostname === 'band.us' || u.hostname.endsWith('.band.us'));
       if (!trusted || request.method !== 'POST') return false;
+      // Observed on-device: membership is read by this exact POST endpoint.
+      // All other writes, including post/create, still fail closed.
+      if (u.hostname === 'api-kr.band.us' && u.pathname === '/v2.3.0/get_band_list') return true;
       // Uploads are allowed; every other mutation fails closed until the single submit.
       if (/\/(?:photo|file)\/upload(?:\/[a-z0-9_-]+)?$/i.test(u.pathname)) return true;
       const isCreate = this.localPublish ? u.pathname === '/band-post-create' : /^\/v[0-9.]+\/band\/post\/create$/.test(u.pathname);
@@ -94,7 +97,9 @@ export class BandDirectory {
         this.submit.succeeded = response.status >= 200 && response.status < 300 && value.result_code === 1 && /^[0-9]+$/.test(post);
         if (this.submit.succeeded) this.submit.post = post;
       } catch { this.submit.succeeded = false; }
-    });
+    }, request => request.method === 'POST' && /\/(?:band-post-create|post\/create)$/.test(new URL(request.url).pathname));
+    // Membership reads and uploads need no response-body proof. Only an armed
+    // publication consumes its response; failure there must still fail closed.
     this.surface = surface; return surface;
   }
   arm(key: string) { this.submit = { key, armed: true, sent: false, succeeded: false }; }
@@ -104,14 +109,24 @@ export class BandDirectory {
   sameOrigin(url: URL) {
     return url.origin === new URL(this.baseUrl).origin || (!this.localPublish && url.origin === 'https://www.band.us');
   }
-  async list(): Promise<BandChoice[]> {
+  async list(retryRead = true): Promise<BandChoice[]> {
     const s = await this.getSurface();
     if ((await readBandDocument(s)).composer) throw new Error('BAND_COMPOSER_ACTIVE');
+    try {
     await s.open({ url: `${this.baseUrl}/`, session: 'band', width: 1280, height: 900, userAgent: bandMobileUA });
     await this.guard(false);
     const previous = this.choices;
     this.choices = (await listBands(s)).map(b => ({ ...b, photoLimit: previous.find(p => p.key === b.key)?.photoLimit ?? null, observedAt: previous.find(p => p.key === b.key)?.observedAt ?? null }));
     return structuredClone(this.choices);
+    } catch (error) {
+      // A failed read surface must not permanently poison the retry button.
+      this.surface = undefined; this.choices = [];
+      await this.host.destroy(s).catch(() => {});
+      // Only this read-only operation may retry a damaged interception context.
+      // Composers are rejected above, and publication never uses this retry.
+      if (retryRead && error instanceof Error && /^(?:SURFACE_DRAFT_BARRIER_FAILED(?::[A-Z_]+)?|SURFACE_NAVIGATION_TIMEOUT|OBSERVATION_TIMEOUT|BAND_LIST_INCOMPLETE)$/.test(error.message)) return this.list(false);
+      throw error;
+    }
   }
   async guard(requireComposer: boolean) {
     const s = await this.getSurface();

@@ -53,8 +53,15 @@ export class BlogRegistrationRunner implements RegistrationRunner {
   }
   async recover(discard: boolean) {
     if (this.job?.status !== 'recovery_paused') throw new ApiError('conflict', '자동복구 안내가 없습니다.');
+    await this.active;
+    if (!discard) {
+      await this.execution?.close(); await this.work?.cleanup();
+      for (const result of this.job.targetResults ?? []) if (!['draft_saved', 'published'].includes(result.status)) result.status = 'stopped';
+      this.job.status = 'stopped'; delete this.job.failureCode; this.job.message = '옮기기를 중단했습니다.';
+      await this.emit(); return;
+    }
     this.job.status = 'user_paused';
-    if (discard) { this.execution?.consentToDiscard(); await this.resume(); } else await this.emit();
+    this.execution?.consentToDiscard(); delete this.job.failureCode; await this.resume();
   }
   async answerDialog(id: string, accept: boolean) {
     if (this.job?.status !== 'dialog_paused' || this.job.dialog?.id !== id) throw new ApiError('conflict', '확인창이 바뀌었습니다.');

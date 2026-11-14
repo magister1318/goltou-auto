@@ -12,6 +12,11 @@ const checks = {
 };
 const seconds = (value: number) =>
   `${value >= 60 ? `${Math.floor(value / 60)}분 ` : ''}${Math.max(0, Math.floor(value % 60))}초`;
+function photoDuration(job: Job) {
+  const total = job.photoUploadMilliseconds, samples = job.photoUploadSamples;
+  return Number.isFinite(total) && total! > 0 && Number.isFinite(samples) && samples! > 0
+    ? Math.max(300, total! / samples!) : 4500;
+}
 export function progressFraction(job: Job, now: number, previous = 0) {
   const a = job.activity;
   let base = Math.max(0, job.step - 1) / 7;
@@ -28,14 +33,13 @@ export function progressFraction(job: Job, now: number, previous = 0) {
                   Math.exp(
                     -Math.max(0, now - a.at) /
                       (a.blockKind === 'photos'
-                        ? (job.photoUploadMilliseconds ?? 4500) /
-                          Math.max(1, job.photoUploadSamples ?? 1)
+                        ? photoDuration(job)
                         : 2400),
                   )),
           );
     const local =
       a.stage === 'open'
-        ? 0.02
+        ? 0.02 + 0.65 * fraction
         : a.stage === 'write'
           ? 0.08 +
             (0.62 *
@@ -53,7 +57,7 @@ export function progressFraction(job: Job, now: number, previous = 0) {
     base +=
       (0.85 / 7) *
       (1 - Math.exp(-Math.max(0, now - (job.startedAt ?? now)) / 20000));
-  return Math.max(previous, Math.min(0.985, base));
+  return Math.max(Number.isFinite(previous) ? previous : 0, Math.min(0.985, Number.isFinite(base) ? base : 0));
 }
 function textOf(step: InputPlan['steps'][number]) {
   return step.kind === 'text'
@@ -72,6 +76,7 @@ export function LiveProgress({
   const [now, setNow] = useState(Date.now());
   const monotonic = useRef(0),
     paper = useRef<HTMLDivElement>(null);
+  const visibleCharacters = useRef(new Map<string, number>());
   const reduced =
     typeof matchMedia !== 'undefined' &&
     matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -113,9 +118,11 @@ export function LiveProgress({
         e.blockKind !== 'photos' &&
         e.phase === 'finish',
     );
-  const percent =
-    Math.floor(progressFraction(job, now, monotonic.current) * 1000) / 10;
-  monotonic.current = percent / 100;
+  const fraction = progressFraction(job, now, monotonic.current);
+  // Keep full precision: feeding a floored decimal back into the calculation
+  // can lose another tenth through binary rounding on the next render.
+  monotonic.current = fraction;
+  const percent = Math.floor(fraction * 1000) / 10;
   const elapsed = Math.max(0, (now - (job.startedAt ?? now)) / 1000);
   const measured = log.filter(
     (e) => e.phase === 'finish' && e.stage === 'write',
@@ -135,9 +142,7 @@ export function LiveProgress({
     (blocks - measured.filter((e) => e.blockKind !== 'photos').length) *
       perBlock +
       Math.max(0, photos.length - completedPhotos.size) *
-        ((job.photoUploadMilliseconds ?? 4500) /
-          Math.max(1, job.photoUploadSamples ?? 1) /
-          1000) +
+        (photoDuration(job) / 1000) +
       (job.step < 5 ? 12 : 5),
   );
   let headline =
@@ -255,6 +260,10 @@ export function LiveProgress({
             const text = textOf(step),
               done = doneFor(index),
               chars = Array.from(text);
+            const key = `${channel}:${index}`;
+            const proposed = done ? chars.length : Math.floor(chars.length * (reduced ? (event.fraction ?? 0) : animatedFraction(event)));
+            const shown = Math.max(visibleCharacters.current.get(key) ?? 0, proposed);
+            visibleCharacters.current.set(key, shown);
             return (
               <p
                 key={index}
@@ -266,19 +275,7 @@ export function LiveProgress({
                       : ''
                 }
               >
-                {done
-                  ? text
-                  : chars
-                      .slice(
-                        0,
-                        Math.floor(
-                          chars.length *
-                            (reduced
-                              ? (event.fraction ?? 0)
-                              : animatedFraction(event)),
-                        ),
-                      )
-                      .join('')}
+                {done ? text : chars.slice(0, shown).join('')}
                 {!done && <span className="caret" />}
               </p>
             );

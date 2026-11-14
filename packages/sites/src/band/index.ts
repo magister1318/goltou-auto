@@ -10,18 +10,36 @@ export async function listBands(surface: Surface) {
     if(docs.some(({d})=>d.querySelector('.myBandGroupList a.myBandGroupItem')))return 'my';
     return null;`));
   if (mode !== 'legacy') {
-    // New owned tiles have no href/key. Follow only the first non-ad band
-    // through input, then read its address. Never open other bands to enumerate.
     if (mode === 'home') await click(surface, 'BAND_ALL_LIST', '.globalMyBandWrap a._allMyBandList', '전체보기');
-    const first = await waitFor(() => read<{ name: string; x: number; y: number } | null>(surface, `
-      for(const {d,x,y} of docs)for(const e of d.querySelectorAll('.myBandGroupList a.myBandGroupItem')){
-        if(e.querySelector('.adBox,.aNewFolder,.aNewFolderBox')||!visible(e))continue;
-        const name=(e.querySelector('.globalMyBandName')?.textContent||'').trim(),r=e.getBoundingClientRect();
-        if(name&&y+r.top>=0&&y+r.bottom<innerHeight)return {name:name.slice(0,100),x:x+r.left+r.width/2,y:y+r.top+r.height/2};
-      }return null;`));
-    await surface.click(first.x, first.y);
-    const key = await waitFor(async () => /^[/]band[/]([0-9]+)(?:[/]post)?[/]?$/.exec(new URL((await surface.readState()).url).pathname)?.[1] ?? null);
-    return [{ key, name: first.name }];
+    const tiles = await waitFor(() => read<{ name: string; key: string | null }[] | null>(surface, `
+      const es=docs.flatMap(({d})=>Array.from(d.querySelectorAll('.myBandGroupList a.myBandGroupItem'))).filter(e=>visible(e)&&!e.querySelector('.adBox,.aNewFolder,.aNewFolderBox')&&e.querySelector('.globalMyBandName'));
+      return es.length?es.map(e=>({name:(e.querySelector('.globalMyBandName').textContent||'').trim().slice(0,100),key:/[/]band[/]([0-9]+)(?:[/]post)?[/]?$/.exec(e.getAttribute('href')||'')?.[1]||null})):null;`));
+    const listUrl = (await surface.readState()).url;
+    const result: { key: string; name: string }[] = [];
+    for (const [index, tile] of tiles.entries()) {
+      if (!tile.name) continue;
+      if (tile.key) { result.push({ key: tile.key, name: tile.name }); continue; }
+      // Opaque tiles expose no key. Read each membership by normal navigation,
+      // without opening a composer or typing, and retain only writable bands.
+      let target: { x: number; y: number } | null = null;
+      const nameOrdinal = tiles.slice(0, index).filter(t => t.name === tile.name).length;
+      for(let attempt=0;attempt<40&&!target;attempt++) {
+        target = await read(surface, `const es=docs.flatMap(({d,x,y})=>Array.from(d.querySelectorAll('.myBandGroupList a.myBandGroupItem')).filter(e=>!e.querySelector('.adBox,.aNewFolder,.aNewFolderBox')&&(e.querySelector('.globalMyBandName')?.textContent||'').trim().slice(0,100)===${JSON.stringify(tile.name)}).map(e=>({e,x,y})));const v=es[${nameOrdinal}];if(!v)return null;const r=v.e.getBoundingClientRect();return visible(v.e)&&v.y+r.top>=0&&v.y+r.bottom<innerHeight?{x:v.x+r.left+r.width/2,y:v.y+r.top+r.height/2}:null;`);
+        if (!target) await surface.pressKey({ key: 'Tab' });
+      }
+      if (!target) throw Error('BAND_LIST_INCOMPLETE');
+      await surface.click(target.x, target.y);
+      const key = await waitFor(async () => /^[/]band[/]([0-9]+)(?:[/]post)?[/]?$/.exec(new URL((await surface.readState()).url).pathname)?.[1] ?? null);
+      const permission = await waitFor(() => read<{ writable: boolean } | null>(surface, `const es=docs.flatMap(({d})=>Array.from(d.querySelectorAll('._btnPostWrite,._btnOpenWriteLayer')));return es.length?{writable:es.some(e=>visible(e)&&!e.disabled&&e.getAttribute('aria-disabled')!=='true')}:null;`));
+      if (permission.writable) result.push({ key, name: tile.name });
+      await surface.open({ url: listUrl, session: 'band', width: 1280, height: 900, userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36' });
+      const landing = await waitFor(() => read<'list' | 'home' | null>(surface, `if(docs.some(({d})=>Array.from(d.querySelectorAll('.myBandGroupList .globalMyBandName')).some(visible)))return 'list';return docs.some(({d})=>Array.from(d.querySelectorAll('.globalMyBandWrap a._allMyBandList')).some(visible))?'home':null;`));
+      // On the current mobile site, 전체보기 opens a dropdown without changing
+      // the URL. Reopening that URL leaves its tiles hidden until this click.
+      if(landing === 'home') await click(surface, 'BAND_ALL_LIST', '.globalMyBandWrap a._allMyBandList', '전체보기');
+      await waitFor(() => read(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll('.myBandGroupList .globalMyBandName')).some(visible));`));
+    }
+    return result.filter((v,i,all)=>all.findIndex(x=>x.key===v.key)===i);
   }
   return waitFor(async () => {
     const rows = await read<{ key: string; name: string }[]>(surface, `const seen=new Set(); return docs.flatMap(({d})=>Array.from(d.querySelectorAll('._myBandListWrap a.bandCover:not(._adBandCover)'))).flatMap(e=>{

@@ -77,9 +77,9 @@ export function blogFixture(mode = '') {
     const reveal=()=>{for(const img of main.querySelectorAll('img[data-lazy-source]')){const b=img.getBoundingClientRect();if(mode!=='metadata-heavy'||(b.top<innerHeight&&b.bottom>45)){img.src=img.dataset.lazySource;delete img.dataset.lazySource}}};
     document.addEventListener('keydown',e=>{if(['Home','PageDown'].includes(e.key)&&e.target.closest('.se-main-container,.se-documentTitle'))setTimeout(reveal,50)});
   }
-  if(mode==='restore'&&!sessionStorage.getItem('declined')){
+  if(mode==='restore'&&!localStorage.getItem('declined')){
     const prompt=document.createElement('div');prompt.className='se-popup-alert-confirm';prompt.innerHTML='작성 중인 글이 있습니다. 이어서 작성하시겠습니까?<button class="se-popup-button-cancel">취소</button>';
-    prompt.querySelector('button').onclick=()=>{sessionStorage.setItem('declined','yes');prompt.remove()};document.body.append(prompt);
+    prompt.querySelector('button').onclick=()=>{localStorage.setItem('declined','yes');prompt.remove()};document.body.append(prompt);
   }
   </script>`;
 }

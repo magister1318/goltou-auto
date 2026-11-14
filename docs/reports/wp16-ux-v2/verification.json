@@ -1,15 +1,26 @@
 {
-  "files": 52,
-  "passed": 596,
+  "files": 55,
+  "passed": 604,
   "failed": 0,
   "skipped": 0,
-  "simulatorScreenshots": 44,
-  "deviceScreenshots": 9,
-  "deviceScreensPassed": 7,
-  "deviceDraftAttempts": 1,
-  "deviceDraftVerified": 0,
-  "deviceDraftBlocked": 1,
-  "deviceChecksNotRun": 3,
-  "realPublishActions": 0,
-  "realBandPostActions": 0
+  "previousReview": {
+    "passed": 513,
+    "skipped": 83,
+    "previousIncorrectReportWithdrawn": true
+  },
+  "simulatorScreenshots": 48,
+  "deviceProgressScreenshots": 30,
+  "deviceProgressSamples": 119,
+  "fixRoundDraftAttempts": 1,
+  "fixRoundDraftVerified": 1,
+  "devicePhotosVerified": 13,
+  "deviceVerificationPills": 5,
+  "postRunProgressFixDeviceRun": false,
+  "realBlogPublishActions": 0,
+  "realBandPostActions": 0,
+  "realPostDeleteActions": 0,
+  "deviceBandColdReadsVerified": 2,
+  "deviceBandReopenVerified": true,
+  "deviceBackDuringJobVerified": true,
+  "ownerComparisons": 14
 }

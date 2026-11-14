@@ -48,9 +48,12 @@ export function Sheet({
       }
     };
     document.addEventListener('keydown', key);
+    const back = () => closeRef.current();
+    window.addEventListener('goltou:close-sheet', back);
     return () => {
       app?.removeAttribute('inert');
       document.removeEventListener('keydown', key);
+      window.removeEventListener('goltou:close-sheet', back);
       previous?.focus();
     };
   }, []);

@@ -36,7 +36,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     try { return await this.directory.list(); }
     catch (error) {
       if (error instanceof Error && /BAND_LOGIN_(LOST|UNCONFIRMED)/.test(error.message)) {
-        throw new ApiError('auth', '밴드 로그인 상태를 확인하지 못했습니다. 서비스 로그인에서 밴드 화면을 열어 주세요.');
+        throw new ApiError('auth', '밴드 목록을 확인하지 못했습니다.');
       }
       throw error;
     }
@@ -199,8 +199,11 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
   }
   async recover(discard: boolean) {
     if (this.job?.status !== 'recovery_paused') throw new ApiError('conflict', '다시 시작할 내용이 없습니다.');
+    await this.active;
+    if (!discard) { await this.cancel(); return; }
     this.job.status = 'user_paused';
-    if (discard) { if (this.job.step === 6) this.band?.allowRestart(); else this.blog?.consentToDiscard(); await this.resume(); } else await this.emit();
+    if (this.job.step === 6) this.band?.allowRestart(); else this.blog?.consentToDiscard();
+    delete this.job.failureCode; await this.resume();
   }
   async answerDialog(id: string, accept: boolean) {
     if (this.job?.status !== 'dialog_paused' || this.job.dialog?.id !== id) throw new ApiError('conflict', '확인창이 바뀌었습니다.');

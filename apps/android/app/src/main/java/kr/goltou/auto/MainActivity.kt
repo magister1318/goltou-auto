@@ -50,7 +50,9 @@ class MainActivity : ComponentActivity() {
         root.setOnApplyWindowInsetsListener { view, insets ->
             val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.ime())
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
-            insets
+            // Native padding owns these insets. Forwarding them also gives the
+            // WebView a CSS safe-area bottom, doubling every sheet/bar's gap.
+            WindowInsets.CONSUMED
         }
         val hidden = FrameLayout(session.context)
         root.addView(hidden, FrameLayout.LayoutParams(-1, -1))
@@ -135,7 +137,9 @@ class MainActivity : ComponentActivity() {
 
     private fun installBackHandler() {
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() { if (!surfaces.hideTop()) { if (ui.canGoBack()) ui.goBack() else finish() } }
+            override fun handleOnBackPressed() {
+                if (!surfaces.hideTop()) ui.evaluateJavascript("window.dispatchEvent(new Event('goltou:back'))", null)
+            }
         })
     }
 

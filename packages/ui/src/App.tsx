@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type {
   Mode,
   Page,
@@ -42,6 +42,12 @@ type SheetName = 'draft' | 'publish' | 'confirm' | 'stop' | null;
 type Band = Commands['bands.list']['output'][number];
 const ignore = () => {};
 const money = (value: number) => `${value.toLocaleString('ko-KR')}원`;
+const recordTime = (value: string) => {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '시간 확인 필요';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(date.getMonth() + 1)}.${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
 export function Toggle({
   label,
   value,
@@ -91,6 +97,10 @@ export function App() {
     [preview, setPreview] = useState<'blog' | 'band'>('blog');
   const [options, setOptions] = useState(initialPreviewOptions),
     [previewRefresh, setPreviewRefresh] = useState(0);
+  const [preferencesReady, setPreferencesReady] = useState(false);
+  const lastBand = useRef('');
+  const settingsReturn = useRef<Screen>('home');
+  const preferencesWrites = useRef(Promise.resolve());
   const [mode, setMode] = useState<Mode>('draft'),
     [blog, setBlog] = useState(true),
     [band, setBand] = useState(false),
@@ -116,6 +126,7 @@ export function App() {
   const active =
     !!job && !['draft_saved', 'published', 'stopped'].includes(job.status);
   function go(next: Screen, replace = false) {
+    if (next === 'settings') settingsReturn.current = screen === 'preview' ? 'preview' : 'home';
     clearError();
     setNotice('');
     setSheet(null);
@@ -140,15 +151,17 @@ export function App() {
     }
   }
   useEffect(() => {
-    const pop = () => {
-      setSheet(null);
-      setScreen(history.state?.screen ?? (app?.user ? 'home' : 'login'));
-      clearError();
-      void request('service.hide', {}).catch(ignore);
+    const pop = (event: Event) => {
+      event.preventDefault();
+      if (document.querySelector('.sheet')) { window.dispatchEvent(new Event('goltou:close-sheet')); return; }
+      if (active && screen !== 'service') { setScreen('progress'); setSheet('stop'); return; }
+      if (screen === 'service') { void request('service.hide', {}).catch(ignore); go(returnScreen, true); return; }
+      go(screen === 'settings' ? settingsReturn.current : app?.user ? 'home' : 'login', true);
     };
+    window.addEventListener('goltou:back', pop);
     window.addEventListener('popstate', pop);
-    return () => window.removeEventListener('popstate', pop);
-  }, [!!app?.user]);
+    return () => { window.removeEventListener('popstate', pop); window.removeEventListener('goltou:back', pop); };
+  }, [active, screen, sheet, returnScreen, !!app?.user, !!product]);
   useEffect(() => {
     if (app?.user && screen === 'login') go(active ? 'progress' : 'home', true);
     if (app && !app.user) {
@@ -164,6 +177,19 @@ export function App() {
   useEffect(() => {
     if (app?.settings) setSettings(app.settings);
   }, [app?.settings]);
+  useEffect(() => {
+    if (connected) void request('preferences.get', {}).then(value => {
+      lastBand.current = value.lastBandKey;
+      setBandKey(value.lastBandKey);
+      setOptions(old => ({ ...old, polish: value.polish, closing: value.closing, linkCard: value.linkCard }));
+      setPreferencesReady(true);
+    }).catch(ignore);
+  }, [connected]);
+  useEffect(() => {
+    if (!preferencesReady) return;
+    const value = { polish: options.polish, closing: options.closing, linkCard: options.linkCard, lastBandKey: bandKey };
+    preferencesWrites.current = preferencesWrites.current.catch(ignore).then(async () => { await request('preferences.save', value); }).catch(ignore);
+  }, [preferencesReady, options.polish, options.closing, options.linkCard, bandKey]);
   useEffect(() => {
     if (connected)
       void request('polish.setting.get', {})
@@ -253,9 +279,10 @@ export function App() {
       const rows = await request('bands.list', {});
       setBands(rows);
       setBandKey((old) =>
-        rows.some((b) => b.key === old) ? old : (rows[0]?.key ?? ''),
+        rows.some((b) => b.key === old) ? old : rows.some(b => b.key === lastBand.current) ? lastBand.current : rows.length === 1 ? rows[0]!.key : '',
       );
     } catch {
+      clearError();
       setBandsFailed(true);
     } finally {
       setLoadingBands(false);
@@ -363,7 +390,7 @@ export function App() {
   }
   const back = (to: Screen = 'home') => (
     <button className="back" onClick={() => go(to)}>
-      ← {to === 'home' ? '상품 목록' : '돌아가기'}
+      ← {to === 'home' && screen === 'preview' ? '상품 목록' : '돌아가기'}
     </button>
   );
   const header = (title: React.ReactNode, home = false) => (
@@ -463,14 +490,14 @@ export function App() {
       ))}
     </div>
   );
-  const sheetClose = () => setSheet(null);
+  const sheetClose = () => setSheet(sheet === 'confirm' ? 'publish' : null);
   const canStart =
     !!converted &&
     !preparing &&
     !busy &&
     targets().length > 0 &&
     targets().every((t) => converted.verification[t.channel].matches) &&
-    !(band && (loadingBands || bandsFailed));
+    !(band && (loadingBands || bandsFailed || !bandKey));
   return (
     <div className={`app screen-${screen}`}>
       <div className="app-body">
@@ -610,7 +637,7 @@ export function App() {
                 <button
                   className="product-row"
                   key={p.productNo}
-                  disabled={busy || active}
+                  disabled={busy || active || !preferencesReady}
                   onClick={() => void choose(p.productNo)}
                 >
                   <span className="product-copy">
@@ -751,7 +778,7 @@ export function App() {
         )}
         {screen === 'progress' && job && (
           <>
-            {job.status === 'running' ? (
+            {job.status === 'running' || job.status === 'recovery_paused' ? (
               <LiveProgress key={job.id} job={job} preview={converted} />
             ) : job.status === 'login_paused' ? (
               <main className="center">
@@ -834,20 +861,6 @@ export function App() {
                       확인
                     </button>
                   </div>
-                )}
-                {job.status === 'recovery_paused' && (
-                  <p>
-                    작성 중인 글이 있습니다.
-                    <button
-                      onClick={() =>
-                        void act(async () => {
-                          await request('job.recovery', { discard: true });
-                        })
-                      }
-                    >
-                      쓰던 글을 버리고 새로 시작
-                    </button>
-                  </p>
                 )}
               </main>
             )}
@@ -1047,7 +1060,7 @@ export function App() {
                   <strong>{post.productTitle}</strong>
                   {scope === 'all' && <small>{post.userName}</small>}
                   <p
-                    className={`status ${post.status === 'failed' ? 'danger' : 'green'}`}
+                    className={`status ${deletedPost(post) ? 'muted' : post.status === 'failed' ? 'danger' : post.status === 'published' ? 'green' : post.status === 'draft_saved' ? 'draft-status' : 'muted'}`}
                   >
                     {post.channel === 'blog' ? '블로그' : '밴드'}{' '}
                     {deletedPost(post)
@@ -1061,7 +1074,7 @@ export function App() {
                             : post.status === 'running'
                               ? '진행 중'
                               : '중단'}{' '}
-                    · {post.startedAt.replace('T', ' ').slice(5, 16)}
+                    · {recordTime(post.startedAt)}
                   </p>
                   {!deletedPost(post) && (
                     <div className="row-actions">
@@ -1213,7 +1226,7 @@ export function App() {
                   <Toggle
                     label={label}
                     value={options[key]}
-                    disabled={busy || active}
+                    disabled={busy || active || !preferencesReady}
                     change={(value) =>
                       setOptions((old) => ({ ...old, [key]: value }))
                     }
@@ -1223,7 +1236,7 @@ export function App() {
               {options.polish && (
                 <PolishStrengthChoice
                   value={options.polishStrength}
-                  disabled={busy || active}
+                  disabled={busy || active || !preferencesReady}
                   change={(strength) =>
                     void act(async () => {
                       const polishStrength = await request(
@@ -1332,6 +1345,15 @@ export function App() {
           </Suspense>
         )}
       </div>
+      {screen === 'progress' && job?.status === 'recovery_paused' && (
+        <Sheet title={job.failureCode === 'AUTO_RECOVER_CONSENT_REQUIRED' ? '네이버에 쓰다 만 글이 있습니다' : '작성 중인 내용이 달라졌습니다'} close={() => void act(async () => { await request('job.recovery', { discard: false }); })}>
+          <p>{job.failureCode === 'AUTO_RECOVER_CONSENT_REQUIRED' ? '네이버 편집기에 남은 쓰다 만 글이며, 버려도 임시저장함의 글이나 발행한 글은 지워지지 않습니다.' : '작성 중인 내용을 버리고 새로 쓸지 골라 주세요.'}</p>
+          <div className="acts">
+            <button className="btn quiet" disabled={busy} onClick={() => void act(async () => { await request('job.recovery', { discard: false }); })}>그만두기</button>
+            <button className="btn primary" disabled={busy} onClick={() => void act(async () => { await request('job.recovery', { discard: true }); })}>버리고 새로 쓰기</button>
+          </div>
+        </Sheet>
+      )}
       {sheet && (
         <Sheet
           key={sheet}
@@ -1460,6 +1482,7 @@ export function App() {
                         value={bandKey}
                         onChange={(e) => setBandKey(e.target.value)}
                       >
+                        {!bandKey && <option value="">밴드를 골라 주세요</option>}
                         {bands.map((b) => (
                           <option key={b.key} value={b.key}>
                             {b.name}
@@ -1469,26 +1492,28 @@ export function App() {
                     </label>
                   )}
                   {bandsFailed && (
-                    <p>
-                      밴드 목록을 확인하지 못했습니다.
-                      <button onClick={() => void loadBands()}>
+                    <div className="inline-feedback" role="alert">
+                      <p>밴드 목록을 확인하지 못했습니다.</p>{' '}
+                      <button className="action-button" onClick={() => void loadBands()}>
                         다시 확인
                       </button>
-                    </p>
+                    </div>
                   )}
+                  {!loadingBands && !bandsFailed && !bands.length && <p className="meta">글을 올릴 수 있는 밴드가 없습니다.</p>}
                 </>
               ) : (
                 <div className="pick disabled">
                   <span className="check-box" />
                   <span>
                     <strong>네이버 밴드</strong>
-                    <small>밴드 로그인이 필요합니다</small>
+                    <small>{app?.services.band === 'checking' ? '연결 상태를 확인하는 중입니다' : app?.services.band === 'unknown' ? '밴드 연결을 확인하지 못했습니다.' : '밴드 로그인이 필요합니다'}</small>
                   </span>
                   <button
                     className="green"
-                    onClick={() => login('band', 'preview', 'publish')}
+                    disabled={app?.services.band === 'checking'}
+                    onClick={() => app?.services.band === 'unknown' ? void act(async () => { await request('service.check', { service: 'band' }); }) : login('band', 'preview', 'publish')}
                   >
-                    로그인
+                    {app?.services.band === 'checking' ? '확인 중' : app?.services.band === 'unknown' ? '다시 확인' : '로그인'}
                   </button>
                 </div>
               )}

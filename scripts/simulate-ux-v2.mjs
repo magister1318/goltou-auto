@@ -28,6 +28,7 @@ const product = {
   updatedAt: '2026-11-14',
 };
 const options = { polish: false, closing: false, linkCard: false };
+let bandReadMode = 'ok';
 const preview = makePreview(product, { hashtags: ['화면시험'] });
 const posts = [
   {
@@ -114,6 +115,8 @@ const app = {
   async handle({ command, input }) {
     commands.push(command);
     if (command === 'session.get') return snapshot();
+    if (command === 'preferences.get') return { polish: false, closing: false, linkCard: false, lastBandKey: '' };
+    if (command === 'preferences.save') return input;
     if (command === 'polish.setting.get' || command === 'polish.setting.save')
       return 'spelling';
     if (command === 'products.list') {
@@ -137,7 +140,9 @@ const app = {
     if (command === 'products.get') return structuredClone(product);
     if (command === 'preview.prepare' || command === 'job.preview')
       return structuredClone(preview);
-    if (command === 'bands.list')
+    if (command === 'bands.list') {
+      if(bandReadMode==='failure') throw Error('BAND_READ_UNAVAILABLE');
+      if(bandReadMode==='loading') await new Promise(r=>setTimeout(r,1500));
       return [
         {
           key: 'fixture',
@@ -146,6 +151,7 @@ const app = {
           observedAt: null,
         },
       ];
+    }
     if (command === 'posts.list')
       return { total: posts.length, items: structuredClone(posts) };
     if (command === 'posts.delete.prepare')
@@ -162,6 +168,11 @@ const app = {
     }
     if (command === 'job.cancel') state.job.status = 'stopped';
     if (command === 'job.resume') state.job.status = 'running';
+    if (command === 'job.recovery') {
+      state.job.status = input.discard ? 'running' : 'stopped';
+      if(!input.discard) state.job.targetResults.forEach(t=>t.status='stopped');
+      delete state.job.failureCode;
+    }
     if (command === 'service.show') state.visibleService = input.service;
     if (command === 'service.hide') state.visibleService = null;
     if (command === 'service.check')
@@ -296,18 +307,30 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   state.services.band = 'confirmed';
   emit();
+  bandReadMode='loading';
   await sheet('publish');
+  await page.getByText('내 밴드를 확인하는 중',{exact:true}).waitFor();
+  await shot('08a-band-loading');
   await page.getByRole('checkbox', { name: /네이버 밴드/ }).waitFor();
   await page.waitForFunction(
     () => ![...document.querySelectorAll('[role=checkbox]')].at(-1).disabled,
   );
   await page.getByRole('checkbox', { name: /네이버 밴드/ }).click();
+  assert.equal(await page.locator('.sheet select').inputValue(), 'fixture');
   await shot('08-publish-band-sheet');
   await page.getByRole('radio', { name: '비공개', exact: true }).click();
   await page.getByRole('button', { name: '다음', exact: true }).click();
   await shot('09-confirm-band-private');
   assert(!commands.includes('job.start'));
+  bandReadMode='failure';
   await page.getByRole('button', { name: '뒤로', exact: true }).click();
+  await page.locator('.inline-feedback').waitFor();
+  await shot('09a-band-read-failure');
+  assert.equal(await page.locator('.error').count(),0);
+  assert.equal(await page.locator('.inline-feedback p').textContent(),'밴드 목록을 확인하지 못했습니다.');
+  bandReadMode='ok';
+  await page.getByRole('button',{name:'다시 확인',exact:true}).click();
+  await page.waitForFunction(()=>!document.querySelector('.inline-feedback')&&![...document.querySelectorAll('[role=checkbox]')].at(-1).disabled);
   await page.getByRole('button', { name: '취소', exact: true }).click();
   await sheet('draft');
   await page
@@ -319,6 +342,19 @@ try {
     ['blog'],
   );
   await shot('10-progress-open');
+  state.job.status='recovery_paused'; state.job.failureCode='AUTO_RECOVER_CONSENT_REQUIRED'; emit();
+  await page.getByRole('alertdialog',{name:'네이버에 쓰다 만 글이 있습니다'}).waitFor();
+  await shot('10a-recovery-sheet');
+  assert.equal(await page.getByRole('heading',{name:'끝까지 옮기지 못했습니다'}).count(),0);
+  await page.getByRole('button',{name:'버리고 새로 쓰기',exact:true}).click();
+  await page.waitForFunction(()=>!document.querySelector('.sheet'));
+  assert.equal(state.job.id,1);
+  state.job.status='recovery_paused'; state.job.failureCode='AUTO_RECOVER_CONSENT_REQUIRED'; emit();
+  await page.getByRole('alertdialog').waitFor();
+  await page.evaluate(()=>window.dispatchEvent(new Event('goltou:back')));
+  await page.getByRole('heading',{name:'옮기기를 중단했습니다',exact:true}).waitFor();
+  await shot('10b-recovery-cancelled');
+  state.job.status='running';state.job.targetResults[0].status='running';emit();
   const plan = preview.blog;
   let photoIndex = 0;
   for (const [index, step] of plan.steps.entries()) {
@@ -460,6 +496,16 @@ try {
   await page.getByRole('heading', { name: /글쓰기 화면/ }).waitFor();
   assert(state.job.status === 'running');
   await shot('28-restored-progress');
+  // Native Android back uses the same event. Check normal pages and sheet order.
+  state.job=null;emit();await scene();await choose();
+  const nativeBack=()=>page.evaluate(()=>window.dispatchEvent(new Event('goltou:back')));
+  await sheet('draft');await nativeBack();await page.waitForFunction(()=>!document.querySelector('.sheet')&&!!document.querySelector('.screen-preview'));
+  await sheet('publish');await page.getByRole('button',{name:'다음',exact:true}).click();
+  await nativeBack();await page.getByRole('alertdialog',{name:'발행',exact:true}).waitFor();
+  await nativeBack();await page.waitForFunction(()=>!document.querySelector('.sheet'));
+  await nativeBack();await page.locator('.screen-home').waitFor();
+  await page.getByRole('button',{name:'설정',exact:true}).click();await nativeBack();await page.locator('.screen-home').waitFor();
+  await page.getByRole('button',{name:'등록 기록',exact:true}).click();await nativeBack();await page.locator('.screen-home').waitFor();
   assert.equal(
     await page
       .getByText(/모름|게시 전 멈춤|실험 화면 열기|밴드 화면 보기/)

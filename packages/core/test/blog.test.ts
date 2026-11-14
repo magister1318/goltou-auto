@@ -58,6 +58,26 @@ async function fixture(mode = '', extra: { tags?: boolean; photos?: number; phot
     counts: async (surface = execution.surface!) => pages.get(surface)!.evaluate<{ saves: number; publishes: number }>("({saves:Number(localStorage.getItem('saves')),publishes:Number(localStorage.getItem('publishes'))})") };
 }
 describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback editor only', () => {
+  it.each([false, true])('WP16 recovery consent %s stops cleanly or resumes the same job and surface', async discard => {
+    const f = await fixture('restore');
+    f.plan.steps = [{ kind: 'text', role: 'title', text: '[골투오토 실험] 복구 예시' }, { kind: 'text', role: 'body', text: '복구 안내 확인' }];
+    const verification = compareDocuments(observePlan(f.plan), observePlan(f.plan));
+    const preview: PreparedPreview = { productNo: 1, contentHash: 'fixture', droppedStruckCharacters: 0, options: {}, blog: f.plan, band: { ...f.plan, channel: 'band' }, verification: { blog: verification, band: verification } };
+    const work = { preview, prepared: { preview, files: [] }, download: vi.fn(async () => {}), arrange: vi.fn(async () => {}), cleanup: vi.fn(async () => {}) };
+    const runner = new ChannelRegistrationRunner({ band: { host: f.host, baseUrl: new URL(f.editorUrl).origin, localPublish: true }, blog: { host: f.host, editorUrl: f.editorUrl, localPublish: true } }, async () => {}, () => {});
+    cleanup.push(async () => runner.dispose());
+    const settle = async () => { for(let i=0;i<1200&&runner.job?.status==='running';i++) await new Promise(r=>setTimeout(r,25)); };
+    await runner.start({ productNo: 1, mode: 'draft', targets: [{ channel: 'blog', name: '예시', key: 'fixture' }], options: { polish: false, closing: false, linkCard: false } }, '복구 예시', 0, work);
+    await settle(); expect(runner.job?.status).toBe('recovery_paused');
+    const id = runner.job!.id, surfaces = f.pages.size;
+    await runner.recover(discard); await settle();
+    expect(runner.job?.id).toBe(id);
+    expect(runner.job?.status).toBe(discard ? 'draft_saved' : 'stopped');
+    expect(runner.job?.targetResults?.[0]?.status).toBe(discard ? 'draft_saved' : 'stopped');
+    if(discard) expect(work.download).toHaveBeenCalledTimes(1); else expect(work.download).not.toHaveBeenCalled();
+    expect(f.pages.size).toBe(discard ? surfaces + 1 : surfaces); // only fresh save readback opens another surface
+    expect(f.external()).toBe(0);
+  }, 40000);
   it('uploads 36 photos individually, reports every completed photo and sweeps a fresh tall draft for lazy identities', async () => {
     const f = await fixture('metadata-heavy', { photos: 36 });
     f.plan.steps = [{ kind: 'text', role: 'title', text: '[골투오토 실험] 로컬 사진 36장' }, { kind: 'break' },

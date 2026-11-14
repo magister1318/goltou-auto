@@ -65,7 +65,8 @@ export interface Surface {
   /** Shell-enforced request barrier, installed before navigation; persists until close. */
   blockRequests?(rules: readonly { hostname: string; pathname: string }[]): Promise<void>;
   guardRequests?(rules: readonly RequestRule[], inspect: (request: GuardedRequest) => boolean | Promise<boolean>,
-    response: (response: GuardedResponse) => void): Promise<void>;
+    response: (response: GuardedResponse) => void,
+    observeResponse?: (request: Pick<GuardedRequest, 'url' | 'method'>) => boolean): Promise<void>;
   readDialog?(): Promise<SurfaceDialog | null>;
   respondDialog?(id: string, accept: boolean): Promise<void>;
   show(): Promise<void>;

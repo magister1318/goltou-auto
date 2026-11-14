@@ -30,13 +30,14 @@ async function fixture(mode = 'mobile') {
   const sizes = files.map((_, i) => ({ width: mode === 'cropped' ? 100 + i * 40 : 160, height: 90 }));
   for (const [i, f] of files.entries()) await writeFile(f.path, png(sizes[i]!.width, sizes[i]!.height, i * 40));
   const newList = '<div class="myBandGroupList"><a class="myBandGroupItem" href="#" onclick="throw Error(\'AD_OPENED\')"><span class="adBox">광고</span></a><a class="myBandGroupItem" href="#"><span class="aNewFolder"></span></a><a class="myBandGroupItem" href="/band/111/post"><span class="globalMyBandName">밴드 A</span></a><a class="myBandGroupItem" href="/band/222/post"><span class="globalMyBandName">밴드 B</span></a></div>';
+  const dropdown = '<section class="globalMyBandWrap"><a class="_allMyBandList" href="#" onclick="event.preventDefault();setTimeout(()=>document.querySelector(\'.myBandGroupList\').hidden=false,600)">전체보기</a></section>' + newList.replace('class="myBandGroupList"', 'class="myBandGroupList" hidden').replaceAll('href="/band/111/post"', 'href="#" onclick="location.href=\'/band/111/post\'"').replaceAll('href="/band/222/post"', 'href="#" onclick="location.href=\'/band/222/post\'"');
   const server = http.createServer((req, res) => {
     if (req.url === '/band-post-create') { res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify({ result_code: mode === 'post-rejected' ? 0 : 1, result_data: { post_key: mode === 'post-wrong-identity' ? 9999 : 1001 } })); return; }
     if (req.url?.startsWith('/photos/')) {
       const square = mode === 'cropped' || mode === 'ratio-mismatch';
       res.writeHead(200, { 'content-type': 'image/png' }).end(png(square ? 90 : 160, 90)); return;
     }
-    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(req.url === '/login' ? '<input type="password"><p>로컬 로그인 풀림</p>' : req.url?.startsWith('/blog') ? blogFixture(mode === 'blog-fail' ? 'duplicate' : '') : mode === 'new-home' && req.url === '/' ? '<section class="globalMyBandWrap"><a class="_allMyBandList" href="/my/bands">전체보기</a></section>' : mode === 'new-home' && req.url === '/my/bands' ? newList : bandFixture(mode));
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(req.url === '/login' ? '<input type="password"><p>로컬 로그인 풀림</p>' : req.url?.startsWith('/blog') ? blogFixture(mode === 'blog-fail' ? 'duplicate' : '') : mode === 'new-dropdown' && req.url === '/' ? dropdown : mode === 'new-home' && req.url === '/' ? '<section class="globalMyBandWrap"><a class="_allMyBandList" href="/my/bands">전체보기</a></section>' : mode === 'new-home' && req.url === '/my/bands' ? newList : bandFixture(mode));
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   cleanup.push(() => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }));
@@ -85,6 +86,19 @@ function workFor(plan: InputPlan, files: { url: string; path: string }[]) {
 const input: JobInput = { productNo: 1, mode: 'draft', targets: [{ channel: 'band', name: '밴드 A', key: '111' }], options: { polish: false, closing: false, linkCard: false } };
 
 describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pages', () => {
+  it('reads every opaque membership and reopens the same-URL dropdown on return without opening any composer', async () => {
+    const f = await fixture('new-dropdown');
+    let created = 0;
+    const host: SurfaceHost = { ...f.host, create: async session => {
+      const surface = await f.host.create(session);
+      if(++created===1) { const open = surface.open.bind(surface); surface.open = async options => { await open(options); throw Error('SURFACE_DRAFT_BARRIER_FAILED:ERROR_STALE_INTERCEPTION'); }; }
+      return surface;
+    } };
+    const directory = new BandDirectory(host, f.baseUrl, true);
+    expect((await directory.list()).map(b=>b.key)).toEqual(['111','222']);
+    expect(created).toBe(2);
+    expect((await f.counts()).opens).toBe(0); expect((await f.counts()).posts).toBe(0); expect(f.external()).toBe(0);
+  }, 20000);
   it.each(['post-rejected', 'post-wrong-identity'])('WP16: %s never reports success or presses again, even with a matching result page', async mode => {
     const f = await fixture(mode); f.execution.env.submitTimeoutMs = 300;
     await f.execution.write();
@@ -159,9 +173,9 @@ describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pa
     expect(compareDocuments(observePlan(g.plan), bandObservation(g.plan, g.files, await readBandDocument(g.directory.surface!))).matches).toBe(false);
     expect((await g.counts()).posts).toBe(0);
   }, 20000);
-  it('follows the new owned-list screen and only the first non-ad, non-folder band through input', async () => {
+  it('reads all linked memberships from the new list and excludes ads and folders', async () => {
     const f = await fixture('new-home');
-    expect(f.directory.choices.map(b => ({ key: b.key, name: b.name }))).toEqual([{ key: '111', name: '밴드 A' }]);
+    expect(f.directory.choices.map(b => ({ key: b.key, name: b.name }))).toEqual([{ key: '111', name: '밴드 A' }, { key: '222', name: '밴드 B' }]);
     expect((await readBandDocument(f.directory.surface!)).composer).toBe(false);
     expect((await f.counts()).opens).toBe(0);
     await f.execution.write(); await f.execution.stopBeforePost();
