@@ -1,6 +1,6 @@
 {
   "files": 55,
-  "passed": 604,
+  "passed": 607,
   "failed": 0,
   "skipped": 0,
   "previousReview": {
@@ -22,5 +22,18 @@
   "deviceBandColdReadsVerified": 2,
   "deviceBandReopenVerified": true,
   "deviceBackDuringJobVerified": true,
-  "ownerComparisons": 14
+  "ownerComparisons": 14,
+  "progressFollowup": {
+    "run2Started": true,
+    "run2Complete": false,
+    "awaitingRecoveryChoice": true,
+    "run3Started": false,
+    "contactSheetComplete": false,
+    "typecheck": true,
+    "build": true,
+    "assembleDebug": true,
+    "passed": 607,
+    "failed": 0,
+    "skipped": 0
+  }
 }

@@ -23,6 +23,14 @@ export class RecordingCheckpoint {
   private retrying = false;
   constructor(private readonly checkpoint: Checkpoint, private readonly notify: (job: Job) => void) {}
   async emit(job: Job, retry = false) {
+    // Waiting for an owner's choice is not engine work. Keep this clock in the
+    // snapshot so a rebuilt screen also excludes the complete pause interval.
+    if (job.status === 'running' && job.pausedAt !== undefined) {
+      job.pausedMilliseconds = (job.pausedMilliseconds ?? 0) + Math.max(0, Date.now() - job.pausedAt);
+      delete job.pausedAt;
+    } else if (job.status !== 'running' && !['draft_saved', 'published', 'stopped'].includes(job.status)) {
+      job.pausedAt ??= Date.now();
+    }
     // A discard confirmation must stay answerable while a record is pending.
     if (this.pending && job.status === 'dialog_paused') { this.notify(structuredClone(job)); return; }
     const snapshot = structuredClone(job);

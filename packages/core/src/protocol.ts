@@ -12,6 +12,8 @@ export interface JobInput {
 }
 export interface Job {
   startedAt?: number;
+  pausedAt?: number;
+  pausedMilliseconds?: number;
   publicationUncertain?: boolean;
   activity?: import('@goltou/sites').EngineActivity & { at: number };
   activityLog?: (import('@goltou/sites').EngineActivity & { at: number })[];

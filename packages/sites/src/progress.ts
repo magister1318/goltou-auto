@@ -2,6 +2,7 @@
 export interface EngineActivity {
   channel: 'blog' | 'band';
   stage: 'open' | 'write' | 'verify' | 'submit';
+  opening?: 'navigate' | 'editor' | 'empty';
   phase: 'start' | 'progress' | 'finish';
   blockIndex?: number;
   blockTotal?: number;

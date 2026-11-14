@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Job } from '@goltou/core/protocol';
-import type { InputPlan, PreparedPreview } from '@goltou/core';
+import type { PreparedPreview } from '@goltou/core';
 import { ProductPhoto } from './ProductPhoto';
-type Activity = NonNullable<Job['activity']>;
+import { activeNow, animatedFraction as interpolate, finite, progressFraction, remainingSeconds, textOf } from './progress-model';
+export { progressFraction } from './progress-model';
 const checks = {
   title: '제목',
   body: '본문',
@@ -12,60 +13,6 @@ const checks = {
 };
 const seconds = (value: number) =>
   `${value >= 60 ? `${Math.floor(value / 60)}분 ` : ''}${Math.max(0, Math.floor(value % 60))}초`;
-function photoDuration(job: Job) {
-  const total = job.photoUploadMilliseconds, samples = job.photoUploadSamples;
-  return Number.isFinite(total) && total! > 0 && Number.isFinite(samples) && samples! > 0
-    ? Math.max(300, total! / samples!) : 4500;
-}
-export function progressFraction(job: Job, now: number, previous = 0) {
-  const a = job.activity;
-  let base = Math.max(0, job.step - 1) / 7;
-  if (a) {
-    const fraction =
-      a.phase === 'finish'
-        ? 1
-        : Math.min(
-            0.94,
-            (a.fraction ?? 0) +
-              (1 - (a.fraction ?? 0)) *
-                0.85 *
-                (1 -
-                  Math.exp(
-                    -Math.max(0, now - a.at) /
-                      (a.blockKind === 'photos'
-                        ? photoDuration(job)
-                        : 2400),
-                  )),
-          );
-    const local =
-      a.stage === 'open'
-        ? 0.02 + 0.65 * fraction
-        : a.stage === 'write'
-          ? 0.08 +
-            (0.62 *
-              ((a.blockIndex ?? a.photoIndex ?? 0) +
-                (a.blockKind === 'photos' && a.blockIndex !== undefined
-                  ? ((a.photoIndex ?? 0) + fraction) /
-                    Math.max(1, a.photoTotal ?? 1)
-                  : fraction))) /
-              Math.max(1, a.blockTotal ?? a.photoTotal ?? 1)
-          : a.stage === 'verify'
-            ? 0.78
-            : 0.92;
-    base += local / 7;
-  } else
-    base +=
-      (0.85 / 7) *
-      (1 - Math.exp(-Math.max(0, now - (job.startedAt ?? now)) / 20000));
-  return Math.max(Number.isFinite(previous) ? previous : 0, Math.min(0.985, Number.isFinite(base) ? base : 0));
-}
-function textOf(step: InputPlan['steps'][number]) {
-  return step.kind === 'text'
-    ? step.text
-    : step.kind === 'table'
-      ? step.rows.map((row) => row.join(' | ')).join('\n')
-      : '';
-}
 export function LiveProgress({
   job,
   preview,
@@ -118,51 +65,23 @@ export function LiveProgress({
         e.blockKind !== 'photos' &&
         e.phase === 'finish',
     );
-  const fraction = progressFraction(job, now, monotonic.current);
+  const fraction = progressFraction(job, now, monotonic.current, plan);
   // Keep full precision: feeding a floored decimal back into the calculation
   // can lose another tenth through binary rounding on the next render.
   monotonic.current = fraction;
   const percent = Math.floor(fraction * 1000) / 10;
-  const elapsed = Math.max(0, (now - (job.startedAt ?? now)) / 1000);
-  const measured = log.filter(
-    (e) => e.phase === 'finish' && e.stage === 'write',
-  );
-  const perBlock =
-    measured.length > 1
-      ? Math.max(
-          0.5,
-          (measured.at(-1)!.at - measured[0]!.at) /
-            (measured.length - 1) /
-            1000,
-        )
-      : 3;
-  const blocks = plan?.steps.filter((s) => s.kind !== 'break').length ?? 10;
-  const remaining = Math.max(
-    1,
-    (blocks - measured.filter((e) => e.blockKind !== 'photos').length) *
-      perBlock +
-      Math.max(0, photos.length - completedPhotos.size) *
-        (photoDuration(job) / 1000) +
-      (job.step < 5 ? 12 : 5),
-  );
-  let headline =
-    job.step === 2
-      ? '사진 원본을 내려받는 중'
-      : job.step === 3
-        ? '본문을 정리하는 중'
-        : '글쓰기 화면을 여는 중';
-  let subtitle = '빈 글을 준비하고 있습니다.';
-  const animatedFraction = (event: Activity) =>
-    event.phase === 'finish'
-      ? 1
-      : Math.min(
-          0.94,
-          (event.fraction ?? 0) +
-            (1 - (event.fraction ?? 0)) *
-              0.8 *
-              (1 - Math.exp(-Math.max(0, now - event.at) / 3000)),
-        );
-  if (a?.stage === 'write') {
+  const elapsed = Math.max(0, (activeNow(job, now) - (job.startedAt ?? now)) / 1000);
+  const remaining = remainingSeconds(job, now, plan);
+  const waiting = job.status !== 'running';
+  const stageSeconds = Math.max(0, Math.floor((now - (a?.at ?? job.startedAt ?? now)) / 2000) * 2);
+  let headline = job.step === 2 ? '사진 원본을 내려받는 중'
+    : job.step === 3 ? '본문을 정리하는 중'
+    : a?.opening === 'empty' ? '빈 글 확인 중'
+    : a?.opening === 'editor' ? '글쓰기 화면 준비 중' : '네이버 여는 중';
+  let subtitle = job.step === 2 ? `사진 ${job.current}/${job.total}장 내려받음`
+    : `화면 응답을 기다립니다 · ${stageSeconds}초`;
+  const animatedFraction = (event: NonNullable<Job['activity']>) => interpolate(event, job.pausedAt ?? now);
+  if (a?.stage === 'write' && (job.step === 4 || job.step === 6)) {
     headline =
       a.blockKind === 'photos'
         ? '사진을 올리는 중'
@@ -177,13 +96,13 @@ export function LiveProgress({
         .filter((v) => v.s.kind === 'text' && v.s.role === 'body') ?? [];
     subtitle =
       a.blockKind === 'photos'
-        ? `${photos.length}장 중 ${(a.photoIndex ?? 0) + 1}번째 · ${Math.floor(animatedFraction(a) * 100)}%`
+        ? `${photos.length}장 중 ${(a.photoIndex ?? 0) + 1}번째 · ${Math.floor(animatedFraction(a) * 100)}% · ${stageSeconds}초`
         : a.blockKind === 'paragraph'
-          ? `${paragraphs.length}문단 중 ${Math.max(1, paragraphs.findIndex((v) => v.i === a.blockIndex) + 1)}번째 문단`
-          : '상품 원문을 순서대로 옮깁니다.';
-  } else if (a?.stage === 'verify') {
+          ? `${paragraphs.length}문단 중 ${Math.max(1, paragraphs.findIndex((v) => v.i === a.blockIndex) + 1)}번째 문단 · ${stageSeconds}초`
+          : `상품 원문을 순서대로 옮깁니다 · ${stageSeconds}초`;
+  } else if (a?.stage === 'verify' && job.step >= 4) {
     headline = '올라간 내용을 확인하는 중';
-    subtitle = `${checks[a.verification ?? 'body']} 확인`;
+    subtitle = `${job.activityLog?.some(e => e.stage === 'submit') ? '저장 후 다시 대조 · ' : ''}${checks[a.verification ?? 'body']} 확인 · ${stageSeconds}초`;
   } else if (a?.stage === 'submit') {
     headline =
       channel === 'band'
@@ -192,8 +111,10 @@ export function LiveProgress({
           ? '임시저장하는 중'
           : '블로그에 발행하는 중';
     subtitle =
-      job.mode === 'draft' ? '공개되지 않습니다.' : '저장 결과를 확인합니다.';
+      `${job.mode === 'draft' ? '저장 후 다시 열어 확인합니다.' : '저장 결과를 확인합니다.'} · ${stageSeconds}초`;
   }
+  if (job.step === 5 && a?.stage === 'open') headline = '저장한 글을 다시 여는 중';
+  if (waiting) { headline = '선택을 기다리는 중'; subtitle = '아래 안내에서 선택하면 이어갑니다.'; }
   useEffect(() => {
     if (paper.current) paper.current.scrollTop = paper.current.scrollHeight;
   }, [job.activityLog?.length, a?.at]);
@@ -260,8 +181,8 @@ export function LiveProgress({
             const text = textOf(step),
               done = doneFor(index),
               chars = Array.from(text);
-            const key = `${channel}:${index}`;
-            const proposed = done ? chars.length : Math.floor(chars.length * (reduced ? (event.fraction ?? 0) : animatedFraction(event)));
+            const key = `${job.id}:${channel}:${index}`;
+            const proposed = done ? chars.length : Math.floor(chars.length * (reduced ? finite(event.fraction) : animatedFraction(event)));
             const shown = Math.max(visibleCharacters.current.get(key) ?? 0, proposed);
             visibleCharacters.current.set(key, shown);
             return (
@@ -315,11 +236,10 @@ export function LiveProgress({
       </div>
       <div className="check-pills">
         {Object.entries(checks).map(([key, label], index) => {
-          const event = log
-            .filter((e) => e.stage === 'verify' && e.verification === key)
-            .at(-1);
-          const first = log.find((e) => e.stage === 'verify');
-          const due = (first?.at ?? now) + (reduced ? 0 : index * 220);
+          const event = log.find(e => e.stage === 'verify' && e.verification === key && e.phase === 'finish')
+            ?? log.find(e => e.stage === 'verify' && e.verification === key);
+          const firstAt = Math.min(now, ...log.filter(e => e.stage === 'verify').map(e => e.at));
+          const due = firstAt + (reduced ? 0 : index * 220);
           const done = event?.phase === 'finish' && now >= due;
           return (
             <span
@@ -343,8 +263,8 @@ export function LiveProgress({
           {percent.toFixed(0)}% · {seconds(elapsed)} 지남
         </span>
         <span>
-          {a?.stage === 'submit'
-            ? '결과 확인 중'
+          {waiting ? '선택 후 이어갑니다' : job.step >= 5
+            ? '저장 결과 확인 중'
             : `약 ${seconds(remaining)} 남음`}
         </span>
       </div>

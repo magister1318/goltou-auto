@@ -2,6 +2,9 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { act, createElement } from 'react';
 import { createRoot } from 'react-dom/client';
+import { RecordingCheckpoint } from '../../core/src/record-checkpoint';
+import { updateInputProgress } from '../../core/src/input-progress';
+import { activeNow, progressFraction, remainingSeconds } from '../src/progress-model';
 import { LiveProgress } from '../src/LiveProgress';
 import type { Job } from '@goltou/core/protocol';
 import type { PreparedPreview } from '@goltou/core';
@@ -33,4 +36,60 @@ it('keeps displayed text and percent moving forward as measured engine events re
     expect((host.querySelector('.overall') as HTMLProgressElement).value).toBeGreaterThanOrEqual(previous);
     expect(host.textContent).not.toContain('NaN');
   } finally { await act(async () => root.unmount()); }
+});
+
+it('shows preparation movement every two seconds and excludes a long recovery choice from the work clock', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(0);
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const host = document.createElement('div'); document.body.append(host);
+  const root = createRoot(host);
+  const a = { channel: 'blog', stage: 'open', phase: 'start', opening: 'navigate', at: 0 } as const;
+  const job = { id: 2, step: 1, status: 'running', startedAt: 0, targets: [{ channel: 'blog' }], activity: a, activityLog: [a] } as unknown as Job;
+  const checkpoint = new RecordingCheckpoint(async () => {}, () => {});
+  const render = () => act(async () => { root.render(createElement(LiveProgress, { job: structuredClone(job), preview: null })); });
+  try {
+    await render();
+    let last = '', percent = 0;
+    for (let n = 0; n < 30; n++) {
+      await act(async () => { vi.advanceTimersByTime(2000); });
+      const visible = host.querySelector('.live-progress > p.meta')!.textContent;
+      expect(visible).not.toBe(last); last = visible!;
+      const next = (host.querySelector('.overall') as HTMLProgressElement).value;
+      expect(next).toBeGreaterThanOrEqual(percent); expect(next).toBeLessThan(6); percent = next;
+    }
+    job.status = 'recovery_paused'; await checkpoint.emit(job); await render();
+    const frozen = activeNow(job, Date.now());
+    await act(async () => { vi.advanceTimersByTime(54000); });
+    expect(activeNow(job, Date.now())).toBe(frozen);
+    expect(host.textContent).toContain('선택을 기다리는 중');
+    job.status = 'running'; await checkpoint.emit(job); await render();
+    expect(job.pausedMilliseconds).toBe(54000); expect(activeNow(job, Date.now())).toBe(frozen);
+    expect(host.textContent).toContain('1분 0초 지남');
+  } finally { await act(async () => root.unmount()); }
+});
+it('retains all five completed verification pills during the second readback pass', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(10000);
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  const host = document.createElement('div'); document.body.append(host);
+  const root = createRoot(host);
+  const job = { id: 3, step: 5, status: 'running', startedAt: 0, targets: [{ channel: 'blog' }] } as unknown as Job;
+  const update = (verification: 'title' | 'body' | 'photos' | 'facts' | 'tags', phase: 'start' | 'finish') => updateInputProgress(job, { characters: 10, totalCharacters: 10, photos: 1, totalPhotos: 1, activity: { channel: 'blog', stage: 'verify', phase, verification } });
+  const render = () => act(async () => { root.render(createElement(LiveProgress, { job: structuredClone(job), preview: null })); });
+  try {
+    for (const key of ['title', 'body', 'photos', 'facts', 'tags'] as const) { update(key, 'start'); update(key, 'finish'); }
+    await render(); await act(async () => { vi.advanceTimersByTime(1200); });
+    expect(host.querySelectorAll('.check-pills .ok')).toHaveLength(5);
+    for (const key of ['title', 'body', 'photos', 'facts', 'tags'] as const) {
+      update(key, 'start'); await render(); expect(host.querySelectorAll('.check-pills .ok')).toHaveLength(5);
+      update(key, 'finish'); await render(); expect(host.querySelectorAll('.check-pills .ok')).toHaveLength(5);
+    }
+  } finally { await act(async () => root.unmount()); }
+});
+it('allocates writing by character and photo work, with a finite estimate at zero photo samples', () => {
+  const preview = { steps: [{ kind: 'text', role: 'title', text: '제목' }, { kind: 'text', role: 'body', text: '가'.repeat(1000) }, { kind: 'photos', urls: ['fixture'] }] } as unknown as PreparedPreview['blog'];
+  const a = { channel: 'blog', stage: 'write', phase: 'finish', blockKind: 'title', blockIndex: 0, blockTotal: 3, at: 0 } as const;
+  const job = { id: 4, step: 4, startedAt: 0, targets: [{ channel: 'blog' }], activity: a, activityLog: [a], photoUploadMilliseconds: 0, photoUploadSamples: 0 } as unknown as Job;
+  expect(progressFraction(job, 0, 0, preview)).toBeLessThan(.12);
+  expect(remainingSeconds(job, 0, preview)).toBeGreaterThan(80);
+  expect(Number.isFinite(remainingSeconds(job, 0, preview))).toBe(true);
 });

@@ -107,7 +107,7 @@ export class BlogExecution {
     if (env.publishProbe && (env.mode !== 'publish' || env.publishProbe.visibility !== this.visibility)) throw new Error('BLOG_PROBE_CONFIGURATION_MISMATCH');
   }
   async ensureReady() {
-    this.signal({ stage: 'open', phase: 'start' });
+    this.signal({ stage: 'open', phase: 'start', opening: this.surface ? 'empty' : 'navigate' });
     try {
     if (!this.surface) await this.fresh();
     else {
@@ -115,6 +115,7 @@ export class BlogExecution {
       await prepareBlogEditor(this.surface, this.env.check, { autoRecover: this.recoveryConsent ? 'decline-with-user-consent' : 'stop' });
       this.recoveryConsent = false; this.checkpoint = await readBlogDocument(this.surface);
     }
+    this.signal({ stage: 'open', phase: 'finish', opening: 'empty' });
     } finally { if (this.surface) await closeTagLayer(this.surface); }
   }
   consentToDiscard() { this.recoveryConsent = true; }
@@ -177,6 +178,7 @@ export class BlogExecution {
     }
     // Keep the previous composition until the new editor is available. Never close on stop/failure.
     await this.surface.open({ url: this.env.editorUrl ?? 'https://blog.naver.com/GoBlogWrite.naver', session: 'naver', width: 1280, height: 900, userAgent: ua });
+    this.signal({ stage: 'open', phase: 'progress', opening: 'editor' });
     // The outer document's load can precede SmartEditor's iframe. Missing editor
     // during that interval is not evidence that the authenticated session expired.
     await waitFor(async () => {
@@ -189,6 +191,7 @@ export class BlogExecution {
       return state;
     }, 30000);
     await this.guard();
+    this.signal({ stage: 'open', phase: 'progress', opening: 'empty' });
     await prepareBlogEditor(this.surface, this.env.check, { autoRecover: this.recoveryConsent ? 'decline-with-user-consent' : 'stop' });
     this.recoveryConsent = false;
     this.checkpoint = await readBlogDocument(this.surface);

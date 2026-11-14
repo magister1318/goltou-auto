@@ -8,7 +8,6 @@ export function updateInputProgress(job: Job, value: BlogProgress): void {
     const activity = { ...value.activity, at: Date.now() };
     job.activity = activity;
     job.activityLog ??= [];
-    if (activity.stage === 'verify' && activity.phase === 'start' && activity.verification === 'title') job.activityLog = job.activityLog.filter(e => e.channel !== activity.channel || e.stage !== 'verify');
     // One boundary per plan item. Long Band paragraphs report their completed
     // prefix repeatedly; retaining each copy would grow every snapshot quadratically.
     const previous = job.activityLog.findIndex(e => e.channel === activity.channel && e.stage === activity.stage && e.phase === activity.phase && e.blockIndex === activity.blockIndex && e.photoIndex === activity.photoIndex && e.verification === activity.verification);
