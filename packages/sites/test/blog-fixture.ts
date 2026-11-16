@@ -9,7 +9,7 @@ export function blogFixture(mode = '') {
   .rich-toolbar{position:sticky;top:45px;background:white;z-index:2}
   ${mode === 'metadata-heavy' ? '.se-image-resource{height:450px}.se-main-container{height:650px;overflow:auto}' : ''}
   </style><header><button data-click-area="tpb.save">저장</button><button data-click-area="tpb*s.count">0</button><button data-click-area="tpb.publish">발행</button><button data-name="image">사진</button>${mode === 'fallback' ? '' : '<button data-name="table">표</button>'}<input type="file" multiple hidden></header>
-  <div class="rich-toolbar"><button data-name="bold" aria-pressed="false">굵게</button><button data-name="link">링크</button></div>
+  <div class="rich-toolbar"><button data-name="bold" data-type="toggle" class="se-bold-toolbar-button se-property-toolbar-toggle-button">굵게</button><button data-name="text-link">링크</button></div>
   <div class="se-documentTitle"><p class="se-text-paragraph" contenteditable="true"></p></div>
   <div class="se-main-container" contenteditable="true"><div class="se-component se-text"><p class="se-text-paragraph"><br></p></div></div>
   ${mode === 'missing-tags' || metadata ? '' : '<input placeholder="태그 입력">'}<div class="tag_list"></div><ul aria-label="임시저장된 글" hidden></ul>
@@ -19,19 +19,19 @@ export function blogFixture(mode = '') {
   const focus=e=>{e.focus();const r=document.createRange();r.selectNodeContents(e);r.collapse(false);const s=getSelection();s.removeAllRanges();s.addRange(r)};
   // Only the synthetic editor owns DOM/Selection writes. Production calls real keys/clicks.
   const bold=document.querySelector('[data-name=bold]');
-  const boldState=()=>bold.setAttribute('aria-pressed',String(document.queryCommandState('bold')));
+  const boldState=()=>bold.classList.toggle('se-is-selected',document.queryCommandState('bold'));
   document.addEventListener('selectionchange',boldState);
   bold.onmousedown=e=>e.preventDefault();
   bold.onclick=()=>{if(mode!=='bold-stuck')document.execCommand('bold');boldState()};
   document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key.toLowerCase()==='b'){e.preventDefault();if(mode!=='bold-stuck')document.execCommand('bold');boldState()}});
-  const link=document.querySelector('[data-name=link]');let linkRange=null;
+  const link=document.querySelector('[data-name=text-link]');let linkRange=null;
   link.onmousedown=e=>{e.preventDefault();linkRange=getSelection()?.rangeCount?getSelection().getRangeAt(0).cloneRange():null};
   link.onclick=()=>{
     window.linkDialogOpens=(window.linkDialogOpens||0)+1;
-    const panel=document.createElement('div');panel.className='se-popup-link';panel.style.cssText='position:fixed;top:130px;left:100px;background:white;z-index:8';
-    panel.innerHTML='<input class="se-popup-link-input" aria-label="링크 주소"><button class="se-popup-button-confirm">확인</button><button class="se-popup-button-cancel">취소</button>';
+    const panel=document.createElement('div');panel.className='se-custom-layer-option-link';panel.style.cssText='position:fixed;top:130px;left:100px;background:white;z-index:8';
+    panel.innerHTML='<input class="se-custom-layer-link-input" aria-label="링크 주소"><button class="se-custom-layer-link-apply-button">확인</button><button class="se-popup-button-cancel">취소</button>';
     const restore=()=>{main.focus();if(linkRange){const selection=getSelection();selection.removeAllRanges();selection.addRange(linkRange)}};
-    panel.querySelector('.se-popup-button-confirm').onclick=()=>{const value=panel.querySelector('input').value;panel.remove();restore();if(mode!=='link-cancelled')document.execCommand('createLink',false,mode==='link-broken'?'https://example.invalid/broken':value);boldState()};
+    panel.querySelector('.se-custom-layer-link-apply-button').onclick=()=>{const value=panel.querySelector('input').value;panel.remove();restore();if(mode!=='link-cancelled')document.execCommand('createLink',false,mode==='link-broken'?'https://example.invalid/broken':value);boldState()};
     panel.querySelector('.se-popup-button-cancel').onclick=()=>{panel.remove();restore()};document.body.append(panel);
   };
   const component=()=>{let n=getSelection()?.anchorNode;while(n&&!n.classList?.contains('se-component'))n=n.parentElement;return n};

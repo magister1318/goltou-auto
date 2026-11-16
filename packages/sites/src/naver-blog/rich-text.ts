@@ -3,17 +3,20 @@ import { inputCharacters, type KeyInput, type Surface } from '@goltou/surface';
 import { point, read } from '../dom';
 import { BlogFormattingError, blogRunReader, normalizeBlogRuns, splitBlogRuns, type BlogRun, type NormalizedBlogRun } from './formatting';
 
-/** WP18 REAL-EDITOR ADAPTER. Fixture-proven only until Phase B records live facts.
+/** WP18 REAL-EDITOR ADAPTER. Phase B observed toolbar DOM and loaded static layer code.
+ * Recovery prompt prevented live shortcuts/link-layer/refocus verification; those remain unverified.
  * All rich-text selectors, shortcuts and keyboard navigation belong here.
  * Unknown state or different refocus behavior must stop, never guess or mutate DOM.
  */
 export const blogRichEditor = {
   paragraph: '.se-component.se-text .se-text-paragraph',
   bold: 'button[data-name="bold"]',
-  link: 'button[data-name="link"]',
-  dialog: '.se-popup-link',
-  address: '.se-popup-link input.se-popup-link-input',
-  confirm: '.se-popup-link .se-popup-button-confirm',
+  boldToggle: 'se-property-toolbar-toggle-button',
+  boldSelected: 'se-is-selected',
+  link: 'button[data-name="text-link"]',
+  dialog: '.se-custom-layer-option-link',
+  address: '.se-custom-layer-option-link input.se-custom-layer-link-input',
+  confirm: '.se-custom-layer-option-link button.se-custom-layer-link-apply-button',
   boldKey: { key: 'b', modifiers: 2 } as KeyInput,
   end: { key: 'End', modifiers: 2 } as KeyInput,
   left: { key: 'ArrowLeft' } as KeyInput,
@@ -39,10 +42,13 @@ export async function readBlogCursor(surface: Surface): Promise<Cursor | null> {
           if(n.nodeType===3)total+=(n.nodeValue||'').length;else for(const c of n.childNodes)walk(c);};walk(p);return found?total:-1;
       };
       const toolbar=d.querySelector(${JSON.stringify(blogRichEditor.bold)}),pressed=toolbar?.getAttribute('aria-pressed');
+      const bold=pressed==='true'?true:pressed==='false'?false:
+        toolbar?.classList.contains(${JSON.stringify(blogRichEditor.boldToggle)})&&toolbar.getAttribute('data-type')==='toggle'
+          ?toolbar.classList.contains(${JSON.stringify(blogRichEditor.boldSelected)}):null;
       const active=d.activeElement;
       return {text:paragraphRuns(p).map(r=>r.text).join(''),runs:paragraphRuns(p),anchor:offset(s.anchorNode,s.anchorOffset),focus:offset(s.focusNode,s.focusOffset),
         focused:!!active&&(active===p||active.contains(p)||p.contains(active))&&active.isContentEditable,
-        last:paragraphs[paragraphs.length-1]===p,bold:pressed==='true'?true:pressed==='false'?false:null};
+        last:paragraphs[paragraphs.length-1]===p,bold};
     }return null;`);
 }
 const equal = (a: readonly BlogRun[], b: readonly BlogRun[]) => JSON.stringify(normalizeBlogRuns(a)) === JSON.stringify(normalizeBlogRuns(b));

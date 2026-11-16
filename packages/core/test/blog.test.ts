@@ -416,7 +416,7 @@ describe('WP18 mandatory rich-text editor fixture', () => {
     await f.execution.ensureReady(); const s = f.execution.surface!, press = s.pressKey.bind(s);
     s.pressKey = async key => { if (key.key === 'ArrowLeft' && key.modifiers === 8) return; await press(key); };
     await expect(f.execution.write()).rejects.toThrow('BLOG_FORMATTING_INPUT:1');
-    expect(await f.pages.get(s)!.locator('.se-popup-link').count()).toBe(0);
+    expect(await f.pages.get(s)!.locator('.se-custom-layer-option-link').count()).toBe(0);
     expect(await f.counts()).toEqual({ saves: 0, publishes: 0 });
   }, 20000);
   it('reconciles an already confirmed link on resume without inserting or linking it twice', async () => {

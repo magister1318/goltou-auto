@@ -12,7 +12,7 @@ import type {
 import type { Commands, JobInput, Service } from '@goltou/core/protocol';
 import type { PreparedPreview } from '@goltou/core';
 import { deletedPost } from '@goltou/core/post-delete-policy';
-import { clearError, request, useStore } from './store';
+import { clearError, experiment, request, useStore } from './store';
 import { ProductPhoto } from './ProductPhoto';
 import { BrandMark } from './BrandMark';
 import { ConversionPreview, sourcePhotoRatios } from './ConversionPreview';
@@ -1550,6 +1550,19 @@ export function App() {
           <>
             <main className="pad settings-content">
               <h1 className="title">설정</h1>
+              {__GOLTOU_DEBUG__ && debug && (
+                <div className="choice-row">
+                  <span>디버그 편집기 읽기 점검<small>입력·저장하지 않습니다</small></span>
+                  <div>
+                    <button className="green" disabled={busy || active || app?.services.naver !== 'confirmed'} onClick={() => void act(async () => {
+                      await experiment('blog.probe'); setNotice('편집기 읽기 점검을 시작했습니다. 입력·저장하지 않습니다.');
+                    })}>점검 열기</button>
+                    <button className="green" disabled={busy || active} onClick={() => void act(async () => {
+                      await experiment('blog.closeProbe'); setNotice('읽기 점검 창을 닫았습니다.');
+                    })}>점검 닫기</button>
+                  </div>
+                </div>
+              )}
               <h3>내 계정</h3>
               <div className="choice-row">
                 <span>
