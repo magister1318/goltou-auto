@@ -1,5 +1,5 @@
 import { ApiError, type Post } from '@goltou/api-client';
-import { deleteRecordedBandPost, deleteBlogPost, openPostDeletionRead, verifyPostAbsentFromList, deletePageSource, read, verifyPostGone, type DeletePage, type DeleteLog } from '@goltou/sites';
+import { deleteMobileRecordedBandPost, deleteBlogPost, openPostDeletionRead, verifyPostAbsentFromList, deletePageSource, read, verifyPostGone, type DeletePage, type DeleteLog } from '@goltou/sites';
 import type { SurfaceHost } from '@goltou/surface';
 
 export { canDeletePost, deletedPost, deletedUpdate, requireDeletablePost } from './post-delete-policy';
@@ -7,7 +7,7 @@ import { requireDeletablePost } from './post-delete-policy';
 
 export async function removeRecordedBandPost(host: SurfaceHost, post: Post) {
   requireDeletablePost(post);
-  return deleteRecordedBandPost(host, { url: post.postUrl, title: post.productTitle });
+  return deleteMobileRecordedBandPost(host, { url: post.postUrl, title: post.productTitle });
 }
 /** Opens only the record's URL. A prior uncertain click is resolved by reading
  * that URL before any further deletion, including after restarting the app. */

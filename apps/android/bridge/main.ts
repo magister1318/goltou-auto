@@ -89,6 +89,15 @@ async function start() {
       info: async () => ({ ...await native.call<Record<string, unknown>>('debug.info'), node: process.version }),
       lifecycle: async mode => { await native.call('debug.lifecycle', { mode }); },
       capture: (surface, name) => host.capture(surface, name),
+      verifyBandPublish: async () => {
+        if (app.snapshot().job?.status === 'running') throw Error('JOB_RUNNING');
+        const { recoverBandPublish } = await import('./band-publish-recovery');
+        const ready = async () => { if (!(await native.call<{ ready: boolean }>('app.inputState')).ready) throw Error('DEVICE_CONDITION_LOST'); };
+        await ready();
+        const token = await new AndroidTokenStore(native).read();
+        if (!token) throw Error('BAND_PUBLISH_RECOVERY_REFUSED');
+        await recoverBandPublish(path.join(path.dirname(argument('data')), 'wp19', 'band-publish-context.json'), createApiClient(apiOrigin, fetch), token, host, ready);
+      },
       inspectRecordedPost: async () => {
         const { inspectRecordedPost } = await import('./publish-recovery');
         const ready = async () => {

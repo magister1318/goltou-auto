@@ -25,6 +25,7 @@ export interface ExperimentOptions {
   conversionCheck?(check: () => void): Promise<import('./conversion-audit').ConversionAudit>;
   deleteTestPost?(checkOnly?: boolean): Promise<void>;
   verifyPrivatePublish?(): Promise<void>;
+  verifyBandPublish?(): Promise<void>;
   inspectRecordedPost?(): Promise<void>;
   configurePublishProbe?(visibility: 'public' | 'private' | 'off'): void;
 }
@@ -57,7 +58,7 @@ export class Experiments {
       this.operation = this.probeEditor().catch(() => { this.state.lastResult = 'PROBE_EVIDENCE_FAILED'; }).finally(() => { this.state.running = false; });
       return this.snapshot();
     }
-    if (!['blog.inspectRecordedPost', 'blog.verifyPrivatePublish', 'blog.publishProbe', 'blog.checkTestPostDeleted', 'blog.deleteTestPost', 'conversion.check', 'ai.polish', 'info', 'example', 'evidence', 'show', 'hide', 'login.open', 'login.check', 'band.list', 'blog.run', 'band.run', 'lifecycle'].includes(command)) throw new Error('UNKNOWN_EXPERIMENT');
+    if (!['band.verifyInterruptedPublish', 'blog.inspectRecordedPost', 'blog.verifyPrivatePublish', 'blog.publishProbe', 'blog.checkTestPostDeleted', 'blog.deleteTestPost', 'conversion.check', 'ai.polish', 'info', 'example', 'evidence', 'show', 'hide', 'login.open', 'login.check', 'band.list', 'blog.run', 'band.run', 'lifecycle'].includes(command)) throw new Error('UNKNOWN_EXPERIMENT');
     if (command === 'blog.publishProbe') {
       if (!this.options.configurePublishProbe || !['public', 'private', 'off'].includes(String(input.visibility))) throw new Error('DEBUG_ONLY');
       this.options.configurePublishProbe(input.visibility as 'public' | 'private' | 'off');
@@ -135,6 +136,11 @@ export class Experiments {
   private async run(command: string, channel: Channel, input: RecordValue) {
     let active: Surface | undefined;
     try {
+      if (command === 'band.verifyInterruptedPublish') {
+        if (!this.options.verifyBandPublish) throw Error('DEBUG_ONLY');
+        await this.step('verify-interrupted-band-publish', () => this.options.verifyBandPublish!());
+        this.state.lastResult = '밴드 게시 결과와 원래 기록 확인 완료'; return;
+      }
       if (command === 'blog.inspectRecordedPost') {
         if (!this.options.inspectRecordedPost) throw new Error('DEBUG_ONLY');
         await this.step('inspect-recorded-post', () => this.options.inspectRecordedPost!());

@@ -62,7 +62,7 @@ export interface Surface {
   /** Re-read a safety condition immediately before mousePressed, after hover/delay. */
   click(x: number, y: number, beforePress?: () => Promise<void>): Promise<void>;
   typeText(text: string): Promise<void>;
-  pressKey(input: KeyInput): Promise<void>;
+  pressKey(input: KeyInput, beforePress?: () => Promise<void>): Promise<void>;
   attachFiles(selector: string, absolutePaths: readonly string[]): Promise<void>;
   /** Shell-enforced request barrier, installed before navigation; persists until close. */
   blockRequests?(rules: readonly { hostname: string; pathname: string }[]): Promise<void>;

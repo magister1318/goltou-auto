@@ -16,3 +16,5 @@ export * from './ai-mode';
 
 export * from './naver-blog/delete';
 export * from './band/delete';
+export * from './band/record-read';
+export * from './band/mobile-delete';

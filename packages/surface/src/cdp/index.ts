@@ -80,7 +80,9 @@ export class CdpSurface implements Surface {
       const requestId = String(p.requestId);
       if (p.responseStatusCode !== undefined || p.responseErrorReason !== undefined) {
         const accepted = this.acceptedRequests.get(requestId); this.acceptedRequests.delete(requestId);
-        if (accepted && p.responseErrorReason === undefined && !['GET', 'HEAD', 'OPTIONS'].includes(accepted.method)) {
+        if (accepted && p.responseErrorReason === undefined &&
+          (!['GET', 'HEAD', 'OPTIONS'].includes(accepted.method) ||
+            accepted.method === 'GET' && this.requestGuard?.observeResponse?.(accepted) === true)) {
           try {
             const result = await this.cdp.send<{ body: string; base64Encoded?: boolean }>('Fetch.getResponseBody', { requestId });
             this.requestGuard?.response({ status: Number(p.responseStatusCode), body: result.base64Encoded ? Buffer.from(result.body, 'base64').toString('utf8') : result.body, url: accepted.url, method: accepted.method });
@@ -242,13 +244,14 @@ export class CdpSurface implements Surface {
     for (const char of inputCharacters(text)) { await this.input('Input.insertText', { text: char }); await pause(this.inputDelayMs); }
   }
 
-  async pressKey(input: KeyInput): Promise<void> {
+  async pressKey(input: KeyInput, beforePress?: () => Promise<void>): Promise<void> {
     const key = keys[input.key] ?? (/^[a-z0-9]$/i.test(input.key)
       ? { code: /^[0-9]$/.test(input.key) ? `Digit${input.key}` : `Key${input.key.toUpperCase()}`, vk: input.key.toUpperCase().charCodeAt(0) }
       : undefined);
     if (!key) throw new Error('SURFACE_UNSUPPORTED_KEY');
     const params = { key: input.key, code: key.code, windowsVirtualKeyCode: key.vk, modifiers: input.modifiers ?? 0 };
     const text = 'text' in key ? key.text : ((params.modifiers & 7) === 0 && input.key.length === 1 ? input.key : undefined);
+    await beforePress?.();
     await this.input('Input.dispatchKeyEvent', { ...params, type: 'keyDown', ...(text ? { text } : {}) });
     await pause(this.inputDelayMs);
     await this.input('Input.dispatchKeyEvent', { ...params, type: 'keyUp' });

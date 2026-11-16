@@ -5,6 +5,7 @@ import { closeComposer, confirmBandPhotos, listBands } from './index';
 import { PhotoOrder, type PhotoProof, type PhotoSize, type PhotoSlot } from './photos';
 import { requestFields } from '../naver-blog/request-fields';
 import type { BandBarrierCode } from './barrier-codes';
+import { bandReadBatchTarget } from './read-batch';
 
 export const bandMobileUA = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
 export const bandEditor = 'textarea._postTextArea, .cke_editable[contenteditable="true"], [contenteditable="true"][role="textbox"]';
@@ -75,7 +76,7 @@ export class BandDirectory {
     if (this.surface) return this.surface;
     const surface = await this.host.create('band');
     if (!surface.guardRequests) { await surface.close(); throw new Error('BAND_BARRIER_UNAVAILABLE'); }
-    await surface.guardRequests([{ hostname: '*', pathname: '/', prefix: true }], request => {
+    await surface.guardRequests([{ hostname: '*', pathname: '/', prefix: true }], async request => {
       const u = new URL(request.url);
       if (request.method === 'OPTIONS') { this.record('PREFLIGHT_ALLOWED'); return true; }
       if (['GET', 'HEAD'].includes(request.method) && !this.isCreate(u)) return true;
@@ -85,6 +86,13 @@ export class BandDirectory {
       // Observed on-device: membership is read by this exact POST endpoint.
       // All other writes, including post/create, still fail closed.
       if (u.hostname === 'api-kr.band.us' && u.pathname === '/v2.3.0/get_band_list') { this.record('MEMBERSHIP_ALLOWED'); return true; }
+      if (u.origin === 'https://bapi-kr.band.us' && u.pathname === '/v2.0.0/batch') {
+        const target = bandReadBatchTarget(request);
+        if (!target || !this.choices.some(b => b.key === target.band)) return this.reject('ROUTE_BLOCKED');
+        const current = new URL((await surface.readState()).url);
+        if (!this.sameOrigin(current) || !new RegExp(`^/band/${target.band}/post(?:/${target.post})?/?$`).test(current.pathname)) return this.reject('TARGET_MISMATCH');
+        this.record('READ_BATCH_ALLOWED'); return true;
+      }
       // Observed mobile photo upload; this host/path cannot create a post.
       if (u.hostname === 'up.band.us' && u.pathname === '/v3/upload_photo') { this.record('UPLOAD_ALLOWED'); return true; }
       // Uploads are allowed; every other mutation fails closed until the single submit.
