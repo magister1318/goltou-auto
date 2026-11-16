@@ -7,6 +7,7 @@ import { requestFields } from '../naver-blog/request-fields';
 
 export const bandMobileUA = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
 export const bandEditor = 'textarea._postTextArea, .cke_editable[contenteditable="true"], [contenteditable="true"][role="textbox"]';
+const bandSubmit = 'button._btnPostSubmit, button._btnSubmitPost, .postWriteSection .topBarGnbActionButtons button._btnPostWrite';
 export interface BandPlan {
   channel: 'blog' | 'band';
   steps: ({ kind: 'text'; role: string; text: string } | { kind: 'break' } | { kind: 'photos'; urls: string[] } | { kind: 'table'; role: string; rows: string[][] })[];
@@ -80,9 +81,11 @@ export class BandDirectory {
       // Observed on-device: membership is read by this exact POST endpoint.
       // All other writes, including post/create, still fail closed.
       if (u.hostname === 'api-kr.band.us' && u.pathname === '/v2.3.0/get_band_list') return true;
+      // Observed mobile photo upload; this host/path cannot create a post.
+      if (u.hostname === 'up.band.us' && u.pathname === '/v3/upload_photo') return true;
       // Uploads are allowed; every other mutation fails closed until the single submit.
       if (/\/(?:photo|file)\/upload(?:\/[a-z0-9_-]+)?$/i.test(u.pathname)) return true;
-      const isCreate = this.localPublish ? u.pathname === '/band-post-create' : /^\/v[0-9.]+\/band\/post\/create$/.test(u.pathname);
+      const isCreate = this.isCreate(u);
       const submit = this.submit;
       if (!isCreate || !submit?.armed || submit.sent || !request.postDataComplete) return false;
       try {
@@ -91,17 +94,22 @@ export class BandDirectory {
       } catch { return false; }
       submit.armed = false; submit.sent = true; return true;
     }, response => {
-      if (!this.submit?.sent || response.method !== 'POST' || !response.url || !/\/(?:band-post-create|post\/create)$/.test(new URL(response.url).pathname)) return;
+      if (!this.submit?.sent || response.method !== 'POST' || !response.url || !this.isCreate(new URL(response.url))) return;
       try {
         const value = JSON.parse(response.body) as { result_code?: unknown; result_data?: { post_key?: unknown } };
         const post = String(value.result_data?.post_key ?? '');
         this.submit.succeeded = response.status >= 200 && response.status < 300 && value.result_code === 1 && /^[0-9]+$/.test(post);
         if (this.submit.succeeded) this.submit.post = post;
       } catch { this.submit.succeeded = false; }
-    }, request => request.method === 'POST' && /\/(?:band-post-create|post\/create)$/.test(new URL(request.url).pathname));
+    }, request => request.method === 'POST' && this.isCreate(new URL(request.url)));
     // Membership reads and uploads need no response-body proof. Only an armed
     // publication consumes its response; failure there must still fail closed.
     this.surface = surface; return surface;
+  }
+  private isCreate(url: URL) {
+    return this.localPublish ? url.origin === new URL(this.baseUrl).origin && url.pathname === '/band-post-create'
+      : url.protocol === 'https:' && url.hostname === 'api-kr.band.us' &&
+        (url.pathname === '/v2.0.2/create_post' || /^\/v[0-9.]+\/band\/post\/create$/.test(url.pathname));
   }
   arm(key: string) { this.submit = { key, armed: true, sent: false, succeeded: false }; }
   disarm() { if (this.submit) this.submit.armed = false; }
@@ -347,12 +355,12 @@ export class BandExecution {
     const control =
       (await point(
         this.surface!,
-        'button._btnPostSubmit, button._btnSubmitPost',
+        bandSubmit,
         '완료',
       )) ??
       (await point(
         this.surface!,
-        'button._btnPostSubmit, button._btnSubmitPost',
+        bandSubmit,
         '게시',
       ));
     if (!control) throw new Error('BAND_POST_CONTROL_MISSING');
@@ -363,7 +371,7 @@ export class BandExecution {
           !(await this.surface!.readClickTarget?.(
             control.x,
             control.y,
-            'button._btnPostSubmit, button._btnSubmitPost',
+            bandSubmit,
           ))
         )
           throw new Error('BAND_POST_CONTROL_CHANGED');

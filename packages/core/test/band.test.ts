@@ -86,6 +86,14 @@ function workFor(plan: InputPlan, files: { url: string; path: string }[]) {
 const input: JobInput = { productNo: 1, mode: 'draft', targets: [{ channel: 'band', name: '밴드 A', key: '111' }], options: { polish: false, closing: false, linkCard: false } };
 
 describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pages', () => {
+  it('uses the mobile composer header submit, never the feed write button, and never submits twice', async () => {
+    const f = await fixture('mobile-service');
+    await f.execution.write();
+    expect(await f.execution.publish()).toBe(`${f.baseUrl}/band/111/post/1001`);
+    expect(await f.execution.publish()).toBe(`${f.baseUrl}/band/111/post/1001`);
+    expect(await f.counts()).toEqual({ opens: 1, posts: 1, discards: 0 });
+    expect(f.external()).toBe(0);
+  }, 20000);
   it.each([false, true])(
       'WP17 one-shot allowance consumed only immediately before submit (allowed=%s)',
       async (allowed) => {
