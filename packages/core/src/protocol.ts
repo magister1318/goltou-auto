@@ -38,7 +38,7 @@ export interface Job {
   bandPhotoVerification?: { order: 'matched'; ratio: 'matched' | 'unavailable'; counts: number[]; sources: { width: number; height: number }[]; thumbnails: { width: number; height: number }[] };
 }
 export interface Simulation { tickMs: number; loginAt: number | null; failAt: number | null }
-export interface AppSnapshot { serviceError?: string; postDeletion?: { postNo: number; verifiedGone: boolean; recorded: boolean; at?: string }; user: User | null; settings: Settings | null; services: Record<Service, LoginState>; visibleService: Service | null; job: Job | null; simulation: Simulation; realBlog?: boolean; realBand?: boolean }
+export interface AppSnapshot { serviceError?: string; postDeletion?: { outcome?: 'deleted' | 'not_started' | 'uncertain'; postNo: number; verifiedGone: boolean; recorded: boolean; at?: string }; user: User | null; settings: Settings | null; services: Record<Service, LoginState>; visibleService: Service | null; job: Job | null; simulation: Simulation; realBlog?: boolean; realBand?: boolean }
 /** Platform-neutral contract; Android implements it with a Keystore-encrypted native channel. */
 export interface TokenStore { read(): Promise<string | null>; write(token: string | null): Promise<void> }
 export interface Commands {

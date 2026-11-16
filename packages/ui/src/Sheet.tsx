@@ -4,19 +4,32 @@ export function Sheet({
   title,
   children,
   close,
+  dismissible = true,
 }: {
   title: string;
   children: ReactNode;
   close(): void;
+  dismissible?: boolean;
 }) {
   const ref = useRef<HTMLElement>(null);
   const closeRef = useRef(close);
-  closeRef.current = close;
+  closeRef.current = dismissible ? close : () => {};
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     const app = document.querySelector('.app-body');
+    const position = window.scrollY;
+    const old = {
+      position: document.body.style.position,
+      top: document.body.style.top,
+      width: document.body.style.width,
+      overflow: document.documentElement.style.overflow,
+    };
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${position}px`;
+    document.body.style.width = '100%';
+    document.documentElement.style.overflow = 'hidden';
     app?.setAttribute('inert', '');
-    ref.current?.focus();
+    ref.current?.focus({ preventScroll: true });
     const key = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -54,14 +67,21 @@ export function Sheet({
       app?.removeAttribute('inert');
       document.removeEventListener('keydown', key);
       window.removeEventListener('goltou:close-sheet', back);
-      previous?.focus();
+      Object.assign(document.body.style, {
+        position: old.position,
+        top: old.top,
+        width: old.width,
+      });
+      document.documentElement.style.overflow = old.overflow;
+      window.scrollTo(0, position);
+      previous?.focus({ preventScroll: true });
     };
   }, []);
   const content = (
     <div
       className="dim"
       onClick={(event) => {
-        if (event.target === event.currentTarget) close();
+        if (event.target === event.currentTarget) closeRef.current();
       }}
     >
       <section

@@ -17,6 +17,7 @@ export interface BandProgress { characters: number; totalCharacters: number; pho
 export function bandText(plan: BandPlan) {
   return plan.steps.flatMap(s => s.kind === 'text' ? [s.text] : s.kind === 'table' ? s.rows.map(r => r.join(' | ')) : []).join('\n\n');
 }
+export function photoUrls(plan: BandPlan) { return plan.steps.flatMap(s => s.kind === 'photos' ? s.urls : []); }
 export async function readBandDocument(surface: Surface): Promise<BandReadback> {
   return read(surface, `
     const editors=docs.flatMap(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(bandEditor)}))).filter(visible);
@@ -62,7 +63,7 @@ export class BandDirectory {
   choices: BandChoice[] = [];
   private opens = 0;
   private submit: { key: string; armed: boolean; sent: boolean; succeeded: boolean; post?: string } | undefined;
-  constructor(private readonly host: SurfaceHost, readonly baseUrl = 'https://band.us', readonly localPublish = false, readonly publishEnabled = false) {
+  constructor(private readonly host: SurfaceHost, readonly baseUrl = 'https://band.us', readonly localPublish = false, readonly publishEnabled = false, readonly publishAllowance?: { available(): Promise<boolean>; consume(): Promise<boolean> }) {
     const url = new URL(baseUrl);
     if (localPublish && (url.hostname !== '127.0.0.1' || url.protocol !== 'http:')) throw new Error('LOCAL_BAND_REQUIRED');
     if (!localPublish && url.origin !== 'https://band.us') throw new Error('BAND_ORIGIN_REQUIRED');
@@ -144,9 +145,9 @@ export class BandDirectory {
   }
   beforeOpen(key: string) {
     if (!this.choices.some(b => b.key === key)) throw new Error('BAND_NOT_OWNED');
-    if (!this.localPublish && !this.publishEnabled && this.choices[0]?.key !== key) throw new Error('BAND_FIRST_ONLY');
+    if (!this.localPublish && !this.publishEnabled && !this.publishAllowance && this.choices[0]?.key !== key) throw new Error('BAND_FIRST_ONLY');
     // Count attempts before dispatch, including ambiguous responses. Lifetime-wide for this runner.
-    if (!this.localPublish && !this.publishEnabled && ++this.opens > 3) throw new Error('BAND_COMPOSER_LIMIT');
+    if (!this.localPublish && !this.publishEnabled && !this.publishAllowance && ++this.opens > 3) throw new Error('BAND_COMPOSER_LIMIT');
   }
   observeLimit(key: string, limit: number | null) {
     const choice = this.choices.find(b => b.key === key);
@@ -212,7 +213,7 @@ export class BandExecution {
     if (actual.photoLimit !== null && this.photoUrls().length > actual.photoLimit) throw new Error('BAND_PHOTO_LIMIT');
     if (actual.textLimit !== null && bandText(this.plan).length > actual.textLimit) throw new Error('BAND_TEXT_LIMIT');
   }
-  private photoUrls() { return this.plan.steps.flatMap(s => s.kind === 'photos' ? s.urls : []); }
+  private photoUrls() { return photoUrls(this.plan); }
   allowRestart() { this.restartAllowed = true; }
   resetDiscard() { this.discardAttempted = false; this.restartAllowed = false; }
   async write() {
@@ -326,19 +327,68 @@ export class BandExecution {
   }
   async publish() {
     const state = await this.surface!.readState();
-    if (!this.env.directory.localPublish && !this.env.directory.publishEnabled || !this.env.directory.sameOrigin(new URL(state.url))) throw new Error('REAL_BAND_PUBLISH_DISABLED');
-    if (this.postAttempted) { const url = this.env.directory.submitted(this.env.key) ? await this.detectPublished() : null; if (url && this.env.directory.matchesPost(url)) return url; throw new Error('BAND_POST_UNCONFIRMED'); }
-    await this.guard(); this.env.verify(await this.observe());
+    if (
+      (!this.env.directory.localPublish &&
+        !this.env.directory.publishEnabled &&
+        !this.env.directory.publishAllowance) ||
+      !this.env.directory.sameOrigin(new URL(state.url))
+    )
+      throw new Error('REAL_BAND_PUBLISH_DISABLED');
+    if (this.postAttempted) {
+      const url = this.env.directory.submitted(this.env.key)
+        ? await this.detectPublished()
+        : null;
+      if (url && this.env.directory.matchesPost(url)) return url;
+      throw new Error('BAND_POST_UNCONFIRMED');
+    }
+    await this.guard();
+    this.env.verify(await this.observe());
     if (!this.verified) throw new Error('BAND_NOT_VERIFIED');
-    const control = await point(this.surface!, 'button._btnPostSubmit, button._btnSubmitPost', '완료') ?? await point(this.surface!, 'button._btnPostSubmit, button._btnSubmitPost', '게시');
+    const control =
+      (await point(
+        this.surface!,
+        'button._btnPostSubmit, button._btnSubmitPost',
+        '완료',
+      )) ??
+      (await point(
+        this.surface!,
+        'button._btnPostSubmit, button._btnSubmitPost',
+        '게시',
+      ));
     if (!control) throw new Error('BAND_POST_CONTROL_MISSING');
-    this.postAttempted = true;
-    this.signal({ stage: 'submit', phase: 'start', submission: 'publish' });
     try {
-      await this.surface!.click(control.x, control.y, async () => { await this.guard(); if (!await this.surface!.readClickTarget?.(control.x, control.y, 'button._btnPostSubmit, button._btnSubmitPost')) throw new Error('BAND_POST_CONTROL_CHANGED'); this.env.directory.arm(this.env.key); });
-      return await waitFor(async () => { const url = this.env.directory.submitted(this.env.key) ? await this.detectPublished() : null; return url && this.env.directory.matchesPost(url) ? url : null; }, this.env.submitTimeoutMs ?? 15000);
-    } catch { throw new Error('BAND_POST_UNCONFIRMED'); }
-    finally { this.env.directory.disarm(); }
+      await this.surface!.click(control.x, control.y, async () => {
+        await this.guard();
+        if (
+          !(await this.surface!.readClickTarget?.(
+            control.x,
+            control.y,
+            'button._btnPostSubmit, button._btnSubmitPost',
+          ))
+        )
+          throw new Error('BAND_POST_CONTROL_CHANGED');
+        if (
+          !this.env.directory.localPublish &&
+          !this.env.directory.publishEnabled &&
+          !(await this.env.directory.publishAllowance?.consume())
+        )
+          throw new Error('REAL_BAND_PUBLISH_DISABLED');
+        this.postAttempted = true;
+        this.signal({ stage: 'submit', phase: 'start', submission: 'publish' });
+        this.env.directory.arm(this.env.key);
+      });
+      return await waitFor(async () => {
+        const url = this.env.directory.submitted(this.env.key)
+          ? await this.detectPublished()
+          : null;
+        return url && this.env.directory.matchesPost(url) ? url : null;
+      }, this.env.submitTimeoutMs ?? 15000);
+    } catch (error) {
+      if (!this.postAttempted) throw error;
+      throw new Error('BAND_POST_UNCONFIRMED');
+    } finally {
+      this.env.directory.disarm();
+    }
   }
   async discard() {
     this.env.check();

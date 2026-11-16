@@ -12,3 +12,4 @@ export * from './band/plan';
 export * from './ai-mode';
 
 export * from './naver-blog/delete';
+export * from './band/delete';

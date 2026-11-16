@@ -88,6 +88,9 @@ importers:
       '@goltou/core':
         specifier: workspace:*
         version: link:../core
+      '@goltou/sites':
+        specifier: workspace:*
+        version: link:../sites
       react:
         specifier: 19.1.0
         version: 19.1.0

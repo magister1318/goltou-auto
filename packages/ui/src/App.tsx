@@ -14,8 +14,8 @@ import { deletedPost } from '@goltou/core/post-delete-policy';
 import { clearError, request, useStore } from './store';
 import { ProductPhoto } from './ProductPhoto';
 import { BrandMark } from './BrandMark';
-import { ConversionPreview } from './ConversionPreview';
-import { ServiceGuide, LoginStatus, type LoginService } from './ServiceLogin';
+import { ConversionPreview, sourcePhotoRatios } from './ConversionPreview';
+import { LoginStatus, type LoginService } from './ServiceLogin';
 import { initialPreviewOptions } from './polish-setting';
 import { PolishStrengthChoice } from './PolishStrengthChoice';
 import { PolishComparison } from './PolishComparison';
@@ -23,6 +23,15 @@ import { PostDeleteAction } from './PostDeleteAction';
 import { Sheet } from './Sheet';
 import { LiveProgress } from './LiveProgress';
 import { jobMessage } from './job-message';
+import { BandChooser } from './BandChooser';
+import {
+  bandChoiceReason,
+  targetStatus,
+  targetName,
+  resultKind,
+  historyStatus,
+  uncertainReason,
+} from './ux-state';
 const Experiments = __GOLTOU_DEBUG__
   ? lazy(() =>
       import('./Experiments').then((m) => ({ default: m.ExperimentsScreen })),
@@ -32,13 +41,22 @@ type Screen =
   | 'login'
   | 'home'
   | 'preview'
+  | 'polish'
   | 'progress'
   | 'connect'
   | 'service'
   | 'history'
   | 'settings'
   | 'experiments';
-type SheetName = 'draft' | 'publish' | 'confirm' | 'stop' | null;
+type SheetName =
+  | 'draft'
+  | 'publish'
+  | 'bands'
+  | 'confirm'
+  | 'stop'
+  | 'dialog'
+  | 'leave'
+  | null;
 type Band = Commands['bands.list']['output'][number];
 const ignore = () => {};
 const money = (value: number) => `${value.toLocaleString('ko-KR')}원`;
@@ -122,11 +140,36 @@ export function App() {
     defaultHashtags: [],
     bandDailyLimit: 3,
   });
+  const [loginSubmitted, setLoginSubmitted] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [pendingNavigation, setPendingNavigation] = useState<Screen>('home');
+  const [settingsAttempted, setSettingsAttempted] = useState(false);
+  const dirtySettings =
+    !!app?.settings &&
+    JSON.stringify(settings) !== JSON.stringify(app.settings);
+  const invalidLimit =
+    !Number.isInteger(settings.bandDailyLimit) ||
+    settings.bandDailyLimit < 1 ||
+    settings.bandDailyLimit > 10;
   const job = app?.job;
   const active =
-    !!job && !['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(job.status);
-  function go(next: Screen, replace = false) {
-    if (next === 'settings') settingsReturn.current = screen === 'preview' ? 'preview' : 'home';
+    !!job &&
+    !['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(
+      job.status,
+    );
+  function go(next: Screen, replace = false, discard = false) {
+    if (
+      screen === 'settings' &&
+      next !== 'settings' &&
+      dirtySettings &&
+      !discard
+    ) {
+      setPendingNavigation(next);
+      setSheet('leave');
+      return;
+    }
+    if (next === 'settings')
+      settingsReturn.current = screen === 'preview' ? 'preview' : 'home';
     clearError();
     setNotice('');
     setSheet(null);
@@ -153,15 +196,44 @@ export function App() {
   useEffect(() => {
     const pop = (event: Event) => {
       event.preventDefault();
-      if (document.querySelector('.sheet')) { window.dispatchEvent(new Event('goltou:close-sheet')); return; }
-      if (active && screen !== 'service') { setScreen('progress'); setSheet('stop'); return; }
-      if (screen === 'service') { void request('service.hide', {}).catch(ignore); go(returnScreen, true); return; }
-      go(screen === 'settings' ? settingsReturn.current : app?.user ? 'home' : 'login', true);
+      if (document.querySelector('.sheet')) {
+        window.dispatchEvent(new Event('goltou:close-sheet'));
+        return;
+      }
+      if (active && screen !== 'service') {
+        setScreen('progress');
+        setSheet('stop');
+        return;
+      }
+      if (screen === 'service') {
+        void request('service.hide', {}).catch(ignore);
+        go(returnScreen, true);
+        return;
+      }
+      go(
+        screen === 'settings'
+          ? settingsReturn.current
+          : app?.user
+            ? 'home'
+            : 'login',
+        true,
+      );
     };
     window.addEventListener('goltou:back', pop);
     window.addEventListener('popstate', pop);
-    return () => { window.removeEventListener('popstate', pop); window.removeEventListener('goltou:back', pop); };
-  }, [active, screen, sheet, returnScreen, !!app?.user, !!product]);
+    return () => {
+      window.removeEventListener('popstate', pop);
+      window.removeEventListener('goltou:back', pop);
+    };
+  }, [
+    active,
+    screen,
+    sheet,
+    returnScreen,
+    !!app?.user,
+    !!product,
+    dirtySettings,
+  ]);
   useEffect(() => {
     if (app?.user && screen === 'login') go(active ? 'progress' : 'home', true);
     if (app && !app.user) {
@@ -176,20 +248,86 @@ export function App() {
   }, [app?.user?.userNo]);
   useEffect(() => {
     if (app?.settings) setSettings(app.settings);
-  }, [app?.settings]);
+  }, [JSON.stringify(app?.settings)]);
   useEffect(() => {
-    if (connected) void request('preferences.get', {}).then(value => {
-      lastBand.current = value.lastBandKey;
-      setBandKey(value.lastBandKey);
-      setOptions(old => ({ ...old, polish: value.polish, closing: value.closing, linkCard: value.linkCard }));
-      setPreferencesReady(true);
-    }).catch(ignore);
+    const scrollField = () => {
+      const field = document.activeElement;
+      if (
+        screen !== 'settings' ||
+        !(
+          field instanceof HTMLInputElement ||
+          field instanceof HTMLTextAreaElement
+        )
+      )
+        return;
+      (field.closest('label') ?? field).scrollIntoView({
+        block: 'center',
+        behavior: 'auto',
+      });
+    };
+    const focus = () => {
+      const field = document.activeElement;
+      setEditing(
+        screen === 'settings' &&
+          (field instanceof HTMLInputElement ||
+            field instanceof HTMLTextAreaElement),
+      );
+      setTimeout(scrollField, 80);
+      setTimeout(scrollField, 300);
+    };
+    const resize = () => {
+      requestAnimationFrame(scrollField);
+    };
+    document.addEventListener('focusin', focus);
+    document.addEventListener('focusout', focus);
+    window.addEventListener('resize', resize);
+    window.addEventListener('goltou:keyboard', resize);
+    window.visualViewport?.addEventListener('resize', resize);
+    return () => {
+      document.removeEventListener('focusin', focus);
+      document.removeEventListener('focusout', focus);
+      window.removeEventListener('resize', resize);
+      window.removeEventListener('goltou:keyboard', resize);
+      window.visualViewport?.removeEventListener('resize', resize);
+    };
+  }, [screen]);
+  useEffect(() => {
+    if (connected)
+      void request('preferences.get', {})
+        .then((value) => {
+          lastBand.current = value.lastBandKey;
+          setBandKey(value.lastBandKey);
+          setOptions((old) => ({
+            ...old,
+            polish: value.polish,
+            closing: value.closing,
+            linkCard: value.linkCard,
+          }));
+          setPreferencesReady(true);
+        })
+        .catch(ignore);
   }, [connected]);
   useEffect(() => {
     if (!preferencesReady) return;
-    const value = { polish: options.polish, closing: options.closing, linkCard: options.linkCard, lastBandKey: bandKey };
-    preferencesWrites.current = preferencesWrites.current.catch(ignore).then(async () => { await request('preferences.save', value); }).catch(ignore);
-  }, [preferencesReady, options.polish, options.closing, options.linkCard, bandKey]);
+    const value = {
+      polish: options.polish,
+      closing: options.closing,
+      linkCard: options.linkCard,
+      lastBandKey: lastBand.current,
+    };
+    preferencesWrites.current = preferencesWrites.current
+      .catch(ignore)
+      .then(async () => {
+        await request('preferences.save', value);
+      })
+      .catch(ignore);
+  }, [
+    preferencesReady,
+    options.polish,
+    options.closing,
+    options.linkCard,
+    bandKey,
+  ]);
   useEffect(() => {
     if (connected)
       void request('polish.setting.get', {})
@@ -279,7 +417,13 @@ export function App() {
       const rows = await request('bands.list', {});
       setBands(rows);
       setBandKey((old) =>
-        rows.some((b) => b.key === old) ? old : rows.some(b => b.key === lastBand.current) ? lastBand.current : rows.length === 1 ? rows[0]!.key : '',
+        rows.some((b) => b.key === old)
+          ? old
+          : rows.some((b) => b.key === lastBand.current)
+            ? lastBand.current
+            : rows.length === 1
+              ? rows[0]!.key
+              : '',
       );
     } catch {
       clearError();
@@ -289,9 +433,12 @@ export function App() {
     }
   }
   useEffect(() => {
-    if (sheet === 'publish' && app?.services.band === 'confirmed')
-      void loadBands();
-  }, [sheet, app?.services.band]);
+    if (job?.status === 'dialog_paused' && job.dialog) setSheet('dialog');
+  }, [job?.dialog?.id]);
+  const choosingPublish = sheet === 'publish' || sheet === 'bands';
+  useEffect(() => {
+    if (choosingPublish && app?.services.band === 'confirmed') void loadBands();
+  }, [choosingPublish, app?.services.band]);
   useEffect(() => {
     if (
       screen === 'service' &&
@@ -325,8 +472,11 @@ export function App() {
     setService(service);
     setReturnScreen(to);
     setReturnSheet(toSheet);
-    setLoginOpened(false);
+    setLoginOpened(true);
     go('service');
+    void act(async () => {
+      await request('service.show', { service });
+    });
   }
   function targets(): JobInput['targets'] {
     return [
@@ -344,26 +494,37 @@ export function App() {
         : []),
     ];
   }
-  async function start() {
+  async function start(approved = false) {
+    if (!approved && options.polish && converted?.polish) {
+      go('polish');
+      return;
+    }
     if (!product || !converted) return;
     if ((mode === 'draft' || blog) && app?.services.naver !== 'confirmed') {
       login('naver', 'preview', sheet);
       return;
     }
     await act(async () => {
-      await request('job.start', {
-        productNo: product.productNo,
-        mode,
-        blogVisibility: visibility,
-        targets: targets(),
-        options,
-        publishConfirmed: mode === 'publish',
-        previewHash: converted.contentHash,
-      });
+      try {
+        await request('job.start', {
+          productNo: product.productNo,
+          mode,
+          blogVisibility: visibility,
+          targets: targets(),
+          options,
+          publishConfirmed: mode === 'publish',
+          previewHash: converted.contentHash,
+        });
+      } catch (failure) {
+        if (failure instanceof Error && /바뀌|변경|수정/.test(failure.message))
+          setSheet(null);
+        throw failure;
+      }
       go('progress');
     });
   }
   function nav(selected: Screen) {
+    if (selected === 'settings' && editing) return null;
     return (
       <nav className="bottom-nav" aria-label="아래 탭">
         {(
@@ -420,6 +581,12 @@ export function App() {
         네이버 {s === 'naver' ? '블로그' : '밴드'}
         <small>
           <LoginStatus state={app?.services[s] ?? 'checking'} />
+          {app?.services[s] === 'checking' && (
+            <span> · 보통 5초 안에 끝납니다</span>
+          )}
+          {app?.services[s] === 'unknown' && (
+            <span> · 인터넷 연결을 확인해 주세요</span>
+          )}
         </small>
       </span>
       <div>
@@ -435,7 +602,7 @@ export function App() {
           >
             연결 끊기
           </button>
-        ) : (
+        ) : app?.services[s] === 'expired' ? (
           <button
             className="green"
             disabled={busy}
@@ -443,18 +610,20 @@ export function App() {
           >
             로그인
           </button>
+        ) : null}
+        {app?.services[s] !== 'checking' && (
+          <button
+            className="small"
+            disabled={busy}
+            onClick={() =>
+              void act(async () => {
+                await request('service.check', { service: s });
+              })
+            }
+          >
+            다시 확인
+          </button>
         )}
-        <button
-          className="small"
-          disabled={busy || app?.services[s] === 'checking'}
-          onClick={() =>
-            void act(async () => {
-              await request('service.check', { service: s });
-            })
-          }
-        >
-          다시 확인
-        </button>
       </div>
     </div>
   );
@@ -463,16 +632,10 @@ export function App() {
       {job?.targetResults?.map((t) => (
         <div key={`${t.channel}:${t.key}`}>
           <span>
-            {t.channel === 'blog' ? '블로그' : '밴드'} ·{' '}
-            {t.reason === 'BLOG_DRAFT_SAVED_UNVERIFIED'
-              ? '임시저장 · 내용 재확인 못함'
-              : t.status === 'draft_saved'
-              ? '임시저장'
-              : t.status === 'published'
-                ? '발행'
-                : t.status === 'failed'
-                  ? '실패'
-                  : '중단'}
+            {targetName(job, t)}
+            <small className={t.status === 'published' ? 'green' : ''}>
+              {targetStatus(job, t)}
+            </small>
           </span>
           {t.status === 'published' && t.postUrl ? (
             <button
@@ -485,34 +648,59 @@ export function App() {
             >
               글 보기
             </button>
-          ) : (
-            <small>{t.status === 'draft_saved' ? '공개되지 않음' : ''}</small>
-          )}
+          ) : t.status === 'draft_saved' ? (
+            <small>공개되지 않음</small>
+          ) : null}
         </div>
       ))}
     </div>
   );
-  const sheetClose = () => setSheet(sheet === 'confirm' ? 'publish' : null);
+  const sheetClose = () =>
+    setSheet(sheet === 'confirm' || sheet === 'bands' ? 'publish' : null);
+  const bandReason =
+    mode === 'draft'
+      ? ''
+      : bandChoiceReason({
+          blog,
+          band,
+          loading: loadingBands,
+          failed: bandsFailed,
+          selected:
+            app?.services.band === 'confirmed' &&
+            bands.some((b) => b.key === bandKey),
+        });
+  const startReason =
+    bandReason ||
+    (!converted || preparing
+      ? '미리보기를 준비하고 있습니다.'
+      : !targets().every((t) => converted.verification[t.channel].matches)
+        ? '원문과 다른 내용이 있어 옮길 수 없습니다.'
+        : busy
+          ? '요청을 마치는 중입니다.'
+          : '');
   const canStart =
-    !!converted &&
-    !preparing &&
-    !busy &&
-    targets().length > 0 &&
-    targets().every((t) => converted.verification[t.channel].matches) &&
-    !(band && (loadingBands || bandsFailed || !bandKey));
+    !!converted && !preparing && !busy && targets().length > 0 && !startReason;
+  async function saveSettings() {
+    setSettingsAttempted(true);
+    if (invalidLimit) return false;
+    await request('settings.save', settings);
+    setNotice('공통 설정을 저장했습니다.');
+    return true;
+  }
   return (
-    <div className={`app screen-${screen}`}>
+    <div className={`app screen-${screen}${editing ? ' editing' : ''}`}>
       <div className="app-body">
-        {(error || app?.serviceError) && (
-          <div className="error" role="alert">
-            {/[A-Z_]{4,}/.test(error || app?.serviceError || '')
-              ? '요청을 마치지 못했습니다. 연결을 확인하고 다시 시도해 주세요.'
-              : error || app?.serviceError}
-            <button aria-label="오류 닫기" onClick={clearError}>
-              닫기
-            </button>
-          </div>
-        )}
+        {(screen === 'connect' || screen === 'service') &&
+          (error || app?.serviceError) && (
+            <div className="error" role="alert">
+              {/[A-Z_]{4,}/.test(error || app?.serviceError || '')
+                ? '요청을 마치지 못했습니다. 연결을 확인하고 다시 시도해 주세요.'
+                : error || app?.serviceError}
+              <button aria-label="오류 닫기" onClick={clearError}>
+                닫기
+              </button>
+            </div>
+          )}
         {notice && (
           <div className="notice" role="status">
             {notice}
@@ -535,8 +723,11 @@ export function App() {
                 </p>
               )}
               <form
+                noValidate
                 onSubmit={(event) => {
                   event.preventDefault();
+                  setLoginSubmitted(true);
+                  if (!loginId.trim() || !password) return;
                   void act(async () => {
                     try {
                       const pending = request('login', {
@@ -544,7 +735,6 @@ export function App() {
                         password,
                         device: { kind: 'android', model: '', appVersion: '' },
                       });
-                      setLoginId('');
                       setPassword('');
                       await pending;
                       go('home', true);
@@ -561,8 +751,14 @@ export function App() {
                     autoComplete="off"
                     value={loginId}
                     onChange={(e) => setLoginId(e.target.value)}
-                    required
+                    aria-invalid={loginSubmitted && !loginId.trim()}
+                    aria-describedby="login-id-error"
                   />
+                  {loginSubmitted && !loginId.trim() && (
+                    <small id="login-id-error" className="field-error">
+                      아이디를 입력해 주세요.
+                    </small>
+                  )}
                 </label>
                 <label>
                   비밀번호
@@ -571,8 +767,18 @@ export function App() {
                     type="password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    required
+                    aria-invalid={loginSubmitted && (!password || !!error)}
+                    aria-describedby="login-password-error"
                   />
+                  {loginSubmitted && !password && !busy && (
+                    <small
+                      id="login-password-error"
+                      role="alert"
+                      className="field-error"
+                    >
+                      {error || '비밀번호를 입력해 주세요.'}
+                    </small>
+                  )}
                 </label>
                 <div className="bar">
                   <button
@@ -580,7 +786,7 @@ export function App() {
                     type="submit"
                     disabled={!connected || busy}
                   >
-                    {busy ? '로그인 중…' : '로그인'}
+                    {busy ? '확인하는 중입니다' : '로그인'}
                   </button>
                 </div>
               </form>
@@ -635,50 +841,103 @@ export function App() {
                   안 올린 상품 {unposted ? products.total : ''}
                 </button>
               </div>
-              {products.items.map((p) => (
-                <button
-                  className="product-row"
-                  key={p.productNo}
-                  disabled={busy || active || !preferencesReady}
-                  onClick={() => void choose(p.productNo)}
-                >
-                  <span className="product-copy">
-                    <strong>{p.title}</strong>
-                    <small>
-                      {p.country} {p.region} · {money(p.priceFrom)}부터 · 출발일{' '}
-                      {p.departureCount}개
-                    </small>
-                    <span
-                      className={`tag ${p.myPosts.blog || p.myPosts.band ? 'green' : 'muted'}`}
-                    >
-                      {p.myPosts.blog || p.myPosts.band
-                        ? (['blog', 'band'] as const)
-                            .filter((c) => p.myPosts[c])
-                            .map(
-                              (c) =>
-                                `${c === 'blog' ? '블로그' : '밴드'} ${p.myPosts[c]!.at.slice(5, 10).replace('-', '.')} ${p.myPosts[c]!.status === 'published' ? '발행' : p.myPosts[c]!.status === 'draft_saved' ? '임시저장' : '기록 있음'}`,
-                            )
-                            .join(' · ')
-                        : '아직 올리지 않음'}
-                    </span>
-                  </span>
-                  <ProductPhoto url={p.thumbUrl} />
-                </button>
-              ))}
-              {loading && (
-                <p className="list-state">상품을 불러오는 중입니다.</p>
+              {loading && page === 1 && !products.items.length && (
+                <div aria-label="처음 불러오는 중" role="status">
+                  {[0, 1, 2, 3].map((i) => (
+                    <div className="product-skeleton" key={i}>
+                      <span />
+                      <span />
+                    </div>
+                  ))}
+                </div>
               )}
-              {loadFailed && (
-                <p>
-                  상품을 불러오지 못했습니다.
-                  <button onClick={() => setRefresh((n) => n + 1)}>
-                    다시 불러오기
-                  </button>
+              {loading && page === 1 && !!products.items.length && (
+                <p className="load-line" role="status">
+                  {q ? `“${q}”으로 찾는 중입니다` : '상품을 불러오는 중입니다'}
                 </p>
               )}
+              <div
+                hidden={loadFailed && page === 1}
+                className={loading && page === 1 ? 'stale' : ''}
+                inert={loading && page === 1 ? true : undefined}
+              >
+                {products.items.map((p) => (
+                  <button
+                    className="product-row"
+                    key={p.productNo}
+                    disabled={busy || active || !preferencesReady || loading}
+                    onClick={() => void choose(p.productNo)}
+                  >
+                    <span className="product-copy">
+                      <strong>{p.title}</strong>
+                      <small>
+                        {p.country} {p.region} · {money(p.priceFrom)}부터 ·
+                        출발일 {p.departureCount}개
+                      </small>
+                      <span
+                        className={`tag ${p.myPosts.blog || p.myPosts.band ? 'green' : 'muted'}`}
+                      >
+                        {p.myPosts.blog || p.myPosts.band
+                          ? (['blog', 'band'] as const)
+                              .filter((c) => p.myPosts[c])
+                              .map(
+                                (c) =>
+                                  `${c === 'blog' ? '블로그' : '밴드'} ${p.myPosts[c]!.at.slice(5, 10).replace('-', '.')} ${p.myPosts[c]!.status === 'published' ? '발행' : p.myPosts[c]!.status === 'draft_saved' ? '임시저장' : '기록 있음'}`,
+                              )
+                              .join(' · ')
+                          : '아직 올리지 않음'}
+                      </span>
+                    </span>
+                    <ProductPhoto url={p.thumbUrl} />
+                  </button>
+                ))}
+              </div>
+              {loading && page > 1 && (
+                <p className="list-state" role="status">
+                  상품을 더 불러오는 중입니다.
+                </p>
+              )}
+              {loadFailed && (
+                <div className="list-state" role="alert">
+                  <strong>상품을 불러오지 못했습니다</strong>
+                  <p>인터넷 연결을 확인한 뒤 다시 시도해 주세요.</p>
+                  <button
+                    className="btn primary"
+                    onClick={() => setRefresh((n) => n + 1)}
+                  >
+                    다시 불러오기
+                  </button>
+                </div>
+              )}
               {!loading && !loadFailed && !products.items.length && (
-                <p className="list-state">
-                  조건에 맞는 상품이 없습니다. 검색어를 바꿔 보세요.
+                <div className="list-state">
+                  <strong>
+                    {q
+                      ? `“${q}”로 찾은 상품이 없습니다`
+                      : unposted
+                        ? '모든 상품을 옮겼습니다'
+                        : '등록된 상품이 없습니다'}
+                  </strong>
+                  <p>
+                    {q
+                      ? '상품 이름, 골프장, 지역 이름으로 다시 찾아보세요.'
+                      : '새 상품이 골투에 등록되면 여기에 나타납니다.'}
+                  </p>
+                  <button
+                    className="btn secondary"
+                    onClick={() => {
+                      setQ('');
+                      setUnposted(false);
+                      setRefresh((n) => n + 1);
+                    }}
+                  >
+                    {q ? '검색어 지우기' : '전체 상품 보기'}
+                  </button>
+                </div>
+              )}
+              {error && !loading && !loadFailed && (
+                <p className="field-error" role="alert">
+                  {error}
                 </p>
               )}
               {products.items.length < products.total && (
@@ -707,23 +966,37 @@ export function App() {
                   : ''}
                 사진 {product.images.length}장
               </p>
-              <div className="seg" role="tablist" aria-label="미리보기 채널">
-                {(['blog', 'band'] as const).map((c) => (
-                  <button
-                    role="tab"
-                    aria-selected={preview === c}
-                    key={c}
-                    onClick={() => setPreview(c)}
-                  >
-                    {c === 'blog'
-                      ? '블로그에 올라갈 모습'
-                      : '밴드에 올라갈 모습'}
-                  </button>
-                ))}
+              <div className="preview-sticky">
+                <div className="seg" role="tablist" aria-label="미리보기 채널">
+                  {(['blog', 'band'] as const).map((c) => (
+                    <button
+                      role="tab"
+                      aria-selected={preview === c}
+                      key={c}
+                      onClick={() => setPreview(c)}
+                    >
+                      {c === 'blog'
+                        ? '블로그에 올라갈 모습'
+                        : '밴드에 올라갈 모습'}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  className="option-summary"
+                  onClick={() => go('settings')}
+                >
+                  <span>
+                    문장 다듬기 <b>{options.polish ? '켜짐' : '꺼짐'}</b> · 글
+                    끝 문구 <b>{options.closing ? '켜짐' : '꺼짐'}</b> · 링크
+                    카드 <b>{options.linkCard ? '켜짐' : '꺼짐'}</b>
+                  </span>
+                  <span className="green">바꾸기</span>
+                </button>
               </div>
               {converted ? (
                 <ConversionPreview
                   plan={converted[preview]}
+                  ratios={sourcePhotoRatios(product.contentsHtml)}
                   expanded
                   droppedStruckCharacters={converted.droppedStruckCharacters}
                 />
@@ -745,14 +1018,12 @@ export function App() {
                   주세요.
                 </p>
               )}
-              <button className="option-summary" onClick={() => go('settings')}>
-                <span>
-                  문장 다듬기 <b>{options.polish ? '켜짐' : '꺼짐'}</b> · 글 끝
-                  문구 <b>{options.closing ? '켜짐' : '꺼짐'}</b>
-                </span>
-                <span className="green">바꾸기</span>
-              </button>
             </main>
+            {converted && error && !/바뀌|변경|수정/.test(error) && (
+              <p className="field-error pad" role="alert">
+                {error}
+              </p>
+            )}
             <div className="bar">
               <button
                 className="btn secondary"
@@ -774,6 +1045,71 @@ export function App() {
                 }}
               >
                 발행<small>바로 공개됨</small>
+              </button>
+            </div>
+          </>
+        )}
+        {screen === 'polish' && converted?.polish && (
+          <>
+            {back('preview')}
+            <main className="pad">
+              <PolishComparison
+                result={converted.polish}
+                busy={busy}
+                onOpen={() =>
+                  setNotice('숫자·날짜·가격과 서식은 원문대로 유지합니다.')
+                }
+                onRetry={() =>
+                  void act(async () => {
+                    setConverted(
+                      await request('preview.prepare', {
+                        productNo: product!.productNo,
+                        options,
+                        retryPolish: true,
+                      }),
+                    );
+                  })
+                }
+                onRevert={(paragraphId) =>
+                  void act(async () => {
+                    setConverted(
+                      await request('preview.revert', {
+                        productNo: product!.productNo,
+                        paragraphId,
+                      }),
+                    );
+                  })
+                }
+              />
+            </main>
+            <div className="bar">
+              <button
+                className="btn quiet"
+                disabled={busy}
+                onClick={() =>
+                  void act(async () => {
+                    for (const p of converted.polish!.paragraphs.filter(
+                      (p) =>
+                        p.accepted && !p.reverted && p.original !== p.polished,
+                    ))
+                      setConverted(
+                        await request('preview.revert', {
+                          productNo: product!.productNo,
+                          paragraphId: p.id,
+                        }),
+                      );
+                    await start(true);
+                  })
+                }
+              >
+                모두 원문으로
+              </button>
+              <button
+                className="btn primary"
+                disabled={busy}
+                onClick={() => void start(true)}
+              >
+                이대로 옮기기
               </button>
             </div>
           </>
@@ -822,49 +1158,59 @@ export function App() {
               </main>
             ) : (
               <main className="center">
-                <span className={job.status === 'draft_unverified' ? 'mark' : 'mark danger'}>{job.status === 'draft_unverified' ? '!' : '×'}</span>
-                <h1>
+                <span
+                  className={`mark ${job.status === 'draft_unverified' || resultKind(job) === 'uncertain' ? 'question' : resultKind(job) === 'paused' || job.status === 'stopped' ? 'neutral' : resultKind(job) === 'record' ? '' : 'danger'}`}
+                >
                   {job.status === 'draft_unverified'
-                    ? '임시저장은 됐지만 내용을 다시 확인하지 못했습니다'
-                    : job.status === 'stopped'
-                    ? '옮기기를 중단했습니다'
-                    : '끝까지 옮기지 못했습니다'}
+                    ? '!'
+                    : resultKind(job) === 'record'
+                      ? '✓'
+                      : resultKind(job) === 'uncertain'
+                        ? '?'
+                        : resultKind(job) === 'paused' ||
+                            job.status === 'stopped'
+                          ? 'Ⅱ'
+                          : '×'}
+                </span>
+                <h1>
+                  {resultKind(job) === 'record'
+                    ? job.targetResults?.some((t) => t.status === 'published')
+                      ? '발행했습니다'
+                      : job.targetResults?.some(
+                            (t) => t.status === 'draft_saved',
+                          )
+                        ? '블로그에 임시저장했습니다'
+                        : '등록 기록을 저장하지 못했습니다'
+                    : resultKind(job) === 'uncertain'
+                      ? '올라갔는지 확인이 필요합니다'
+                      : resultKind(job) === 'paused'
+                        ? '잠시 멈췄습니다'
+                        : job.status === 'draft_unverified'
+                          ? '임시저장은 됐지만 내용을 다시 확인하지 못했습니다'
+                          : job.status === 'stopped'
+                            ? '옮기기를 중단했습니다'
+                            : '끝까지 옮기지 못했습니다'}
                 </h1>
-                {job.status !== 'draft_unverified' && <p>{jobMessage(job)[0]}</p>}
+                {job.status !== 'draft_unverified' && (
+                  <p>
+                    {resultKind(job) === 'record'
+                      ? '채널별 결과를 등록 기록에 남기지 못했습니다. 기록을 다시 저장해 주세요.'
+                      : resultKind(job) === 'uncertain'
+                        ? '앱이 게시 결과를 확인하지 못했습니다. 다시 올리기 전에 해당 서비스에서 먼저 확인해 주세요.'
+                        : resultKind(job) === 'paused'
+                          ? '작성 중인 내용은 그대로 두었습니다. 채널별 상태를 확인한 뒤 이어서 진행해 주세요.'
+                          : jobMessage(job)[0]}
+                  </p>
+                )}
                 <p className="meta">{jobMessage(job)[1]}</p>
                 {resultRows}
                 {job.status === 'dialog_paused' && (
-                  <div>
-                    <p>
-                      서비스에서 확인을 요청했습니다. 선택한 뒤 이어서 진행해
-                      주세요.
-                    </p>
-                    <button
-                      disabled={busy}
-                      onClick={() =>
-                        void act(async () => {
-                          await request('job.dialog', {
-                            id: job.dialog!.id,
-                            accept: false,
-                          });
-                        })
-                      }
-                    >
-                      취소
-                    </button>
-                    <button
-                      onClick={() =>
-                        void act(async () => {
-                          await request('job.dialog', {
-                            id: job.dialog!.id,
-                            accept: true,
-                          });
-                        })
-                      }
-                    >
-                      확인
-                    </button>
-                  </div>
+                  <button
+                    className="btn primary"
+                    onClick={() => setSheet('dialog')}
+                  >
+                    요청 내용 보기
+                  </button>
                 )}
               </main>
             )}
@@ -896,9 +1242,12 @@ export function App() {
                     다시 로그인
                   </button>
                 </>
-              ) : ['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(
-                  job.status,
-                ) ? (
+              ) : [
+                  'draft_saved',
+                  'draft_unverified',
+                  'published',
+                  'stopped',
+                ].includes(job.status) ? (
                 <>
                   <button
                     className="btn secondary"
@@ -1004,31 +1353,26 @@ export function App() {
         )}
         {screen === 'service' && (
           <>
-            {back(returnScreen)}
-            <main className="pad">
+            <div className="service-top">
               <h1 className="title">
                 {service === 'naver' ? '네이버' : '밴드'} 로그인
               </h1>
-              <ServiceGuide
-                service={service}
-                state={app?.services[service] ?? 'checking'}
-              />
-              <p className="meta">로그인이 끝나면 이 화면은 저절로 닫힙니다.</p>
-            </main>
-            <div className="bar">
               <button
-                className="btn primary"
-                disabled={busy || !connected}
+                className="green"
                 onClick={() =>
                   void act(async () => {
-                    await request('service.show', { service });
-                    setLoginOpened(true);
+                    await request('service.hide', {});
+                    go(returnScreen);
+                    setSheet(returnSheet);
                   })
                 }
               >
-                {service === 'naver' ? '네이버' : '밴드'} 로그인 화면 열기
+                취소
               </button>
             </div>
+            <p className="meta pad">
+              직접 로그인해 주세요. 끝나면 이 화면은 저절로 닫힙니다.
+            </p>
           </>
         )}
         {screen === 'history' && (
@@ -1064,24 +1408,26 @@ export function App() {
                   <strong>{post.productTitle}</strong>
                   {scope === 'all' && <small>{post.userName}</small>}
                   <p
-                    className={`status ${deletedPost(post) ? 'muted' : post.status === 'failed' ? 'danger' : post.status === 'published' ? 'green' : post.status === 'draft_saved' ? 'draft-status' : 'muted'}`}
+                    className={`status ${deletedPost(post) ? 'muted' : uncertainReason(post.failReason) ? 'uncertain-status' : post.status === 'failed' ? 'danger' : post.status === 'published' ? 'green' : post.status === 'draft_saved' ? 'draft-status' : 'muted'}`}
                   >
                     {post.channel === 'blog' ? '블로그' : '밴드'}{' '}
-                    {post.failReason === 'BLOG_DRAFT_SAVED_UNVERIFIED'
-                      ? '임시저장 · 내용 재확인 못함'
-                      : deletedPost(post)
-                      ? '삭제함'
-                      : post.status === 'published'
-                        ? '발행'
-                        : post.status === 'draft_saved'
-                          ? '임시저장'
-                          : post.status === 'failed'
-                            ? '실패 · 공개 여부는 해당 서비스에서 확인'
-                            : post.status === 'running'
-                              ? '진행 중'
-                              : '중단'}{' '}
+                    {deletedPost(post) ? '삭제함' : historyStatus(post)} ·{' '}
+                    {post.channel === 'blog'
+                      ? post.blogVisibility === 'private'
+                        ? '비공개'
+                        : post.blogVisibility === 'public'
+                          ? '전체공개'
+                          : '공개 범위 확인 필요'
+                      : post.targetName}{' '}
                     · {recordTime(post.startedAt)}
                   </p>
+                  {!deletedPost(post) && post.status === 'failed' && (
+                    <p className="meta">
+                      {uncertainReason(post.failReason)
+                        ? '올라갔는지 앱이 확인하지 못했습니다. 다시 올리기 전에 해당 서비스에서 먼저 확인해 주세요.'
+                        : '공개하기 전에 멈췄습니다. 원인을 확인한 뒤 다시 시도해 주세요.'}
+                    </p>
+                  )}
                   {!deletedPost(post) && (
                     <div className="row-actions">
                       {post.status === 'published' && post.postUrl && (
@@ -1097,13 +1443,12 @@ export function App() {
                           글 보기
                         </button>
                       )}
-                      {(post.status === 'draft_saved' || post.failReason === 'BLOG_DRAFT_SAVED_UNVERIFIED') && (
+                      {(post.status === 'draft_saved' ||
+                        post.failReason === 'BLOG_DRAFT_SAVED_UNVERIFIED') && (
                         <small>네이버 임시저장함에서 확인</small>
                       )}
                       {post.status === 'failed' &&
-                        !/BAND_POST_UNCONFIRMED|BLOG_PUBLISH/.test(
-                          post.failReason,
-                        ) && (
+                        !uncertainReason(post.failReason) && (
                           <button
                             className="green"
                             disabled={busy}
@@ -1124,10 +1469,11 @@ export function App() {
                           request('posts.delete.prepare', { postNo })
                         }
                         remove={async (confirmation) => {
-                          await request('posts.delete.confirm', {
+                          const result = await request('posts.delete.confirm', {
                             confirmation,
                           });
                           setPostRefresh((n) => n + 1);
+                          return result.postDeletion?.outcome;
                         }}
                       />
                     </div>
@@ -1138,12 +1484,25 @@ export function App() {
                 <p className="list-state">등록 기록을 불러오는 중입니다.</p>
               )}
               {loadFailed && (
-                <button onClick={() => setPostRefresh((n) => n + 1)}>
-                  등록 기록 다시 불러오기
-                </button>
+                <div className="list-state" role="alert">
+                  <strong>등록 기록을 불러오지 못했습니다</strong>
+                  <p>인터넷 연결을 확인한 뒤 다시 시도해 주세요.</p>
+                  <button
+                    className="btn primary"
+                    onClick={() => setPostRefresh((n) => n + 1)}
+                  >
+                    다시 불러오기
+                  </button>
+                </div>
               )}
               {!loading && !loadFailed && !posts.items.length && (
-                <p className="list-state">아직 등록 기록이 없습니다.</p>
+                <div className="list-state">
+                  <strong>아직 옮긴 글이 없습니다</strong>
+                  <p>상품을 골라 임시저장하거나 발행하면 여기에 남습니다.</p>
+                  <button className="btn secondary" onClick={() => go('home')}>
+                    상품 고르러 가기
+                  </button>
+                </div>
               )}
               {posts.items.length < posts.total && (
                 <button
@@ -1216,10 +1575,18 @@ export function App() {
                   <span className="green">관리</span>
                 </button>
               ))}
-              <h3>글 옵션</h3>
+              <h3>
+                내 글 옵션<small>바꾸면 바로 적용됩니다</small>
+              </h3>
               {(
                 [
-                  ['polish', '문장 다듬기', '맞춤법과 띄어쓰기만 고칩니다'],
+                  [
+                    'polish',
+                    '문장 다듬기',
+                    options.polishStrength === 'natural'
+                      ? '어색한 문장도 다듬습니다. 숫자·날짜·가격은 바꾸지 않습니다'
+                      : '맞춤법과 띄어쓰기만 고칩니다',
+                  ],
                   ['closing', '글 끝 문구 넣기', '예약 문의 안내 등'],
                   ['linkCard', '골투 링크 카드', '상품 주소를 함께 넣습니다'],
                 ] as const
@@ -1232,7 +1599,7 @@ export function App() {
                   <Toggle
                     label={label}
                     value={options[key]}
-                    disabled={busy || active || !preferencesReady}
+                    disabled={busy || active || !preferencesReady || loading}
                     change={(value) =>
                       setOptions((old) => ({ ...old, [key]: value }))
                     }
@@ -1242,7 +1609,7 @@ export function App() {
               {options.polish && (
                 <PolishStrengthChoice
                   value={options.polishStrength}
-                  disabled={busy || active || !preferencesReady}
+                  disabled={busy || active || !preferencesReady || loading}
                   change={(strength) =>
                     void act(async () => {
                       const polishStrength = await request(
@@ -1254,22 +1621,28 @@ export function App() {
                   }
                 />
               )}
-              <div className="choice-row">
-                <span>기본 해시태그</span>
-                <small>{settings.defaultHashtags.join(' ') || '없음'}</small>
-              </div>
+              <h3>
+                공통 설정
+                <small>관리자만 바꿀 수 있고, 저장을 눌러야 적용됩니다</small>
+              </h3>
+              {app?.user?.role !== 'admin' && (
+                <div className="setting-value">
+                  <span>기본 해시태그</span>
+                  <small>{settings.defaultHashtags.join(' ') || '없음'}</small>
+                </div>
+              )}
               {app?.user?.role === 'admin' && (
                 <form
+                  noValidate
                   onSubmit={(event) => {
                     event.preventDefault();
                     void act(async () => {
-                      await request('settings.save', settings);
-                      setNotice('공통 설정을 저장했습니다.');
+                      await saveSettings();
                     });
                   }}
                 >
                   <label>
-                    끝 문구
+                    글 끝 문구
                     <textarea
                       value={settings.closingText}
                       onChange={(e) =>
@@ -1281,14 +1654,18 @@ export function App() {
                     />
                   </label>
                   <label>
-                    기본 해시태그 (쉼표로 구분)
-                    <input
+                    <span id="default-hashtags-label">
+                      기본 해시태그 (쉼표 또는 띄어쓰기로 구분)
+                    </span>
+                    <textarea
+                      aria-labelledby="default-hashtags-label"
+                      rows={2}
                       value={settings.defaultHashtags.join(', ')}
                       onChange={(e) =>
                         setSettings((old) => ({
                           ...old,
                           defaultHashtags: e.target.value
-                            .split(',')
+                            .split(/[,\s]+/)
                             .map((v) => v.trim()),
                         }))
                       }
@@ -1299,7 +1676,9 @@ export function App() {
                     <input
                       type="number"
                       min="1"
-                      max="100"
+                      max="10"
+                      aria-invalid={settingsAttempted && invalidLimit}
+                      aria-describedby="band-limit-hint"
                       value={settings.bandDailyLimit}
                       onChange={(e) =>
                         setSettings((old) => ({
@@ -1308,7 +1687,20 @@ export function App() {
                         }))
                       }
                     />
+                    <small id="band-limit-hint">
+                      1부터 10 사이 숫자입니다.
+                    </small>
+                    {settingsAttempted && invalidLimit && (
+                      <small className="field-error" role="alert">
+                        1부터 10 사이의 정수를 입력해 주세요.
+                      </small>
+                    )}
                   </label>
+                  {error && (
+                    <p className="field-error" role="alert">
+                      {error}
+                    </p>
+                  )}
                   <button className="green" disabled={busy} type="submit">
                     공통 설정 저장
                   </button>
@@ -1319,29 +1711,23 @@ export function App() {
                   미리보기로 돌아가기
                 </button>
               )}
-              {options.polish && converted?.polish && (
-                <PolishComparison
-                  result={converted.polish}
-                  busy={busy}
-                  onOpen={() =>
-                    setNotice(
-                      '문장 다듬기는 설정한 범위에서 자동으로 진행합니다.',
-                    )
-                  }
-                  onRevert={(paragraphId) =>
+            </main>
+            {dirtySettings && (
+              <div className="savebar">
+                <span>저장하지 않은 변경이 있습니다</span>
+                <button
+                  className="btn primary"
+                  disabled={busy}
+                  onClick={() =>
                     void act(async () => {
-                      setConverted(
-                        await request('preview.revert', {
-                          productNo: product!.productNo,
-                          paragraphId,
-                        }),
-                      );
+                      await saveSettings();
                     })
                   }
-                  onRetry={() => setPreviewRefresh((n) => n + 1)}
-                />
-              )}
-            </main>
+                >
+                  저장
+                </button>
+              </div>
+            )}
             {nav('settings')}
           </>
         )}
@@ -1352,28 +1738,198 @@ export function App() {
         )}
       </div>
       {screen === 'progress' && job?.status === 'recovery_paused' && (
-        <Sheet title={job.failureCode === 'AUTO_RECOVER_CONSENT_REQUIRED' ? '네이버에 쓰다 만 글이 있습니다' : '작성 중인 내용이 달라졌습니다'} close={() => void act(async () => { await request('job.recovery', { discard: false }); })}>
-          <p>{job.failureCode === 'AUTO_RECOVER_CONSENT_REQUIRED' ? '네이버 편집기에 남은 쓰다 만 글이며, 버려도 임시저장함의 글이나 발행한 글은 지워지지 않습니다.' : '작성 중인 내용을 버리고 새로 쓸지 골라 주세요.'}</p>
+        <Sheet
+          title={
+            job.failureCode === 'AUTO_RECOVER_CONSENT_REQUIRED'
+              ? '네이버에 쓰다 만 글이 있습니다'
+              : '작성 중인 내용이 달라졌습니다'
+          }
+          close={() => {}}
+          dismissible={false}
+        >
+          <p>
+            {job.failureCode === 'AUTO_RECOVER_CONSENT_REQUIRED'
+              ? '네이버 편집기에 남은 쓰다 만 글이며, 버려도 임시저장함의 글이나 발행한 글은 지워지지 않습니다.'
+              : '작성 중인 내용을 버리고 새로 쓸지 골라 주세요.'}
+          </p>
           <div className="acts">
-            <button className="btn quiet" disabled={busy} onClick={() => void act(async () => { await request('job.recovery', { discard: false }); })}>그만두기</button>
-            <button className="btn primary" disabled={busy} onClick={() => void act(async () => { await request('job.recovery', { discard: true }); })}>버리고 새로 쓰기</button>
+            <button
+              className="btn quiet"
+              disabled={busy}
+              onClick={() =>
+                void act(async () => {
+                  await request('job.recovery', { discard: false });
+                })
+              }
+            >
+              그만두기
+            </button>
+            <button
+              className="btn primary"
+              disabled={busy}
+              onClick={() =>
+                void act(async () => {
+                  await request('job.recovery', { discard: true });
+                })
+              }
+            >
+              버리고 새로 쓰기
+            </button>
           </div>
         </Sheet>
       )}
+      {(screen === 'preview' || screen === 'polish') &&
+        /바뀌|변경|수정/.test(error ?? '') &&
+        !sheet && (
+          <Sheet
+            title="상품 내용이 바뀌었습니다"
+            close={() => {}}
+            dismissible={false}
+          >
+            <p>
+              미리보기를 본 뒤에 상품이 수정됐습니다. 바뀐 내용을 다시 확인한 뒤
+              옮겨 주세요.
+            </p>
+            <div className="acts">
+              <button className="btn quiet" onClick={() => go('home')}>
+                옮기지 않기
+              </button>
+              <button
+                className="btn primary"
+                onClick={() => {
+                  clearError();
+                  setPreviewRefresh((n) => n + 1);
+                  if (screen === 'polish') go('preview');
+                }}
+              >
+                새 내용 미리보기
+              </button>
+            </div>
+          </Sheet>
+        )}
       {sheet && (
         <Sheet
           key={sheet}
           title={
-            sheet === 'draft'
-              ? '임시저장'
-              : sheet === 'publish'
-                ? '발행'
-                : sheet === 'confirm'
-                  ? '이대로 발행할까요?'
-                  : '옮기기를 중단할까요?'
+            sheet === 'bands'
+              ? '올릴 밴드 고르기'
+              : sheet === 'dialog'
+                ? `${job?.service === 'band' ? '밴드' : '네이버'}에서 확인을 요청했습니다`
+                : sheet === 'leave'
+                  ? '저장하지 않은 변경이 있습니다'
+                  : sheet === 'draft'
+                    ? '임시저장'
+                    : sheet === 'publish'
+                      ? '발행'
+                      : sheet === 'confirm'
+                        ? '이대로 발행할까요?'
+                        : '옮기기를 중단할까요?'
           }
           close={sheetClose}
         >
+          {sheet === 'bands' && (
+            <BandChooser
+              bands={bands}
+              value={bandKey}
+              back={() => setSheet('publish')}
+              choose={(key) => {
+                lastBand.current = key;
+                setBandKey(key);
+                setSheet('publish');
+              }}
+            />
+          )}
+          {sheet === 'dialog' && job?.dialog && (
+            <>
+              <p>서비스가 아래 내용을 물었습니다.</p>
+              <blockquote className="service-quote">
+                <small>서비스가 보낸 내용 그대로</small>
+                {job.dialog.message}
+              </blockquote>
+              <div className="acts">
+                {job.dialog.kind !== 'alert' && (
+                  <button
+                    className="btn quiet"
+                    disabled={busy}
+                    onClick={() =>
+                      void act(async () => {
+                        await request('job.dialog', {
+                          id: job.dialog!.id,
+                          accept: false,
+                        });
+                        setSheet(null);
+                      })
+                    }
+                  >
+                    취소<small>요청을 취소하고 잠시 멈춥니다</small>
+                  </button>
+                )}
+                <button
+                  className="btn primary"
+                  disabled={busy}
+                  onClick={() =>
+                    void act(async () => {
+                      await request('job.dialog', {
+                        id: job.dialog!.id,
+                        accept: true,
+                      });
+                      setSheet(null);
+                    })
+                  }
+                >
+                  확인
+                  <small>
+                    {job.dialog.kind === 'alert'
+                      ? '알림을 닫고 결과를 확인합니다'
+                      : '요청에 동의하고 결과를 확인합니다'}
+                  </small>
+                </button>
+              </div>
+            </>
+          )}
+          {sheet === 'leave' && (
+            <>
+              <p>공통 설정에서 바꾼 내용이 아직 저장되지 않았습니다.</p>
+              <div className="acts">
+                <button
+                  className="btn quiet"
+                  onClick={() => {
+                    if (app?.settings) setSettings(app.settings);
+                    go(pendingNavigation, false, true);
+                  }}
+                >
+                  버리고 나가기
+                </button>
+                <button
+                  className="btn primary"
+                  disabled={busy}
+                  onClick={() =>
+                    void act(async () => {
+                      if (await saveSettings())
+                        go(pendingNavigation, false, true);
+                    })
+                  }
+                >
+                  저장
+                </button>
+              </div>
+              {settingsAttempted && invalidLimit && (
+                <p className="field-error">
+                  하루 밴드 게시 한도는 1부터 10 사이의 정수입니다.
+                </p>
+              )}
+              {error && (
+                <p className="field-error" role="alert">
+                  {error}
+                </p>
+              )}
+            </>
+          )}
+          {error && sheet !== 'leave' && (
+            <p className="field-error" role="alert">
+              {error}
+            </p>
+          )}
           {sheet === 'draft' && (
             <>
               <p>
@@ -1456,72 +2012,91 @@ export function App() {
                   네이버 로그인
                 </button>
               )}
-              {app?.services.band === 'confirmed' ? (
+              {app?.services.band === 'confirmed' || band ? (
                 <>
                   <button
                     className={`pick ${band ? 'on' : ''}`}
                     role="checkbox"
                     aria-checked={band}
-                    disabled={loadingBands || !bands.length}
                     onClick={() => setBand(!band)}
                   >
                     <span className="check-box">{band ? '✓' : ''}</span>
                     <span>
-                      <strong>
-                        네이버 밴드{' '}
-                        {bands.find((b) => b.key === bandKey)?.name
-                          ? `· ${bands.find((b) => b.key === bandKey)!.name}`
-                          : ''}
-                      </strong>
-                      <small>
-                        {loadingBands
-                          ? '내 밴드를 확인하는 중'
-                          : '선택한 밴드에 게시'}
-                      </small>
+                      <strong>네이버 밴드</strong>
+                      <small>바로 게시됩니다</small>
                     </span>
                   </button>
-                  {band && (
-                    <label>
-                      올릴 밴드
-                      <select
-                        aria-label="올릴 밴드"
-                        value={bandKey}
-                        onChange={(e) => setBandKey(e.target.value)}
+                  {band &&
+                    (loadingBands ? (
+                      <p className="band-sub" role="status">
+                        밴드 목록을 읽는 중입니다
+                      </p>
+                    ) : bandsFailed || !bands.length ? (
+                      <div className="band-sub">
+                        <p>
+                          {bandsFailed
+                            ? '밴드 목록을 읽지 못했습니다.'
+                            : '글을 쓸 수 있는 밴드가 없습니다. 밴드 앱에서 가입한 밴드와 글쓰기 권한을 확인해 주세요.'}
+                        </p>
+                        <button
+                          className="green"
+                          onClick={() => void loadBands()}
+                        >
+                          다시 읽기
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="band-sub"
+                        onClick={() => setSheet('bands')}
                       >
-                        {!bandKey && <option value="">밴드를 골라 주세요</option>}
-                        {bands.map((b) => (
-                          <option key={b.key} value={b.key}>
-                            {b.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  )}
-                  {bandsFailed && (
-                    <div className="inline-feedback" role="alert">
-                      <p>밴드 목록을 확인하지 못했습니다.</p>{' '}
-                      <button className="action-button" onClick={() => void loadBands()}>
-                        다시 확인
+                        <span>
+                          <small>올릴 밴드</small>
+                          {bands.find((b) => b.key === bandKey)?.name ||
+                            '올릴 밴드를 골라 주세요'}
+                        </span>
+                        <span className="green">
+                          {bandKey ? '바꾸기' : '고르기'}
+                        </span>
                       </button>
-                    </div>
-                  )}
-                  {!loadingBands && !bandsFailed && !bands.length && <p className="meta">글을 올릴 수 있는 밴드가 없습니다.</p>}
+                    ))}
                 </>
               ) : (
                 <div className="pick disabled">
                   <span className="check-box" />
                   <span>
                     <strong>네이버 밴드</strong>
-                    <small>{app?.services.band === 'checking' ? '연결 상태를 확인하는 중입니다' : app?.services.band === 'unknown' ? '밴드 연결을 확인하지 못했습니다.' : '밴드 로그인이 필요합니다'}</small>
+                    <small>
+                      {app?.services.band === 'checking'
+                        ? '연결 상태를 확인하는 중입니다'
+                        : app?.services.band === 'unknown'
+                          ? '밴드 연결을 확인하지 못했습니다.'
+                          : '밴드 로그인이 필요합니다'}
+                    </small>
                   </span>
                   <button
                     className="green"
                     disabled={app?.services.band === 'checking'}
-                    onClick={() => app?.services.band === 'unknown' ? void act(async () => { await request('service.check', { service: 'band' }); }) : login('band', 'preview', 'publish')}
+                    onClick={() =>
+                      app?.services.band === 'unknown'
+                        ? void act(async () => {
+                            await request('service.check', { service: 'band' });
+                          })
+                        : login('band', 'preview', 'publish')
+                    }
                   >
-                    {app?.services.band === 'checking' ? '확인 중' : app?.services.band === 'unknown' ? '다시 확인' : '로그인'}
+                    {app?.services.band === 'checking'
+                      ? '확인 중'
+                      : app?.services.band === 'unknown'
+                        ? '다시 확인'
+                        : '로그인'}
                   </button>
                 </div>
+              )}
+              {startReason && (
+                <p className="why-disabled" role="status">
+                  {startReason}
+                </p>
               )}
               <div className="acts">
                 <button className="btn quiet" onClick={sheetClose}>
@@ -1563,7 +2138,7 @@ export function App() {
                 {band || (blog && visibility === 'public')
                   ? '바로 다른 사람에게 보입니다'
                   : '나만 볼 수 있는 글로 올라갑니다'}
-                . 올린 뒤에는 등록 기록에서 블로그 글을 삭제할 수 있습니다.
+                . 올린 뒤에는 등록 기록에서 글을 삭제할 수 있습니다.
               </div>
               <div className="acts">
                 <button

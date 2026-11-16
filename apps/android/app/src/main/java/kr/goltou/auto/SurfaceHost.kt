@@ -227,6 +227,11 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
                 minHeight = (48 * context.resources.displayMetrics.density).toInt()
                 setOnClickListener { setVisible(id, false); onUserHidden(id) }
             })
+            column.addView(android.widget.TextView(context).apply {
+                text = "직접 로그인해 주세요. 끝나면 이 화면은 저절로 닫힙니다."
+                setPadding(18, 8, 18, 8)
+                setTextColor(Color.rgb(102, 115, 107))
+            })
             column.addView(entry.view, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             entry.frame = column
             visible.addView(column, FrameLayout.LayoutParams(-1, -1))

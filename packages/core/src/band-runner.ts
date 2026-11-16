@@ -29,7 +29,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
   private readonly recording: RecordingCheckpoint;
   constructor(private readonly services: { band: BandServices; blog?: BlogServices }, checkpoint: Checkpoint, private readonly notify: (job: Job) => void) {
     this.recording = new RecordingCheckpoint(checkpoint, notify);
-    this.directory = new BandDirectory(services.band.host, services.band.baseUrl, services.band.localPublish, services.band.publishEnabled);
+    this.directory = new BandDirectory(services.band.host, services.band.baseUrl, services.band.localPublish, services.band.publishEnabled, services.band.publishAllowance);
     this.serviceLogin = new ServiceLoginController(services.band.host);
   }
   async listBands() {
@@ -49,9 +49,9 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     if (input.mode === 'publish' && !input.publishConfirmed) throw new ApiError('invalid', '이 작업의 발행 확인이 필요합니다.');
     const bands = input.targets.filter(t => t.channel === 'band');
     if (this.services.blog?.publishProbe && (bands.length || input.mode !== 'publish' || input.blogVisibility !== this.services.blog.publishProbe.visibility)) throw new ApiError('invalid', '발행 차단 프로브의 블로그 공개 범위를 확인해 주세요.');
-    if (bands.length && input.mode === 'publish' && !this.services.band.localPublish && !this.services.band.publishEnabled) throw new ApiError('invalid', '이 시험 빌드에서는 실제 밴드 게시를 시험하지 않습니다.');
+    if (bands.length && input.mode === 'publish' && !this.services.band.localPublish && !this.services.band.publishEnabled && !await this.services.band.publishAllowance?.available()) throw new ApiError('invalid', '이 시험 빌드에서는 실제 밴드 게시를 시험하지 않습니다.');
     if (bands.some(t => !this.directory.choices.some(b => b.key === t.key))) throw new ApiError('invalid', '내 밴드 목록에서 다시 골라 주세요.');
-    if (!this.services.band.localPublish && !this.services.band.publishEnabled && bands.some(t => t.key !== this.directory.choices[0]?.key)) throw new ApiError('invalid', '이번 실기기 확인은 첫 밴드만 허용합니다.');
+    if (!this.services.band.localPublish && !this.services.band.publishEnabled && !this.services.band.publishAllowance && bands.some(t => t.key !== this.directory.choices[0]?.key)) throw new ApiError('invalid', '이번 실기기 확인은 첫 밴드만 허용합니다.');
     const blogs = input.targets.filter(t => t.channel === 'blog');
     if (blogs.length > 1 || blogs.length && !this.services.blog) throw new ApiError('invalid', '블로그 실행 설정을 확인해 주세요.');
     if (blogs.length && !this.services.blog?.localPublish && !this.services.blog?.publishEnabled && (input.mode !== 'draft' || !title.startsWith('[골투오토 실험]'))) throw new ApiError('invalid', '실제 네이버 발행 설정을 확인해 주세요.');

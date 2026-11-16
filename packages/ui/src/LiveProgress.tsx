@@ -2,7 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import type { Job } from '@goltou/core/protocol';
 import type { PreparedPreview } from '@goltou/core';
 import { ProductPhoto } from './ProductPhoto';
-import { activeNow, animatedFraction as interpolate, finite, progressFraction, remainingSeconds, textOf } from './progress-model';
+import {
+  activeNow,
+  animatedFraction as interpolate,
+  finite,
+  progressFraction,
+  remainingSeconds,
+  textOf,
+} from './progress-model';
 export { progressFraction } from './progress-model';
 const checks = {
   title: '제목',
@@ -70,16 +77,30 @@ export function LiveProgress({
   // can lose another tenth through binary rounding on the next render.
   monotonic.current = fraction;
   const percent = Math.floor(fraction * 1000) / 10;
-  const elapsed = Math.max(0, (activeNow(job, now) - (job.startedAt ?? now)) / 1000);
+  const elapsed = Math.max(
+    0,
+    (activeNow(job, now) - (job.startedAt ?? now)) / 1000,
+  );
   const remaining = remainingSeconds(job, now, plan);
   const waiting = job.status !== 'running';
-  let headline = job.step === 2 ? '사진 원본을 내려받는 중'
-    : job.step === 3 ? '본문을 정리하는 중'
-    : a?.opening === 'empty' ? '빈 글 확인 중'
-    : a?.opening === 'editor' ? '글쓰기 화면 준비 중' : '네이버 여는 중';
-  let subtitle = job.step === 2 ? `사진 ${job.current}/${job.total}장 내려받음`
-    : `화면 응답을 기다립니다`;
-  const animatedFraction = (event: NonNullable<Job['activity']>) => interpolate(event, job.pausedAt ?? now);
+  let headline =
+    job.step === 2
+      ? '사진 원본을 내려받는 중'
+      : job.step === 3
+        ? '본문을 정리하는 중'
+        : a?.opening === 'empty'
+          ? '빈 글 확인 중'
+          : a?.opening === 'editor'
+            ? '글쓰기 화면 준비 중'
+            : channel === 'band'
+              ? '밴드 글쓰기를 여는 중'
+              : '네이버 여는 중';
+  let subtitle =
+    job.step === 2
+      ? `사진 ${job.current}/${job.total}장 내려받음`
+      : `화면 응답을 기다립니다`;
+  const animatedFraction = (event: NonNullable<Job['activity']>) =>
+    interpolate(event, job.pausedAt ?? now);
   if (a?.stage === 'write' && (job.step === 4 || job.step === 6)) {
     headline =
       a.blockKind === 'photos'
@@ -101,7 +122,7 @@ export function LiveProgress({
           : `상품 원문을 순서대로 옮깁니다`;
   } else if (a?.stage === 'verify' && job.step >= 4) {
     headline = '올라간 내용을 확인하는 중';
-    subtitle = `${job.activityLog?.some(e => e.stage === 'submit') ? '저장 후 다시 대조 · ' : ''}${checks[a.verification ?? 'body']} 확인`;
+    subtitle = `${job.activityLog?.some((e) => e.stage === 'submit') ? '저장 후 다시 대조 · ' : ''}${checks[a.verification ?? 'body']} 확인`;
   } else if (a?.stage === 'submit') {
     headline =
       channel === 'band'
@@ -109,11 +130,14 @@ export function LiveProgress({
         : job.mode === 'draft'
           ? '임시저장하는 중'
           : '블로그에 발행하는 중';
-    subtitle =
-      `${job.mode === 'draft' ? '저장 후 다시 열어 확인합니다.' : '저장 결과를 확인합니다.'}`;
+    subtitle = `${job.mode === 'draft' ? '저장 후 다시 열어 확인합니다.' : '저장 결과를 확인합니다.'}`;
   }
-  if (job.step === 5 && a?.stage === 'open') headline = '저장한 글을 다시 여는 중';
-  if (waiting) { headline = '선택을 기다리는 중'; subtitle = '아래 안내에서 선택하면 이어갑니다.'; }
+  if (job.step === 5 && a?.stage === 'open')
+    headline = '저장한 글을 다시 여는 중';
+  if (waiting) {
+    headline = '선택을 기다리는 중';
+    subtitle = '아래 안내에서 선택하면 이어갑니다.';
+  }
   useEffect(() => {
     if (paper.current) paper.current.scrollTop = paper.current.scrollHeight;
   }, [job.activityLog?.length, a?.at]);
@@ -158,7 +182,11 @@ export function LiveProgress({
       <p className="meta" aria-live="polite">
         {subtitle}
       </p>
-      {job.ownRecoveryDiscarded && <p className="meta recovery-note" role="status">앱이 남긴 쓰다 만 글을 정리했습니다.</p>}
+      {job.ownRecoveryDiscarded && (
+        <p className="meta recovery-note" role="status">
+          앱이 남긴 쓰다 만 글을 정리했습니다.
+        </p>
+      )}
       <span className="meta">
         지금 만들어지는 {channel === 'blog' ? '블로그' : '밴드'} 글
       </span>
@@ -182,8 +210,18 @@ export function LiveProgress({
               done = doneFor(index),
               chars = Array.from(text);
             const key = `${job.id}:${channel}:${index}`;
-            const proposed = done ? chars.length : Math.floor(chars.length * (reduced ? finite(event.fraction) : animatedFraction(event)));
-            const shown = Math.max(visibleCharacters.current.get(key) ?? 0, proposed);
+            const proposed = done
+              ? chars.length
+              : Math.floor(
+                  chars.length *
+                    (reduced
+                      ? finite(event.fraction)
+                      : animatedFraction(event)),
+                );
+            const shown = Math.max(
+              visibleCharacters.current.get(key) ?? 0,
+              proposed,
+            );
             visibleCharacters.current.set(key, shown);
             return (
               <p
@@ -236,9 +274,18 @@ export function LiveProgress({
       </div>
       <div className="check-pills">
         {Object.entries(checks).map(([key, label], index) => {
-          const event = log.find(e => e.stage === 'verify' && e.verification === key && e.phase === 'finish')
-            ?? log.find(e => e.stage === 'verify' && e.verification === key);
-          const firstAt = Math.min(now, ...log.filter(e => e.stage === 'verify').map(e => e.at));
+          const event =
+            log.find(
+              (e) =>
+                e.stage === 'verify' &&
+                e.verification === key &&
+                e.phase === 'finish',
+            ) ??
+            log.find((e) => e.stage === 'verify' && e.verification === key);
+          const firstAt = Math.min(
+            now,
+            ...log.filter((e) => e.stage === 'verify').map((e) => e.at),
+          );
           const due = firstAt + (reduced ? 0 : index * 220);
           const done = event?.phase === 'finish' && now >= due;
           return (
@@ -263,9 +310,11 @@ export function LiveProgress({
           {percent.toFixed(0)}% · {seconds(elapsed)} 지남
         </span>
         <span>
-          {waiting ? '선택 후 이어갑니다' : job.step >= 5
-            ? '저장 결과 확인 중'
-            : `약 ${seconds(remaining)} 남음`}
+          {waiting
+            ? '선택 후 이어갑니다'
+            : job.step >= 5
+              ? '저장 결과 확인 중'
+              : `약 ${seconds(remaining)} 남음`}
         </span>
       </div>
     </div>

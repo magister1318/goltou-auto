@@ -1,0 +1,428 @@
+{
+  "captures": 59,
+  "coveredMockEntries": 60,
+  "checks": 68,
+  "pageErrors": 0,
+  "externalRequestsAllowed": 0,
+  "blockedExternalRequests": 1,
+  "device": "not inspected beyond read-only power check; screen was dozing",
+  "manifest": [
+    {
+      "id": "login-ok",
+      "screen": "login",
+      "variant": "ok",
+      "sheet": null
+    },
+    {
+      "id": "login-empty",
+      "screen": "login",
+      "variant": "empty",
+      "sheet": null
+    },
+    {
+      "id": "login-wrong",
+      "screen": "login",
+      "variant": "wrong",
+      "sheet": null
+    },
+    {
+      "id": "login-off",
+      "screen": "login",
+      "variant": "off",
+      "sheet": null
+    },
+    {
+      "id": "login-busy",
+      "screen": "login",
+      "variant": "busy",
+      "sheet": null
+    },
+    {
+      "id": "home-ok",
+      "screen": "home",
+      "variant": "ok",
+      "sheet": null
+    },
+    {
+      "id": "home-loading",
+      "screen": "home",
+      "variant": "loading",
+      "sheet": null
+    },
+    {
+      "id": "home-searching",
+      "screen": "home",
+      "variant": "searching",
+      "sheet": null
+    },
+    {
+      "id": "home-none",
+      "screen": "home",
+      "variant": "none",
+      "sheet": null
+    },
+    {
+      "id": "home-empty",
+      "screen": "home",
+      "variant": "empty",
+      "sheet": null
+    },
+    {
+      "id": "home-err",
+      "screen": "home",
+      "variant": "err",
+      "sheet": null
+    },
+    {
+      "id": "product-blog",
+      "screen": "product",
+      "variant": "blog",
+      "sheet": null
+    },
+    {
+      "id": "product-table-scroll",
+      "screen": "product",
+      "variant": "blog",
+      "sheet": null
+    },
+    {
+      "id": "product-tag-bottom",
+      "screen": "product",
+      "variant": "blog",
+      "sheet": null
+    },
+    {
+      "id": "product-band",
+      "screen": "product",
+      "variant": "band",
+      "sheet": null
+    },
+    {
+      "id": "product-photo-grid",
+      "screen": "product",
+      "variant": "band",
+      "sheet": null
+    },
+    {
+      "id": "product-wait",
+      "screen": "product",
+      "variant": "wait",
+      "sheet": null
+    },
+    {
+      "id": "product-photo-failed",
+      "screen": "product",
+      "variant": "wait",
+      "sheet": null
+    },
+    {
+      "id": "product-err",
+      "screen": "product",
+      "variant": "err",
+      "sheet": null
+    },
+    {
+      "id": "polish",
+      "screen": "polish",
+      "variant": null,
+      "sheet": null
+    },
+    {
+      "id": "progress",
+      "screen": "progress",
+      "variant": null,
+      "sheet": null
+    },
+    {
+      "id": "result-done",
+      "screen": "result",
+      "variant": "done",
+      "sheet": null
+    },
+    {
+      "id": "result-draft",
+      "screen": "result",
+      "variant": "draft",
+      "sheet": null
+    },
+    {
+      "id": "result-uncertain",
+      "screen": "result",
+      "variant": "uncertain",
+      "sheet": null
+    },
+    {
+      "id": "result-recfail",
+      "screen": "result",
+      "variant": "recfail",
+      "sheet": null
+    },
+    {
+      "id": "result-paused",
+      "screen": "result",
+      "variant": "paused",
+      "sheet": null
+    },
+    {
+      "id": "result-relogin",
+      "screen": "result",
+      "variant": "relogin",
+      "sheet": null
+    },
+    {
+      "id": "result-fail",
+      "screen": "result",
+      "variant": "fail",
+      "sheet": null
+    },
+    {
+      "id": "connect-ok",
+      "screen": "connect",
+      "variant": "ok",
+      "sheet": null
+    },
+    {
+      "id": "connect-need",
+      "screen": "connect",
+      "variant": "need",
+      "sheet": null
+    },
+    {
+      "id": "connect-checking",
+      "screen": "connect",
+      "variant": "checking",
+      "sheet": null
+    },
+    {
+      "id": "connect-unknown",
+      "screen": "connect",
+      "variant": "unknown",
+      "sheet": null
+    },
+    {
+      "id": "svc",
+      "screen": "svc",
+      "variant": null,
+      "sheet": null
+    },
+    {
+      "id": "history-ok",
+      "screen": "history",
+      "variant": "ok",
+      "sheet": null
+    },
+    {
+      "id": "history-empty",
+      "screen": "history",
+      "variant": "empty",
+      "sheet": null
+    },
+    {
+      "id": "history-err",
+      "screen": "history",
+      "variant": "err",
+      "sheet": null
+    },
+    {
+      "id": "history-delprep",
+      "screen": "history",
+      "variant": "delprep",
+      "sheet": null
+    },
+    {
+      "id": "history-delq",
+      "screen": "history",
+      "variant": "delq",
+      "sheet": null
+    },
+    {
+      "id": "settings-view",
+      "screen": "settings",
+      "variant": "view",
+      "sheet": null
+    },
+    {
+      "id": "settings-typing",
+      "screen": "settings",
+      "variant": "typing",
+      "sheet": null
+    },
+    {
+      "id": "settings-unsaved",
+      "screen": "settings",
+      "variant": "unsaved",
+      "sheet": null
+    },
+    {
+      "id": "sheet-draft",
+      "screen": "product",
+      "variant": "blog",
+      "sheet": "draft"
+    },
+    {
+      "id": "sheet-publish",
+      "screen": "product",
+      "variant": "blog",
+      "sheet": "publish"
+    },
+    {
+      "id": "sheet-bands",
+      "screen": "product",
+      "variant": "blog",
+      "sheet": "bands"
+    },
+    {
+      "id": "sheet-bandsMany",
+      "screen": "product",
+      "variant": "blog",
+      "sheet": "bandsMany"
+    },
+    {
+      "id": "sheet-pubNone",
+      "screen": "product",
+      "variant": "blog",
+      "sheet": "pubNone"
+    },
+    {
+      "id": "sheet-pubLoading",
+      "screen": "product",
+      "variant": "blog",
+      "sheet": "pubLoading"
+    },
+    {
+      "id": "sheet-pubEmpty",
+      "screen": "product",
+      "variant": "blog",
+      "sheet": "pubEmpty"
+    },
+    {
+      "id": "sheet-pubErr",
+      "screen": "product",
+      "variant": "blog",
+      "sheet": "pubErr"
+    },
+    {
+      "id": "sheet-confirm",
+      "screen": "product",
+      "variant": "blog",
+      "sheet": "confirm"
+    },
+    {
+      "id": "sheet-stop",
+      "screen": "progress",
+      "variant": null,
+      "sheet": "stop"
+    },
+    {
+      "id": "sheet-unfinished",
+      "screen": "product",
+      "variant": "blog",
+      "sheet": "unfinished"
+    },
+    {
+      "id": "sheet-changed",
+      "screen": "product",
+      "variant": "blog",
+      "sheet": "changed"
+    },
+    {
+      "id": "sheet-dialog",
+      "screen": "result",
+      "variant": "paused",
+      "sheet": "dialog"
+    },
+    {
+      "id": "sheet-delBlog",
+      "screen": "history",
+      "variant": "ok",
+      "sheet": "delBlog"
+    },
+    {
+      "id": "sheet-delBand",
+      "screen": "history",
+      "variant": "ok",
+      "sheet": "delBand"
+    },
+    {
+      "id": "sheet-leave",
+      "screen": "settings",
+      "variant": "unsaved",
+      "sheet": "leave"
+    },
+    {
+      "id": "login",
+      "alias": "login-ok",
+      "screen": "login",
+      "variant": "ok"
+    },
+    {
+      "id": "home",
+      "alias": "home-ok",
+      "screen": "home",
+      "variant": "ok"
+    },
+    {
+      "id": "product",
+      "alias": "product-blog",
+      "screen": "product",
+      "variant": "blog"
+    },
+    {
+      "id": "result",
+      "alias": "result-done",
+      "screen": "result",
+      "variant": "done"
+    },
+    {
+      "id": "connect",
+      "alias": "connect-ok",
+      "screen": "connect",
+      "variant": "ok"
+    },
+    {
+      "id": "history",
+      "alias": "history-ok",
+      "screen": "history",
+      "variant": "ok"
+    },
+    {
+      "id": "settings",
+      "alias": "settings-view",
+      "screen": "settings",
+      "variant": "view"
+    },
+    {
+      "id": "dialog-alert",
+      "screen": "result",
+      "variant": "paused",
+      "sheet": "dialog"
+    },
+    {
+      "id": "settings-range-error",
+      "screen": "settings",
+      "variant": "unsaved",
+      "sheet": null
+    }
+  ],
+  "additionalCaptures": 6,
+  "finalRefresh": {
+    "scenes": [
+      "home-err",
+      "settings-typing",
+      "settings-range-error"
+    ],
+    "checks": 12,
+    "pageErrors": 0,
+    "externalRequestsAllowed": 0
+  },
+  "tests": {
+    "files": 60,
+    "passed": 674,
+    "failed": 0,
+    "skipped": 0,
+    "finalUiAndReleasePassed": 85,
+    "nativePassed": 4
+  },
+  "apkInstalledOnPhone": false,
+  "realBandAllowanceSet": false
+}

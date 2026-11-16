@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { requireDeletablePost, removeRecordedBlogPost, deletedUpdate } from './post-delete';
+import { requireDeletablePost, removeRecordedBlogPost, removeRecordedBandPost, deletedUpdate } from './post-delete';
 import { ApiError, type ApiClient, type Channel, type PostStatus, type Product, type PostInput } from '@goltou/api-client';
 import { FakeRegistrationRunner, type RegistrationRunner } from './runner';
 import type { AppRequest, AppSnapshot, Job, JobInput, TokenStore } from './protocol';
@@ -7,6 +7,7 @@ import { makePreview, preparePreview, preparationWork, type PreparationServices,
 import { RecordError } from './record-checkpoint';
 import { MemoryPolishStrengthStore, type PolishStrengthStore } from './polish/setting';
 import { MemoryPreferencesStore, validPreferences, type PreferencesStore } from './preferences';
+import { MemoryPostMetadata, type PostMetadataStore } from './post-metadata';
 export class MemoryTokenStore implements TokenStore {
   private token: string | null = null;
   async read() { return this.token; }
@@ -36,8 +37,10 @@ export class AppCore {
   private deletionRecording: import('./record-checkpoint').RecordingCheckpoint | undefined;
   private readonly polishSetting: PolishStrengthStore;
   private readonly preferences: PreferencesStore;
-  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { device: () => Promise<import('@goltou/api-client').LoginInput['device']>; deleteHost?: import('@goltou/surface').SurfaceHost; deleteLog?: import('@goltou/sites').DeleteLog; experimentTitle?: boolean; experimentTitleLabel?: string; polishStrength?: PolishStrengthStore; preferences?: PreferencesStore; openExternal?: (url: string) => Promise<void> }) {
+  private readonly postMetadata: PostMetadataStore;
+  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { device: () => Promise<import('@goltou/api-client').LoginInput['device']>; deleteHost?: import('@goltou/surface').SurfaceHost; deleteLog?: import('@goltou/sites').DeleteLog; experimentTitle?: boolean; experimentTitleLabel?: string; polishStrength?: PolishStrengthStore; preferences?: PreferencesStore; postMetadata?: PostMetadataStore; openExternal?: (url: string) => Promise<void> }) {
     this.polishSetting = runtime?.polishStrength ?? new MemoryPolishStrengthStore();
+    this.postMetadata = runtime?.postMetadata ?? new MemoryPostMetadata();
     this.preferences = runtime?.preferences ?? new MemoryPreferencesStore();
     const notify = (job: Job) => { if (!this.state.user) return; this.state.job = job; if (!this.runner.serviceLogin && job.status === 'login_paused' && job.service) { this.state.services[job.service] = 'expired'; this.state.visibleService = job.service; } this.emit(); };
     this.createRunner = () => factory ? factory((job, retry) => this.record(job, retry), notify) : new FakeRegistrationRunner(() => this.state.simulation, job => this.record(job), notify);
@@ -209,11 +212,17 @@ export class AppCore {
         try {
           const post = await this.ownedPost(confirmation.post.postNo, token);
           requireDeletablePost(post);
-          if (['postUrl', 'productTitle', 'startedAt', 'productNo'].some(key => post[key as keyof typeof post] !== confirmation.post[key as keyof typeof post])) throw new ApiError('conflict', '기록이 바뀌었습니다. 삭제할 글을 다시 확인해 주세요.');
-          if (!this.runtime?.deleteHost) throw new ApiError('invalid', '블로그 삭제 기능을 사용할 수 없습니다.');
-          await removeRecordedBlogPost(this.runtime.deleteHost, post, this.runtime.deleteLog);
+          if (['postUrl', 'productTitle', 'startedAt', 'productNo', 'channel', 'targetName'].some(key => post[key as keyof typeof post] !== confirmation.post[key as keyof typeof post])) throw new ApiError('conflict', '기록이 바뀌었습니다. 삭제할 글을 다시 확인해 주세요.');
+          if (!this.runtime?.deleteHost) throw new ApiError('invalid', '글 삭제 기능을 사용할 수 없습니다.');
+          if (post.channel === 'band') {
+            const result = await removeRecordedBandPost(this.runtime.deleteHost, post);
+            if (result.status !== 'deleted') {
+              this.state.postDeletion = { postNo: post.postNo, verifiedGone: false, recorded: false, outcome: result.status };
+              this.emit(); return this.snapshot();
+            }
+          } else await removeRecordedBlogPost(this.runtime.deleteHost, post, this.runtime.deleteLog);
           this.pendingDeleteUpdate = deletedUpdate(post);
-          this.state.postDeletion = { postNo: post.postNo, verifiedGone: true, recorded: false };
+          this.state.postDeletion = { postNo: post.postNo, verifiedGone: true, recorded: false, outcome: 'deleted' };
           this.emit();
           await this.saveDeletion(token);
         } finally { this.deleting = false; }
@@ -225,7 +234,10 @@ export class AppCore {
         try { await this.saveDeletion(token); } finally { this.deleting = false; }
         return this.snapshot();
       }
-      case 'posts.list': return this.call('/auto/posts/list', request.input, token);
+      case 'posts.list': {
+        const page = await this.call('/auto/posts/list', request.input, token);
+        return { ...page, items: await Promise.all(page.items.map(async post => ({ ...post, blogVisibility: post.channel === 'blog' ? await this.postMetadata.get(post.postNo) ?? post.blogVisibility : undefined }))) };
+      }
       case 'settings.save': await this.call('/auto/settings/save', request.input, token); this.state.settings = (await this.call('/auto/me', {}, token)).settings; break;
       case 'service.check': this.requireServiceIdle(); this.state.services[request.input.service] = request.input.service === 'ai' ? 'unknown' : request.input.service === 'band' && this.runner.checkBandLogin ? await this.runner.checkBandLogin() : request.input.service === 'naver' && this.runner.checkLogin ? await this.runner.checkLogin() : 'confirmed'; break;
       case 'service.show': this.requireServiceIdle(); await this.runner.showService?.(request.input.service); if (!this.runner.serviceLogin) this.state.visibleService = request.input.service; break;
@@ -338,6 +350,7 @@ export class AppCore {
         try { this.uncertainStart = true; ({ postNo } = await this.call('/auto/posts/start', { productNo: input.productNo, channel: target.channel, mode: input.mode, target: { name: target.name, key: target.key }, options: input.options, contentHash: product.contentHash }, token)); this.uncertainStart = false; }
         catch (error) { if (error instanceof ApiError && error.code !== 'server') this.uncertainStart = false; if (target.channel === 'band' && error instanceof ApiError && error.code === 'conflict') throw new ApiError('conflict', `${target.name}: ${error.message}`); throw error; }
         this.records.push({ postNo, channel: target.channel, key: target.key, status: 'running', updates: new Map() });
+        if (target.channel === 'blog') await this.postMetadata.set(postNo, input.blogVisibility ?? 'public');
       }
       this.recordPrivateText = [product.title, ...product.golfCourses, ...preview.blog.steps.flatMap(step => step.kind === 'text' ? [step.text] : step.kind === 'table' ? step.rows.flat() : [])];
       await this.runner.start(input, product.title, product.images.length, this.preparation ? preparationWork(product, preview, this.preparation) : undefined);
