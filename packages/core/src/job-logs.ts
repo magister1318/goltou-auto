@@ -8,7 +8,7 @@ import { traceSteps, traceSelectors } from '../../surface/src/telemetry-catalog'
 
 const kinds: readonly JobKind[] = ['blog_draft', 'blog_publish', 'blog_delete', 'unfinished_cleanup', 'band_post', 'band_delete', 'login_check', 'band_list'];
 const sites: readonly LogSite[] = ['naver', 'band', 'app'];
-const events: readonly TraceEvent[] = ['start', 'ok', 'fail', 'retry', 'skip', 'wait'];
+const events: readonly TraceEvent[] = ['start', 'ok', 'fail', 'retry', 'skip', 'wait', 'blocked_expected'];
 const countKeys = ['step', 'paragraphIndex', 'paragraphTotal', 'photoIndex', 'photoTotal', 'bytes', 'runs', 'attempt', 'expected', 'observed', 'status', 'lineBreaks', 'hashtags', 'links'] as const;
 const hosts = ['band.us', 'www.band.us', 'api.band.us', 'api-kr.band.us', 'bapi-kr.band.us', 'up.band.us', 'blog.naver.com', 'm.blog.naver.com', 'nid.naver.com', '127.0.0.1'];
 const fieldNames = ['version', 'ts', 'band_no', 'post_no', 'band_key', 'post_key', 'body', 'content', 'contents', 'text', 'photos', 'photo_list', 'file', 'fileList', 'attachment', 'attachments', 'data', 'requests', 'url', 'method', 'params', 'access_token', 'token', 'signature', 'key', 'blogId', 'logNo', 'title', 'tags', 'is_public', 'schedule', 'device_type', 'set_band_notice', 'set_major_band_notice', 'set_linked_band_notice', 'copiable_state', 'should_disable_comment', 'band_notice_unset_at', 'photo', 'purpose', 'format', 'locale', 'app_id', 'documentJson'];
@@ -38,7 +38,7 @@ export function sanitizeDetail(detail: TraceDetail = {}) {
   }
   return out;
 }
-export interface JobLogRow { jobId: string; at: number; kind: JobKind; site: LogSite; result: JobResult | 'running'; reason?: ReasonCode; failedStep?: TraceStep; recordHash?: string; recordHashes?: string[]; }
+export interface JobLogRow { jobId: string; at: number; kind: JobKind; site: LogSite; result: JobResult | 'running'; reason?: ReasonCode; failedStep?: TraceStep; recordHash?: string; recordHashes?: string[]; blockedExpected?: number; }
 interface StoredRow extends JobLogRow { file: string }
 export interface LogEnvironment { appVersion?: string; commit?: string; webViewVersion?: string; deviceModel?: string }
 const dayMs = 86400000;
@@ -119,6 +119,7 @@ export class JobLogStore implements TraceProvider {
       if (terminal) return;
       if (!traceSteps.includes(step) || !events.includes(event)) throw new Error('INVALID_LOG_EVENT');
       const data = sanitizeDetail(detail);
+      if (event === 'blocked_expected' && detail?.network?.decision === 'blocked') row.blockedExpected = (row.blockedExpected ?? 0) + 1;
       if (step.endsWith('.publish') && event === 'start' || detail?.reason === 'ARMED' || detail?.reason === 'CREATE_ALLOWED') submissionMayHaveStarted = true;
       if (event === 'fail' && !detail?.reason) data.reason = 'UNEXPECTED_FAILURE';
       if (step === 'barrier' && event === 'start') decisionReason = undefined;
@@ -167,6 +168,7 @@ export class JobLogStore implements TraceProvider {
         if (!first || !kinds.includes(first.kind) || !sites.includes(first.site) || !/^[a-f0-9-]{36}$/.test(first.jobId) || !Number.isFinite(first.timestamp)) continue;
         const failure = lines.filter(line => line.event === 'fail' && line.step !== 'terminal').at(-1);
         const row: StoredRow = { at: first.timestamp, jobId: first.jobId, kind: first.kind, site: first.site, file: `${date}/${file}`,
+          ...(lines.some(line => line.event === 'blocked_expected' && line.network?.decision === 'blocked') ? { blockedExpected: lines.filter(line => line.event === 'blocked_expected' && line.network?.decision === 'blocked').length } : {}),
           result: last?.step === 'terminal' && ['succeeded', 'failed', 'stopped', 'uncertain'].includes(last.result) ? last.result : 'stopped',
           ...(failure && traceSteps.includes(failure.step) ? { failedStep: failedStep(failure.step, failure.counts) } : {}) };
         const correlations = lines.filter(line => /^[a-f0-9]{12}$/.test(line.recordHash ?? '')); if (correlations.length) { row.recordHashes = [...new Set<string>(correlations.map(line => line.recordHash))]; row.recordHash = row.recordHashes[0]!; }

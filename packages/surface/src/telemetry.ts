@@ -4,7 +4,17 @@ export type JobKind = 'blog_draft' | 'blog_publish' | 'blog_delete' | 'unfinishe
 export type LogSite = 'naver' | 'band' | 'app';
 export type TraceStep = typeof traceSteps[number];
 export type ReasonCode = typeof traceReasons[number];
-export type TraceEvent = 'start' | 'ok' | 'fail' | 'retry' | 'skip' | 'wait';
+export type TraceEvent = 'start' | 'ok' | 'fail' | 'retry' | 'skip' | 'wait' | 'blocked_expected';
+/** Classify only known collection routes, never a generic unknown/service request. */
+export function expectedTelemetryRequest(request: Pick<import('./index').GuardedRequest, 'url' | 'method'>) {
+  try {
+    const u = new URL(request.url);
+    return request.method === 'POST' && u.protocol === 'https:' &&
+      (u.hostname === 'nlog.band.us' && u.pathname === '/event' ||
+       /(?:^|\.)google-analytics\.com$/.test(u.hostname) && /^\/(?:g\/)?collect$/.test(u.pathname) ||
+       /(?:^|\.)ingest(?:\.us)?\.sentry\.io$/.test(u.hostname) && /^\/api\/\d+\/envelope\/$/.test(u.pathname));
+  } catch { return false; }
+}
 export type JobResult = 'succeeded' | 'failed' | 'stopped' | 'uncertain';
 export interface TraceCounts {
   step?: number; paragraphIndex?: number; paragraphTotal?: number; photoIndex?: number; photoTotal?: number;

@@ -7,6 +7,7 @@ export const jobKindLabel: Record<JobLogRow['kind'], string> = {
   unfinished_cleanup: '작성 중인 글 정리', band_post: '밴드 게시', band_delete: '밴드 글 삭제', login_check: '로그인 확인', band_list: '밴드 목록 읽기',
 };
 export function failedStepLabel(step = '') {
+  if (/^band\.confirm\./.test(step)) return '게시한 글 확인과 주소 기록';
   if (/download/i.test(step)) return '사진 내려받기';
   if (/arrange/i.test(step)) return '본문 정리';
   if (/record|checkpoint/i.test(step) && !/record-read/.test(step)) return '결과 기록';
@@ -24,6 +25,11 @@ export function failedStepLabel(step = '') {
   return '작업 진행';
 }
 export function logReasonLabel(reason = '') {
+  if (reason === 'BAND_POST_UNCONFIRMED:IDENTITY_READ_FAILED') return '생성 응답에서 주소를 얻지 못했고 게시 목록도 읽지 못했습니다.';
+  if (reason === 'BAND_POST_UNCONFIRMED:IDENTITY_NOT_FOUND') return '생성 응답과 목록에서 이번 글을 하나로 확인하지 못했습니다.';
+  if (reason === 'BAND_POST_UNCONFIRMED:IDENTITY_AMBIGUOUS') return '이번 글과 일치하는 후보가 여러 개여서 주소를 확정하지 못했습니다.';
+  if (reason === 'BAND_PUBLISHED_READBACK_UNAVAILABLE') return '게시한 글 주소는 저장했지만 상세 내용을 끝까지 읽지 못했습니다.';
+  if (reason === 'BAND_CREATE_REJECTED') return '밴드가 게시 요청을 거절했습니다.';
   if (reason === 'INTERRUPTED') return '앱이 종료되어 작업이 중단됐습니다.';
   if (reason === 'LOG_STORAGE_LIMIT') return '작업 로그 보관 한도에 도달해 멈췄습니다. 로그를 내보낸 뒤 작업 결과를 확인해 주세요.';
   if (reason === 'STOPPED_BEFORE_POST') return '게시 전 내용을 확인하도록 멈췄습니다.';
@@ -44,7 +50,7 @@ export function logReasonLabel(reason = '') {
 export function JobLogFailure({ log, reason, step }: { log?: JobLogRow | undefined; reason?: string | undefined; step?: number }) {
   const legacyStep = ['runner.ready', 'runner.download', 'runner.arrange', 'runner.blog_write', 'runner.blog_save', 'runner.band_write', 'runner.record'][(step ?? 0) - 1];
   const code = log?.reason ?? reason;
-  const label = code === 'BAND_POST_UNCONFIRMED' || code === 'BLOG_PUBLISH_UNCONFIRMED' ? '게시와 게시 확인' : failedStepLabel(log?.failedStep ?? legacyStep);
+  const label = /^BAND_(POST_UNCONFIRMED|PUBLISHED_READBACK_|CREATE_REJECTED)/.test(code ?? '') || code === 'BLOG_PUBLISH_UNCONFIRMED' ? '게시와 게시 확인' : failedStepLabel(log?.failedStep ?? legacyStep);
   return <p className="meta">{label} · {logReasonLabel(code)}</p>;
 }
 export function JobLogs({ back }: { back(): void }) {

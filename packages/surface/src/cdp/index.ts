@@ -1,4 +1,4 @@
-import { traceStep, trace, reasonCode, requestTrace, currentTrace, inTrace } from '../telemetry';
+import { traceStep, trace, reasonCode, requestTrace, currentTrace, inTrace, expectedTelemetryRequest } from '../telemetry';
 import type { GuardedRequest, GuardedResponse, RequestBlockReason, RequestRule, KeyInput, NavigationOptions, NavigationPolicy, Surface, SurfaceDialog, SurfaceOpenOptions, SurfaceSession, SurfaceState } from '../index';
 import { inputCharacters } from '../index';
 import { CdpConnection } from './connection';
@@ -128,7 +128,7 @@ export class CdpSurface implements Surface {
             contentType: String(header('content-type') ?? ''), hasPostData: raw.hasPostData === true, postDataInline: inline,
             postDataFetched: fetched, postDataComplete: complete, ...(postDataFailure ? { postDataFailure } : {}) };
           blocked = !request || !await this.requestGuard.inspect(inspection);
-          trace('barrier', blocked ? 'fail' : 'ok', { ...requestTrace(inspection, !blocked), reason: currentTrace()?.decisionReason ?? (blocked ? 'INSPECTOR_DENIED' : 'REQUEST_ALLOWED') });
+          trace('barrier', blocked ? expectedTelemetryRequest(inspection) ? 'blocked_expected' : 'fail' : 'ok', { ...requestTrace(inspection, !blocked), reason: currentTrace()?.decisionReason ?? (blocked ? 'INSPECTOR_DENIED' : 'REQUEST_ALLOWED') });
           if (blocked) reason = 'INSPECTOR_DENIED';
           if (!blocked && (this.requestGuard.observeResponse?.(raw) ?? true)) this.acceptedRequests.set(requestId, { url: raw.url, method: raw.method });
         }

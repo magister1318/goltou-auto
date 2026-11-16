@@ -3,7 +3,7 @@ import { appendFileSync, mkdtempSync, readFileSync, readdirSync, rmSync, truncat
 import os from 'node:os';
 import path from 'node:path';
 import { JobLogStore } from '../src/job-logs';
-import { configureTrace, trace, traceJob, traceStep, type JobKind, type TraceDetail, type TraceStep } from '@goltou/surface/telemetry';
+import { configureTrace, trace, traceJob, traceStep, expectedTelemetryRequest, type JobKind, type TraceDetail, type TraceStep } from '@goltou/surface/telemetry';
 
 const directories: string[] = [];
 afterEach(() => { configureTrace(undefined); for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
@@ -15,6 +15,19 @@ function fixture(limits?: { days: number; bytes: number }, now?: () => number) {
   return { dir, store, files, lines };
 }
 describe('permanent local job logs', () => {
+  it('separates expected telemetry blocks, keeps request counts after restart, and retains real failures', () => {
+    const f = fixture(), job = f.store.begin('band_post', 'band');
+    expect(expectedTelemetryRequest({ method: 'POST', url: 'https://nlog.band.us/event' })).toBe(true);
+    for (const url of ['https://bapi-kr.band.us/v2.0.0/batch', 'https://api-kr.band.us/v2.0.2/create_post', 'https://auth.band.us/s/login/getKey', 'https://other.invalid/unknown']) expect(expectedTelemetryRequest({ method: 'POST', url })).toBe(false);
+    for (let i = 0; i < 3; i++) job.line('barrier', 'blocked_expected', { reason: 'ROUTE_BLOCKED', network: { method: 'POST', host: 'nlog.band.us', path: '/event', decision: 'blocked', contentType: 'text/plain', queryFields: [], bodyFields: [] } });
+    expect(f.store.list()[0]).toMatchObject({ blockedExpected: 3 });
+    expect(f.store.list()[0]?.failedStep).toBeUndefined();
+    job.line('band.confirm.detail', 'fail', { reason: 'BAND_PUBLISHED_READBACK_MISMATCH' }); job.end('failed', 'BAND_PUBLISHED_READBACK_MISMATCH');
+    const restored = new JobLogStore(f.dir);
+    expect(restored.list()[0]).toMatchObject({ blockedExpected: 3, failedStep: 'band.confirm.detail', reason: 'BAND_PUBLISHED_READBACK_MISMATCH' });
+    expect(f.lines().filter(l => l.event === 'blocked_expected')).toHaveLength(3);
+    expect(JSON.stringify(f.lines())).not.toContain('nlog.band.us');
+  });
   it('reconstructs the complete output from whitelisted fields, including hostile runtime callers', () => {
     const f = fixture();
     const secrets = ['password=p@ss-secret', 'Bearer eyJ.secret.token', 'session_cookie=secret', 'auth-header-secret', 'private-account-name', 'private-band-name', 'private-product-title', 'private-photo-content', '999888777666', 'PRIVATE_SECRET'];

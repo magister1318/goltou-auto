@@ -1,6 +1,6 @@
 // Reference: ../refs/golfliat/programs/golfliat-workbench/electron/renderer.js, fillBandComposerInWebview (readback and file input selectors only).
 import { createdBandPosts, readFullBandPost, verifyFullBandPost, normalizedBandBody, type CreatedBandPost } from './posted';
-import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
+import { traceStep, trace, reasonCode, expectedTelemetryRequest } from '@goltou/surface/telemetry';
 import type { Surface, SurfaceDialog, SurfaceHost } from '@goltou/surface';
 import { click, compact, point, read, waitFor } from '../dom';
 import { closeComposer, confirmBandPhotos, listBands } from './index';
@@ -8,6 +8,8 @@ import { PhotoOrder, type PhotoProof, type PhotoSize, type PhotoSlot } from './p
 import { requestFields } from '../naver-blog/request-fields';
 import type { BandBarrierCode } from './barrier-codes';
 import { bandReadBatchTarget } from './read-batch';
+import { readCreatedBandPost, bandPhotoPath } from './record-read';
+import { bandCreateIdentity } from './publish-confirmation';
 
 export const bandMobileUA = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
 export const bandEditor = 'textarea._postTextArea, .cke_editable[contenteditable="true"], [contenteditable="true"][role="textbox"]';
@@ -70,14 +72,14 @@ export class BandDirectory {
   surface: Surface | undefined;
   choices: BandChoice[] = [];
   private opens = 0;
-  private submit: { key: string; armed: boolean; sent: boolean; succeeded: boolean; post?: string; blocked?: BandBarrierCode; blockConfirmed: boolean } | undefined;
+  private submit: { key: string; armed: boolean; sent: boolean; succeeded: boolean; received?: boolean; acknowledgedAt?: number; post?: string; onIdentity?: (url: string) => void; blocked?: BandBarrierCode; blockConfirmed: boolean } | undefined;
   private codes: BandBarrierCode[] = [];
   private feedPosts: CreatedBandPost[] = [];
   private feedRevision = 0;
   private feedBand = '';
   get revision() { return this.feedRevision; }
   freshFeed(key: string, before: number) { return this.feedBand === key && this.feedRevision > before; }
-  constructor(private readonly host: SurfaceHost, readonly baseUrl = 'https://band.us', readonly localPublish = false, readonly publishEnabled = false, readonly publishAllowance?: { available(): Promise<boolean>; consume(): Promise<boolean> }, private readonly recordBarrierDecision?: (code: BandBarrierCode) => void) {
+  constructor(private readonly host: SurfaceHost, readonly baseUrl = 'https://band.us', readonly localPublish = false, readonly publishEnabled = false, readonly publishAllowance?: { available(): Promise<boolean>; consume(): Promise<boolean> }, private readonly recordBarrierDecision?: (code: BandBarrierCode, expected?: boolean) => void) {
     const url = new URL(baseUrl);
     if (localPublish && (url.hostname !== '127.0.0.1' || url.protocol !== 'http:')) throw new Error('LOCAL_BAND_REQUIRED');
     if (!localPublish && url.origin !== 'https://band.us') throw new Error('BAND_ORIGIN_REQUIRED');
@@ -92,7 +94,7 @@ export class BandDirectory {
       if (request.method === 'OPTIONS') { this.record('PREFLIGHT_ALLOWED'); return true; }
       if (['GET', 'HEAD'].includes(request.method) && !this.isCreate(u)) return true;
       const trusted = this.localPublish ? u.origin === new URL(this.baseUrl).origin : u.protocol === 'https:' && (u.hostname === 'band.us' || u.hostname.endsWith('.band.us'));
-      if (!trusted) return this.reject('ORIGIN_BLOCKED', this.isCreateCandidate(u));
+      if (!trusted) return this.reject('ORIGIN_BLOCKED', this.isCreateCandidate(u), expectedTelemetryRequest(request));
       if (request.method !== 'POST') return this.reject('METHOD_BLOCKED', this.isCreateCandidate(u));
       // Observed on-device: membership is read by this exact POST endpoint.
       // All other writes, including post/create, still fail closed.
@@ -110,7 +112,7 @@ export class BandDirectory {
       if (/\/(?:photo|file)\/upload(?:\/[a-z0-9_-]+)?$/i.test(u.pathname)) { this.record('UPLOAD_ALLOWED'); return true; }
       const isCreate = this.isCreate(u);
       const submit = this.submit;
-      if (!isCreate) return this.reject('ROUTE_BLOCKED', this.isCreateCandidate(u));
+      if (!isCreate) return this.reject('ROUTE_BLOCKED', this.isCreateCandidate(u), expectedTelemetryRequest(request));
       if (submit?.sent) return this.reject('ALREADY_SENT');
       if (!submit?.armed) return this.reject('NOT_ARMED');
       if (!request.postDataComplete) return this.reject(request.postDataFailure ? `BODY_${request.postDataFailure}` : 'BODY_INCOMPLETE', true);
@@ -138,11 +140,15 @@ export class BandDirectory {
       }
       if (!this.submit?.sent || response.method !== 'POST' || !response.url || !this.isCreate(new URL(response.url))) return;
       try {
-        const value = JSON.parse(response.body) as { result_code?: unknown; result_data?: { post_key?: unknown } };
-        const post = String(value.result_data?.post_key ?? '');
-        this.submit.succeeded = response.status >= 200 && response.status < 300 && value.result_code === 1;
+        const value = bandCreateIdentity(response.body, this.submit.key);
+        this.submit.received = true; this.submit.acknowledgedAt = Date.now();
+        this.submit.succeeded = response.status >= 200 && response.status < 300 && value.succeeded;
         trace('barrier', this.submit.succeeded ? 'ok' : 'fail', { reason: this.submit.succeeded ? 'BAND_PUBLISH_RESPONSE_OK' : 'RESPONSE_REJECTED', counts: { status: response.status } });
-        if (this.submit.succeeded && /^[0-9]+$/.test(post)) this.submit.post = post;
+        if (this.submit.succeeded && value.post) {
+          this.submit.post = value.post;
+          this.submit.onIdentity?.(`${this.baseUrl}/band/${this.submit.key}/post/${value.post}`);
+        }
+        trace('band.confirm.response', this.submit.post ? 'ok' : 'wait', { reason: this.submit.post ? 'BAND_RESPONSE_IDENTITY' : 'BAND_RESPONSE_NO_IDENTITY', counts: { expected: 1, observed: this.submit.post ? 1 : 0 } });
       } catch { trace('sites.band.plan.BandDirectory.getSurface', 'fail', { reason: 'CAUGHT_FAILURE' });  this.submit.succeeded = false; }
     }, request => request.method === 'POST' && this.isCreate(new URL(request.url)) || request.method === 'GET' && new URL(request.url).hostname === 'api-kr.band.us' && new URL(request.url).pathname === '/v2.0.0/get_posts_and_announcements', (request, reason) => {
       if (request && ['GET', 'HEAD', 'OPTIONS'].includes(request.method) && !this.isCreate(new URL(request.url))) return;
@@ -164,22 +170,24 @@ export class BandDirectory {
     // Diagnosis/closure only; this never grants a route permission.
     return this.isCreate(url) || /\/(?:create_post|band\/post\/create)(?:\/|$)/.test(url.pathname) || url.pathname === '/band-post-create';
   }
-  private record(code: BandBarrierCode) {
+  private record(code: BandBarrierCode, expected = false) {
     this.codes.push(code); if (this.codes.length > 128) this.codes.shift();
-    try { this.recordBarrierDecision?.(code); } catch { /* Diagnostics cannot authorize or retry a request. */ }
+    try { this.recordBarrierDecision?.(code, expected); } catch { /* Diagnostics cannot authorize or retry a request. */ }
   }
-  private reject(code: BandBarrierCode, endsApproval = false): false {
-    this.record(code);
+  private reject(code: BandBarrierCode, endsApproval = false, expected = false): false {
+    this.record(code, expected);
     // A rejected create ends this approval; unrelated denied writes do not spend it.
     if (endsApproval && this.submit?.armed && !this.submit.sent) { this.submit.armed = false; this.submit.blocked = code; }
     return false;
   }
   get decisionCodes(): BandBarrierCode[] { return [...this.codes]; }
   allowanceConsumed() { this.record('ALLOWANCE_CONSUMED'); }
-  arm(key: string) { this.submit = { key, armed: true, sent: false, succeeded: false, blockConfirmed: false }; this.record('ARMED'); }
-  disarm() { if (this.submit) this.submit.armed = false; this.record('DISARMED'); }
+  arm(key: string, onIdentity?: (url: string) => void) { this.submit = { key, armed: true, sent: false, succeeded: false, blockConfirmed: false, ...(onIdentity ? { onIdentity } : {}) }; this.record('ARMED'); }
+  disarm() { if (this.submit) { this.submit.armed = false; delete this.submit.onIdentity; } this.record('DISARMED'); }
   blockedBeforeSend(key: string) { return this.submit?.key === key && !this.submit.sent && this.submit.blockConfirmed ? `BAND_POST_BLOCKED:${this.submit.blocked!}` : undefined; }
   submitted(key: string) { return this.submit?.key === key && this.submit.sent && this.submit.succeeded; }
+  responseResult(key: string) { return this.submit?.key === key ? { received: !!this.submit.received, succeeded: this.submit.succeeded, at: this.submit.acknowledgedAt } : undefined; }
+  readCreated(match: Parameters<typeof readCreatedBandPost>[1], timeoutMs: number, check: () => void) { return readCreatedBandPost(this.host, match, timeoutMs, check); }
   createdReceipt(key: string) { return this.submitted(key) && this.submit?.post ? `${this.baseUrl}/band/${key}/post/${this.submit.post}` : undefined; }
   existingTitle(title: string) { return this.feedPosts.some(post => post.body.split('\n')[0] === title); }
   createdPost(title: string, after: number): CreatedBandPost | undefined {
@@ -246,6 +254,7 @@ export interface BandEnvironment {
   sourceDimensions(file: { url: string; path: string }): Promise<PhotoSize>;
   photoTimeoutMs?: number;
   submitTimeoutMs?: number;
+  onIdentity?(url: string): Promise<void>;
 }
 const same = (a: BandReadback, b: BandReadback) => compact(a.body) === compact(b.body) && JSON.stringify(a.slots) === JSON.stringify(b.slots);
 export class BandExecution {
@@ -259,6 +268,7 @@ export class BandExecution {
   private submittedAt = 0;
   private verifiedPublished: string | undefined;
   private createdIdentity: string | undefined;
+  private identitySave: Promise<void> | undefined;
   private discardAttempted = false;
   private restartAllowed = false;
   private verified = false;
@@ -269,7 +279,7 @@ export class BandExecution {
     if (plan.channel !== 'band') throw new Error('BAND_PLAN_REQUIRED');
   }
   get surface() { return this.env.directory.surface; }
-  get createdReceiptUrl() { return this.createdIdentity; }
+  get createdReceiptUrl() { return this.createdIdentity ?? this.env.directory.createdReceipt(this.env.key); }
   private async guard() {
     return traceStep('sites.band.plan.BandExecution.guard', async () => {
     this.env.check(); await this.env.directory.guard(true);
@@ -432,24 +442,11 @@ export class BandExecution {
     this.env.check();
     if (this.verifiedPublished) return this.verifiedPublished;
     if (!this.verified) return null;
+    if (!this.env.directory.localPublish && this.postAttempted) return this.confirmPublished();
     if (await this.dialog()) throw new Error('USER_DIALOG_REQUIRED');
     const actual = await readBandDocument(this.surface!);
     // A closed composer alone is never evidence of publication; require the same band's new post URL and readback.
     if (actual.composer) return null;
-    if (!this.env.directory.localPublish && this.postAttempted) {
-      const candidate = this.env.directory.createdPost(bandText(this.plan).split('\n')[0] ?? '', this.submittedAt);
-      // The feed collapses empty lines and serializes only a photo prefix. It
-      // establishes identity; only the full post below establishes content.
-      if (!candidate || compact(candidate.body) !== compact(bandText(this.plan)) || candidate.photoCount > this.photoUrls().length || candidate.photoCount < Math.min(1, this.photoUrls().length)) return null;
-      this.createdIdentity = candidate.url;
-      const uploaded = this.checkpoint?.slots.map(slot => { try { return JSON.parse(slot.signature)[0] as string; } catch { return ''; } }) ?? [];
-      if (uploaded.length !== this.photoUrls().length || uploaded.some(url => !url)) throw Error('BAND_PUBLISHED_READBACK_MISMATCH');
-      const state = await this.surface!.readState();
-      if (new URL(state.url).pathname !== new URL(candidate.url).pathname) await this.surface!.open({ url: candidate.url.replace('https://band.us/', 'https://www.band.us/'), session: 'band', width: 1280, height: 900, userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36' });
-      const full = await readFullBandPost(this.surface!); if (!full) return null;
-      verifyFullBandPost(bandText(this.plan), uploaded, full);
-      this.verifiedPublished = candidate.url; return candidate.url;
-    }
     if (!actual.postUrl) return null;
     const url = new URL(actual.postUrl);
     if (!this.env.directory.sameOrigin(url) || !new RegExp(`^/band/${this.env.key}/post/[0-9]+/?$`).test(url.pathname)) return null;
@@ -457,6 +454,81 @@ export class BandExecution {
     this.env.verify(actual); return actual.postUrl;
 
     });
+  }
+  private async confirmPublished(): Promise<string> {
+    if (this.verifiedPublished) return this.verifiedPublished;
+    const directory = this.env.directory, timeout = this.env.submitTimeoutMs ?? 30000;
+    trace('band.confirm.response', 'start');
+    try {
+      await waitFor(async () => {
+        this.env.check();
+        const blocked = directory.blockedBeforeSend(this.env.key); if (blocked) throw Error(blocked);
+        return directory.responseResult(this.env.key)?.received;
+      }, timeout);
+    } catch (error) {
+      if (!(error instanceof Error) || error.message !== 'OBSERVATION_TIMEOUT') throw error;
+      trace('band.confirm.response', 'wait', { reason: 'BAND_RESPONSE_UNOBSERVED' });
+    }
+    const result = directory.responseResult(this.env.key);
+    if (result?.received && !result.succeeded) throw Error('BAND_CREATE_REJECTED');
+    const uploaded = this.checkpoint?.slots.map(slot => { try { return JSON.parse(slot.signature)[0] as string; } catch { return ''; } }) ?? [];
+    let url = directory.createdReceipt(this.env.key);
+    if (url) await this.storeIdentity(url);
+    if (uploaded.length !== this.photoUrls().length || uploaded.some(value => !bandPhotoPath(value))) throw Error('BAND_PUBLISHED_READBACK_MISMATCH');
+    if (!url) {
+      try {
+        const post = await directory.readCreated({ band: this.env.key, title: bandText(this.plan).split('\n')[0] ?? '',
+          body: bandText(this.plan), uploaded: uploaded.map(bandPhotoPath), after: this.submittedAt - 5000,
+          before: (result?.at ?? this.submittedAt + timeout) + 5000 }, timeout, this.env.check);
+        url = post?.url;
+      } catch (error) {
+        this.env.check();
+        trace('band.confirm.feed', 'fail', { reason: reasonCode(error) });
+        url = directory.createdReceipt(this.env.key);
+        if (!url) throw Error(error instanceof Error && error.message === 'BAND_POST_IDENTITY_AMBIGUOUS' ? 'BAND_POST_UNCONFIRMED:IDENTITY_AMBIGUOUS' : 'BAND_POST_UNCONFIRMED:IDENTITY_READ_FAILED');
+      }
+      // A receipt may arrive while the independent feed is being read.
+      const receipt = directory.createdReceipt(this.env.key);
+      const latest = directory.responseResult(this.env.key);
+      if (latest?.received && !latest.succeeded) throw Error('BAND_CREATE_REJECTED');
+      if (receipt && url && receipt !== url) throw Error('BAND_POST_UNCONFIRMED:IDENTITY_AMBIGUOUS');
+      url = receipt ?? url;
+      if (!url) throw Error('BAND_POST_UNCONFIRMED:IDENTITY_NOT_FOUND');
+      await this.storeIdentity(url);
+    }
+    trace('band.confirm.detail', 'start');
+    try {
+      await this.surface!.open({ url: url.replace('https://band.us/', 'https://www.band.us/'), session: 'band', width: 1280, height: 900,
+        userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36' });
+      const full = await waitFor(async () => {
+        this.env.check();
+        if (await this.dialog()) throw Error('USER_DIALOG_REQUIRED');
+        const state = await this.surface!.readState();
+        if (!directory.sameOrigin(new URL(state.url)) || new URL(state.url).pathname.replace(/\/$/, '') !== new URL(url!).pathname) return null;
+        const value = await readFullBandPost(this.surface!);
+        return value && value.photos.length >= uploaded.length ? value : null;
+      }, timeout);
+      verifyFullBandPost(bandText(this.plan), uploaded, full);
+    } catch (error) {
+      this.env.check();
+      trace('band.confirm.detail', 'fail', { reason: reasonCode(error) });
+      if (error instanceof Error && error.message === 'BAND_PUBLISHED_READBACK_MISMATCH') throw error;
+      throw Error('BAND_PUBLISHED_READBACK_UNAVAILABLE');
+    }
+    this.verifiedPublished = url; trace('band.confirm.detail', 'ok'); return url;
+  }
+  private storeIdentity(url: string): Promise<void> {
+    if (this.createdIdentity === url && this.identitySave) return this.identitySave;
+    this.createdIdentity = url;
+    this.identitySave = (async () => {
+      trace('band.confirm.record', 'start');
+      await this.env.onIdentity?.(url);
+      trace('band.confirm.record', 'ok', { reason: 'BAND_IDENTITY_STORED' });
+    })();
+    // Response observation cannot await persistence while the request is paused.
+    // The publish path awaits the same promise before any verification/success.
+    void this.identitySave.catch(() => {});
+    return this.identitySave;
   }
   async publish() {
     return traceStep('sites.band.plan.BandExecution.publish', async () => {
@@ -472,7 +544,7 @@ export class BandExecution {
       const url = this.env.directory.submitted(this.env.key)
         ? await this.detectPublished()
         : null;
-      if (url && this.env.directory.matchesPost(url)) return url;
+      if (url && (!this.env.directory.localPublish || this.env.directory.matchesPost(url))) return url;
       throw new Error(this.env.directory.blockedBeforeSend(this.env.key) ?? 'BAND_POST_UNCONFIRMED');
     }
     await this.guard();
@@ -507,8 +579,9 @@ export class BandExecution {
         }
         this.submittedAt = Date.now(); this.postAttempted = true;
         this.signal({ stage: 'submit', phase: 'start', submission: 'publish' });
-        this.env.directory.arm(this.env.key);
+        this.env.directory.arm(this.env.key, this.env.directory.localPublish ? undefined : url => { void this.storeIdentity(url); });
       });
+      if (!this.env.directory.localPublish) return await this.confirmPublished();
       return await waitFor(async () => {
         const blocked = this.env.directory.blockedBeforeSend(this.env.key);
         if (blocked) throw new Error(blocked);
@@ -519,6 +592,7 @@ export class BandExecution {
       }, this.env.submitTimeoutMs ?? 30000);
     } catch (error) { trace('sites.band.plan.BandExecution.publish', 'fail', { reason: reasonCode(error) });
       if (!this.postAttempted) throw error;
+      if (!this.env.directory.localPublish) throw error;
       throw new Error(this.env.directory.blockedBeforeSend(this.env.key) ?? 'BAND_POST_UNCONFIRMED');
     } finally {
       this.env.directory.disarm();

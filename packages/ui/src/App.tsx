@@ -1161,7 +1161,7 @@ export function App() {
                 <h1>
                   {job.status === 'draft_saved'
                     ? '블로그에 임시저장했습니다'
-                    : '발행했습니다'}
+                    : job.targets.every(t => t.channel === 'band') ? '게시했습니다' : '발행했습니다'}
                 </h1>
                 <p className="meta">
                   {job.title} · 사진 {product?.images.length ?? job.total}장
@@ -1193,7 +1193,7 @@ export function App() {
                 <h1>
                   {bandPostBlocked(job.failureCode) ? '밴드 게시 요청이 차단됐습니다' : formattingMessage(job.failureCode) ? '서식 확인 필요' : resultKind(job) === 'record'
                     ? job.targetResults?.some((t) => t.status === 'published')
-                      ? '발행했습니다'
+                      ? job.targets.every(t => t.channel === 'band') ? '게시했습니다' : '발행했습니다'
                       : job.targetResults?.some(
                             (t) => t.status === 'draft_saved',
                           )

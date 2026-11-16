@@ -1,5 +1,6 @@
 /** Fixed source identifiers. Never expand these lists from runtime page data. */
 export const traceSteps = [
+  "band.confirm.response", "band.confirm.feed", "band.confirm.record", "band.confirm.detail",
   "photo.download",
   "photo.cleanup",
   "sites.band.posted.readFullBandPost",
@@ -146,6 +147,10 @@ export const traceSteps = [
   "android.bridge.host.AndroidSurfaceHost.capture"
 ] as const;
 export const traceReasons = [
+  "BAND_RESPONSE_IDENTITY", "BAND_RESPONSE_NO_IDENTITY", "BAND_RESPONSE_UNOBSERVED", "BAND_IDENTITY_STORED",
+  "BAND_CREATE_REJECTED", "BAND_PUBLISHED_READBACK_UNAVAILABLE", "BAND_POST_IDENTITY_AMBIGUOUS",
+  "IDENTITY_READ_FAILED", "IDENTITY_NOT_FOUND",
+  "BAND_POST_UNCONFIRMED:IDENTITY_READ_FAILED", "BAND_POST_UNCONFIRMED:IDENTITY_NOT_FOUND", "BAND_POST_UNCONFIRMED:IDENTITY_AMBIGUOUS",
   'DELETE_CONFIRMATION_MISMATCH',
   'BLOG_DRAFT_SAVE_REQUEST_ALLOWED', 'BLOG_DRAFT_SAVE_REQUEST_NOT_AUTHORIZED',
   'BLOG_DRAFT_SAVE_RESPONSE_OK', 'BLOG_DRAFT_SAVE_RESPONSE_UNCONFIRMED',

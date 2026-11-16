@@ -31,7 +31,7 @@ const ai = new AiModeClient(host);
 const logs = new JobLogStore(path.join(path.dirname(argument('data')), 'logs'));
 configureTrace(logs);
 logs.setEnvironment({ appVersion: __GOLTOU_VERSION__, commit: __GOLTOU_COMMIT__ });
-const recordBandBarrierDecision = (code: import('../../../packages/sites/src/index').BandBarrierCode) => trace('barrier', /BLOCK|MISSING|INCOMPLETE|MISMATCH|NOT_ARMED|ALREADY_SENT|BODY_/.test(code) ? 'fail' : 'ok', { reason: reasonCode(code) });
+const recordBandBarrierDecision = (code: import('../../../packages/sites/src/index').BandBarrierCode, expected = false) => trace('barrier', expected ? 'blocked_expected' : /BLOCK|MISSING|INCOMPLETE|MISMATCH|NOT_ARMED|ALREADY_SENT|BODY_/.test(code) ? 'fail' : 'ok', { reason: reasonCode(code) });
 const options: CoreOptions = {
   native, host,
   diagnostics: __GOLTOU_DEBUG__,

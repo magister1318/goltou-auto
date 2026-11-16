@@ -4,6 +4,15 @@ import { bandPostBlocked } from '@goltou/sites';
 /** Never show engine codes, page messages, identifiers or transport errors. */
 export function jobMessage(job: Job): [string, string] {
   const code = job.failureCode ?? '';
+  if (code.startsWith('BAND_POST_UNCONFIRMED:')) return [
+    code.endsWith('IDENTITY_READ_FAILED') ? '생성 응답에 글 주소가 없고 목록도 읽지 못했습니다.' : code.endsWith('IDENTITY_AMBIGUOUS') ? '이번 글과 일치하는 후보가 여러 개라 주소를 확정하지 못했습니다.' : '생성 응답과 목록에서 이번 글을 하나로 확인하지 못했습니다.',
+    '등록 기록에서 확인해 주세요. 같은 글을 다시 올리지 마세요.',
+  ];
+  if (code.startsWith('BAND_PUBLISHED_READBACK_')) return [
+    code.endsWith('MISMATCH') ? '게시한 글의 내용이 계획과 달라 검증에 실패했습니다.' : '게시한 글의 상세 내용을 끝까지 읽지 못했습니다.',
+    '글 주소는 등록 기록에 저장했습니다. 해당 글을 확인해 주세요. 같은 글을 다시 올리지 마세요.',
+  ];
+  if (code === 'BAND_CREATE_REJECTED') return ['밴드가 게시 요청을 거절했습니다.', '등록 기록을 확인해 주세요. 자동으로 다시 게시하지 않습니다.'];
   if (bandPostBlocked(code)) return [
     '앱이 밴드 게시 요청을 차단해 밴드에는 게시되지 않았습니다.',
     '이번 게시 승인은 소진됐습니다. 같은 작업을 자동으로 다시 제출하지 않습니다. 등록 기록을 확인해 주세요.',

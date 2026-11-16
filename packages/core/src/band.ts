@@ -10,7 +10,7 @@ import { verificationProgress } from './verify-progress';
 export interface BandServices { host: SurfaceHost; baseUrl?: string; localPublish?: boolean;
   publishEnabled?: boolean;
   publishAllowance?: import('./band-allowance').BandPostAllowance;
-  recordBarrierDecision?(code: import('@goltou/sites').BandBarrierCode): void;
+  recordBarrierDecision?(code: import('@goltou/sites').BandBarrierCode, expected?: boolean): void;
   capture?(surface: import('@goltou/surface').Surface, name: string): Promise<Record<string, unknown>>;
 }
 /** Composer URLs require the execution's attachment proof; raw counts/names cannot stand in for it. */
@@ -41,7 +41,7 @@ export function bandObservation(plan: InputPlan, files: readonly Pick<MediaFile,
   return result;
 }
 export function createBandExecution(plan: InputPlan, files: readonly Pick<MediaFile, 'url' | 'path'>[], directory: BandDirectory, key: string,
-  hooks: Pick<ConstructorParameters<typeof BandExecution>[2], 'check' | 'progress'>) {
+  hooks: Pick<ConstructorParameters<typeof BandExecution>[2], 'check' | 'progress' | 'onIdentity'>) {
   let last: import('@goltou/sites').BandProgress = { characters: 0, totalCharacters: 0, photos: 0, totalPhotos: files.length };
   const progress = (value: import('@goltou/sites').BandProgress) => { last = value; hooks.progress(value); };
   const execution: BandExecution = new BandExecution(plan, files, { ...hooks, progress, directory, key,

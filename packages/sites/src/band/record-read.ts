@@ -1,10 +1,11 @@
 import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import type { SurfaceHost, GuardedRequest } from '@goltou/surface';
-import { compact, read, waitFor } from '../dom';
+import { compact, read, sleep, waitFor } from '../dom';
 import { bandMobileUA } from './plan';
 import { bandPostIdentity } from './delete';
 import type { BandDeleteCode, BandDeleteLog } from './delete-log';
 import { bandReadBatchTarget } from './read-batch';
+import { matchesBandCreation, type BandCreationMatch } from './publish-confirmation';
 
 export const bandFeedResponse = (r: Pick<GuardedRequest, 'method' | 'url'>) => {
   const u = new URL(r.url);
@@ -53,14 +54,15 @@ export function parseRecordedBandFeed(body: string, target: { url: string; title
   });
   return { url: id.url, body: text, createdAt: p.created_at, owned: p.author?.me === true, photos };
 }
-export async function openRecordedBandFeed(host: SurfaceHost, target: { url: string; title: string },
+type FeedTarget = { url: string; title: string } | BandCreationMatch;
+export async function openRecordedBandFeed(host: SurfaceHost, target: FeedTarget,
   inspectWrite: (request: GuardedRequest) => boolean = () => false,
-  onWrite: (status: number, body: string) => void = () => {}, log: BandDeleteLog = () => {}) {
+  onWrite: (status: number, body: string) => void = () => {}, log: BandDeleteLog = () => {}, readTimeoutMs = 20000) {
     return traceStep('sites.band.record-read.openRecordedBandFeed', async () => {
-  const id = bandPostIdentity(target.url);
+  const id = 'url' in target ? bandPostIdentity(target.url) : /^\d{1,30}$/.test(target.band) ? { band: target.band, post: '', url: '' } : null;
   if (!id || !target.title.trim()) throw Error('BAND_RECORD_READ_IDENTITY');
   const s = await host.create('band');
-  let revision = 0, actual: RecordedBandReadback | null = null, failure = false, reading = false, checkingUrl = false, missingRead = false, reviewingFeed = false;
+  let revision = 0, actual: RecordedBandReadback | null = null, failure = '', reading = false, checkingUrl = false, missingRead = false, reviewingFeed = false;
   try {
     if (!s.guardRequests) throw Error('BAND_RECORD_READ_BARRIER');
     await s.guardRequests([{ hostname: '*', pathname: '/', prefix: true }], r => {
@@ -83,7 +85,28 @@ export async function openRecordedBandFeed(host: SurfaceHost, target: { url: str
     }, r => {
       if (bandFeedResponse(r as { method: string; url: string })) {
         if (!reading) return;
-        try { actual = parseRecordedBandFeed(r.body, target); reading = false; revision++; } catch { trace('sites.band.record-read.openRecordedBandFeed', 'fail', { reason: 'CAUGHT_FAILURE' });  failure = true; }
+        // Existing recorded-post recovery binds identity from the returned
+        // post itself; only unknown-identity discovery requires the feed query.
+        if (!('url' in target) && new URL(r.url!).searchParams.get('band_no') !== id.band) return;
+        try {
+          if ('url' in target) actual = parseRecordedBandFeed(r.body, target);
+          else {
+            const value = JSON.parse(r.body);
+            if (value.result_code !== 1 || !Array.isArray(value.result_data?.items)) throw Error('BAND_RECORD_READ_RESPONSE');
+            const candidates: RecordedBandReadback[] = [];
+            for (const item of value.result_data.items) {
+              const url = item?.post?.web_url;
+              if (bandPostIdentity(url)?.band !== id.band || typeof item?.post?.content !== 'string' ||
+                compact(bandStoredText(item.post.content).split('\n')[0] ?? '') !== compact(target.title)) continue;
+              const post = parseRecordedBandFeed(JSON.stringify({ result_code: 1, result_data: { items: [item] } }), { url, title: target.title });
+              if (post && matchesBandCreation(post, target)) candidates.push(post);
+            }
+            trace('band.confirm.feed', candidates.length === 1 ? 'ok' : 'wait', { counts: { observed: candidates.length, expected: 1 } });
+            if (candidates.length > 1) throw Error('BAND_POST_IDENTITY_AMBIGUOUS');
+            actual = candidates[0] ?? null;
+          }
+          reading = false; revision++;
+        } catch (error) { failure = error instanceof Error && error.message === 'BAND_POST_IDENTITY_AMBIGUOUS' ? error.message : 'BAND_RECORD_READ_RESPONSE'; trace('sites.band.record-read.openRecordedBandFeed', 'fail', { reason: reasonCode(failure) }); }
       } else if (r.method === 'POST' && r.url && new URL(r.url).pathname === '/v1.5.0/delete_post') onWrite(r.status, r.body);
       else if (checkingUrl && r.method === 'POST' && r.url && new URL(r.url).pathname === '/v2.0.0/batch') {
         const codes: number[] = [];
@@ -103,7 +126,7 @@ export async function openRecordedBandFeed(host: SurfaceHost, target: { url: str
       const before = revision;
       reading = true;
       await s.open({ url: `https://band.us/band/${id.band}/post`, session: 'band', width: 1280, height: 900, userAgent: bandMobileUA });
-      await waitFor(async () => { if (failure) throw Error('BAND_RECORD_READ_RESPONSE'); return revision > before; }, 20000);
+      await waitFor(async () => { if (failure) throw Error(failure); return revision > before; }, readTimeoutMs);
       return actual;
     };
     const verifyGone = async () => {
@@ -155,3 +178,19 @@ export async function readRecordedBandPost(host: SurfaceHost, target: { url: str
 
     });
   }
+
+/** Same authenticated feed/parser as recorded-post recovery, with no mutation permission. */
+export async function readCreatedBandPost(host: SurfaceHost, target: BandCreationMatch, timeoutMs: number, check: () => void) {
+  trace('band.confirm.feed', 'start');
+  const deadline = Date.now() + timeoutMs;
+  check();
+  const session = await openRecordedBandFeed(host, target, undefined, undefined, undefined, timeoutMs);
+  try {
+    while (!session.current() && Date.now() < deadline) {
+      check(); trace('band.confirm.feed', 'retry');
+      await sleep(Math.min(1000, Math.max(1, deadline - Date.now())));
+      if (Date.now() < deadline) await session.refresh();
+    }
+    return session.current();
+  } finally { await session.close(); }
+}
