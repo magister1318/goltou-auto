@@ -1,6 +1,7 @@
 import type { Surface } from '@goltou/surface';
 import { trace, traceStep } from '@goltou/surface/telemetry';
 import { read } from '../dom';
+import { blogHashtagPattern } from '../naver-blog/tag-patterns';
 
 export interface CreatedBandPost { url: string; body: string; createdAt: number; owned: boolean; photoCount: number; }
 const storedText = (value: string) => value.replace(/<\/?band:hashtag>/g, '').replace(/&(?:amp|lt|gt|quot|#39);/g, entity => ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'" })[entity]!);
@@ -37,11 +38,14 @@ export async function readFullBandPost(surface: Surface): Promise<FullBandPost |
 }
 export function verifyFullBandPost(expected: string, uploaded: readonly string[], actual: FullBandPost) {
   const planned = normalizedBandBody(expected);
+  // nodejs-mobile has no ICU property escapes. Reuse the established static
+  // keyword ranges; the browser DOM remains the observed tag count authority.
+  const hashtags = (planned.match(new RegExp(blogHashtagPattern.source, 'g')) ?? []).length;
   const checks = [
     ['text', planned === normalizedBandBody(actual.body), Array.from(planned).length, Array.from(normalizedBandBody(actual.body)).length],
     ['line_breaks', (planned.match(/\n/g) ?? []).length === actual.lineBreaks, (planned.match(/\n/g) ?? []).length, actual.lineBreaks],
     ['photo_order', actual.photos.length === uploaded.length && actual.photos.every((url, i) => photoPath(url) === photoPath(uploaded[i] ?? '')), uploaded.length, actual.photos.length],
-    ['hashtags', (planned.match(/(?:^|\s)#[\p{L}\p{N}_]+/gu) ?? []).length === actual.hashtags, (planned.match(/(?:^|\s)#[\p{L}\p{N}_]+/gu) ?? []).length, actual.hashtags],
+    ['hashtags', hashtags === actual.hashtags, hashtags, actual.hashtags],
     ['links', (planned.match(/https?:\/\/[^\s<>]+/g) ?? []).length === actual.links, (planned.match(/https?:\/\/[^\s<>]+/g) ?? []).length, actual.links],
   ] as const;
   for (const [check, matches, expectedCount, observedCount] of checks) trace('verification', matches ? 'ok' : 'fail', { check, counts: { expected: expectedCount, observed: observedCount }, ...(matches ? {} : { reason: 'VERIFICATION_MISMATCH' }) });
