@@ -297,7 +297,7 @@ describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pa
     await runner.discardBand(); await runner.answerDialog(runner.job!.dialog!.id, true); await settled(runner);
     expect(runner.job?.status).toBe('stopped');
   }, 30000);
-  it('finishes blog before Band, and requires an explicit choice to continue after blog failure', async () => {
+  it('finishes blog before Band and stops without Band when a saved draft cannot be identified', async () => {
     for (const mode of ['mobile', 'blog-fail']) {
       const f = await fixture(mode);
       const captureBand = vi.fn(async () => ({ redacted: true, file: 'band-masked.png' }));
@@ -309,22 +309,18 @@ describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pa
       const work = workFor(plan, []);
       await runner.start({ ...input, targets: [{ channel: 'blog', key: 'sample', name: '블로그' }, ...input.targets] }, '로컬', 0, work); await settled(runner);
       if (mode === 'blog-fail') {
-        expect(runner.job?.status).toBe('channel_paused');
-        expect(runner.job?.evidence).toBe('blog-masked.png');
-        expect(recordFailure).toHaveBeenCalledWith(expect.objectContaining({ code: 'DRAFT_IDENTITY_AMBIGUOUS', evidence: 'blog-masked.png' }));
+        expect(runner.job?.status).toBe('draft_unverified');
+        expect(runner.job?.targetResults?.[0]).toMatchObject({ status: 'stopped', reason: 'BLOG_DRAFT_SAVED_UNVERIFIED' });
+        expect(recordFailure).not.toHaveBeenCalled();
         expect((await readBandDocument(runner.directory.surface!)).composer).toBe(false);
-        await runner.continueBand(); await settled(runner);
+        await expect(runner.continueBand()).rejects.toMatchObject({ code: 'conflict' });
+        expect(captureBand).not.toHaveBeenCalled();
+        continue;
       }
       expect(runner.job?.status).toBe('stopped_before_post');
       expect(captureBlog).toHaveBeenCalledTimes(1); expect(captureBand).toHaveBeenCalledTimes(1);
       expect(runner.job?.evidence).toBe('band-masked.png');
-      expect(runner.job!.targetResults!.find(t => t.channel === 'blog')!.status).toBe(mode === 'blog-fail' ? 'failed' : 'draft_saved');
-      if (mode === 'blog-fail') {
-        await runner.discardBand(); await settled(runner);
-        expect(runner.job).toMatchObject({ status: 'failed', completedSteps: expect.arrayContaining([7]) });
-        await expect(runner.start(input, '다음 상품', 0, work)).resolves.toBeUndefined();
-        await runner.stop();
-      }
+      expect(runner.job!.targetResults!.find(t => t.channel === 'blog')!.status).toBe('draft_saved');
     }
   }, 40000);
   it('records preparation failure per channel and retries before opening any composer', async () => {

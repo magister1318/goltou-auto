@@ -22,7 +22,7 @@ const token = 'synthetic-private-token';
 const product: Product = { productNo: 77, title: '비공개 상품제목', contentsHtml: '<p>비공개 상품본문</p>', images: [], departures: [], golfCourses: [], productUrl: 'https://example.invalid/private', contentHash: 'fixture', country: '', region: '', updatedAt: '' };
 const host: SurfaceHost = { create: vi.fn(), destroy: vi.fn(), clearSession: vi.fn() };
 type Kind = 'band' | 'channel-blog' | 'blog';
-async function fixture(kind: Kind, transport: 'fake' | 'http', failure: 'invalid' | 'network') {
+async function fixture(kind: Kind, transport: 'fake' | 'http', failure: 'invalid' | 'network', expectedStatus = 'record_failed') {
   const channel = kind === 'band' ? 'band' : 'blog';
   const input: JobInput = { productNo: 77, mode: channel === 'band' ? 'publish' : 'draft', publishConfirmed: channel === 'band', targets: [{ channel, name: '로컬', key: '111' }], options: { polish: false, closing: false, linkCard: false } };
   const states: Job[] = [], calls: { route: string; input: unknown }[] = [];
@@ -79,7 +79,7 @@ async function fixture(kind: Kind, transport: 'fake' | 'http', failure: 'invalid
   await app.restoreSession();
   const call = (command: AppRequest['command'], value: unknown = {}) => app.handle({ id: 1, type: 'app', command, input: value } as AppRequest);
   await call('job.start', input);
-  await vi.waitFor(() => expect(runner.job?.status).toBe('record_failed'));
+  await vi.waitFor(() => expect(runner.job?.status).toBe(expectedStatus));
   const updates = () => calls.filter(c => c.route === '/auto/posts/update');
   return { app, runner, call, updates, states, work, recordFailure, input, calls, repair: () => { failed = false; }, message: (value: string) => { apiMessage = value; } };
 }
@@ -147,4 +147,14 @@ describe('record failures preserve site outcomes and require a record-only retry
     const error = new RecordError(new Error(`private ${token}`));
     expect(error.code).toBe('RECORD_FAILED:server'); expect(error.message).not.toContain(token);
   });
+});
+
+it.each(['blog', 'channel-blog'] as const)('persists a saved but unverified outcome through the API for %s', async kind => {
+  site.blog.saveAndVerify.mockRejectedValueOnce(new Error('BLOG_DRAFT_SAVED_UNVERIFIED'));
+  const f = await fixture(kind, 'fake', 'network', 'draft_unverified');
+  expect(f.updates().at(-1)?.input).toMatchObject({ status: 'stopped', failReason: 'BLOG_DRAFT_SAVED_UNVERIFIED', postUrl: '' });
+  expect(f.runner.job?.status).toBe('draft_unverified');
+  expect(f.recordFailure).not.toHaveBeenCalled();
+  await expect(f.call('job.resume')).rejects.toMatchObject({ code: 'conflict' });
+  expect(site.blog.saveAndVerify).toHaveBeenCalledTimes(1);
 });

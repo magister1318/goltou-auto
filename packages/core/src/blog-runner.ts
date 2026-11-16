@@ -7,6 +7,7 @@ import type { PreparationWork } from './preparation';
 import { createBlogExecution, type BlogServices } from './blog';
 import { updateInputProgress } from './input-progress';
 import { RecordError, RecordingCheckpoint } from './record-checkpoint';
+import { markDraftUnverified } from './draft-unverified';
 
 /** Android's real blog runner. Band remains outside WP5 and cannot be reported as saved. */
 export class BlogRegistrationRunner implements RegistrationRunner {
@@ -27,7 +28,7 @@ export class BlogRegistrationRunner implements RegistrationRunner {
   }
   async start(input: JobInput, title: string, photos: number, work?: PreparationWork) {
     if (this.serviceLogin.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
-    if (this.job && !['draft_saved', 'published'].includes(this.job.status)) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
+    if (this.job && !['draft_saved', 'draft_unverified', 'published'].includes(this.job.status)) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
     if (input.targets.some(t => t.channel !== 'blog')) throw new ApiError('invalid', '현재 실제 등록은 블로그 한 곳만 지원합니다. 밴드를 꺼 주세요.');
     if (input.targets.length !== 1 || !work) throw new ApiError('invalid', '블로그 입력 준비가 필요합니다.');
     if (!this.services.localPublish && !this.services.publishEnabled && (input.mode !== 'draft' || !title.startsWith('[골투오토 실험]'))) throw new ApiError('invalid', '실제 네이버 발행 설정을 확인해 주세요.');
@@ -76,7 +77,7 @@ export class BlogRegistrationRunner implements RegistrationRunner {
   }
   async showService(service: import('./protocol').Service) {
     if (service !== 'naver') return;
-    if (this.job && !['draft_saved', 'published', 'stopped', 'login_paused'].includes(this.job.status)) throw new ApiError('conflict', '로그인으로 멈춘 작업에서만 로그인 화면을 열 수 있습니다.');
+    if (this.job && !['draft_saved', 'draft_unverified', 'published', 'stopped', 'login_paused'].includes(this.job.status)) throw new ApiError('conflict', '로그인으로 멈춘 작업에서만 로그인 화면을 열 수 있습니다.');
     await this.serviceLogin.show('naver');
   }
   async hideService() { await this.serviceLogin.cancel(); await this.execution?.hide(); }
@@ -103,6 +104,7 @@ export class BlogRegistrationRunner implements RegistrationRunner {
         }
         if (job.step === 5) {
           await this.execution!.saveAndVerify();
+          if (this.execution!.draftIdentity) job.blogDraftIdentity = this.execution!.draftIdentity;
           if (job.mode === 'publish') { job.postUrl = await this.execution!.publish(); job.publicationUncertain = false; }
           job.blogReadbackTimings = [...this.execution!.readbackTimings];
           job.blogIdentitySources = [...this.execution!.publishedIdentitySources];
@@ -119,6 +121,9 @@ export class BlogRegistrationRunner implements RegistrationRunner {
       if (error instanceof RecordError) return;
       if (this.abort.signal.aborted || this.disposed) return;
       const code = error instanceof Error ? error.message : 'BLOG_FAILED';
+      if (code === 'BLOG_DRAFT_SAVED_UNVERIFIED') {
+        markDraftUnverified(job); await this.emit(); return;
+      }
       const pendingDialog = await this.execution?.dialog().catch(() => null);
       // Only controlled error codes are persisted; never page text, IDs, URLs or dialog contents.
       job.message = safeFailureCode(error, 'BLOG_FAILED');

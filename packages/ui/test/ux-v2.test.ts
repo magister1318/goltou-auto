@@ -119,3 +119,29 @@ describe('WP16 live progress and plain failure guidance', () => {
     ).toContain('다시 올리지');
   });
 });
+
+it.each([
+  { step: 1, activity: undefined },
+  { step: 2, activity: undefined },
+  { step: 3, activity: undefined },
+  ...['title', 'paragraph', 'photos', 'tags', 'table', 'link'].map(blockKind => ({ step: 4, activity: { ...job.activity!, blockKind, stage: 'write' } })),
+  ...['title', 'body', 'photos', 'facts', 'tags'].map(verification => ({ step: 5, activity: { ...job.activity!, stage: 'verify', verification } })),
+  { step: 5, activity: { ...job.activity!, stage: 'open', opening: 'editor' } },
+  { step: 5, activity: { ...job.activity!, stage: 'submit' } },
+  { step: 5, mode: 'publish', activity: { ...job.activity!, stage: 'submit' } },
+  { step: 6, mode: 'publish', activity: { ...job.activity!, channel: 'band', stage: 'submit' } },
+  { step: 6, activity: { ...job.activity!, channel: 'band', stage: 'write', blockKind: 'photos', photoIndex: 0 } },
+  { step: 4, status: 'user_paused', activity: { ...job.activity! } },
+])('omits a per-event seconds fragment from subtitle variant %#', value => {
+  const j = { ...job, ...value } as Job;
+  const html = renderToStaticMarkup(createElement(LiveProgress, { job: j, preview: null }));
+  const subtitle = /<p class="meta" aria-live="polite">(.*?)<\/p>/.exec(html)?.[1];
+  expect(subtitle).toBeTruthy();
+  expect(subtitle).not.toMatch(/초|NaN|undefined/);
+});
+it('gives saved but unverified guidance without calling it a failure or suggesting a retry', () => {
+  const messages = jobMessage({ ...job, status: 'draft_unverified', failureCode: 'BLOG_DRAFT_SAVED_UNVERIFIED' });
+  expect(messages[0]).toBe('임시저장은 됐지만 내용을 다시 확인하지 못했습니다');
+  expect(messages[1]).toContain('저장 시각과 내용을 확인');
+  expect(messages.join(' ')).not.toMatch(/실패|다시 시도|BLOG_/);
+});

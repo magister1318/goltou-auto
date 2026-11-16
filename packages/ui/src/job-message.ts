@@ -2,6 +2,14 @@ import type { Job } from '@goltou/core/protocol';
 /** Never show engine codes, page messages, identifiers or transport errors. */
 export function jobMessage(job: Job): [string, string] {
   const code = job.failureCode ?? '';
+  if (job.status === 'draft_unverified' || code === 'BLOG_DRAFT_SAVED_UNVERIFIED') return [
+    '임시저장은 됐지만 내용을 다시 확인하지 못했습니다',
+    '네이버 블로그 앱의 임시저장함에서 저장 시각과 내용을 확인해 주세요. 같은 글을 바로 다시 저장하지 마세요.',
+  ];
+  if (code === 'DRAFT_SAVE_UNCONFIRMED') return [
+    '임시저장됐는지 확인하지 못했습니다.',
+    '네이버 블로그 앱의 임시저장함에서 저장 시각과 내용을 확인해 주세요. 같은 글을 바로 다시 저장하지 마세요.',
+  ];
   if (
     job.publicationUncertain ||
     /BAND_POST_UNCONFIRMED|BLOG_PUBLISH|PUBLISH_RESPONSE|PUBLISH_IDENTITY/.test(

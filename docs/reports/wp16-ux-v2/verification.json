@@ -1,6 +1,6 @@
 {
-  "files": 56,
-  "passed": 610,
+  "files": 57,
+  "passed": 640,
   "failed": 0,
   "skipped": 0,
   "previousReview": {
@@ -87,5 +87,63 @@
       "failed": 0,
       "skipped": 0
     }
+  },
+  "run5Followup": {
+    "run": {
+      "run": 5,
+      "outcome": "draft-saved-verified",
+      "done": true,
+      "failed": false,
+      "startToDoneSeconds": 195.391,
+      "wallMilliseconds": 195391,
+      "choiceWaitMillisecondsApprox": 0,
+      "longestVisibleUnchangedMilliseconds": 3034,
+      "percentFinite": true,
+      "percentMonotonic": true,
+      "textRegressions": 0,
+      "photoRegressions": 0,
+      "pillRegressions": 0,
+      "sheetAppeared": false,
+      "samples": 196,
+      "screenshots": 40,
+      "jobStatus": "draft_saved",
+      "draftIdentity": {
+        "existingSameTitle": 1,
+        "source": "list-change"
+      },
+      "subtitleSecondsFragments": 0,
+      "maxPhotos": 8,
+      "maxPills": 5
+    },
+    "install": true,
+    "typecheck": true,
+    "build": true,
+    "assembleDebug": true,
+    "realDraftStartActions": 1,
+    "realPublishActions": 0,
+    "realBandPostActions": 0,
+    "realSavedPostDeleteActions": 0,
+    "initialDeviceSignals": {
+      "screenAwake": true,
+      "appFocused": true,
+      "appResumed": true
+    },
+    "finalProductList": true,
+    "rawArtifactsOutsideRepository": true,
+    "finalApkInstalled": true,
+    "finalHomeVerified": true,
+    "finalTests": {
+      "files": 57,
+      "passed": 640,
+      "failed": 0,
+      "skipped": 0
+    },
+    "diffCheck": true
+  },
+  "previousFullVerification": {
+    "files": 56,
+    "passed": 610,
+    "failed": 0,
+    "skipped": 0
   }
 }

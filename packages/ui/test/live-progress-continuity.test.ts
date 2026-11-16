@@ -38,7 +38,7 @@ it('keeps displayed text and percent moving forward as measured engine events re
   } finally { await act(async () => root.unmount()); }
 });
 
-it('shows preparation movement every two seconds and excludes a long recovery choice from the work clock', async () => {
+it('shows elapsed work time during preparation and excludes a long recovery choice from the work clock', async () => {
   vi.useFakeTimers(); vi.setSystemTime(0);
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   const host = document.createElement('div'); document.body.append(host);
@@ -52,7 +52,7 @@ it('shows preparation movement every two seconds and excludes a long recovery ch
     let last = '', percent = 0;
     for (let n = 0; n < 30; n++) {
       await act(async () => { vi.advanceTimersByTime(2000); });
-      const visible = host.querySelector('.live-progress > p.meta')!.textContent;
+      const visible = host.querySelector('.live-progress > .row-label:last-child')!.textContent;
       expect(visible).not.toBe(last); last = visible!;
       const next = (host.querySelector('.overall') as HTMLProgressElement).value;
       expect(next).toBeGreaterThanOrEqual(percent); expect(next).toBeLessThan(6); percent = next;

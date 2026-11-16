@@ -53,18 +53,21 @@ export function blogFixture(mode = '') {
     document.body.append(panel);render();
   };
   const store=()=>JSON.parse(localStorage.getItem('drafts')||'[]');
-  document.querySelector('[data-click-area="tpb.save"]').onclick=()=>{
-    const drafts=store();drafts.push({title:title.textContent,html:main.innerHTML,tags:document.querySelector('.tag_list').innerHTML,metadataTags});
+  if(mode==='existing-duplicates'&&!store().length)localStorage.setItem('drafts',JSON.stringify([1,2].map(n=>({title:'[골투오토 실험] WP5 로컬',stamp:'2026.01.01. 00:0'+n,html:'older content',tags:''}))));
+  document.querySelector('[data-click-area="tpb*s.count"]').textContent=store().length;
+  document.querySelector('[data-click-area="tpb.save"]').onclick=async()=>{
+    const drafts=store();if(mode!=='list-unchanged')drafts.push({title:title.textContent,stamp:new Date().toISOString(),html:main.innerHTML,tags:document.querySelector('.tag_list').innerHTML,metadataTags});
     if(mode==='duplicate')drafts.push(drafts[drafts.length-1]);localStorage.setItem('drafts',JSON.stringify(drafts));
     if(mode==='autosave-readback')localStorage.removeItem('leftover');
     localStorage.setItem('saves',String(Number(localStorage.getItem('saves')||0)+1));
     if(mode!=='ambiguous')document.querySelector('[data-click-area="tpb*s.count"]').textContent=drafts.length;
     if(mode==='dialog')confirm('로컬 저장 확인');
+    await fetch('/RabbitTempPostWrite.naver',{method:'POST',body:mode});
   };
   document.querySelector('[data-click-area="tpb*s.count"]').onclick=()=>{
     const list=document.querySelector('ul');list.replaceChildren();for(const draft of store()){
       const li=document.createElement('li'), b=document.createElement('button'), strong=document.createElement('strong');
-      b.dataset.clickArea='tpb*s.tlist';strong.textContent=draft.title;b.append(strong);li.append(b);list.append(li);
+      b.dataset.clickArea='tpb*s.tlist';strong.textContent=draft.title;b.append(strong);const date=document.createElement('span');date.className='date__fixture';date.textContent=draft.stamp||'';b.append(date);li.append(b);list.append(li);
       b.onclick=()=>{title.textContent=draft.title;main.innerHTML=draft.html;document.querySelector('.tag_list').innerHTML=draft.tags;metadataTags=draft.metadataTags||[];list.hidden=true;
         if(mode==='autosave-readback')setTimeout(()=>{
           localStorage.setItem('autosaveAttempted','yes');
@@ -73,6 +76,7 @@ export function blogFixture(mode = '') {
         if(mode==='metadata-tags'||mode==='metadata-heavy')for(const img of main.querySelectorAll('img')){img.dataset.lazySource=img.getAttribute('src');img.src='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg"/>'}
       };
     }list.hidden=false;
+    if(!document.querySelector('[data-click-area="tpb*s.close"]')){const close=document.createElement('button');close.dataset.clickArea='tpb*s.close';close.textContent='닫기';close.onclick=()=>{list.hidden=true;close.remove()};document.querySelector('header').append(close)}
   };
   document.querySelector('[data-click-area="tpb.publish"]').onclick=()=>{localStorage.setItem('publishes',String(Number(localStorage.getItem('publishes')||0)+1));location.href='/published/local'};
   if(${metadata}){

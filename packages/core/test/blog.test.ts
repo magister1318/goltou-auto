@@ -25,7 +25,7 @@ async function fixture(mode = '', extra: { tags?: boolean; photos?: number; phot
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   const files = Array.from({ length: extra.photos ?? 5 }, (_, i) => i + 1).map(i => ({ url: `https://example.invalid/${i}`, path: path.join(dir, `goltou-1234567890abcdef-${i}.${extra.photoExtension ?? 'png'}`) }));
   for (const file of files) await writeFile(file.path, new Uint8Array([137, 80, 78, 71]));
-  const server = http.createServer((req, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(req.url === '/login' ? '<input type="password"><p>로컬 로그인 풀림 예시</p>' : req.url?.startsWith('/published/') ? '<h1>로컬 발행 결과</h1>' : mode === 'delayed-frame' && req.url === '/editor' ? '<script>setTimeout(()=>{const f=document.createElement("iframe");f.src="/ready-editor";document.body.append(f)},500)</script><body></body>' : blogFixture(mode)));
+  const server = http.createServer((req, res) => res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(req.url === '/RabbitTempPostWrite.naver' ? JSON.stringify({isSuccess:true,result:{}}) : req.url === '/login' ? '<input type="password"><p>로컬 로그인 풀림 예시</p>' : req.url?.startsWith('/published/') ? '<h1>로컬 발행 결과</h1>' : mode === 'delayed-frame' && req.url === '/editor' ? '<script>setTimeout(()=>{const f=document.createElement("iframe");f.src="/ready-editor";document.body.append(f)},500)</script><body></body>' : blogFixture(mode)));
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   cleanup.push(() => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }));
   const port = (server.address() as { port: number }).port, editorUrl = `http://127.0.0.1:${port}/editor`;
@@ -228,11 +228,39 @@ describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback e
     expect(compareDocuments(observePlan(f.plan), blogObservation(f.plan, f.files, wrong)).differences.some(d => d.field === 'prices')).toBe(true);
     expect(await f.counts()).toEqual({ saves: 1, publishes: 0 });
   }, 40000);
-  it('stops on duplicate exact draft titles without another save or publish', async () => {
+  it('reports saved but unverified on equal new candidates without another save or publish', async () => {
     const f = await fixture('duplicate'); await f.execution.write();
-    await expect(f.execution.saveAndVerify()).rejects.toThrow('DRAFT_IDENTITY_AMBIGUOUS');
+    await expect(f.execution.saveAndVerify()).rejects.toThrow('BLOG_DRAFT_SAVED_UNVERIFIED');
     expect(f.beforeSave).toHaveBeenCalledTimes(1); expect(await f.counts()).toEqual({ saves: 1, publishes: 0 });
   }, 40000);
+  it.each(['existing-duplicates', 'no-response-id'])('reopens exactly the new entry with %s', async mode => {
+    const f = await fixture(mode); await f.execution.write();
+    await f.execution.saveAndVerify();
+    expect(f.execution.draftIdentity).toEqual({ existingSameTitle: mode === 'existing-duplicates' ? 2 : 0, source: 'list-change' });
+    expect(f.beforeSave).toHaveBeenCalledTimes(1);
+    expect(await f.counts()).toEqual({ saves: 1, publishes: 0 });
+  }, 40000);
+  it.each(['blog', 'channel'])('records an acknowledged save with an unchanged list as unverified in the %s runner', async kind => {
+    const f = await fixture('list-unchanged');
+    f.plan.steps = [{ kind: 'text', role: 'title', text: '합성 상품' }, { kind: 'text', role: 'body', text: '합성 본문' }];
+    const verification = compareDocuments(observePlan(f.plan), observePlan(f.plan));
+    const preview = { productNo: 1, contentHash: 'fixture', options: {}, blog: f.plan, band: { ...f.plan, channel: 'band' }, verification: { blog: verification, band: verification } } as PreparedPreview;
+    const work = { preview, prepared: { preview, files: [] }, download: async () => {}, arrange: async () => {}, cleanup: async () => {} };
+    const recorded: import('../src/protocol').Job[] = [];
+    const services = { host: f.host, editorUrl: f.editorUrl, localPublish: true };
+    const record = async (job: import('../src/protocol').Job) => { recorded.push(structuredClone(job)); };
+    const runner = kind === 'blog' ? new BlogRegistrationRunner(services, record, () => {}) : new ChannelRegistrationRunner({ blog: services, band: { host: f.host, baseUrl: new URL(f.editorUrl).origin, localPublish: true } }, record, () => {});
+    cleanup.push(async () => runner.dispose());
+    await runner.start({ productNo: 1, mode: 'draft', targets: [{ channel: 'blog', name: '합성', key: 'fixture' }], options: { polish: false, closing: false, linkCard: false } }, '합성 상품', 0, work);
+    await vi.waitFor(() => expect(runner.job?.status).toBe('draft_unverified'), { timeout: 15000 });
+    expect(recorded.at(-1)).toMatchObject({ status: 'draft_unverified', targetResults: [{ status: 'stopped', reason: 'BLOG_DRAFT_SAVED_UNVERIFIED' }] });
+    expect(runner.job?.completedSteps).not.toContain(5);
+    await expect(runner.resume()).rejects.toMatchObject({ code: 'conflict' });
+    const page = [...f.pages.values()].at(-1)!;
+    expect(await page.evaluate('Number(localStorage.getItem("saves"))')).toBe(1);
+    expect(await page.evaluate('Number(localStorage.getItem("publishes"))')).toBe(0);
+    expect(await page.evaluate('document.querySelector(".se-documentTitle p").textContent')).toBe('');
+  }, 20000);
   it('requires consent for auto-recovery, preserves the prompt on refusal, then continues only after consent', async () => {
     const f = await fixture('restore'); await expect(f.execution.write()).rejects.toThrow('AUTO_RECOVER_CONSENT_REQUIRED');
     await expect(f.execution.write()).rejects.toThrow('AUTO_RECOVER_CONSENT_REQUIRED');
