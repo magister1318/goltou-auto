@@ -12,6 +12,7 @@ import type { Experiments } from './experiments';
 import type { PreparationServices } from './preparation';
 import type { BlogServices } from './blog';
 import type { BandServices } from './band';
+import { photoCspSources } from './photo-url';
 
 export interface CoreOptions {
   host: SurfaceHost;
@@ -78,7 +79,7 @@ export async function startCore(options: CoreOptions) {
         'content-type': mime[path.extname(file)] ?? 'application/octet-stream',
         'cache-control': 'no-store', 'x-content-type-options': 'nosniff',
         'referrer-policy': 'no-referrer',
-        'content-security-policy': "default-src 'self'; connect-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data: https://goltou.kr https://*.goltou.kr; frame-ancestors 'none'; base-uri 'none'",
+        'content-security-policy': `default-src 'self'; connect-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data: ${photoCspSources}; frame-ancestors 'none'; base-uri 'none'`,
         'set-cookie': `goltou_ui=${token}; Path=/; HttpOnly; SameSite=Strict`,
       });
       res.end(req.method === 'HEAD' ? undefined : data);

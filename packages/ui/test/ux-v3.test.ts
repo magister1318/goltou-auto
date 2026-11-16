@@ -10,17 +10,39 @@ import {
   targetStatus,
   resultKind,
   historyStatus,
+  historyLine,
 } from '../src/ux-state';
 import { ConversionPreview } from '../src/ConversionPreview';
 import { bandText, photoUrls } from '@goltou/sites';
 import type { InputPlan } from '@goltou/core';
 import type { Job } from '@goltou/core/protocol';
+import type { Post } from '@goltou/api-client';
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 afterEach(() => {
   document.body.innerHTML = '';
   vi.restoreAllMocks();
 });
 describe('WP17 choices and channel outcomes', () => {
+  it.each(['draft_saved', 'running', 'stopped', 'stopped_before_post', 'failed'] as const)(
+    'never adds a visibility label to a %s blog row, including stale known visibility', status => {
+      for (const blogVisibility of [undefined, 'public', 'private'] as const) {
+        const post = { channel: 'blog', status, blogVisibility } as Post;
+        const line = historyLine(post, '11.16 10:00');
+        expect(line).toBe(`블로그 ${historyStatus(post)} · 11.16 10:00`);
+        expect(line).not.toMatch(/공개 범위|비공개|전체공개/);
+      }
+    },
+  );
+  it('keeps draft copy, published visibility and band destinations distinct', () => {
+    const post = { channel: 'blog', status: 'draft_saved' } as Post;
+    expect(historyLine(post, '11.16 10:00')).toBe('블로그 임시저장 · 11.16 10:00');
+    expect(historyLine({ ...post, status: 'published' }, '날짜')).toBe('블로그 발행 · 공개 범위 확인 필요 · 날짜');
+    expect(historyLine({ ...post, status: 'published', blogVisibility: 'private' }, '날짜')).toBe('블로그 발행 · 비공개 · 날짜');
+    expect(historyLine({ ...post, status: 'published', blogVisibility: 'public' }, '날짜')).toBe('블로그 발행 · 전체공개 · 날짜');
+    expect(historyLine({ ...post, status: 'failed', failReason: 'BLOG_PUBLISH_UNCONFIRMED' }, '날짜')).toBe('블로그 확인 필요 · 날짜');
+    expect(historyLine({ ...post, status: 'failed', failReason: 'BLOG_FORMATTING_AFTER_SAVE:1' }, '날짜')).toBe('블로그 확인 필요 · 날짜');
+    expect(historyLine({ ...post, channel: 'band', status: 'published', targetName: '합성 밴드' }, '날짜')).toBe('밴드 게시 · 합성 밴드 · 날짜');
+  });
   it.each([
     { loading: true, failed: false },
     { loading: false, failed: true },
@@ -199,6 +221,15 @@ describe('WP17 choices and channel outcomes', () => {
     expect(node.querySelector('.post-body')!.textContent).not.toContain(
       '#합성',
     );
+  });
+  it('shows the selected band only in the preview header and uses the mock hint until one is known', () => {
+    const plan: InputPlan = { channel: 'band', steps: [{ kind: 'text', role: 'body', text: '원문' }], discarded: [], notices: [] };
+    const node = document.createElement('div');
+    for (const bandName of [undefined, '합성 밴드']) {
+      node.innerHTML = renderToStaticMarkup(createElement(ConversionPreview, { plan, bandName, expanded: true, droppedStruckCharacters: 0 }));
+      expect(node.querySelector('.post-caption')!.textContent).toBe(`밴드 글${bandName || '밴드를 고르면 이름이 나옵니다'}`);
+      expect(node.querySelector('.band-text')!.textContent).toBe('원문');
+    }
   });
 });
 describe('sheet back and reading position', () => {

@@ -125,3 +125,46 @@ Phase A 완료 직후 읽기 전용 두 신호 점검을 수행했다. 첫 점�
 ### 후속 검증
 
 `pnpm install` 통과(lockfile 변경 없음), `pnpm typecheck` 통과, `assembleDebug testDebugUnitTest` 통과, 기기 `adb install -r` 2회 성공. 첫 전체 시험은 62개 파일·706개 시험 통과(실패/건너뜀 0, 471.50초)이며, 그 뒤 수집된 새 키보드 회귀 시험도 별도로 통과했다. 최종 전체 시험은 **63개 파일·707개 시험 통과**, 실패 0·건너뜀 0, 470.46초다. 최종 typecheck와 diff 검사도 통과했고 네이티브 단위 시험은 4개, 실패/건너뜀 0이다. 기기에서 작업 시작·임시저장·발행은 모두 0회다.
+
+## 미리보기 사진·기록 후속 수정 (2026-11-16, 최신)
+
+### 사진 실패의 확인된 원인과 수정
+
+이전 contact-2/contact-5와 같은 두 상품을 검색으로 다시 골랐다. 23장 상품은 첫 사진 1장이 골투 HTTPS 호스트, 나머지 22장이 `coresos-phinf.pstatic.net`의 HTTPS 원본이었다. 수정 전 기기에서는 첫 사진만 정상이고 나머지는 img 요청 자체가 만들어지지 않았다. `ProductPhoto.photoSource`가 공용 `goltouPhotoUrl`의 골투 전용 호스트 제한으로 거절했다. UI CSP와 Android `UiPhotoPolicy`에도 같은 제한이 있었다. UI/CSP를 수정한 뒤 첫 기기 재시험에서 네이티브 필터의 추가 차단을 확인하고 그 필터도 고쳤다.
+
+실제 원본 23개를 credentials/referrer 없이 GET한 결과 모두 redirect 없는 HTTP 200 `image/jpeg`였다. 각 파일은 3,290~276,235 bytes였고, 수정한 기기 WebView에서 23개 모두 디코딩됐다. 이 상품의 실패는 mixed content, hotlink/referrer 요구, redirect, 파일 크기/디코더 한도, 동시 요청/timeout 또는 proxy 때문이 아니었다. 별도 사진 proxy는 사용하지 않는다.
+
+추가 허용은 관측한 CDN의 **정확한 HTTPS 호스트 하나**뿐이다. 공용 URL 정책과 CSP의 호스트 목록을 함께 관리하고, Android subresource 필터에도 반영했다. 원본 URL·순서·변환 내용은 그대로이며 credentials, 임의 호스트, HTTP, 비표준 포트, 위장 접미/하위 호스트는 계속 거절한다. 네이티브 UI의 외부 페이지 탐색 차단도 유지한다.
+
+Android 게시 준비 downloader도 같은 공용 정책을 쓰므로 수정 전에는 이 원본을 `PHOTO_HOST_NOT_ALLOWED`로 거절했을 것이다. 새 bundle의 실제 `downloadPhotos` 함수로 이 상품의 API 사진 목록을 download-only 검사했다. 23/23개의 비어 있지 않은 원본, 순서 일치, 총 3,815,545 bytes를 확인했다. 이 검사는 메모리 저장소만 사용했고 작업 시작·편집기 열기·첨부·저장·발행은 호출하지 않았다.
+
+이번 23개 중 실제로 가져오지 못하는 사진은 없다. 앞으로 API 목록에 없는 URL이나 허용하지 않은 호스트는 내려받기 전에 거절한다. 비정상 HTTP 응답(redirect 포함), 30초 timeout, 빈 파일은 전체 준비를 실패시키고 batch를 정리한다. 사진을 조용히 빼고 게시를 진행하지 않는다. 실서비스 업로드까지 확인했다는 뜻은 아니다.
+
+### 기록·시안 대조
+
+`historyLine`에서 blog visibility는 `published` 행에만 붙인다. 임시저장은 `블로그 임시저장 · 날짜`, 중단은 `블로그 중단 · 날짜`이며 기존 임시저장함 안내는 남긴다. 실패·진행 중·게시 전 중단·서식 확인 필요에도 공개 범위를 붙이지 않는다. `공개 범위 확인 필요`는 공개 범위가 없는 발행 행에만 남는다. 합성 시험은 각 비발행 상태에 unknown/public/private metadata를 모두 대입하고, 발행의 세 범위 및 Band 목적지도 확인한다.
+
+`ux-v3.html`을 로컬 브라우저에서 10개 화면, 상태 34개, sheet 16개를 눌러 다시 대조했다. 추가로 누락됐던 Band 미리보기 머리의 선택 밴드 이름을 실제 chooser 자료로 표시하고, 선택 전에는 시안의 안내를 표시한다. 이름은 본문에 추가하지 않는다. Band 탭에서도 연결이 확인됐으면 읽기 전용 목록을 불러와 기억된 선택을 해석한다.
+
+`오늘 N건 중 M건 올림`은 현재 자료로 정확히 만들 수 없다. `Settings`에는 한도만 있고 `BandChoice`에는 key/name/photoLimit/observedAt만 있다. `posts.list`는 페이지별 기록과 targetName을 주며, 현재 선택한 Band의 안정적인 key나 권위 있는 오늘 건수를 반환하지 않는다. 일부 기록이나 이름 일치로 숫자를 추측하지 않았다. 시안의 작성자/시각 행도 실제 Band 작성자 정보가 없어 골투 회원 이름이나 임의 시각을 대신 넣지 않았다. 서버/API 계약 변경은 이번 범위에 포함하지 않았다.
+
+### 기기 재검증
+
+매 단계 전 읽기 전용 두 신호(화면 켜짐, 이 앱 전면/잠금 해제)를 확인했다. 같은 패키지의 `adb install -r`만 2회 수행하고 이 앱만 실행했다. 화면 깨우기·잠금 해제·휴대폰 설정 변경은 없었다. 기기 작업은 미리보기·검색·발행 sheet/chooser·기록 열람으로 끝냈다.
+
+| 기기 확인 | 결과 |
+| --- | --- |
+| 23장 상품 blog | 23/23 naturalWidth > 0, 실패 placeholder 0; 표와 첫/중간/마지막 사진 캡처 |
+| 같은 상품 Band | 23/23 naturalWidth > 0, 실패 placeholder 0; grid 처음~끝 캡처 |
+| 기존 정상 8장 상품 blog / Band | 각각 8/8 로드, 실패 placeholder 0 |
+| 기록 내 기록/전체 | 캡처 완료. 읽은 20행 중 draft 6행, 안내 6개 유지; 비발행 행의 공개 범위 문구 0개 |
+| Band 머리 | 선택 전 안내와 실제 선택 이름 모두 캡처; 선택 이름은 본문에 없음 |
+| 발행 sheet/chooser | 실제 이름 표시 및 돌아오기 확인; 최종 확인·작업 시작 없음 |
+
+원본 캡처와 읽기 결과는 모두 저장소 밖 `../runs/wp17-shots/fix-*`에만 둔다. `fix-summary.txt`는 40줄 미만의 plain text다. 실제 계정·밴드·상품 문구나 주소는 이 보고서와 새 fixture에 넣지 않았다.
+
+작업 시작, 실제 임시저장, 공개/비공개 발행, Band 게시/삭제, 로그아웃/연결 해제는 모두 0회다. 네이버 작성기와 기존 작성 중 글 복구 안내를 열거나 조작하지 않았다. 실서비스 업로드·서식 저장 확인은 여전히 미검증이다.
+
+### 이번 확인 명령
+
+`pnpm install`(lockfile 변경 없음), `pnpm -r typecheck`, Android bridge를 포함한 `pnpm typecheck`, `assembleDebug testDebugUnitTest`(native 4개, 실패/건너뜀 0), 대상 회귀 시험 70개가 통과했다. 첫 `pnpm test`는 721개 중 기존 `surface/redaction.test.ts` 하나가 10초 timeout으로 실패했고 720개는 통과했다(건너뜀 0). 해당 시험은 변경 없이 단독 재실행에서 513ms로 통과했다. 전체 suite도 코드·시험·timeout·skip 조건 변경 없이 재실행해 **63개 파일·721개 시험 모두 통과**, 실패 0·건너뜀 0, 469.48초를 확인했다. 같은 redaction 시험도 전체 suite 안에서 505ms로 통과했다. 최종 `git diff --check`도 통과했다.

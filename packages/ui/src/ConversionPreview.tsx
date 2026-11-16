@@ -33,11 +33,13 @@ export function ConversionPreview({
   expanded,
   droppedStruckCharacters,
   ratios = {},
+  bandName,
 }: {
   plan: InputPlan;
   expanded: boolean;
   droppedStruckCharacters: number;
   ratios?: Record<string, number>;
+  bandName?: string | undefined;
 }) {
   const visible = expanded ? plan.steps : plan.steps.slice(0, 8);
   const photos = photoUrls(plan);
@@ -50,7 +52,8 @@ export function ConversionPreview({
     <>
       <div className={`converted-content service-post ${plan.channel}`}>
         <div className="post-caption">
-          {plan.channel === 'blog' ? '블로그 글' : '밴드 글'}
+          <span>{plan.channel === 'blog' ? '블로그 글' : '밴드 글'}</span>
+          {plan.channel === 'band' && <span>{bandName || '밴드를 고르면 이름이 나옵니다'}</span>}
         </div>
         {plan.channel === 'band' ? (
           <>

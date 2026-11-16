@@ -1,6 +1,7 @@
 import type { Job, TargetResult } from '@goltou/core/protocol';
 import type { Post } from '@goltou/api-client';
 import { formattingMessage } from './formatting-message';
+import { deletedPost } from '@goltou/core/post-delete-policy';
 
 export function bandChoiceReason(input: {
   blog: boolean;
@@ -86,4 +87,18 @@ export function historyStatus(post: Post) {
     return post.channel === 'band' ? '게시' : '발행';
   if (post.status === 'draft_saved') return '임시저장';
   return post.status === 'running' ? '진행 중' : '중단';
+}
+
+export function historyLine(post: Post, date: string): string {
+  const deleted = deletedPost(post);
+  const destination = post.channel === 'band' ? post.targetName
+    : post.status === 'published' && !deleted
+      ? post.blogVisibility === 'private' ? '비공개'
+        : post.blogVisibility === 'public' ? '전체공개' : '공개 범위 확인 필요'
+      : '';
+  return [
+    `${post.channel === 'blog' ? '블로그' : '밴드'} ${deleted ? '삭제함' : historyStatus(post)}`,
+    destination,
+    date,
+  ].filter(Boolean).join(' · ');
 }

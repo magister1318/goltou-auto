@@ -30,7 +30,7 @@ import {
   targetStatus,
   targetName,
   resultKind,
-  historyStatus,
+  historyLine,
   uncertainReason,
 } from './ux-state';
 const Experiments = __GOLTOU_DEBUG__
@@ -449,9 +449,10 @@ export function App() {
     if (job?.status === 'dialog_paused' && job.dialog) setSheet('dialog');
   }, [job?.dialog?.id]);
   const choosingPublish = sheet === 'publish' || sheet === 'bands';
+  const needsBands = choosingPublish || (screen === 'preview' && preview === 'band');
   useEffect(() => {
-    if (choosingPublish && app?.services.band === 'confirmed') void loadBands();
-  }, [choosingPublish, app?.services.band]);
+    if (needsBands && app?.services.band === 'confirmed') void loadBands();
+  }, [needsBands, app?.services.band]);
   useEffect(() => {
     if (
       screen === 'service' &&
@@ -1009,6 +1010,7 @@ export function App() {
               {converted ? (
                 <ConversionPreview
                   plan={converted[preview]}
+                  bandName={bands.find((b) => b.key === bandKey)?.name}
                   ratios={sourcePhotoRatios(product.contentsHtml)}
                   expanded
                   droppedStruckCharacters={converted.droppedStruckCharacters}
@@ -1423,16 +1425,7 @@ export function App() {
                   <p
                     className={`status ${deletedPost(post) ? 'muted' : (uncertainReason(post.failReason) || formattingMessage(post.failReason)) ? 'uncertain-status' : post.status === 'failed' ? 'danger' : post.status === 'published' ? 'green' : post.status === 'draft_saved' ? 'draft-status' : 'muted'}`}
                   >
-                    {post.channel === 'blog' ? '블로그' : '밴드'}{' '}
-                    {deletedPost(post) ? '삭제함' : historyStatus(post)} ·{' '}
-                    {post.channel === 'blog'
-                      ? post.blogVisibility === 'private'
-                        ? '비공개'
-                        : post.blogVisibility === 'public'
-                          ? '전체공개'
-                          : '공개 범위 확인 필요'
-                      : post.targetName}{' '}
-                    · {recordTime(post.startedAt)}
+                    {historyLine(post, recordTime(post.startedAt))}
                   </p>
                   {!deletedPost(post) && formattingMessage(post.failReason) && <p className="meta">{formattingMessage(post.failReason)}</p>}
                   {!deletedPost(post) && post.status === 'failed' && !formattingMessage(post.failReason) && (

@@ -163,13 +163,26 @@ describe('conversion metrics and production media restrictions', () => {
     await expect(auditConversions(api, 'secret', async value => { saved = structuredClone(value); }, () => { throw Error('PRIVATE'); })).rejects.toThrow('PRIVATE');
     expect(api.request).toHaveBeenCalledTimes(1); expect(saved?.failureCode).toBe('AUDIT_STOPPED');
   });
-  it('accepts only Goltou family HTTPS URLs and fails before fetching/writing any disallowed photo', async () => {
-    for (const host of ['goltou.kr', 'api.goltou.kr', 'images.goltou.kr']) expect(goltouPhotoUrl(new URL(`https://${host}/image.png`))).toBe(true);
+  it('accepts Goltou and the source photo CDN over HTTPS and fails before fetching/writing any disallowed photo', async () => {
+    for (const host of ['goltou.kr', 'api.goltou.kr', 'images.goltou.kr', 'coresos-phinf.pstatic.net']) expect(goltouPhotoUrl(new URL(`https://${host}/image.png`))).toBe(true);
     const storage = { createWorkDirectory: vi.fn(), write: vi.fn(), removeWorkDirectory: vi.fn() }, fetcher = vi.fn();
-    for (const url of ['https://goltou.kr.evil.test/a.png', 'https://evilgoltou.kr/a.png', 'https://other.test/a.png', 'http://api.goltou.kr/a.png', 'https://api.goltou.kr:8443/a.png']) {
+    for (const url of ['https://goltou.kr.evil.test/a.png', 'https://evilgoltou.kr/a.png', 'https://other.test/a.png', 'http://api.goltou.kr/a.png', 'https://api.goltou.kr:8443/a.png', 'https://coresos-phinf.pstatic.net.evil.test/a.png', 'https://other.pstatic.net/a.png', 'http://coresos-phinf.pstatic.net/a.png']) {
       await expect(downloadPhotos([url], [url], { storage, fetcher, allowUrl: goltouPhotoUrl })).rejects.toThrow('PHOTO_HOST_NOT_ALLOWED');
     }
     expect(fetcher).not.toHaveBeenCalled(); expect(storage.createWorkDirectory).not.toHaveBeenCalled();
+  });
+  it('downloads API-listed source CDN photos in order without credentials or redirects, but rejects unlisted URLs', async () => {
+    const urls = ['https://goltou.kr/a.jpg', 'https://coresos-phinf.pstatic.net/b.jpg'];
+    const storage = { createWorkDirectory: vi.fn(async () => 'work'), write: vi.fn(async (_dir: string, name: string) => name), removeWorkDirectory: vi.fn(async () => {}) };
+    const fetcher = vi.fn(async () => ({ ok: true, arrayBuffer: async () => new Uint8Array([1, 2, 3]).buffer }));
+    const batch = await downloadPhotos(urls, urls, { storage, fetcher, allowUrl: goltouPhotoUrl });
+    expect(batch.files.map(file => file.url)).toEqual(urls);
+    expect(fetcher.mock.calls).toEqual(urls.map(url => [url, { redirect: 'manual', credentials: 'omit', signal: expect.any(AbortSignal) }]));
+    await batch.cleanup();
+    expect(storage.removeWorkDirectory).toHaveBeenCalledWith('work');
+    fetcher.mockClear();
+    await expect(downloadPhotos([urls[1]!], [], { storage, fetcher, allowUrl: goltouPhotoUrl })).rejects.toThrow('API_PHOTO_URL_REQUIRED');
+    expect(fetcher).not.toHaveBeenCalled();
   });
   it.each([false, true])('keeps ordinary titles by default and the one-save limit only in the debug engine (%s)', async debug => {
     const result = await build({ entryPoints: ['apps/android/bridge/main.ts'], bundle: true, minifySyntax: true, platform: 'node', target: 'node18', format: 'cjs', write: false, external: ['bufferutil', 'utf-8-validate'], define: { __GOLTOU_API_ORIGIN__: JSON.stringify('https://local.invalid'), __GOLTOU_DEBUG__: String(debug) } });
