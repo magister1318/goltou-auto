@@ -5,13 +5,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UiPhotoPolicyTest {
-    @Test fun allowsOnlyPublicGoltouHttps() {
-        listOf("https://goltou.kr/a.jpg", "https://images.goltou.kr/a.jpg", "https://cdn.images.goltou.kr/a.jpg", "https://GOLTOU.KR:443/a.jpg")
+    @Test fun allowsGoltouAndSourcePhotoCdnHttps() {
+        listOf("https://goltou.kr/a.jpg", "https://images.goltou.kr/a.jpg", "https://cdn.images.goltou.kr/a.jpg", "https://GOLTOU.KR:443/a.jpg", "https://coresos-phinf.pstatic.net/a.jpg", "https://CORESOS-PHINF.PSTATIC.NET:443/a.jpg")
             .forEach { assertTrue(it, UiPhotoPolicy.allows(it)) }
     }
 
     @Test fun rejectsOtherHostsCredentialsAndPorts() {
-        listOf("http://images.goltou.kr/a.jpg", "https://goltou.kr.evil.test/a.jpg", "https://notgoltou.kr/a.jpg", "https://goltou.kr:8443/a.jpg", "https://name@goltou.kr/a.jpg", "https://goltou.kr@evil.test/a.jpg", "data:image/png,abc", "/a.jpg", "")
+        listOf("http://images.goltou.kr/a.jpg", "https://goltou.kr.evil.test/a.jpg", "https://notgoltou.kr/a.jpg", "https://goltou.kr:8443/a.jpg", "https://name@goltou.kr/a.jpg", "https://goltou.kr@evil.test/a.jpg", "data:image/png,abc", "/a.jpg", "", "http://coresos-phinf.pstatic.net/a.jpg", "https://coresos-phinf.pstatic.net.evil.test/a.jpg", "https://other.pstatic.net/a.jpg", "https://sub.coresos-phinf.pstatic.net/a.jpg", "https://name@coresos-phinf.pstatic.net/a.jpg", "https://coresos-phinf.pstatic.net:8443/a.jpg")
             .forEach { assertFalse(it, UiPhotoPolicy.allows(it)) }
     }
 }

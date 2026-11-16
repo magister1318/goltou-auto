@@ -7,7 +7,7 @@ import http from 'node:http';
 import { chromium } from 'playwright-core';
 import { CdpConnection, CdpSurface } from '@goltou/surface/cdp';
 import type { Surface, SurfaceHost } from '@goltou/surface';
-import { readBlogDocument } from '@goltou/sites';
+import { BlogFormattingError, compareBlogFormatting, normalizeBlogRuns, readBlogDocument } from '@goltou/sites';
 import { createBlogExecution, blogObservation } from '../src/blog';
 import { compareDocuments, observePlan } from '../src/verify';
 import type { InputPlan } from '../src/convert';
@@ -59,6 +59,31 @@ async function fixture(mode = '', extra: { tags?: boolean; photos?: number; phot
     counts: async (surface = execution.surface!) => pages.get(surface)!.evaluate<{ saves: number; publishes: number }>("({saves:Number(localStorage.getItem('saves')),publishes:Number(localStorage.getItem('publishes'))})") };
 }
 describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback editor only', () => {
+  it.each([false, true])('saves and reopens body-derived tags with explicit tags %s, retaining exact bold, links and numbers', async explicit => {
+    const f = await fixture('metadata-body-tags');
+    const text = '문의 #본문 1190000원';
+    f.plan.steps = [{ kind: 'text', role: 'title', text: '#제목' }, { kind: 'text', role: 'body', text,
+      runs: [{ text: '문의 ' }, { text: '#본문', bold: true, href: 'https://example.invalid/ask#주소' }, { text: ' 1190000원' }] },
+      ...(explicit ? [{ kind: 'text' as const, role: 'hashtags' as const, text: '#계획 #본문 #계획' }] : [])];
+    await f.execution.write();
+    const before = await f.execution.observe();
+    expect(before.tags).toEqual(explicit ? ['본문', '계획'] : ['본문']);
+    const check = (actual: typeof before) => compareDocuments(observePlan(f.plan), blogObservation(f.plan, [], actual));
+    expect(check(before).matches).toBe(true);
+    for (const tags of [[], ['본문', '외부'], ['본문', '본문'], ['다른태그']]) expect(check({ ...before, tags }).matches).toBe(false);
+    expect(check({ ...before, tokens: [{ kind: 'text', text: text.replace('1190000', '1190001') }] }).matches).toBe(false);
+    const original = f.execution.surface;
+    const saved = await f.execution.saveAndVerify();
+    expect(f.execution.surface).not.toBe(original);
+    expect(saved.tags).toEqual(before.tags);
+    expect(compareBlogFormatting(f.plan, saved)).toEqual([]);
+    expect(check(saved).matches).toBe(true);
+    for (const tags of [saved.tags.slice(1), [...saved.tags, '외부태그'], saved.tags.map(t => t === '본문' ? '다른본문' : t)]) {
+      expect(compareDocuments(observePlan(f.plan), blogObservation(f.plan, f.files, { ...saved, tags })).matches).toBe(false);
+    }
+    expect(await f.counts()).toEqual({ saves: 1, publishes: 0 });
+    expect(f.external()).toBe(0);
+  }, 30000);
   it('prevents readback from recreating an autosave, retains the saved draft, and opens the next editor without consent', async () => {
     const f = await fixture('autosave-readback');
     f.plan.steps = [{ kind: 'text', role: 'title', text: '저장 후 자동저장 예시' }, { kind: 'text', role: 'body', text: '본문' }];
@@ -147,6 +172,7 @@ describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback e
     if (!body || body.kind !== 'text') throw new Error('FIXTURE_PADDING_REQUIRED');
     // The old 32-codepoint chunk boundary separated the base and selector.
     body.text = '가'.repeat(31) + '✈️' + body.text.slice(33);
+    body.runs = [{ text: body.text }];
     await f.execution.write();
     expect((await readBlogDocument(f.execution.surface!)).tokens.filter(t => t.kind === 'photo').every(t => t.identity.endsWith('.png'))).toBe(true);
     const altered = structuredClone(await readBlogDocument(f.execution.surface!));
@@ -338,4 +364,168 @@ describe('WP5 real-service safety boundary', () => {
     expect(() => new BlogRegistrationRunner({ host, localPublish: true, editorUrl: 'https://blog.naver.com/' }, async () => {}, () => {})).toThrow('LOCAL_EDITOR_REQUIRED');
     runner.dispose();
   });
+});
+
+
+const richRuns = [
+  { text: '앞  ' },
+  { text: '강조 한글 한 👨‍👩‍👧‍👦 ', bold: true },
+  { text: '문의😀', bold: true, href: 'https://example.invalid/ask?q=1&x=2#here' },
+  { text: ' 끝 ' },
+  { text: '예약', href: 'https://example.invalid/reserve/' },
+];
+function richPlan(f: Awaited<ReturnType<typeof fixture>>, runs = richRuns) {
+  f.plan.steps = [{ kind: 'text', role: 'title', text: '합성 서식 제목' }, { kind: 'break' },
+    { kind: 'text', role: 'body', text: runs.map(r => r.text).join(''), runs }];
+}
+describe('WP18 mandatory rich-text editor fixture', () => {
+  it.each(['', 'link-end-stuck'])('types exact bold/link ranges with Hangul, joined emoji and spaces, then verifies before/after save and fresh reopen (%s)', async mode => {
+    const f = await fixture(mode); richPlan(f);
+    await f.execution.write();
+    const typed = await readBlogDocument(f.execution.surface!);
+    expect(compareBlogFormatting(f.plan, typed)).toEqual([]);
+    expect(typed.tokens).toEqual([{ kind: 'text', text: richRuns.map(r => r.text).join(''), runs: normalizeBlogRuns(richRuns) }]);
+    const live = f.progress.mock.calls.map(([v]) => v.blogParagraph).filter(Boolean);
+    expect(live.some(p => p.runs.some((r: { href?: string }) => r.href))).toBe(true);
+    expect(live[0].runs.every((r: { href?: string }) => !r.href)).toBe(true);
+    const old = f.execution.surface;
+    await f.execution.saveAndVerify();
+    expect(f.execution.surface).not.toBe(old);
+    expect(await readBlogDocument(f.execution.surface!)).toEqual(typed);
+    expect(await f.counts()).toEqual({ saves: 1, publishes: 0 });
+    expect(f.beforeSave).toHaveBeenCalledTimes(1); expect(f.external()).toBe(0);
+  }, 30000);
+  it.each(['bold-stuck', 'link-cancelled', 'link-broken', 'link-collapse-stuck'])('stops %s with the affected paragraph and no save or publication', async mode => {
+    const f = await fixture(mode); richPlan(f);
+    await expect(f.execution.write()).rejects.toMatchObject({ message: 'BLOG_FORMATTING_INPUT:1', issues: [{ paragraph: 1, fields: ['input'] }] });
+    expect(await f.counts()).toEqual({ saves: 0, publishes: 0 }); expect(f.external()).toBe(0);
+    await expect(f.execution.saveAndVerify()).rejects.toBeInstanceOf(BlogFormattingError);
+    expect(f.beforeSave).not.toHaveBeenCalled();
+  }, 20000);
+  it('resumes an acknowledged partial bold run without typing the prefix again, including multiline links and emoji boundaries', async () => {
+    const f = await fixture();
+    const runs = [{ text: '가'.repeat(31) + '✈️' + '한글 '.repeat(28), bold: true },
+      { text: '\n다음 👩🏽‍💻 문의', href: 'https://example.invalid/next' }];
+    richPlan(f, runs);
+    let paused = false;
+    f.progress.mockImplementation(value => {
+      if (!paused && value.blogParagraph?.runs.map((r: {text: string}) => r.text).join('').length > 36) {
+        paused = true; f.check.mockImplementation(() => { throw Error('TEST_LOGIN_DROP'); });
+      }
+    });
+    await expect(f.execution.write()).rejects.toThrow('TEST_LOGIN_DROP');
+    const old = f.execution.surface;
+    f.check.mockImplementation(() => {}); await f.execution.write();
+    expect(f.execution.surface).toBe(old);
+    expect(compareBlogFormatting(f.plan, await readBlogDocument(old!))).toEqual([]);
+    expect(f.progress.mock.calls.at(-1)![0].characters).toBe(f.plan.steps.reduce((n,s)=>n+(s.kind==='text'?Array.from(s.text).length:0),0));
+    await f.execution.saveAndVerify();
+    expect(await f.counts()).toEqual({ saves: 1, publishes: 0 }); expect(f.external()).toBe(0);
+  }, 30000);
+  it('requires recovery consent when a partially written rich paragraph is changed by real keyboard input', async () => {
+    const f = await fixture(); richPlan(f, [{ text: '강조 '.repeat(40), bold: true }]);
+    let paused = false;
+    f.progress.mockImplementation(v => { if (!paused && v.blogParagraph) { paused = true; f.check.mockImplementation(() => { throw Error('TEST_LOGIN_DROP'); }); } });
+    await expect(f.execution.write()).rejects.toThrow('TEST_LOGIN_DROP');
+    f.check.mockImplementation(() => {}); const old = f.execution.surface!;
+    await old.typeText('수정');
+    await expect(f.execution.write()).rejects.toThrow('AUTO_RECOVER_CONSENT_REQUIRED');
+    expect(f.execution.surface).toBe(old);
+    f.execution.consentToDiscard(); await f.execution.write();
+    expect(f.execution.surface).not.toBe(old);
+    expect(compareBlogFormatting(f.plan, await f.execution.observe())).toEqual([]);
+    expect(await f.counts()).toEqual({ saves: 0, publishes: 0 });
+  }, 30000);
+  it('refuses an unconfirmed keyboard selection without opening the link dialog or saving', async () => {
+    const f = await fixture(); richPlan(f, [{ text: '한글😀 문의', href: 'https://example.invalid/link' }]);
+    await f.execution.ensureReady(); const s = f.execution.surface!, press = s.pressKey.bind(s);
+    s.pressKey = async key => { if (key.key === 'ArrowLeft' && key.modifiers === 8) return; await press(key); };
+    await expect(f.execution.write()).rejects.toThrow('BLOG_FORMATTING_INPUT:1');
+    expect(await f.pages.get(s)!.locator('.se-custom-layer-option-link').count()).toBe(0);
+    expect(await f.counts()).toEqual({ saves: 0, publishes: 0 });
+  }, 20000);
+  it('reconciles an already confirmed link on resume without inserting or linking it twice', async () => {
+    const f = await fixture(); richPlan(f); let paused = false;
+    f.progress.mockImplementation(v => {
+      if (!paused && v.blogParagraph?.runs.some((r: { href?: string }) => r.href)) {
+        paused = true; f.check.mockImplementation(() => { throw Error('TEST_LOGIN_DROP'); });
+      }
+    });
+    await expect(f.execution.write()).rejects.toThrow('TEST_LOGIN_DROP');
+    const old = f.execution.surface!;
+    f.check.mockImplementation(() => {}); await f.execution.write();
+    expect(f.execution.surface).toBe(old);
+    expect(await f.pages.get(old)!.evaluate('window.linkDialogOpens')).toBe(2);
+    expect(compareBlogFormatting(f.plan, await f.execution.observe())).toEqual([]);
+    expect(await f.counts()).toEqual({ saves: 0, publishes: 0 });
+  }, 20000);
+  it('keeps uncertain partial transport input until recovery consent instead of retyping it', async () => {
+    const f = await fixture(); richPlan(f, [{ text: '부분 입력 한글😀 '.repeat(8), bold: true }]);
+    await f.execution.ensureReady(); const old = f.execution.surface!, type = old.typeText.bind(old);
+    let partial = false;
+    old.typeText = async text => {
+      if (!partial && text.startsWith('부분')) { partial = true; await type('부분'); throw Error('TEST_INPUT_TRANSPORT'); }
+      await type(text);
+    };
+    await expect(f.execution.write()).rejects.toThrow('TEST_INPUT_TRANSPORT');
+    await expect(f.execution.write()).rejects.toThrow('AUTO_RECOVER_CONSENT_REQUIRED');
+    expect(f.execution.surface).toBe(old);
+    expect((await readBlogDocument(old)).tokens).toEqual([{ kind: 'text', text: '부분', runs: normalizeBlogRuns([{ text: '부분', bold: true }]) }]);
+    f.execution.consentToDiscard(); await f.execution.write();
+    expect(f.execution.surface).not.toBe(old);
+    expect(compareBlogFormatting(f.plan, await f.execution.observe())).toEqual([]);
+    expect(await f.counts()).toEqual({ saves: 0, publishes: 0 });
+  }, 20000);
+  it('reports the second paragraph when its toolbar state cannot be changed', async () => {
+    const f = await fixture('bold-stuck'); richPlan(f, [{ text: '첫째' }]);
+    f.plan.steps.push({ kind: 'break' }, { kind: 'text', role: 'body', text: '둘째', runs: [{ text: '둘째', bold: true }] });
+    await expect(f.execution.write()).rejects.toThrow('BLOG_FORMATTING_INPUT:2');
+    expect(await f.counts()).toEqual({ saves: 0, publishes: 0 });
+  }, 15000);
+  it('stops a resume inside a partial link dialog without sending keys to it or duplicating body text', async () => {
+    const f = await fixture(); richPlan(f, [{ text: '문의', href: 'https://example.invalid/' + 'a'.repeat(60) }]);
+    await f.execution.ensureReady(); const s = f.execution.surface!, type = s.typeText.bind(s);
+    let partial = false;
+    s.typeText = async text => {
+      await type(text);
+      if (!partial && text.startsWith('https://')) { partial = true; f.check.mockImplementation(() => { throw Error('TEST_LOGIN_DROP'); }); }
+    };
+    await expect(f.execution.write()).rejects.toThrow('TEST_LOGIN_DROP');
+    f.check.mockImplementation(() => {});
+    const press = vi.spyOn(s, 'pressKey');
+    await expect(f.execution.write()).rejects.toThrow('BLOG_FORMATTING_INPUT:1');
+    expect(press).not.toHaveBeenCalled();
+    const page = f.pages.get(s)!;
+    expect(await page.evaluate('window.linkDialogOpens')).toBe(1);
+    expect((await readBlogDocument(s)).tokens[0]).toMatchObject({ text: '문의' });
+    await page.locator('.se-popup-button-cancel').click();
+    await f.execution.write();
+    expect(compareBlogFormatting(f.plan, await f.execution.observe())).toEqual([]);
+    expect(await f.counts()).toEqual({ saves: 0, publishes: 0 });
+  }, 20000);
+  it.each(['format-drop-after-save', 'format-drop-reopen'])('detects %s, cannot publish, and does not save a second time', async mode => {
+    const f = await fixture(mode); richPlan(f); await f.execution.write();
+    const stage = mode === 'format-drop-after-save' ? 'AFTER_SAVE' : 'REOPENED';
+    await expect(f.execution.saveAndVerify()).rejects.toMatchObject({ message: `BLOG_FORMATTING_${stage}:1`, issues: [{ paragraph: 1, fields: ['bold', 'href'] }] });
+    await expect(f.execution.publish()).rejects.toThrow('REAL_PUBLISH_DISABLED');
+    await expect(f.execution.saveAndVerify()).rejects.toBeInstanceOf(BlogFormattingError);
+    expect(f.beforeSave).toHaveBeenCalledTimes(1);
+    expect(await f.counts()).toEqual({ saves: 1, publishes: 0 }); expect(f.external()).toBe(0);
+  }, 30000);
+  it.each(['blog', 'channel'])('records paragraph-only formatting loss as 확인 필요 in the %s runner', async kind => {
+    const f = await fixture('format-drop-reopen'); richPlan(f);
+    const verification = compareDocuments(observePlan(f.plan), observePlan(f.plan));
+    const preview = { productNo: 1, contentHash: 'fixture', options: {}, blog: f.plan, band: { ...f.plan, channel: 'band' }, verification: { blog: verification, band: verification } } as PreparedPreview;
+    const work = { preview, prepared: { preview, files: [] }, download: async () => {}, arrange: async () => {}, cleanup: async () => {} };
+    const record = vi.fn(async () => {}), services = { host: f.host, editorUrl: f.editorUrl, localPublish: true };
+    const runner = kind === 'blog' ? new BlogRegistrationRunner(services, record, () => {}) : new ChannelRegistrationRunner({ blog: services, band: { host: f.host } }, record, () => {});
+    cleanup.push(async () => runner.dispose());
+    await runner.start({ productNo: 1, mode: 'draft', targets: [{ channel: 'blog', name: '합성', key: 'fixture' }], options: { polish: false, closing: false, linkCard: false } }, '합성 서식 제목', 0, work);
+    await vi.waitFor(() => expect(runner.job?.status).toBe('draft_unverified'), { timeout: 20000 });
+    expect(runner.job).toMatchObject({ failureCode: 'BLOG_FORMATTING_REOPENED:1', blogFormattingIssues: [{ paragraph: 1, fields: ['bold', 'href'] }], targetResults: [{ status: 'stopped', reason: 'BLOG_FORMATTING_REOPENED:1' }] });
+    expect(runner.job!.completedSteps).not.toContain(5);
+    await expect(runner.resume()).rejects.toMatchObject({ code: 'conflict' });
+    expect([...f.pages.keys()].every(s => s.session === 'naver')).toBe(true);
+    expect(await f.counts([...f.pages.keys()].at(-1)!)).toEqual({ saves: 1, publishes: 0 });
+  }, 30000);
 });

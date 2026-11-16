@@ -7,6 +7,7 @@ import http from 'node:http';
 import { chromium } from 'playwright-core';
 import type { Surface, SurfaceHost } from '@goltou/surface';
 import { CdpSurface, type CdpConnection } from '@goltou/surface/cdp';
+import { compareBlogFormatting, readBlogDocument } from '@goltou/sites';
 import { createBlogExecution } from '../src/blog';
 import { deleteTestPost } from '../src/test-post-delete';
 import { removeRecordedBlogPost } from '../src/post-delete';
@@ -69,7 +70,7 @@ async function fixture(failure = '', visibility: 'public' | 'private' = 'private
     if (target.href === 'https://blog.naver.com/delete-fixture') { deleted = true; return route.fulfill({ body: '{}' }); }
     if (target.href === url) {
       const marker = failure === 'writer-private' ? '<div class="blog2_container"><span class="writer"><span class="desc"><span class="txt">비공개</span></span></span></div>' : '';
-      const html = deleted ? '<div data-post-deleted>삭제된 글입니다</div>' : `<div class="se-documentTitle"><p class="se-text-paragraph">${stored.title}</p>${marker}</div><div class="se-viewer">${failure === 'content' ? stored.html.replace('1190000','1190001') : stored.html}</div><div class="tag_list">${stored.tags}</div>${marker ? '' : `<div class="post_visibility">${visibility === 'private' && failure !== 'private-in-body' ? '비공개' : '전체공개'}</div>`}${failure === 'private-in-body' ? '<div class="blog2_container"><span class="writer"><span class="desc"><span class="txt">비공개</span></span></span></div>' : ''}<div class="area_btn_postedit"><a href="#">수정</a><a href="#" class="_deletePost" onclick="event.preventDefault();if(confirm('삭제된 글은 복구할 수 없습니다. 삭제하시겠습니까?'))fetch('/delete-fixture',{method:'POST'})">삭제</a></div>`;
+      const html = deleted ? '<div data-post-deleted>삭제된 글입니다</div>' : `<div class="se-documentTitle"><p class="se-text-paragraph">${stored.title}</p>${marker}</div><div class="se-viewer">${failure === 'content' ? stored.html.replace('1190000','1190001') : failure === 'formatting' ? stored.html.replace(/<\/?(?:b|strong|a)\b[^>]*>/g, '') : stored.html}</div><div class="tag_list">${stored.tags}</div>${marker ? '' : `<div class="post_visibility">${visibility === 'private' && failure !== 'private-in-body' ? '비공개' : '전체공개'}</div>`}${failure === 'private-in-body' ? '<div class="blog2_container"><span class="writer"><span class="desc"><span class="txt">비공개</span></span></span></div>' : ''}<div class="area_btn_postedit"><a href="#">수정</a><a href="#" class="_deletePost" onclick="event.preventDefault();if(confirm('삭제된 글은 복구할 수 없습니다. 삭제하시겠습니까?'))fetch('/delete-fixture',{method:'POST'})">삭제</a></div>`;
       return route.fulfill({ contentType: 'text/html; charset=utf-8', body: html });
     }
     outside++; return route.abort();
@@ -188,4 +189,25 @@ describe.runIf(Boolean(executablePath))('publish, verified against synthetic loo
     await deleteTestPost(f.execution);
     expect(f.counts()).toMatchObject({ published: 1, deleted: true });
   }, 30000);
+});
+
+
+describe('WP18 saved and published runs on a synthetic loopback service', () => {
+  it.each([false, true])('checks actual final-view formatting and stops without republishing when loss=%s', async loss => {
+    const product: Product = { productNo: 1, title: '합성 서식 상품', country: '', region: '', updatedAt: '', contentHash: 'synthetic-rich',
+      contentsHtml: '<p>앞 <strong>강조 <a href="https://example.invalid/ask">문의😀</a></strong> 뒤</p>',
+      images: [], departures: [], golfCourses: [], productUrl: 'https://example.invalid/product' };
+    const f = await fixture(loss ? 'formatting' : '', 'private', false, false, true, product);
+    await f.execution.write(); await f.execution.saveAndVerify();
+    if (loss) {
+      await expect(f.execution.publish()).rejects.toMatchObject({ message: 'BLOG_FORMATTING_PUBLISHED:1', issues: [{ paragraph: 1, fields: ['bold', 'href'] }] });
+      expect(f.execution.publishedVerified).toBe(false);
+      await expect(f.execution.publish()).rejects.toThrow();
+    } else {
+      await f.execution.publish();
+      expect(f.execution.publishedVerified).toBe(true);
+      expect(compareBlogFormatting(makePreview(product, {}).blog, await readBlogDocument(f.execution.surface!))).toEqual([]);
+    }
+    expect(f.counts()).toMatchObject({ published: 1, submissions: 1, outside: 0 });
+  }, 20000);
 });

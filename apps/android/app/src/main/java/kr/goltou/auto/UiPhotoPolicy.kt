@@ -10,6 +10,6 @@ internal object UiPhotoPolicy {
         val host = uri.host?.lowercase(Locale.ROOT).orEmpty()
         uri.scheme.equals("https", ignoreCase = true) && uri.rawUserInfo == null &&
             (uri.port == -1 || uri.port == 443) &&
-            (host == "goltou.kr" || host.endsWith(".goltou.kr"))
+            (host == "goltou.kr" || host.endsWith(".goltou.kr") || host == "coresos-phinf.pstatic.net")
     } catch (_: Exception) { false }
 }

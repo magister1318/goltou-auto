@@ -47,6 +47,7 @@ describe('display-only API photos', () => {
     'https://goltou.kr/a.jpg',
     'https://images.goltou.kr/a.jpg',
     'https://cdn.images.goltou.kr/a.jpg',
+    'https://coresos-phinf.pstatic.net/a.jpg',
   ])('accepts the download policy host: %s', (url) => {
     expect(photoSource(url)).toBe(url);
   });
@@ -56,6 +57,11 @@ describe('display-only API photos', () => {
     'https://goltou.kr.evil.test/a.jpg',
     'https://user@goltou.kr/a.jpg',
     'https://goltou.kr:8443/a.jpg',
+    'http://coresos-phinf.pstatic.net/a.jpg',
+    'https://coresos-phinf.pstatic.net.evil.test/a.jpg',
+    'https://evil.coresos-phinf.pstatic.net/a.jpg',
+    'https://user@coresos-phinf.pstatic.net/a.jpg',
+    'https://coresos-phinf.pstatic.net:8443/a.jpg',
     'data:image/png,abc',
     '//goltou.kr/a.jpg',
     '',
@@ -98,7 +104,7 @@ describe('display-only API photos', () => {
           { kind: 'text', role: 'body', text: '앞 문단' },
           {
             kind: 'photos',
-            urls: ['https://goltou.kr/a.jpg', 'https://images.goltou.kr/b.jpg'],
+            urls: ['https://goltou.kr/a.jpg', 'https://coresos-phinf.pstatic.net/b.jpg'],
           },
           { kind: 'text', role: 'body', text: '중간 문단' },
           { kind: 'photos', urls: ['https://goltou.kr/c.jpg'] },
@@ -138,10 +144,16 @@ describe('display-only API photos', () => {
         'https://goltou.kr/a.jpg',
       );
       expect(observers[0]!.disconnect).toHaveBeenCalled();
+      await act(() => observers[1]!.reveal());
+      expect([...container.querySelectorAll('img')].map(img => img.src)).toEqual([
+        'https://goltou.kr/a.jpg', 'https://coresos-phinf.pstatic.net/b.jpg',
+      ]);
+      await act(() => container.querySelectorAll('img')[1]!.dispatchEvent(new Event('load')));
+      expect(container.querySelectorAll('.photo-loaded')).toHaveLength(1);
       await act(() =>
         container.querySelector('img')!.dispatchEvent(new Event('error')),
       );
-      expect(container.querySelector('img')).toBeNull();
+      expect(container.querySelectorAll('img')).toHaveLength(1);
       expect(container.textContent).toContain('이미지를 표시할 수 없습니다');
       expect(JSON.stringify(plan)).toBe(original);
     },

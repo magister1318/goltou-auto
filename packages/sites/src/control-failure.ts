@@ -32,5 +32,6 @@ export class ControlNotFoundError extends Error {
 export function safeFailureCode(error: unknown, fallback: string): string {
   if (error instanceof ControlNotFoundError) return `CONTROL_NOT_FOUND:${error.control}:${error.planStepKind}:${error.planStepIndex}`;
   const code = error instanceof Error ? error.message : '';
+  if (/^BLOG_FORMATTING_(INPUT|BEFORE_SAVE|AFTER_SAVE|REOPENED|PUBLISHED):[1-9]\d*(?:,[1-9]\d*)*$/.test(code)) return code;
   return /^[A-Z_]+(?::[A-Za-z,]+)?$/.test(code) ? code : fallback;
 }

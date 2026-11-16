@@ -1,7 +1,14 @@
 import type { Job } from '@goltou/core/protocol';
+import { formattingMessage } from './formatting-message';
 /** Never show engine codes, page messages, identifiers or transport errors. */
 export function jobMessage(job: Job): [string, string] {
   const code = job.failureCode ?? '';
+  const formatting = formattingMessage(code);
+  if (formatting) return [formatting, code.startsWith('BLOG_FORMATTING_PUBLISHED:')
+    ? '발행된 글에서 서식 확인이 필요합니다. 같은 글을 다시 발행하지 마세요.'
+    : /BLOG_FORMATTING_(AFTER_SAVE|REOPENED):/.test(code)
+    ? '저장한 글에서 해당 문단을 확인해 주세요. 같은 글을 바로 다시 저장하거나 발행하지 마세요.'
+    : '작성 중인 글의 서식을 확인할 수 없어 멈췄습니다.'];
   if (job.status === 'draft_unverified' || code === 'BLOG_DRAFT_SAVED_UNVERIFIED') return [
     '임시저장은 됐지만 내용을 다시 확인하지 못했습니다',
     '네이버 블로그 앱의 임시저장함에서 저장 시각과 내용을 확인해 주세요. 같은 글을 바로 다시 저장하지 마세요.',

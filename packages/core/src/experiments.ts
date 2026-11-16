@@ -32,6 +32,7 @@ export interface ExperimentOptions {
 /** Debug-only, single-flight tools. Never connected to the product API or registration runner. */
 export class Experiments {
   private readonly surfaces = new Map<SurfaceSession, Surface>();
+  private editorProbe: Surface | undefined;
   private cancelled = false;
   private operation: Promise<void> | null = null;
   private runId = '';
@@ -43,6 +44,19 @@ export class Experiments {
     if (command === 'state') return this.snapshot();
     if (command === 'stop') { this.cancelled = true; return this.snapshot(); }
     if (this.state.running) throw new Error('EXPERIMENT_BUSY');
+    if (command === 'blog.closeProbe') {
+      const surface = this.editorProbe;
+      if (surface) { await this.options.host.destroy(surface); this.editorProbe = undefined; }
+      this.state.lastResult = '읽기 점검 창 닫음';
+      return this.snapshot();
+    }
+    if (command === 'blog.probe') {
+      if (this.editorProbe) return this.snapshot();
+      this.runId = randomUUID(); this.cancelled = false;
+      this.state.running = true; this.state.action = command; this.state.steps = [];
+      this.operation = this.probeEditor().catch(() => { this.state.lastResult = 'PROBE_EVIDENCE_FAILED'; }).finally(() => { this.state.running = false; });
+      return this.snapshot();
+    }
     if (!['blog.inspectRecordedPost', 'blog.verifyPrivatePublish', 'blog.publishProbe', 'blog.checkTestPostDeleted', 'blog.deleteTestPost', 'conversion.check', 'ai.polish', 'info', 'example', 'evidence', 'show', 'hide', 'login.open', 'login.check', 'band.list', 'blog.run', 'band.run', 'lifecycle'].includes(command)) throw new Error('UNKNOWN_EXPERIMENT');
     if (command === 'blog.publishProbe') {
       if (!this.options.configurePublishProbe || !['public', 'private', 'off'].includes(String(input.visibility))) throw new Error('DEBUG_ONLY');
@@ -60,6 +74,25 @@ export class Experiments {
     return this.snapshot();
   }
   private check = () => { if (this.cancelled) throw new Error('EXPERIMENT_STOPPED'); };
+  /** No input or save. A separate editor surface never changes login-controller navigation. */
+  private async probeEditor() {
+    let surface: Surface | undefined;
+    try {
+      surface = await this.options.host.create('naver');
+      this.editorProbe = surface;
+      if (!surface.blockRequests || !surface.guardRequests) throw new Error('PROBE_BARRIER_REQUIRED');
+      await surface.blockRequests(['/RabbitWrite.naver', '/RabbitUpdate.naver', '/RabbitAutoSaveWrite.naver', '/RabbitTempPostWrite.naver', '/RabbitTempPostUpdate.naver']
+        .map(pathname => ({ hostname: 'blog.naver.com', pathname })));
+      // Prevent authentication redirects before a login page can load.
+      await surface.guardRequests([{ hostname: 'nid.naver.com', pathname: '/', prefix: true }], () => false, () => {});
+      await this.step('open-read-only-editor', () => this.open(surface!, probeUrls.naver));
+      await this.step('read-editor-structure', () => domSummary(surface!), value => value);
+      this.state.lastResult = '편집기 읽기 점검 준비됨 · 입력·저장 없음';
+    } catch {
+      this.state.lastResult = 'EDITOR_PROBE_UNAVAILABLE';
+      if (surface) { await this.options.host.destroy(surface).catch(() => {}); this.editorProbe = undefined; }
+    } finally { await this.persist(); }
+  }
   private async persist() {
     await mkdir(this.options.directory, { recursive: true });
     // No UI inputs, account identifiers, URLs, band names/keys, raw exceptions, DOM text or cookies.
@@ -218,5 +251,5 @@ export class Experiments {
       if (active) await this.captureFailure(active);
     } finally { await this.persist(); }
   }
-  async close() { this.cancelled = true; await this.operation; for (const surface of this.surfaces.values()) await this.options.host.destroy(surface); this.surfaces.clear(); }
+  async close() { this.cancelled = true; await this.operation; if (this.editorProbe) { await this.options.host.destroy(this.editorProbe); this.editorProbe = undefined; } for (const surface of this.surfaces.values()) await this.options.host.destroy(surface); this.surfaces.clear(); }
 }

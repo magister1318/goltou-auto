@@ -53,7 +53,8 @@ class MainActivity : ComponentActivity() {
             // Notify after native IME padding has resized the WebView; the UI
             // scrolls the focused label/field and hides tabs while editing.
             if (::ui.isInitialized) ui.post {
-                ui.evaluateJavascript("window.dispatchEvent(new Event('goltou:keyboard'))", null)
+                val visible = insets.isVisible(WindowInsets.Type.ime())
+                ui.evaluateJavascript("window.dispatchEvent(new CustomEvent('goltou:keyboard',{detail:{visible:$visible}}))", null)
             }
             // Native padding owns these insets. Forwarding them also gives the
             // WebView a CSS safe-area bottom, doubling every sheet/bar's gap.

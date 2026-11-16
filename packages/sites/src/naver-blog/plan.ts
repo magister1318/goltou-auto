@@ -7,16 +7,19 @@ import { ControlNotFoundError } from '../control-failure';
 import { closeTagLayer, protectBlogInputs, requireTagFocus, requireTagLayerClosed, tagInputSelector, tagPanelToggle } from './draft-safety';
 import { finalPublishSelector, guardedPublishClick, inspectPrivateRequest, postIdentity, readVisibility, requireVisibility, selectVisibility, type BlogVisibility, type PublishedPost, type VisibilityProof } from './publish-safety';
 import { parsePublishIdentity, resolvePublishEvidence, type ResponseIdentity, type PublishedPage, type PublishIdentitySource } from './publish-identity';
+import { BlogRichTextWriter } from './rich-text';
+import { BlogFormattingError, blogRunReader, normalizeBlogRuns, splitBlogRuns, type BlogRun, type FormattingStage } from './formatting';
 import { closeDraftEntries, draftEntries, draftItem, draftSaveReceipt, identifySavedDraft, openDraftEntries, type DraftEntry } from './draft-identity';
+import { expectedBlogTags, plannedBlogTags, sameBlogTags } from './tags';
 
 /** Structural subset of WP4 InputPlan. Sites has no dependency on core or a device API. */
 export interface BlogPlan {
   channel: 'blog' | 'band';
-  steps: ({ kind: 'text'; role: string; text: string } | { kind: 'break' } | { kind: 'photos'; urls: string[] } | { kind: 'table'; role: string; rows: string[][] })[];
+  steps: ({ kind: 'text'; role: string; text: string; runs?: BlogRun[] } | { kind: 'break' } | { kind: 'photos'; urls: string[] } | { kind: 'table'; role: string; rows: string[][] })[];
 }
-export type BlogToken = { kind: 'text'; text: string } | { kind: 'photo'; identity: string };
+export type BlogToken = { kind: 'text'; text: string; runs?: BlogRun[] } | { kind: 'photo'; identity: string };
 export interface BlogReadback { title: string; tokens: BlogToken[]; tags: string[] }
-export interface BlogProgress { characters: number; totalCharacters: number; photos: number; totalPhotos: number; photoUploadMilliseconds?: number; photoUploadSamples?: number; activity?: import('../progress').EngineActivity; ownRecoveryDiscarded?: boolean }
+export interface BlogProgress { characters: number; totalCharacters: number; photos: number; totalPhotos: number; photoUploadMilliseconds?: number; photoUploadSamples?: number; activity?: import('../progress').EngineActivity; ownRecoveryDiscarded?: boolean; blogParagraph?: { blockIndex: number; runs: BlogRun[] }; blogInputReset?: boolean }
 export interface BlogEnvironment {
   host: SurfaceHost;
   lastTypedTitle?: { read(): Promise<string | null>; write(title: string): Promise<void> };
@@ -41,6 +44,7 @@ const ua = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Geck
 /** Read document order, cells and uploaded filenames independently of the input plan. */
 export async function readBlogDocument(surface: Surface, documentUrls?: readonly string[]): Promise<BlogReadback> {
   return read(surface, `
+    ${blogRunReader}
     const allowed=${JSON.stringify(documentUrls ?? null)};
     const d=docs.find(({d})=>(!allowed||allowed.includes(d.location.href))&&d.querySelector('.se-documentTitle'))?.d;
     if(!d) throw Error('LOGIN_OR_EDITOR_LOST');
@@ -50,7 +54,7 @@ export async function readBlogDocument(surface: Surface, documentUrls?: readonly
     for(const e of main?.querySelectorAll('.se-component')||[]) {
       if(e.classList.contains('se-documentTitle')) continue;
       if(e.classList.contains('se-text')) {
-        for(const p of e.querySelectorAll('.se-text-paragraph')) {const t=text(p);if(t.replace(/[\\s\\u200b-\\u200d\\ufeff]/g,'')) tokens.push({kind:'text',text:t});}
+        for(const p of e.querySelectorAll('.se-text-paragraph')) {const runs=paragraphRuns(p),t=runs.map(r=>r.text).join('');if(t.length) tokens.push({kind:'text',text:t,runs});}
       } else if(e.classList.contains('se-image')) {
         for(const img of e.querySelectorAll('.se-image-resource')) {
           const raw=[img.getAttribute('src'),img.getAttribute('data-file-name'),img.getAttribute('alt')].join(' ');
@@ -58,15 +62,43 @@ export async function readBlogDocument(surface: Surface, documentUrls?: readonly
           tokens.push({kind:'photo',identity:match?match[0]:''});
         }
       } else if(e.classList.contains('se-table')) {
-        for(const row of e.querySelectorAll('tr')) tokens.push({kind:'text',text:Array.from(row.querySelectorAll('td,th')).map(text).join(' | ')});
+        for(const row of e.querySelectorAll('tr')) tokens.push({kind:'text',text:Array.from(row.querySelectorAll('td,th')).map(text).join(' | '),runs:Array.from(row.querySelectorAll('td,th')).flatMap((cell,i)=>[...(i?[{text:' | ',bold:false,href:null}]:[]),...paragraphRuns(cell)])});
       } else if(e.classList.contains('se-oglink')) {
-        const a=e.querySelector('a[href]'); tokens.push({kind:'text',text:a?.getAttribute('href')||''});
+        const a=e.querySelector('a[href]'); tokens.push({kind:'text',text:a?.getAttribute('href')||'',runs:[{text:a?.getAttribute('href')||'',bold:false,href:null}]});
       } else { tokens.push({kind:'text',text:'UNSUPPORTED_EDITOR_COMPONENT'}); }
     }
     return {title:text(d.querySelector(${JSON.stringify(titleSelector)})).trim(),tokens,
       tags:Array.from(d.querySelectorAll('.wrap_tag a.itemTagfont, .tag_list .tag, .se-tag-list .se-tag, .post_tag .item, [data-goltou-tag], [class^="tag_textarea__"] span[class*="tag__"][aria-label]')).map(e=>(e.textContent||'').replace(/^#/,'').trim())};`);
 }
-const same = (a: BlogReadback, b: BlogReadback) => compact(a.title) === compact(b.title) && JSON.stringify(a.tokens.map(t => t.kind === 'text' ? ['text', compact(t.text)] : ['photo', t.identity])) === JSON.stringify(b.tokens.map(t => t.kind === 'text' ? ['text', compact(t.text)] : ['photo', t.identity])) && JSON.stringify(a.tags) === JSON.stringify(b.tags);
+const same = (a: BlogReadback, b: BlogReadback) => compact(a.title) === compact(b.title) && JSON.stringify(a.tokens.map(t => t.kind === 'text' ? ['text', t.text, normalizeBlogRuns(t.runs ?? [{text:t.text}])] : ['photo', t.identity])) === JSON.stringify(b.tokens.map(t => t.kind === 'text' ? ['text', t.text, normalizeBlogRuns(t.runs ?? [{text:t.text}])] : ['photo', t.identity])) && JSON.stringify(a.tags) === JSON.stringify(b.tags);
+
+export function plannedBlogParagraphs(plan: BlogPlan): BlogRun[][] {
+  return plan.steps.flatMap(step => {
+    if (step.kind === 'table') return step.rows.map(row => [{ text: row.join(' | ') }]);
+    if (step.kind !== 'text' || step.role === 'title' || step.role === 'hashtags') return [];
+    return splitBlogRuns(step.runs ?? [{ text: step.text }]).filter(runs => runs.length > 0);
+  });
+}
+export function compareBlogFormatting(plan: BlogPlan, actual: BlogReadback): import('./formatting').BlogFormattingIssue[] {
+  const expected = plannedBlogParagraphs(plan), saved = actual.tokens.filter(t => t.kind === 'text');
+  const issues: import('./formatting').BlogFormattingIssue[] = [];
+  for (let index = 0; index < Math.max(expected.length, saved.length); index++) {
+    const planned = normalizeBlogRuns(expected[index] ?? []), token = saved[index];
+    // Missing rich readback is an error, even when the visible text matches.
+    const observed = normalizeBlogRuns(token?.runs ?? []);
+    const fields: import('./formatting').BlogFormattingIssue['fields'] = [];
+    if (!expected[index] || !token || token.text !== planned.map(r => r.text).join('') || observed.map(r => r.text).join('') !== token.text) fields.push('text');
+    const projection = (runs: typeof planned, key: 'bold' | 'href') => {
+      const parts: { text: string; value: boolean | string | null }[] = [];
+      for (const run of runs) { const last = parts[parts.length - 1]; if (last && last.value === run[key]) last.text += run.text; else parts.push({ text: run.text, value: run[key] }); }
+      return JSON.stringify(parts);
+    };
+    if (projection(planned, 'bold') !== projection(observed, 'bold')) fields.push('bold');
+    if (projection(planned, 'href') !== projection(observed, 'href')) fields.push('href');
+    if (fields.length) issues.push({ paragraph: index + 1, fields });
+  }
+  return issues;
+}
 
 export class BlogExecution {
   surface: Surface | undefined;
@@ -75,6 +107,21 @@ export class BlogExecution {
   private activity: import('../progress').EngineActivity | undefined;
   private signal(value: Omit<import('../progress').EngineActivity, 'channel'>) { this.activity = { channel: 'blog', ...value }; this.report(); }
   private offset = 0;
+  private richWriter: BlogRichTextWriter | undefined;
+  private blogParagraph: BlogProgress['blogParagraph'];
+  private formattingFailure: BlogFormattingError | undefined;
+  private inputFormattingFailure: BlogFormattingError | undefined;
+  private verifyDocument(value: BlogReadback, stage: FormattingStage) {
+    if (this.formattingFailure) throw this.formattingFailure;
+    // Retain existing title/photo/number diagnostics before the exact run comparison.
+    this.env.verify(value);
+    const issues = compareBlogFormatting(this.plan, value);
+    if (issues.length) {
+      const error = new BlogFormattingError(stage, issues);
+      if (['AFTER_SAVE', 'REOPENED', 'PUBLISHED'].includes(stage)) this.formattingFailure = error;
+      throw error;
+    }
+  }
   private characters = 0;
   private photos = 0;
   private photoUploadMilliseconds = 0;
@@ -84,6 +131,7 @@ export class BlogExecution {
   private saveAttempted = false;
   private draftsBefore: DraftEntry[] = [];
   private saveAcknowledged = false;
+  private afterSaveChecked = false;
   private savedDraftId: string | undefined;
   draftIdentity: { existingSameTitle: number; source: 'response-id' | 'list-change' } | undefined;
   private reopened = false;
@@ -230,10 +278,10 @@ export class BlogExecution {
     this.checkpoint = await readBlogDocument(this.surface);
     if (previous) await this.env.host.destroy(previous);
   }
-  private report() {
+  private report(reset = false) {
     const totalCharacters = this.plan.steps.reduce((n, s) => n + (s.kind === 'text' ? Array.from(s.text).length : s.kind === 'table' ? s.rows.flat().reduce((a, t) => a + Array.from(t).length, 0) : 0), 0);
-    this.env.progress({ characters: this.characters, totalCharacters, photos: this.photos, totalPhotos: this.files.length,
-      ...(this.ownRecoveryDiscarded ? { ownRecoveryDiscarded: true } : {}),
+    this.env.progress({ characters: this.characters, totalCharacters, photos: this.photos, totalPhotos: this.files.length, ...(reset ? { blogInputReset: true } : {}),
+      ...(this.ownRecoveryDiscarded ? { ownRecoveryDiscarded: true } : {}), ...(this.blogParagraph ? { blogParagraph: this.blogParagraph } : {}),
       photoUploadMilliseconds: this.photoUploadMilliseconds, photoUploadSamples: this.photoUploadSamples, ...(this.activity ? { activity: this.activity } : {}) });
   }
   private async type(text: string, resume = false) {
@@ -296,8 +344,9 @@ export class BlogExecution {
   }
   async write() {
     this.executingStep = undefined;
-    try { await this.writePlan(); }
+    try { await this.writePlan(); this.inputFormattingFailure = undefined; }
     catch (error) {
+      if (error instanceof BlogFormattingError) this.inputFormattingFailure = error;
       const step = this.executingStep;
       if (error instanceof ControlNotFoundError && step) throw error.atPlanStep(this.index + 1, step);
       throw error;
@@ -313,16 +362,20 @@ export class BlogExecution {
       await this.guard();
       const current = await readBlogDocument(this.surface);
       if (this.checkpoint && same(current, this.checkpoint)) {
+        await this.richWriter?.requireClosedDialog(this.surface);
         if (this.index === 0) { await click(this.surface, 'BLOG_TITLE', titleSelector); await this.surface.pressKey({ key: 'End' }); }
         else await this.endOfBody();
       } else if (this.checkpoint) {
+        if (this.richWriter && !this.recoveryConsent) throw new Error('AUTO_RECOVER_CONSENT_REQUIRED');
+        this.richWriter = undefined; this.blogParagraph = undefined;
         await this.fresh(); this.index = 0; this.offset = 0; this.characters = 0; this.photos = 0; this.tableModes.length = 0; this.atomic = false;
         this.photoUploadMilliseconds = 0; this.photoUploadSamples = 0;
+        this.activity = undefined; this.report(true);
       } else await this.prepare();
       this.recoveryConsent = false;
     }
     const s = this.surface!;
-    for (; this.index < this.plan.steps.length; this.index++, this.offset = 0) {
+    for (; this.index < this.plan.steps.length; this.index++, this.offset = 0, this.richWriter = undefined) {
       await this.guard(); const step = this.plan.steps[this.index]!;
       this.executingStep = step;
       if (step.kind !== 'break') this.signal({ stage: 'write', phase: 'start', blockIndex: this.index, blockTotal: this.plan.steps.length, blockKind: step.kind === 'photos' ? 'photos' : step.kind === 'table' ? 'table' : step.role === 'title' ? 'title' : step.role === 'hashtags' ? 'tags' : 'paragraph', fraction: 0 });
@@ -358,16 +411,24 @@ export class BlogExecution {
         this.atomic = true;
         await this.tagInput();
         const start = this.characters;
-        const expected = step.text.split(/\s+/).filter(Boolean).map(tag => tag.replace(/^#/, ''));
-        for (const [index, tag] of expected.entries()) {
+        const expected = expectedBlogTags({ ...this.plan, steps: this.plan.steps.slice(0, this.index) });
+        await waitFor(async () => {
+          await this.guard();
+          return sameBlogTags(expected, (await readBlogDocument(s)).tags);
+        });
+        for (const tag of plannedBlogTags({ ...this.plan, steps: [step] })) {
+          // The editor already merged body hashtags when the layer opened.
+          // Keep those chips and never submit a duplicate or delete a tag.
+          if (expected.includes(tag)) continue;
           await requireTagFocus(s);
           await this.type(tag);
           await requireTagFocus(s);
           await s.pressKey({ key: 'Enter' });
+          expected.push(tag);
           await waitFor(async () => {
             await this.guard();
             const tags = (await readBlogDocument(s)).tags;
-            return JSON.stringify(tags) === JSON.stringify(expected.slice(0, index + 1));
+            return sameBlogTags(expected, tags);
           });
         }
         // Progress counts the plan's # prefixes and separators after tag commit.
@@ -378,7 +439,16 @@ export class BlogExecution {
         await closeTagLayer(s);
         await this.endOfBody();
       } else if (step.kind === 'text') {
-        await this.type(step.text, true);
+        if (step.runs) {
+          const ordinal = plannedBlogParagraphs({ ...this.plan, steps: this.plan.steps.slice(0, this.index) }).length + 1;
+          this.richWriter ??= new BlogRichTextWriter(step.text, step.runs, ordinal);
+          await this.richWriter.write(s, () => this.guard(), async (added, runs) => {
+            this.characters += added; this.blogParagraph = { blockIndex: this.index, runs };
+            this.checkpoint = await readBlogDocument(s);
+            if (this.activity?.stage === 'write') this.activity = { ...this.activity, phase: 'progress', fraction: Math.min(.99, runs.reduce((n, r) => n + Array.from(r.text).length, 0) / Math.max(1, Array.from(step.text).length)) };
+            this.report();
+          });
+        } else await this.type(step.text, true);
         if (step.role === 'linkCard') {
           await s.pressKey({ key: 'Enter' }); await sleep(1500); await this.guard();
           this.linkCard = await read<boolean>(s, `return docs.some(({d})=>d.querySelector('.se-component.se-oglink'));`) ? 'card' : 'url-text';
@@ -389,7 +459,7 @@ export class BlogExecution {
       if (step.kind !== 'break') this.signal({ ...this.activity!, stage: 'write', phase: 'finish', fraction: 1 });
     }
     this.executingStep = undefined;
-    this.env.verify(await this.observe());
+    this.verifyDocument(await this.observe(), 'INPUT');
   }
   private async table(rows: string[][]) {
     const s = this.surface!;
@@ -459,7 +529,7 @@ export class BlogExecution {
       return null;
     }, Math.max(30000, this.files.length * 2000));
     this.readbackTimings.push({ photos: observed.tokens.filter(t => t.kind === 'photo').length, milliseconds: Date.now() - started, navigationKeys });
-    if (this.plan.steps.some(s => s.kind === 'text' && s.role === 'hashtags')) {
+    if (expectedBlogTags(this.plan).length || await point(this.surface!, tagPanelToggle)) {
       await this.tagInput(); observed = await readBlogDocument(this.surface!);
     }
     return observed;
@@ -475,9 +545,11 @@ export class BlogExecution {
   }
   private async saveAndVerifyPlan() {
     await this.guard();
-    if (this.verified) { const observed = await this.observe(); this.env.verify(observed); return observed; }
+    if (this.formattingFailure) throw this.formattingFailure;
+    if (this.inputFormattingFailure) throw this.inputFormattingFailure;
+    if (this.verified) { const observed = await this.observe(); this.verifyDocument(observed, 'REOPENED'); return observed; }
     if (!this.saveAttempted) {
-      this.env.verify(await this.observe());
+      this.verifyDocument(await this.observe(), 'BEFORE_SAVE');
       await requireTagLayerClosed(this.surface!);
       this.draftsBefore = await openDraftEntries(this.surface!, true);
       await closeDraftEntries(this.surface!);
@@ -497,6 +569,7 @@ export class BlogExecution {
       await sleep(800);
       await this.guard();
     }
+    if (!this.reopened && !this.afterSaveChecked) { this.verifyDocument(await this.observe(), 'AFTER_SAVE'); this.afterSaveChecked = true; }
     if (!this.reopened) { await this.fresh(true); this.reopened = true; }
     await this.guard();
     const s = this.surface!;
@@ -517,13 +590,14 @@ export class BlogExecution {
     if (!target) throw new Error('BLOG_DRAFT_SAVED_UNVERIFIED');
     await s.click(target.x, target.y, matches);
     await waitFor(async () => (await readBlogDocument(s)).title === this.title.text, 15000);
-    const observed = await this.observe(); this.env.verify(observed); this.verified = true; return observed;
+    const observed = await this.observe(); this.verifyDocument(observed, 'REOPENED'); this.verified = true; return observed;
   }
   async publish() {
     if (this.env.mode !== 'publish' || !this.verified || !this.env.publishEnabled && !this.env.localPublish) throw new Error('REAL_PUBLISH_DISABLED');
+    if (this.formattingFailure) throw this.formattingFailure;
     this.signal({ stage: 'submit', phase: 'start', submission: 'publish' });
     if (this.publishAttempted) throw new Error('BLOG_PUBLISH_ALREADY_ATTEMPTED');
-    await this.guard(); this.env.verify(await this.observe());
+    await this.guard(); this.verifyDocument(await this.observe(), 'REOPENED');
     const s = this.surface!;
     try {
       await click(s, 'BLOG_PUBLISH', tagPanelToggle);
@@ -584,7 +658,7 @@ export class BlogExecution {
       const privateMarked = await read<boolean>(s, `return docs.some(({d})=>${JSON.stringify(await ownUrls())}.includes(d.location.href)&&Array.from(d.querySelectorAll('.post_visibility, .blog2_visibility, .post_author, [data-post-visibility], .se-documentTitle .blog2_container .writer .desc .txt')).some(e=>visible(e)&&(e.textContent||'').trim()==='비공개'));`);
       if (!privateMarked) throw new Error('BLOG_PUBLISHED_PRIVATE_UNCONFIRMED');
     }
-    this.env.verify(value);
+    this.verifyDocument(value, 'PUBLISHED');
     this.readbackTimings.push({ photos: value.tokens.filter(t => t.kind === 'photo').length, milliseconds: Date.now() - started, navigationKeys });
     this.publishedVerified = true;
     return value;

@@ -16,13 +16,34 @@ async function fixture() {
     evaluateReadOnly: vi.fn(async () => 'expired'), click: vi.fn(), typeText: vi.fn(), pressKey: vi.fn(), attachFiles: vi.fn(),
     show: vi.fn(), hide: vi.fn(), close: vi.fn(), waitForNavigation: vi.fn(),
   } as unknown as Surface;
-  const host: SurfaceHost = { create: vi.fn(async () => surface), destroy: vi.fn(), clearSession: vi.fn() };
+  const host: SurfaceHost = { create: vi.fn(async () => surface), destroy: vi.fn(async () => {}), clearSession: vi.fn() };
   const tools = new Experiments({ host, directory, photoPaths: [], info: async () => ({}), lifecycle: async () => {}, capture: async () => ({ redacted: true }) });
   cleanup.push(() => tools.close());
   async function finish() { await vi.waitFor(() => expect(tools.busy).toBe(false)); return tools.snapshot(); }
   return { tools, host, surface, directory, finish };
 }
 describe('WP0 experiment boundaries', () => {
+  it('opens a separate read-only editor only after blocking saves and login redirects, and closes it without input', async () => {
+    const f = await fixture();
+    f.surface.blockRequests = vi.fn(async () => {});
+    f.surface.guardRequests = vi.fn(async () => {});
+    await f.tools.handle('blog.probe');
+    expect((await f.finish()).lastResult).toContain('입력·저장 없음');
+    expect(f.host.create).toHaveBeenCalledWith('naver');
+    const blocked = vi.mocked(f.surface.blockRequests).mock.calls[0]![0];
+    expect(blocked.map(r => r.pathname)).toEqual(expect.arrayContaining(['/RabbitWrite.naver', '/RabbitUpdate.naver', '/RabbitAutoSaveWrite.naver', '/RabbitTempPostWrite.naver', '/RabbitTempPostUpdate.naver']));
+    const [rules, allow] = vi.mocked(f.surface.guardRequests).mock.calls[0]!;
+    expect(rules).toEqual([{ hostname: 'nid.naver.com', pathname: '/', prefix: true }]);
+    expect(await allow({ url: 'https://nid.naver.com/nidlogin.login', method: 'GET' })).toBe(false);
+    expect(vi.mocked(f.surface.blockRequests).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(f.surface.open).mock.invocationCallOrder[0]!);
+    for (const op of [f.surface.click, f.surface.typeText, f.surface.pressKey, f.surface.attachFiles, f.surface.show, f.host.clearSession]) expect(op).not.toHaveBeenCalled();
+    await f.tools.handle('blog.closeProbe'); expect(f.host.destroy).toHaveBeenCalledWith(f.surface);
+  });
+  it('does not open a probe editor when its request barrier is unavailable', async () => {
+    const f = await fixture(); await f.tools.handle('blog.probe');
+    expect((await f.finish()).lastResult).toBe('EDITOR_PROBE_UNAVAILABLE');
+    expect(f.surface.open).not.toHaveBeenCalled(); expect(f.host.destroy).toHaveBeenCalledWith(f.surface);
+  });
   it('does not write, attach or save a blog when the protected page reports expired', async () => {
     const f = await fixture(); await f.tools.handle('blog.run');
     expect((await f.finish()).lastResult).toBe('LOGIN_REQUIRED');
