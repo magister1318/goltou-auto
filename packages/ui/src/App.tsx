@@ -180,7 +180,9 @@ export function App() {
       '',
       location.pathname,
     );
-    window.scrollTo(0, 0);
+    // A closing sheet restores its previous reading position during cleanup.
+    // Screen navigation must reset after that cleanup, including discarded settings.
+    requestAnimationFrame(() => window.scrollTo(0, 0));
   }
   async function act(fn: () => Promise<void>) {
     if (busy) return;
@@ -279,16 +281,26 @@ export function App() {
     const resize = () => {
       requestAnimationFrame(scrollField);
     };
+    const keyboard = (event: Event) => {
+      const visible = (event as CustomEvent<{ visible?: boolean }>).detail?.visible;
+      if (typeof visible === 'boolean') {
+        const field = document.activeElement;
+        setEditing(visible && screen === 'settings' &&
+          (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement));
+        if (!visible) return;
+      }
+      resize();
+    };
     document.addEventListener('focusin', focus);
     document.addEventListener('focusout', focus);
     window.addEventListener('resize', resize);
-    window.addEventListener('goltou:keyboard', resize);
+    window.addEventListener('goltou:keyboard', keyboard);
     window.visualViewport?.addEventListener('resize', resize);
     return () => {
       document.removeEventListener('focusin', focus);
       document.removeEventListener('focusout', focus);
       window.removeEventListener('resize', resize);
-      window.removeEventListener('goltou:keyboard', resize);
+      window.removeEventListener('goltou:keyboard', keyboard);
       window.visualViewport?.removeEventListener('resize', resize);
     };
   }, [screen]);
