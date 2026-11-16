@@ -244,8 +244,12 @@ export class BlogExecution {
       if (!this.surface.guardRequests) throw new Error('BLOG_REQUEST_BARRIER_UNAVAILABLE');
       const hostname = this.env.localPublish ? new URL(this.env.editorUrl!).hostname : 'blog.naver.com';
       await this.surface.guardRequests(['/RabbitWrite.naver', '/RabbitUpdate.naver', '/RabbitTempPostWrite.naver'].map(pathname => ({ hostname, pathname })), async request => {
-        if (new URL(request.url).pathname === '/RabbitTempPostWrite.naver') return this.saveAttempted && !readback && request.method === 'POST';
-        if ((this.env.mode ?? 'draft') === 'draft') return false;
+        const decision = (allowed: boolean, reason: import('@goltou/surface/telemetry').ReasonCode) => { trace('barrier', allowed ? 'ok' : 'fail', { reason }); return allowed; };
+        if (new URL(request.url).pathname === '/RabbitTempPostWrite.naver') {
+          const allowed = this.saveAttempted && !readback && request.method === 'POST';
+          return decision(allowed, allowed ? 'BLOG_DRAFT_SAVE_REQUEST_ALLOWED' : 'BLOG_DRAFT_SAVE_REQUEST_NOT_AUTHORIZED');
+        }
+        if ((this.env.mode ?? 'draft') === 'draft') return decision(false, 'BLOG_PUBLISH_REQUEST_NOT_AUTHORIZED');
         const allowedWindow = this.publishArmed; this.publishArmed = false;
         if (this.env.publishProbe) {
           // No inspector result, armed window, method, path or visibility can
@@ -253,26 +257,28 @@ export class BlogExecution {
           this.publishFailure = 'BLOG_PUBLISH_PROBE_BLOCKED';
           try { await this.env.publishProbe.record(request, this.requestProof); }
           catch { trace('sites.naver-blog.plan.BlogExecution.fresh', 'fail', { reason: 'CAUGHT_FAILURE' });  this.publishFailure = 'BLOG_PUBLISH_PROBE_EVIDENCE_FAILED'; }
-          return false;
+          return decision(false, reasonCode(this.publishFailure));
         }
         if (!allowedWindow || new URL(request.url).pathname !== '/RabbitWrite.naver' || request.method !== 'POST') {
-          this.publishFailure = 'BLOG_PUBLISH_REQUEST_NOT_AUTHORIZED'; return false;
+          this.publishFailure = 'BLOG_PUBLISH_REQUEST_NOT_AUTHORIZED'; return decision(false, 'BLOG_PUBLISH_REQUEST_NOT_AUTHORIZED');
         }
         if (this.visibility === 'private' && (!this.requestProof || !inspectPrivateRequest(request, this.requestProof))) {
-          this.publishFailure = 'BLOG_PRIVATE_REQUEST_UNCONFIRMED'; return false;
+          this.publishFailure = 'BLOG_PRIVATE_REQUEST_UNCONFIRMED'; return decision(false, 'BLOG_PRIVATE_REQUEST_UNCONFIRMED');
         }
         this.publishRequestAccepted = true;
-        return true;
+        return decision(true, 'BLOG_PUBLISH_REQUEST_ALLOWED');
       }, response => {
         if (response.url && new URL(response.url).pathname === '/RabbitTempPostWrite.naver') {
           const receipt = draftSaveReceipt(response);
           this.saveAcknowledged ||= receipt.saved;
           this.savedDraftId = receipt.id;
+          trace('barrier', receipt.saved ? 'ok' : 'fail', { reason: receipt.saved ? 'BLOG_DRAFT_SAVE_RESPONSE_OK' : 'BLOG_DRAFT_SAVE_RESPONSE_UNCONFIRMED', counts: { status: response.status, bytes: response.body.length } });
           return;
         }
         this.responseEvidence = Promise.resolve().then(() => this.env.recordPublishResponse?.(response)).catch(() => { this.publishFailure = 'BLOG_PUBLISH_RESPONSE_EVIDENCE_FAILED'; });
         try {
           this.responsePost = parsePublishIdentity(response);
+          trace('barrier', 'ok', { reason: 'BLOG_PUBLISH_RESPONSE_OK', counts: { status: response.status, bytes: response.body.length } });
           if (this.responsePost.post) this.publishedPost = this.responsePost.post;
         } catch (error) { trace('sites.naver-blog.plan.BlogExecution.fresh', 'fail', { reason: reasonCode(error) });  this.publishFailure = error instanceof Error ? error.message : 'BLOG_PUBLISH_RESPONSE_UNCONFIRMED'; }
       });

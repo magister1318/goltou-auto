@@ -36,7 +36,8 @@ export function compareDocuments(expected: Observation, actual: Observation): Ve
   for (const field of Object.keys(names) as (keyof Observation)[]) {
     const a = expected[field], b = actual[field];
     const same = typeof a === 'string' && typeof b === 'string' ? compact(a) === compact(b) : Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => field === 'photos' ? v === b[i] : compact(v) === compact(b[i] ?? ''));
-    trace('verification', same ? 'ok' : 'fail', { check: field === 'photos' ? 'photo_order' : 'text', ...(same ? {} : { reason: 'VERIFICATION_MISMATCH' as const }), counts: { expected: a.length, observed: b.length } });
+    const check = field === 'photos' ? 'photo_order' : field === 'golfCourses' ? 'golf_courses' : field;
+    trace('verification', same ? 'ok' : 'fail', { check, ...(same ? {} : { reason: 'VERIFICATION_MISMATCH' as const }), counts: { expected: typeof a === 'string' ? compact(a).length : a.length, observed: typeof b === 'string' ? compact(b).length : b.length } });
     if (!same) differences.push({ field, message: `${names[field]} 항목이 원문과 다릅니다.` });
   }
   if (compact(expected.text).length !== compact(actual.text).length) differences.push({ field: 'characters', message: '공백을 정리한 글자 수가 다릅니다.' });

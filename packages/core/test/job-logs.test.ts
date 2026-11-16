@@ -79,6 +79,15 @@ describe('permanent local job logs', () => {
     expect(f.store.list().some(row => row.jobId === active.id)).toBe(true);
     expect(f.store.list().length).toBeLessThan(11);
   });
+  it.each([false, true])('stops before exceeding the byte limit, reserving a terminal line (submission=%s)', started => {
+    const f = fixture({ days: 30, bytes: 5000 }), job = f.store.begin('band_post', 'band');
+    if (started) job.line('sites.band.plan.BandExecution.publish', 'start');
+    expect(() => { for (let i = 0; i < 100; i++) job.line('input.progress', 'wait', { counts: { attempt: i } }); }).toThrow('LOG_STORAGE_LIMIT');
+    const terminals = f.lines().filter(line => line.step === 'terminal'); expect(terminals).toHaveLength(1);
+    expect(terminals[0]).toMatchObject({ reason: 'LOG_STORAGE_LIMIT', result: started ? 'uncertain' : 'failed' });
+    const bytes = f.files().reduce((sum, file) => sum + readFileSync(file).length, 0) + readFileSync(path.join(f.dir, 'index.json')).length + 32;
+    expect(bytes).toBeLessThanOrEqual(5000);
+  });
   it('keeps asynchronous jobs separate and uses salted correlation without retaining the identity', async () => {
     const f = fixture(); const identity = 'private-post-12345';
     await Promise.all([traceJob('band_post', 'band', async () => { await Promise.resolve(); f.store.associate(identity); trace('runner.band_write', 'ok'); }), traceJob('login_check', 'naver', async () => { await Promise.resolve(); trace('runner.ready', 'ok'); })]);

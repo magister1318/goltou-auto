@@ -37,6 +37,7 @@ export async function linkUncertainBandForDeletion(context: UncertainBandCleanup
     const after = matching((await api.request('/auto/posts/list', { scope: 'mine', page: 1, pageSize: 100 }, token)).items);
     if (after.length !== 1 || after[0]!.postUrl !== id!.url) refuse();
     trace('runner.record', 'ok', { reason: 'RECORD_SAVED' });
+    trace('sites.band.plan.BandExecution.detectPublished', 'fail', { reason: 'BAND_POST_UNCONFIRMED' });
     return { identityVerified: true, recorded: true, publicationVerified: false, cleanupAvailable: true };
   }, () => ({ result: 'uncertain', reason: 'BAND_POST_UNCONFIRMED' }));
 }

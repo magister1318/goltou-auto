@@ -13,7 +13,7 @@ export interface TraceCounts {
 }
 export interface TraceDetail {
   reason?: ReasonCode; counts?: TraceCounts;
-  check?: 'text' | 'photos' | 'photo_order' | 'photo_ratio' | 'links' | 'hashtags' | 'line_breaks' | 'identity' | 'focus' | 'record' | 'alert_kind' | 'delete_notice' | 'same_post' | 'missing_read' | 'feed_location';
+  check?: 'title' | 'paragraphs' | 'prices' | 'departures' | 'golf_courses' | 'text' | 'photos' | 'photo_order' | 'photo_ratio' | 'links' | 'hashtags' | 'line_breaks' | 'identity' | 'focus' | 'record' | 'alert_kind' | 'delete_notice' | 'same_post' | 'missing_read' | 'feed_location';
   dialog?: 'alert' | 'confirm';
   selector?: typeof traceSelectors[number];
   operation?: typeof traceOperations[number];

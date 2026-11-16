@@ -25,7 +25,7 @@ export function sanitizeDetail(detail: TraceDetail = {}) {
     for (const key of countKeys) { const n = detail.counts[key]; if (typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= Number.MAX_SAFE_INTEGER) counts[key] = n; }
     out.counts = counts;
   }
-  if (['text', 'photos', 'photo_order', 'photo_ratio', 'links', 'hashtags', 'line_breaks', 'identity', 'focus', 'record', 'alert_kind', 'delete_notice', 'same_post', 'missing_read', 'feed_location'].includes(detail.check ?? '')) out.check = detail.check;
+  if (['title', 'paragraphs', 'prices', 'departures', 'golf_courses', 'text', 'photos', 'photo_order', 'photo_ratio', 'links', 'hashtags', 'line_breaks', 'identity', 'focus', 'record', 'alert_kind', 'delete_notice', 'same_post', 'missing_read', 'feed_location'].includes(detail.check ?? '')) out.check = detail.check;
   if (['alert', 'confirm'].includes(detail.dialog ?? '')) out.dialog = detail.dialog;
   if (traceSelectors.includes(detail.selector as typeof traceSelectors[number])) out.selector = detail.selector;
   if (traceOperations.includes(detail.operation as typeof traceOperations[number])) out.operation = detail.operation;
@@ -46,6 +46,7 @@ export class JobLogStore implements TraceProvider {
   private readonly context = new AsyncLocalStorage<TraceJob>();
   private rows: StoredRow[] = [];
   private salt: Buffer;
+  private logBytes = 0;
   private environment: Record<string, string> = {};
   constructor(readonly directory: string, private readonly limits = { days: 30, bytes: 50 * 1024 * 1024 }, private readonly now = Date.now) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
@@ -71,8 +72,10 @@ export class JobLogStore implements TraceProvider {
     return (job ? (...args: never[]) => this.run(job, () => work(...args)) : work) as T;
   }
   private durable(file: string, value: string | Buffer, append = true) {
+    const previous = !append && file.endsWith('.jsonl') && existsSync(file) ? statSync(file).size : 0;
     if (append) appendFileSync(file, value, { mode: 0o600 }); else writeFileSync(file, value, { mode: 0o600 });
     const fd = openSync(file, 'r+'); try { fsyncSync(fd); } finally { closeSync(fd); }
+    if (file.endsWith('.jsonl')) this.logBytes += (typeof value === 'string' ? Buffer.byteLength(value) : value.length) - previous;
   }
   private index() {
     const temp = path.join(this.directory, 'index.tmp');
@@ -108,10 +111,12 @@ export class JobLogStore implements TraceProvider {
     this.rows.push(row);
     let terminal = false;
     let decisionReason: ReasonCode | undefined;
+    let submissionMayHaveStarted = kind === 'band_delete' || kind === 'blog_delete';
     const line = (step: TraceStep, event: TraceEvent, detail?: TraceDetail, duration = 0, end?: JobResult) => {
       if (terminal) return;
       if (!traceSteps.includes(step) || !events.includes(event)) throw new Error('INVALID_LOG_EVENT');
       const data = sanitizeDetail(detail);
+      if (step.endsWith('.publish') && event === 'start' || detail?.reason === 'ARMED' || detail?.reason === 'CREATE_ALLOWED') submissionMayHaveStarted = true;
       if (event === 'fail' && !detail?.reason) data.reason = 'UNEXPECTED_FAILURE';
       if (step === 'barrier' && event === 'start') decisionReason = undefined;
       else if (['barrier', 'delete'].includes(step) && detail?.reason && !detail.network) decisionReason = reasonCode(detail.reason);
@@ -119,9 +124,18 @@ export class JobLogStore implements TraceProvider {
         row.failedStep = step === 'job' && detail?.counts?.step ? (['runner.ready', 'runner.download', 'runner.arrange', 'runner.blog_write', 'runner.blog_save', 'runner.band_write', 'runner.record'] as const)[detail.counts.step - 1] ?? step : step;
         row.reason = reasonCode(detail?.reason);
       }
-      this.durable(path.join(this.directory, row.file), JSON.stringify({ timestamp: this.now(), jobId: id, site, kind, step, event,
+      const serialized = JSON.stringify({ timestamp: this.now(), jobId: id, site, kind, step, event,
         duration: Number.isFinite(duration) && duration >= 0 ? duration : 0, ...data,
-        ...(step === 'job' && event === 'start' ? { environment: this.environment } : {}), ...(end ? { result: end } : {}) }) + '\n');
+        ...(step === 'job' && event === 'start' ? { environment: this.environment } : {}), ...(end ? { result: end } : {}) }) + '\n';
+      const reserve = step === 'terminal' ? 0 : Math.min(1024, Math.floor(this.limits.bytes / 4));
+      const incoming = Buffer.byteLength(serialized) + reserve;
+      if (this.logBytes + incoming + Buffer.byteLength(JSON.stringify(this.rows)) + 32 > this.limits.bytes) this.retain(incoming);
+      if (step !== 'terminal' && this.logBytes + incoming + Buffer.byteLength(JSON.stringify(this.rows)) + 32 > this.limits.bytes) {
+        row.failedStep = step;
+        line('terminal', 'fail', { reason: 'LOG_STORAGE_LIMIT' }, this.now() - at, submissionMayHaveStarted ? 'uncertain' : 'failed');
+        throw Error('LOG_STORAGE_LIMIT');
+      }
+      this.durable(path.join(this.directory, row.file), serialized);
       if (end) { terminal = true; row.result = end; if (detail?.reason) row.reason = reasonCode(detail.reason); else if (event === 'fail') row.reason = 'UNEXPECTED_FAILURE'; else delete row.reason; this.index(); this.retain(); }
     };
     const job: TraceJob = { id, get decisionReason() { return decisionReason; }, line, end: (result, reason) => {
@@ -162,14 +176,15 @@ export class JobLogStore implements TraceProvider {
     }
     this.rows.sort((a, b) => a.at - b.at); this.index();
   }
-  retain() {
+  retain(incoming = 0) {
     let bytes = this.rows.reduce((sum, row) => sum + (existsSync(path.join(this.directory, row.file)) ? statSync(path.join(this.directory, row.file)).size : 0), 0);
     for (const row of [...this.rows]) {
-      if (row.result === 'running' || row.at >= this.now() - this.limits.days * dayMs && bytes <= this.limits.bytes) continue;
+      if (row.result === 'running' || row.at >= this.now() - this.limits.days * dayMs && bytes + incoming + Buffer.byteLength(JSON.stringify(this.rows)) + 32 <= this.limits.bytes) continue;
       const file = path.join(this.directory, row.file);
       if (existsSync(file)) { bytes -= statSync(file).size; unlinkSync(file); }
       this.rows = this.rows.filter(item => item !== row);
     }
+    this.logBytes = bytes;
     this.index();
   }
 }

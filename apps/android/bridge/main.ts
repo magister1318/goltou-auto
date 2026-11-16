@@ -5,7 +5,7 @@ import { configureTrace, trace, reasonCode } from '../../../packages/surface/src
 declare const __GOLTOU_COMMIT__: string;
 declare const __GOLTOU_VERSION__: string;
 import path from 'node:path';
-import { appendFile, mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { AppCore, ChannelRegistrationRunner, goltouPhotoUrl, NativeBridge, startCore, fileMediaStorage, filePolishStrengthStore, type CoreOptions } from '../../../packages/core/src/index';
 import { createApiClient } from '../../../packages/api-client/src/index';
 import { apiOrigin } from './config';
@@ -88,13 +88,6 @@ async function start() {
     const { auditConversions } = await import('../../../packages/core/src/conversion-audit');
     const { deleteTestPost } = await import('../../../packages/core/src/test-post-delete');
     const { publishProbeShape } = await import('./publish-probe');
-    const { publishResponseShape } = await import('./publish-response-shape');
-    options.blog!.recordPublishResponse = async response => {
-      const shape = publishResponseShape(response);
-      const directory = path.join(path.dirname(argument('data')), 'wp14');
-      await mkdir(directory, { recursive: true });
-      await writeFile(path.join(directory, 'publish-response-shape.json'), JSON.stringify(shape), { mode: 0o600 });
-    };
     options.experiments = new Experiments({
       host, directory: argument('data'),
       photoPaths: Array.from({ length: 5 }, (_, i) => path.join(argument('bundle'), 'fixtures', `sample-${i + 1}.png`)),
