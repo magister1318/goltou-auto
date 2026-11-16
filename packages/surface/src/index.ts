@@ -38,8 +38,10 @@ export interface GuardedRequest {
   url: string; method: string; postData?: string;
   contentType?: string; hasPostData?: boolean; postDataInline?: boolean;
   postDataFetched?: boolean; postDataComplete?: boolean;
+  postDataFailure?: 'MISSING' | 'NETWORK_ID_MISSING' | 'FETCH_FAILED' | 'LENGTH_MISMATCH';
 }
 export interface GuardedResponse { status: number; body: string; url?: string; method?: string }
+export type RequestBlockReason = 'STATIC_BLOCK' | 'INSPECTOR_DENIED' | 'INSPECTOR_ERROR' | 'REQUEST_INVALID';
 
 export interface Surface {
   readonly session: SurfaceSession;
@@ -66,7 +68,9 @@ export interface Surface {
   blockRequests?(rules: readonly { hostname: string; pathname: string }[]): Promise<void>;
   guardRequests?(rules: readonly RequestRule[], inspect: (request: GuardedRequest) => boolean | Promise<boolean>,
     response: (response: GuardedResponse) => void,
-    observeResponse?: (request: Pick<GuardedRequest, 'url' | 'method'>) => boolean): Promise<void>;
+    observeResponse?: (request: Pick<GuardedRequest, 'url' | 'method'>) => boolean,
+    /** Called only after Fetch acknowledges blocking. Request identity is ephemeral. */
+    blocked?: (request: Pick<GuardedRequest, 'url' | 'method'> | undefined, reason: RequestBlockReason) => void): Promise<void>;
   readDialog?(): Promise<SurfaceDialog | null>;
   respondDialog?(id: string, accept: boolean): Promise<void>;
   show(): Promise<void>;

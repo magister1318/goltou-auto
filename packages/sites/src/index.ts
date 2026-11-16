@@ -11,6 +11,7 @@ export * from './naver-blog/tags';
 export * from './naver-blog/publish-safety';
 export * from './band';
 export * from './band/plan';
+export * from './band/barrier-codes';
 export * from './ai-mode';
 
 export * from './naver-blog/delete';

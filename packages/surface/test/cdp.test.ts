@@ -43,6 +43,14 @@ async function fixture(handler?: (command: Command, socket: WebSocket) => boolea
 }
 
 describe('CDP Surface', () => {
+  it('reports an inspector exception as a fixed reason only after the blocking command is acknowledged', async () => {
+    const f = await fixture();
+    const blocked = vi.fn();
+    await f.surface.guardRequests([{ hostname: '*', pathname: '/', prefix: true }], () => { throw Error('PRIVATE_EXCEPTION'); }, () => {}, undefined, blocked);
+    f.event('Fetch.requestPaused', { requestId: 'synthetic-block', request: { url: 'https://example.invalid/create', method: 'POST', postData: 'PRIVATE_BODY' } });
+    await vi.waitFor(() => expect(blocked).toHaveBeenCalledWith({ url: 'https://example.invalid/create', method: 'POST' }, 'INSPECTOR_ERROR'));
+    expect(JSON.stringify(blocked.mock.calls)).not.toMatch(/PRIVATE_/);
+  });
   it('does not read a membership response body, but keeps armed publication response failures closed', async () => {
     const f = await fixture((command, socket) => {
       if(command.method === 'Fetch.continueRequest' && command.params.requestId === 'cancelled') {

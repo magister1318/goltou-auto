@@ -2,6 +2,8 @@ import type { Job, TargetResult } from '@goltou/core/protocol';
 import type { Post } from '@goltou/api-client';
 import { formattingMessage } from './formatting-message';
 import { deletedPost } from '@goltou/core/post-delete-policy';
+import { bandPostBlocked } from '@goltou/sites';
+export { bandPostBlocked };
 
 export function bandChoiceReason(input: {
   blog: boolean;
@@ -27,6 +29,7 @@ export function targetStatus(job: Job, target: TargetResult): string {
   if (target.status === 'published')
     return target.channel === 'band' ? '게시됨' : '발행됨';
   if (target.status === 'draft_saved') return '임시저장됨';
+  if (target.channel === 'band' && bandPostBlocked(target.reason)) return '게시 요청 차단 · 게시되지 않음';
   if (
     target.reason === 'BLOG_DRAFT_SAVED_UNVERIFIED' ||
     uncertainReason(target.reason)
@@ -62,6 +65,7 @@ export function targetName(
 }
 export function resultKind(job: Job) {
   if (job.status === 'record_failed') return 'record';
+  if (bandPostBlocked(job.failureCode)) return 'blocked';
   if (job.publicationUncertain || uncertainReason(job.failureCode))
     return 'uncertain';
   if (
@@ -77,6 +81,7 @@ export function resultKind(job: Job) {
 }
 export function historyStatus(post: Post) {
   if (formattingMessage(post.failReason)) return '확인 필요';
+  if (post.channel === 'band' && bandPostBlocked(post.failReason)) return '게시 요청 차단 · 게시되지 않음';
   if (
     uncertainReason(post.failReason) ||
     post.failReason === 'BLOG_DRAFT_SAVED_UNVERIFIED'

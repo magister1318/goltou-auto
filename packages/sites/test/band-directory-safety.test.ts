@@ -30,8 +30,10 @@ it.each(['application/json', 'application/x-www-form-urlencoded'])('guards the o
   expect(await inspect(request())).toBe(false);
   directory.arm('111');
   expect(await inspect(request('222'))).toBe(false);
+  directory.arm('111'); // a rejected mutation closes its own approval
   expect(await inspect(request('111', false))).toBe(false);
-  for (const other of ['https://api-kr.band.us/v2.0.3/create_post', 'https://api-kr.band.us/v2.0.2/create_post/extra', 'https://other.band.us/v2.0.2/create_post', 'http://api-kr.band.us/v2.0.2/create_post']) expect(await inspect({ ...request(), url: other })).toBe(false);
+  for (const other of ['https://api-kr.band.us/v2.0.3/create_post', 'https://api-kr.band.us/v2.0.2/create_post/extra', 'https://other.band.us/v2.0.2/create_post', 'http://api-kr.band.us/v2.0.2/create_post']) { directory.arm('111'); expect(await inspect({ ...request(), url: other })).toBe(false); }
+  directory.arm('111');
   expect(await inspect(request())).toBe(true);
   expect(await inspect(request())).toBe(false);
   expect(directory.submitted('111')).toBe(false);

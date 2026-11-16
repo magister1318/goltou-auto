@@ -41,7 +41,7 @@ export function bandFixture(mode = 'mobile') {
       };
       view.querySelector('._btnPostSubmit,.postWriteSection .topBarGnbActionButtons ._btnPostWrite').onclick=async ()=>{
         count('postPresses');
-        const result=await fetch('/band-post-create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({band_key:location.pathname.split('/')[2]})});
+        const result=await fetch('/band-post-create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(mode==='post-blocked'?{}:{band_key:location.pathname.split('/')[2]})});
         if(!result.ok)return;
         count('posts');const body=text();const photos=Array.from(view.querySelectorAll('img')).map(n=>n.alt);localStorage.setItem('lastPost',JSON.stringify({body,photos}));
         location.href=location.pathname.replace(/\\/$/,'')+'/'+(1000+Number(localStorage.getItem('posts')));

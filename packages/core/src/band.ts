@@ -10,6 +10,7 @@ import { verificationProgress } from './verify-progress';
 export interface BandServices { host: SurfaceHost; baseUrl?: string; localPublish?: boolean;
   publishEnabled?: boolean;
   publishAllowance?: import('./band-allowance').BandPostAllowance;
+  recordBarrierDecision?(code: import('@goltou/sites').BandBarrierCode): void;
   capture?(surface: import('@goltou/surface').Surface, name: string): Promise<Record<string, unknown>>;
 }
 /** Composer URLs require the execution's attachment proof; raw counts/names cannot stand in for it. */

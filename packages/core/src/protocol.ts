@@ -37,6 +37,7 @@ export interface Job {
   recordFailure?: { status: JobStatus; message: string };
   targetResults?: TargetResult[]; activeTargetKey?: string;
   bandPhotoLimit?: number | null; bandLimitObservedAt?: string | undefined;
+  bandBarrierDecisions?: import('@goltou/sites').BandBarrierCode[];
   bandPhotoVerification?: { order: 'matched'; ratio: 'matched' | 'unavailable'; counts: number[]; sources: { width: number; height: number }[]; thumbnails: { width: number; height: number }[] };
 }
 export interface Simulation { tickMs: number; loginAt: number | null; failAt: number | null }

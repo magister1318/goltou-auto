@@ -23,10 +23,20 @@ function argument(name: string): string {
 const native = new NativeBridge();
 const host = new AndroidSurfaceHost(native, argument('devtools'));
 const ai = new AiModeClient(host);
+// Private debug log contains fixed decision codes only, in request order.
+// A write failure never authorizes publication or schedules another request.
+let bandBarrierLog = Promise.resolve();
+const recordBandBarrierDecision = (code: import('../../../packages/sites/src/index').BandBarrierCode) => {
+  bandBarrierLog = bandBarrierLog.then(async () => {
+    const directory = path.join(path.dirname(argument('data')), 'wp19');
+    await mkdir(directory, { recursive: true });
+    await appendFile(path.join(directory, 'barrier-codes.jsonl'), JSON.stringify(code) + '\n', { mode: 0o600 });
+  }).catch(() => {});
+};
 const options: CoreOptions = {
   native, host,
   diagnostics: __GOLTOU_DEBUG__,
-  band: { host, publishEnabled: !__GOLTOU_DEBUG__, ...(__GOLTOU_DEBUG__ ? { publishAllowance: fileBandPostAllowance(path.join(path.dirname(argument('data')), 'one-band-post.allow')) } : {}), ...(__GOLTOU_DEBUG__ ? { capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}) },
+  band: { host, publishEnabled: !__GOLTOU_DEBUG__, ...(__GOLTOU_DEBUG__ ? { recordBarrierDecision: recordBandBarrierDecision, publishAllowance: fileBandPostAllowance(path.join(path.dirname(argument('data')), 'one-band-post.allow')) } : {}), ...(__GOLTOU_DEBUG__ ? { capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}) },
   blog: {
     lastTypedTitle: fileBlogTitleStore(path.join(path.dirname(argument('data')), 'last-blog-title.txt')),
     host, publishEnabled: true, ...(__GOLTOU_DEBUG__ ? { draftSaveLimit: 1, capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}),
