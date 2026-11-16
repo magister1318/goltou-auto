@@ -1,5 +1,6 @@
 import type { Job, TargetResult } from '@goltou/core/protocol';
 import type { Post } from '@goltou/api-client';
+import { formattingMessage } from './formatting-message';
 
 export function bandChoiceReason(input: {
   blog: boolean;
@@ -21,6 +22,7 @@ export function uncertainReason(reason = '') {
   );
 }
 export function targetStatus(job: Job, target: TargetResult): string {
+  if (formattingMessage(target.reason)) return '확인 필요';
   if (target.status === 'published')
     return target.channel === 'band' ? '게시됨' : '발행됨';
   if (target.status === 'draft_saved') return '임시저장됨';
@@ -73,6 +75,7 @@ export function resultKind(job: Job) {
   return 'failed';
 }
 export function historyStatus(post: Post) {
+  if (formattingMessage(post.failReason)) return '확인 필요';
   if (
     uncertainReason(post.failReason) ||
     post.failReason === 'BLOG_DRAFT_SAVED_UNVERIFIED'

@@ -8,6 +8,7 @@ import { createBlogExecution, type BlogServices } from './blog';
 import { updateInputProgress } from './input-progress';
 import { RecordError, RecordingCheckpoint } from './record-checkpoint';
 import { markDraftUnverified } from './draft-unverified';
+import { markBlogFormattingFailure } from './blog-formatting-failure';
 
 /** Android's real blog runner. Band remains outside WP5 and cannot be reported as saved. */
 export class BlogRegistrationRunner implements RegistrationRunner {
@@ -120,6 +121,7 @@ export class BlogRegistrationRunner implements RegistrationRunner {
     } catch (error) {
       if (error instanceof RecordError) return;
       if (this.abort.signal.aborted || this.disposed) return;
+      if (markBlogFormattingFailure(job, error)) { await this.emit(); return; }
       const code = error instanceof Error ? error.message : 'BLOG_FAILED';
       if (code === 'BLOG_DRAFT_SAVED_UNVERIFIED') {
         markDraftUnverified(job); await this.emit(); return;

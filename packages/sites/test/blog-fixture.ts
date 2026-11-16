@@ -3,11 +3,13 @@ export function blogFixture(mode = '') {
   const metadata = mode.startsWith('metadata-');
   return `<!doctype html><meta charset="utf-8"><style>
   body{font:16px sans-serif;margin:0}header{position:sticky;top:0;background:white;z-index:2;height:45px}button{min-width:65px;height:35px}
-  .se-main-container{min-height:500px;padding:10px}.se-component{margin:5px 0}.se-text-paragraph{min-height:25px;margin:5px 0;outline:none}
+  .se-main-container{min-height:500px;padding:10px}.se-component{margin:5px 0}.se-text-paragraph{white-space:pre-wrap;min-height:25px;margin:5px 0;outline:none}
   .se-documentTitle{margin:5px 10px}.se-image-resource{width:90px;height:50px}td{border:1px solid #aaa;width:150px;height:28px}
   .se-popup-alert-confirm{position:fixed;top:100px;background:white;border:1px solid;z-index:4}
+  .rich-toolbar{position:sticky;top:45px;background:white;z-index:2}
   ${mode === 'metadata-heavy' ? '.se-image-resource{height:450px}.se-main-container{height:650px;overflow:auto}' : ''}
   </style><header><button data-click-area="tpb.save">저장</button><button data-click-area="tpb*s.count">0</button><button data-click-area="tpb.publish">발행</button><button data-name="image">사진</button>${mode === 'fallback' ? '' : '<button data-name="table">표</button>'}<input type="file" multiple hidden></header>
+  <div class="rich-toolbar"><button data-name="bold" aria-pressed="false">굵게</button><button data-name="link">링크</button></div>
   <div class="se-documentTitle"><p class="se-text-paragraph" contenteditable="true"></p></div>
   <div class="se-main-container" contenteditable="true"><div class="se-component se-text"><p class="se-text-paragraph"><br></p></div></div>
   ${mode === 'missing-tags' || metadata ? '' : '<input placeholder="태그 입력">'}<div class="tag_list"></div><ul aria-label="임시저장된 글" hidden></ul>
@@ -15,6 +17,23 @@ export function blogFixture(mode = '') {
   const mode=${JSON.stringify(mode)}, main=document.querySelector('.se-main-container'), title=document.querySelector('.se-documentTitle p');
   const empty=()=>{const e=document.createElement('div');e.className='se-component se-text';e.innerHTML='<p class="se-text-paragraph"><br></p>';return e};
   const focus=e=>{e.focus();const r=document.createRange();r.selectNodeContents(e);r.collapse(false);const s=getSelection();s.removeAllRanges();s.addRange(r)};
+  // Only the synthetic editor owns DOM/Selection writes. Production calls real keys/clicks.
+  const bold=document.querySelector('[data-name=bold]');
+  const boldState=()=>bold.setAttribute('aria-pressed',String(document.queryCommandState('bold')));
+  document.addEventListener('selectionchange',boldState);
+  bold.onmousedown=e=>e.preventDefault();
+  bold.onclick=()=>{if(mode!=='bold-stuck')document.execCommand('bold');boldState()};
+  document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key.toLowerCase()==='b'){e.preventDefault();if(mode!=='bold-stuck')document.execCommand('bold');boldState()}});
+  const link=document.querySelector('[data-name=link]');let linkRange=null;
+  link.onmousedown=e=>{e.preventDefault();linkRange=getSelection()?.rangeCount?getSelection().getRangeAt(0).cloneRange():null};
+  link.onclick=()=>{
+    window.linkDialogOpens=(window.linkDialogOpens||0)+1;
+    const panel=document.createElement('div');panel.className='se-popup-link';panel.style.cssText='position:fixed;top:130px;left:100px;background:white;z-index:8';
+    panel.innerHTML='<input class="se-popup-link-input" aria-label="링크 주소"><button class="se-popup-button-confirm">확인</button><button class="se-popup-button-cancel">취소</button>';
+    const restore=()=>{main.focus();if(linkRange){const selection=getSelection();selection.removeAllRanges();selection.addRange(linkRange)}};
+    panel.querySelector('.se-popup-button-confirm').onclick=()=>{const value=panel.querySelector('input').value;panel.remove();restore();if(mode!=='link-cancelled')document.execCommand('createLink',false,mode==='link-broken'?'https://example.invalid/broken':value);boldState()};
+    panel.querySelector('.se-popup-button-cancel').onclick=()=>{panel.remove();restore()};document.body.append(panel);
+  };
   const component=()=>{let n=getSelection()?.anchorNode;while(n&&!n.classList?.contains('se-component'))n=n.parentElement;return n};
   let cursor=null, tableUndo=null;window.attachmentSizes=[];
   document.querySelector('[data-name=image]').onmousedown=e=>{cursor=component();e.preventDefault()};
@@ -60,6 +79,7 @@ export function blogFixture(mode = '') {
     if(mode==='duplicate')drafts.push(drafts[drafts.length-1]);localStorage.setItem('drafts',JSON.stringify(drafts));
     if(mode==='autosave-readback')localStorage.removeItem('leftover');
     localStorage.setItem('saves',String(Number(localStorage.getItem('saves')||0)+1));
+    if(mode==='format-drop-after-save')for(const e of main.querySelectorAll('b,strong,a'))e.replaceWith(...e.childNodes);
     if(mode!=='ambiguous')document.querySelector('[data-click-area="tpb*s.count"]').textContent=drafts.length;
     if(mode==='dialog')confirm('로컬 저장 확인');
     await fetch('/RabbitTempPostWrite.naver',{method:'POST',body:mode});
@@ -69,6 +89,7 @@ export function blogFixture(mode = '') {
       const li=document.createElement('li'), b=document.createElement('button'), strong=document.createElement('strong');
       b.dataset.clickArea='tpb*s.tlist';strong.textContent=draft.title;b.append(strong);const date=document.createElement('span');date.className='date__fixture';date.textContent=draft.stamp||'';b.append(date);li.append(b);list.append(li);
       b.onclick=()=>{title.textContent=draft.title;main.innerHTML=draft.html;document.querySelector('.tag_list').innerHTML=draft.tags;metadataTags=draft.metadataTags||[];list.hidden=true;
+        if(mode==='format-drop-reopen')for(const e of main.querySelectorAll('b,strong,a'))e.replaceWith(...e.childNodes);
         if(mode==='autosave-readback')setTimeout(()=>{
           localStorage.setItem('autosaveAttempted','yes');
           fetch('https://blog.naver.com/RabbitAutoSaveWrite.naver',{method:'POST',mode:'no-cors',body:'fixture'}).then(()=>localStorage.setItem('leftover','yes')).catch(()=>localStorage.setItem('autosaveBlocked','yes'));

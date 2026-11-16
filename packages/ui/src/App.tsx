@@ -1,3 +1,4 @@
+import { formattingMessage } from './formatting-message';
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type {
   Mode,
@@ -1159,9 +1160,9 @@ export function App() {
             ) : (
               <main className="center">
                 <span
-                  className={`mark ${job.status === 'draft_unverified' || resultKind(job) === 'uncertain' ? 'question' : resultKind(job) === 'paused' || job.status === 'stopped' ? 'neutral' : resultKind(job) === 'record' ? '' : 'danger'}`}
+                  className={`mark ${formattingMessage(job.failureCode) || job.status === 'draft_unverified' || resultKind(job) === 'uncertain' ? 'question' : resultKind(job) === 'paused' || job.status === 'stopped' ? 'neutral' : resultKind(job) === 'record' ? '' : 'danger'}`}
                 >
-                  {job.status === 'draft_unverified'
+                  {formattingMessage(job.failureCode) || job.status === 'draft_unverified'
                     ? '!'
                     : resultKind(job) === 'record'
                       ? '✓'
@@ -1173,7 +1174,7 @@ export function App() {
                           : '×'}
                 </span>
                 <h1>
-                  {resultKind(job) === 'record'
+                  {formattingMessage(job.failureCode) ? '서식 확인 필요' : resultKind(job) === 'record'
                     ? job.targetResults?.some((t) => t.status === 'published')
                       ? '발행했습니다'
                       : job.targetResults?.some(
@@ -1191,15 +1192,15 @@ export function App() {
                             ? '옮기기를 중단했습니다'
                             : '끝까지 옮기지 못했습니다'}
                 </h1>
-                {job.status !== 'draft_unverified' && (
+                {(formattingMessage(job.failureCode) || job.status !== 'draft_unverified') && (
                   <p>
-                    {resultKind(job) === 'record'
+                    {formattingMessage(job.failureCode) ?? (resultKind(job) === 'record'
                       ? '채널별 결과를 등록 기록에 남기지 못했습니다. 기록을 다시 저장해 주세요.'
                       : resultKind(job) === 'uncertain'
                         ? '앱이 게시 결과를 확인하지 못했습니다. 다시 올리기 전에 해당 서비스에서 먼저 확인해 주세요.'
                         : resultKind(job) === 'paused'
                           ? '작성 중인 내용은 그대로 두었습니다. 채널별 상태를 확인한 뒤 이어서 진행해 주세요.'
-                          : jobMessage(job)[0]}
+                          : jobMessage(job)[0])}
                   </p>
                 )}
                 <p className="meta">{jobMessage(job)[1]}</p>
@@ -1408,7 +1409,7 @@ export function App() {
                   <strong>{post.productTitle}</strong>
                   {scope === 'all' && <small>{post.userName}</small>}
                   <p
-                    className={`status ${deletedPost(post) ? 'muted' : uncertainReason(post.failReason) ? 'uncertain-status' : post.status === 'failed' ? 'danger' : post.status === 'published' ? 'green' : post.status === 'draft_saved' ? 'draft-status' : 'muted'}`}
+                    className={`status ${deletedPost(post) ? 'muted' : (uncertainReason(post.failReason) || formattingMessage(post.failReason)) ? 'uncertain-status' : post.status === 'failed' ? 'danger' : post.status === 'published' ? 'green' : post.status === 'draft_saved' ? 'draft-status' : 'muted'}`}
                   >
                     {post.channel === 'blog' ? '블로그' : '밴드'}{' '}
                     {deletedPost(post) ? '삭제함' : historyStatus(post)} ·{' '}
@@ -1421,7 +1422,8 @@ export function App() {
                       : post.targetName}{' '}
                     · {recordTime(post.startedAt)}
                   </p>
-                  {!deletedPost(post) && post.status === 'failed' && (
+                  {!deletedPost(post) && formattingMessage(post.failReason) && <p className="meta">{formattingMessage(post.failReason)}</p>}
+                  {!deletedPost(post) && post.status === 'failed' && !formattingMessage(post.failReason) && (
                     <p className="meta">
                       {uncertainReason(post.failReason)
                         ? '올라갔는지 앱이 확인하지 못했습니다. 다시 올리기 전에 해당 서비스에서 먼저 확인해 주세요.'
@@ -1444,11 +1446,11 @@ export function App() {
                         </button>
                       )}
                       {(post.status === 'draft_saved' ||
-                        post.failReason === 'BLOG_DRAFT_SAVED_UNVERIFIED') && (
+                        post.failReason === 'BLOG_DRAFT_SAVED_UNVERIFIED' || /^BLOG_FORMATTING_(AFTER_SAVE|REOPENED):/.test(post.failReason ?? '')) && (
                         <small>네이버 임시저장함에서 확인</small>
                       )}
                       {post.status === 'failed' &&
-                        !uncertainReason(post.failReason) && (
+                        !uncertainReason(post.failReason) && !formattingMessage(post.failReason) && (
                           <button
                             className="green"
                             disabled={busy}

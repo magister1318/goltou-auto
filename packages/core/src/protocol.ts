@@ -28,6 +28,8 @@ export interface Job {
   publishProbe?: boolean;
   blogReadbackTimings?: { photos: number; milliseconds: number; navigationKeys: number }[];
   blogDraftIdentity?: { existingSameTitle: number; source: 'response-id' | 'list-change' };
+  blogLiveRuns?: Record<number, import('@goltou/sites').BlogRun[]>;
+  blogFormattingIssues?: import('@goltou/sites').BlogFormattingIssue[];
   blogIdentitySources?: ('response' | 'result-url' | 'title')[];
   tableModes?: ('native' | 'text-list')[]; linkCard?: 'off' | 'card' | 'url-text';
   dialog?: import('@goltou/surface').SurfaceDialog; evidence?: string;

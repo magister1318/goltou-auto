@@ -9,6 +9,7 @@ import { createBlogExecution, type BlogServices } from './blog';
 import { updateInputProgress } from './input-progress';
 import { RecordError, RecordingCheckpoint } from './record-checkpoint';
 import { markDraftUnverified } from './draft-unverified';
+import { markBlogFormattingFailure } from './blog-formatting-failure';
 
 /** One product, blog first, then exactly one Band composer at a time. */
 export class ChannelRegistrationRunner implements RegistrationRunner {
@@ -148,6 +149,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
   private async fail(error: unknown) {
     if (error instanceof RecordError) return;
     const j = this.job!; const code = error instanceof Error ? error.message : 'BAND_FAILED';
+    if (markBlogFormattingFailure(j, error)) { await this.emit(); return; }
     if (code === 'BLOG_DRAFT_SAVED_UNVERIFIED') {
       markDraftUnverified(j); await this.emit(); return;
     }

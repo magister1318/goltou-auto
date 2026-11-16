@@ -3,6 +3,14 @@ import type { Job } from './protocol';
 
 /** Upload samples exclude text input, download, pauses and draft readback. */
 export function updateInputProgress(job: Job, value: BlogProgress): void {
+  if (value.blogInputReset) {
+    delete job.blogLiveRuns; delete job.activity;
+    job.activityLog = job.activityLog?.filter(a => a.channel !== 'blog' || a.stage !== 'write') ?? [];
+  }
+  if (value.blogParagraph) {
+    job.blogLiveRuns ??= {};
+    job.blogLiveRuns[value.blogParagraph.blockIndex] = structuredClone(value.blogParagraph.runs);
+  }
   if (value.ownRecoveryDiscarded) job.ownRecoveryDiscarded = true;
   if (value.activity) {
     if (value.activity.stage === 'submit' && value.activity.submission === 'publish') job.publicationUncertain = true;

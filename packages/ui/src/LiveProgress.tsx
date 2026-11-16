@@ -234,7 +234,14 @@ export function LiveProgress({
                       : ''
                 }
               >
-                {done ? text : chars.slice(0, shown).join('')}
+                {channel === 'blog' && step.kind === 'text' && step.runs
+                  ? (job.blogLiveRuns?.[index] ?? []).map((run, r) => {
+                      const content = run.bold ? <strong>{run.text}</strong> : run.text;
+                      return run.href && /^https?:\/\//i.test(run.href)
+                        ? <a key={r} href={run.href} onClick={e => e.preventDefault()}>{content}</a>
+                        : <span key={r}>{content}</span>;
+                    })
+                  : done ? text : chars.slice(0, shown).join('')}
                 {!done && <span className="caret" />}
               </p>
             );
