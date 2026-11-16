@@ -30,6 +30,16 @@ describe('WP18 exact normalized document runs', () => {
     const actual = { title: '', tags: [], tokens: [{ kind: 'text' as const, text: observed.map(r => r.text).join(''), runs: observed }] };
     expect(compareBlogFormatting(plan, actual)).toContainEqual(expect.objectContaining({ paragraph: 1, fields: expect.arrayContaining([field]) }));
   });
+  it('reads exact data-href only from the observed editable link node, including nested bold text', async () => {
+    const dom = new JSDOM('<div class="se-documentTitle"><p class="se-text-paragraph">제목</p></div><div class="se-main-container"><div class="se-component se-text"><p class="se-text-paragraph"><span class="se-link __se-node" data-href="https://example.invalid/a%2Fb?x=1&amp;y=2"><b>문의😀</b></span><span data-href="https://example.invalid/ignored"> 일반</span></p></div></div>', { runScripts: 'outside-only' });
+    try {
+      const surface = { evaluateReadOnly: async (source: string) => dom.window.eval(source) } as Surface;
+      const actual = await readBlogDocument(surface);
+      expect(actual.tokens).toEqual([{ kind: 'text', text: '문의😀 일반', runs: [
+        { text: '문의😀', bold: true, href: 'https://example.invalid/a%2Fb?x=1&y=2' }, { text: ' 일반', bold: false, href: null },
+      ] }]);
+    } finally { dom.window.close(); }
+  });
   it('refuses missing run evidence and identifies each reordered paragraph without discarding spaces', () => {
     expect(compareBlogFormatting(plan, { title: '', tags: [], tokens: [{ kind: 'text', text: runs.map(r => r.text).join('') }] })).toHaveLength(1);
     const p: BlogPlan = { channel: 'blog', steps: [{ kind: 'text', role: 'body', text: ' 첫째\n둘째 ', runs: [{ text: ' 첫째\n둘째 ', bold: true }] }] };

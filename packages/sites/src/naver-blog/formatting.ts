@@ -42,6 +42,8 @@ export const blogRunReader = `
           const weight=e.ownerDocument.defaultView.getComputedStyle(e).fontWeight;
           if(e.tagName==='STRONG'||e.tagName==='B'||weight==='bold'||Number(weight)>=600)bold=true;
           if(href===null&&e.tagName==='A'&&e.hasAttribute('href'))href=e.getAttribute('href');
+          // Observed editable link renderer; the saved viewer uses an anchor.
+          if(href===null&&e.tagName==='SPAN'&&e.classList.contains('se-link')&&e.classList.contains('__se-node')&&e.hasAttribute('data-href'))href=e.getAttribute('data-href');
           if(e===p)break;
         }
         const last=out[out.length-1];

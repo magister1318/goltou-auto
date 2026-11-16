@@ -3,13 +3,14 @@ import { inputCharacters, type KeyInput, type Surface } from '@goltou/surface';
 import { point, read } from '../dom';
 import { BlogFormattingError, blogRunReader, normalizeBlogRuns, splitBlogRuns, type BlogRun, type NormalizedBlogRun } from './formatting';
 
-/** WP18 REAL-EDITOR ADAPTER. Phase B observed toolbar DOM and loaded static layer code.
- * Recovery prompt prevented live shortcuts/link-layer/refocus verification; those remain unverified.
+/** WP18 REAL-EDITOR ADAPTER. Phase B observed toolbar DOM and the focused input-buffer iframe.
  * All rich-text selectors, shortcuts and keyboard navigation belong here.
  * Unknown state or different refocus behavior must stop, never guess or mutate DOM.
  */
 export const blogRichEditor = {
   paragraph: '.se-component.se-text .se-text-paragraph',
+  inputBuffer: 'iframe[id^="input_buffer"]',
+  virtualSelection: '.se-native-selection-hidden',
   bold: 'button[data-name="bold"]',
   boldToggle: 'se-property-toolbar-toggle-button',
   boldSelected: 'se-is-selected',
@@ -18,8 +19,8 @@ export const blogRichEditor = {
   address: '.se-custom-layer-option-link input.se-custom-layer-link-input',
   confirm: '.se-custom-layer-option-link button.se-custom-layer-link-apply-button',
   boldKey: { key: 'b', modifiers: 2 } as KeyInput,
-  end: { key: 'End', modifiers: 2 } as KeyInput,
   left: { key: 'ArrowLeft' } as KeyInput,
+  right: { key: 'ArrowRight' } as KeyInput,
   selectLeft: { key: 'ArrowLeft', modifiers: 8 } as KeyInput,
   selectAddress: { key: 'a', modifiers: 2 } as KeyInput,
   newline: { key: 'Enter' } as KeyInput,
@@ -31,23 +32,63 @@ interface Cursor {
 export async function readBlogCursor(surface: Surface): Promise<Cursor | null> {
   return read(surface, `${blogRunReader}
     for(const {d} of docs){
-      const s=d.defaultView.getSelection();if(!s||!s.anchorNode||!s.focusNode)continue;
       const paragraphs=Array.from(d.querySelectorAll(${JSON.stringify(blogRichEditor.paragraph)}));
+      const active=d.activeElement;
+      const buffered=Array.from(d.querySelectorAll(${JSON.stringify(blogRichEditor.inputBuffer)})).includes(active)&&/^input_buffer[0-9]+$/.test(active.id)
+        &&active.contentDocument?.activeElement===active.contentDocument?.body&&active.contentDocument?.body?.isContentEditable===true;
+      let s=d.defaultView.getSelection();
+      if(buffered&&d.querySelector(${JSON.stringify(blogRichEditor.virtualSelection)})){
+        // Observed SmartEditor hides/collapses native Selection even after real
+        // navigation keys. Read only the already-rendered selection endpoints.
+        // getSelection() invokes observable getters, rejected by throwOnSideEffect;
+        // its backing endpoint values are plain data. Never invoke editor methods.
+        const editors=d.defaultView.SmartEditor?._editors,ids=Object.keys(editors||{});
+        if(ids.length!==1)return null;
+        const store=editors[ids[0]]?._papyrus?._selectionInfoStore,values=store?.$mobx?.values;
+        const start=values?.start?.value,end=values?.end?.value,ref=store?._state?._anchorRef;
+        if(!start||!end||!['start','end'].includes(ref)||values.shouldBlur?.value!==false)return null;
+        const elements=Array.from(d.querySelectorAll('[id]')),byId=id=>elements.find(e=>e.id===id);
+        const endpoint=raw=>{
+          const fields=raw.$mobx?.values;
+          if(!fields)return null;
+          const value={compId:fields.compId?.value,unitId:fields.unitId?.value,paraId:fields.paraId?.value,nodeId:fields.nodeId?.value,offset:fields.offset?.value};
+          if(!['compId','unitId','paraId','nodeId'].every(k=>typeof value[k]==='string'&&value[k]))return null;
+          const p=byId(value.paraId),unit=byId(value.unitId),component=byId(value.compId);
+          if(!paragraphs.includes(p)||!unit?.contains(p)||!component?.contains(unit)||!Number.isInteger(value.offset)||value.offset<0)return null;
+          const node=byId(value.nodeId);
+          if(!node||!p.contains(node)||!node.classList.contains('__se-node'))return null;
+          const leaves=[];const collect=n=>{if(n.nodeType===3)leaves.push(n);else for(const c of n.childNodes)collect(c);};collect(node);
+          let remaining=value.offset;
+          for(const leaf of leaves){if(remaining<=leaf.length)return {node:leaf,offset:remaining};remaining-=leaf.length;}
+          // Emoji insertion and format changes leave empty text nodes at the
+          // caret, including within a nonempty paragraph. Their real offset is 0.
+          return leaves.length===0&&remaining===0?{node,offset:0}:null;
+        };
+        const a=endpoint(ref==='start'?start:end),f=endpoint(ref==='start'?end:start);
+        if(!a||!f)return null;
+        s={anchorNode:a.node,anchorOffset:a.offset,focusNode:f.node,focusOffset:f.offset};
+      }
+      if(!s||!s.anchorNode||!s.focusNode)continue;
       const paragraphOf=n=>{for(let e=n.nodeType===1?n:n.parentElement;e;e=e.parentElement)if(paragraphs.includes(e))return e;return null;};
       const p=paragraphOf(s.anchorNode);
       if(!p||paragraphOf(s.focusNode)!==p)continue;
       const offset=(target,at)=>{
         let total=0,found=false;
-        const walk=n=>{if(found)return;if(n===target){total+=n.nodeType===3?at:Array.from(n.childNodes).slice(0,at).reduce((v,c)=>v+(c.textContent||'').length,0);found=true;return;}
+        const length=n=>n.nodeType===3?(n.nodeValue||'').length:n.nodeType===1&&n.classList.contains('se-placeholder')?0:Array.from(n.childNodes).reduce((v,c)=>v+length(c),0);
+        const walk=n=>{if(found)return;
+          if(n.nodeType===1&&n.classList.contains('se-placeholder')){if(n===target||n.contains(target))found=true;return;}
+          if(n===target){total+=n.nodeType===3?at:Array.from(n.childNodes).slice(0,at).reduce((v,c)=>v+length(c),0);found=true;return;}
           if(n.nodeType===3)total+=(n.nodeValue||'').length;else for(const c of n.childNodes)walk(c);};walk(p);return found?total:-1;
       };
       const toolbar=d.querySelector(${JSON.stringify(blogRichEditor.bold)}),pressed=toolbar?.getAttribute('aria-pressed');
       const bold=pressed==='true'?true:pressed==='false'?false:
         toolbar?.classList.contains(${JSON.stringify(blogRichEditor.boldToggle)})&&toolbar.getAttribute('data-type')==='toggle'
           ?toolbar.classList.contains(${JSON.stringify(blogRichEditor.boldSelected)}):null;
-      const active=d.activeElement;
+      // SmartEditor renders non-contenteditable paragraphs and receives human keys
+      // in its own focused, offscreen input-buffer iframe. Its sentinel is not
+      // body text; the endpoint evidence above must identify the rendered nodes.
       return {text:paragraphRuns(p).map(r=>r.text).join(''),runs:paragraphRuns(p),anchor:offset(s.anchorNode,s.anchorOffset),focus:offset(s.focusNode,s.focusOffset),
-        focused:!!active&&(active===p||active.contains(p)||p.contains(active))&&active.isContentEditable,
+        focused:!!buffered||!!active&&(active===p||active.contains(p)||p.contains(active))&&active.isContentEditable,
         last:paragraphs[paragraphs.length-1]===p,bold};
     }return null;`);
 }
@@ -93,8 +134,7 @@ export class BlogRichTextWriter {
   private async select(s: Surface, text: string, start: number, end: number, check: () => Promise<void>) {
     // Re-establish the endpoint by real keyboard input, then measure every move in UTF-16.
     // Chromium chooses its grapheme boundaries; no codepoint or surrogate-count assumption.
-    await s.pressKey(blogRichEditor.end);
-    let c = await this.cursor(s, text);
+    let c = await this.toEnd(s, text, check);
     while (c.focus > end) {
       await check();
       const previous = c.focus; await s.pressKey(blogRichEditor.left); c = await this.cursor(s, text, false);
@@ -106,6 +146,23 @@ export class BlogRichTextWriter {
       if (c.anchor !== end || c.focus >= previous || c.focus < start) this.fail();
     }
     if (c.anchor !== end || c.focus !== start) this.fail();
+  }
+  private async toEnd(s: Surface, text: string, check: () => Promise<void>) {
+    let c = await this.cursor(s, text, false);
+    // Observed SmartEditor keeps link selections and ignores Ctrl+End. Collapse
+    // with a real Right key, then measure every grapheme move to this paragraph's
+    // exact endpoint. Never infer cursor position from the amount already typed.
+    if (c.anchor !== c.focus) {
+      const endpoint = Math.max(c.anchor, c.focus);
+      await check(); await s.pressKey(blogRichEditor.right); c = await this.cursor(s, text, false);
+      if (c.anchor !== c.focus || c.focus !== endpoint) this.fail();
+    }
+    while (c.focus < text.length) {
+      const previous = c.focus;
+      await check(); await s.pressKey(blogRichEditor.right); c = await this.cursor(s, text, false);
+      if (c.anchor !== c.focus || c.focus <= previous || c.focus > text.length) this.fail();
+    }
+    return this.cursor(s, text);
   }
   private async link(s: Surface, text: string, start: number, end: number, href: string, check: () => Promise<void>) {
     await this.select(s, text, start, end, check);
@@ -129,8 +186,7 @@ export class BlogRichTextWriter {
     const closed = await read<boolean>(s, `return !docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(blogRichEditor.dialog)})).some(visible));`).catch(() => false);
     if (!closed) this.fail();
     // The editor must return selection/focus itself. Never restore it by script.
-    await this.cursor(s, text, false);
-    await s.pressKey(blogRichEditor.end); await this.cursor(s, text);
+    await this.toEnd(s, text, check);
   }
   async write(s: Surface, check: () => Promise<void>, acknowledge: (added: number, runs: BlogRun[]) => Promise<void>) {
     await this.requireClosedDialog(s);
@@ -173,7 +229,7 @@ export class BlogRichTextWriter {
       await this.bold(s, text, false);
       if (!equal((await this.cursor(s, text)).runs, runs)) this.fail();
       if (this.paragraph + 1 < this.paragraphs.length) {
-        await check(); await s.pressKey(blogRichEditor.end); await s.pressKey(blogRichEditor.newline);
+        await check(); await this.toEnd(s, text, check); await s.pressKey(blogRichEditor.newline);
         this.finished.push(...runs, { text: '\n' });
         this.run = 0; this.units = 0; this.linked = 0; this.entering = true;
         this.paragraph++;

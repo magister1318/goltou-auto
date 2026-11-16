@@ -354,8 +354,8 @@ function richPlan(f: Awaited<ReturnType<typeof fixture>>, runs = richRuns) {
     { kind: 'text', role: 'body', text: runs.map(r => r.text).join(''), runs }];
 }
 describe('WP18 mandatory rich-text editor fixture', () => {
-  it('types exact bold/link ranges with Hangul, joined emoji and spaces, then verifies before/after save and fresh reopen', async () => {
-    const f = await fixture(); richPlan(f);
+  it.each(['', 'link-end-stuck'])('types exact bold/link ranges with Hangul, joined emoji and spaces, then verifies before/after save and fresh reopen (%s)', async mode => {
+    const f = await fixture(mode); richPlan(f);
     await f.execution.write();
     const typed = await readBlogDocument(f.execution.surface!);
     expect(compareBlogFormatting(f.plan, typed)).toEqual([]);
@@ -370,7 +370,7 @@ describe('WP18 mandatory rich-text editor fixture', () => {
     expect(await f.counts()).toEqual({ saves: 1, publishes: 0 });
     expect(f.beforeSave).toHaveBeenCalledTimes(1); expect(f.external()).toBe(0);
   }, 30000);
-  it.each(['bold-stuck', 'link-cancelled', 'link-broken'])('stops %s with the affected paragraph and no save or publication', async mode => {
+  it.each(['bold-stuck', 'link-cancelled', 'link-broken', 'link-collapse-stuck'])('stops %s with the affected paragraph and no save or publication', async mode => {
     const f = await fixture(mode); richPlan(f);
     await expect(f.execution.write()).rejects.toMatchObject({ message: 'BLOG_FORMATTING_INPUT:1', issues: [{ paragraph: 1, fields: ['input'] }] });
     expect(await f.counts()).toEqual({ saves: 0, publishes: 0 }); expect(f.external()).toBe(0);

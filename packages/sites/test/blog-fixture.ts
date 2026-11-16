@@ -24,6 +24,8 @@ export function blogFixture(mode = '') {
   bold.onmousedown=e=>e.preventDefault();
   bold.onclick=()=>{if(mode!=='bold-stuck')document.execCommand('bold');boldState()};
   document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key.toLowerCase()==='b'){e.preventDefault();if(mode!=='bold-stuck')document.execCommand('bold');boldState()}});
+  document.addEventListener('keydown',e=>{if(mode==='link-end-stuck'&&e.ctrlKey&&e.key==='End'&&!getSelection()?.isCollapsed)e.preventDefault()});
+  document.addEventListener('keydown',e=>{if(mode==='link-collapse-stuck'&&e.key==='ArrowRight'&&!getSelection()?.isCollapsed)e.preventDefault()});
   const link=document.querySelector('[data-name=text-link]');let linkRange=null;
   link.onmousedown=e=>{e.preventDefault();linkRange=getSelection()?.rangeCount?getSelection().getRangeAt(0).cloneRange():null};
   link.onclick=()=>{
