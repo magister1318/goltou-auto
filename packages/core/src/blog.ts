@@ -1,4 +1,4 @@
-import { BlogExecution, type BlogReadback, type BlogToken } from '@goltou/sites';
+import { BlogExecution, expectedBlogTags, sameBlogTags, type BlogReadback, type BlogToken } from '@goltou/sites';
 import type { SurfaceHost } from '@goltou/surface';
 import type { InputPlan } from './convert';
 import { compact, compareDocuments, observePlan, type Observation } from './verify';
@@ -38,7 +38,9 @@ export function blogObservation(plan: InputPlan, files: readonly MediaFile[], ac
       }
       continue;
     }
-    if (step.role === 'hashtags') { all.push(actual.tags.map(t => `#${t}`).join(' ')); continue; }
+    // Metadata is checked separately against its exact planned/body-derived set.
+    // Keep the source observation unchanged, including its explicit tag wording.
+    if (step.kind === 'text' && step.role === 'hashtags') { all.push(step.text); continue; }
     const lines = step.kind === 'table' ? step.rows.map(row => row.join(' | ')) : [step.text];
     for (const line of lines) {
       // An internal newline is entered through keyboard input and may become multiple DOM paragraphs.
@@ -59,7 +61,7 @@ export function blogObservation(plan: InputPlan, files: readonly MediaFile[], ac
   }
   const normalized = (values: BlogToken[]) => values.map(t => t.kind === 'photo' ? ['photo', photoIdentity(t.identity)] : ['text', compact(t.text)]);
   if (JSON.stringify(normalized(expectedOrder)) !== JSON.stringify(normalized(tokens))) all.push('EDITOR_ORDER_MISMATCH');
-  if (actual.tags.length && !plan.steps.some(s => s.kind === 'text' && s.role === 'hashtags')) all.push('UNEXPECTED_TAGS');
+  if (!sameBlogTags(expectedBlogTags(plan), actual.tags)) all.push('UNEXPECTED_TAGS');
   result.text = all.join('\n'); return result;
 }
 export function createBlogExecution(plan: InputPlan, files: readonly MediaFile[], services: BlogServices,

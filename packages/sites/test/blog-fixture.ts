@@ -62,12 +62,17 @@ export function blogFixture(mode = '') {
   let metadataTags=[];
   const tagPanel=()=>{
     const open=document.querySelector('[data-metadata-panel]');if(open){if(mode!=='metadata-stuck'){open.remove();document.querySelector('[data-metadata-cover]')?.remove()}return}
+    if(mode==='metadata-body-tags'){
+      // Independent synthetic reproduction of the observed service merge.
+      const bodyTags=[...main.querySelectorAll('.se-text-paragraph')].flatMap(p=>(p.textContent.match(/(?:^|\\s)#([가-힣A-Za-z0-9_]+)/g)||[]).map(t=>t.trim().slice(1)));
+      metadataTags=[...new Set([...metadataTags,...bodyTags])];
+    }
     const cover=document.createElement('div');cover.dataset.metadataCover='';cover.style.cssText='position:fixed;top:0;left:0;right:0;height:45px;z-index:5';document.body.append(cover);
     const panel=document.createElement('div');panel.dataset.metadataPanel='';panel.style.cssText='position:fixed;right:0;top:60px;background:white;z-index:3';
     panel.innerHTML='<div class="tag_textarea__fixture"><span><input id="tag-input" role="combobox" placeholder="태그 입력 (최대 30개)"></span></div><button data-click-area="tpb*i.publish">발행</button>';
     const input=panel.querySelector('input'),area=panel.querySelector('div');
     const render=()=>{area.querySelectorAll('[aria-label]').forEach(e=>e.remove());for(const tag of metadataTags){const chip=document.createElement('span');chip.className='tag__fixture';chip.setAttribute('aria-label',tag);chip.textContent='#'+tag;area.insertBefore(chip,input.parentElement)}};
-    input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();metadataTags.push(input.value);input.value='';render()}};
+    input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();if(!metadataTags.includes(input.value))metadataTags.push(input.value);input.value='';render()}};
     panel.onkeydown=e=>{if(e.key==='Escape'&&e.target===input&&mode!=='metadata-stuck'){panel.remove();cover.remove()}};
     if(mode==='metadata-focus-lost')input.oninput=()=>panel.querySelector('button').focus();
     panel.querySelector('button').onclick=()=>localStorage.setItem('publishes',String(Number(localStorage.getItem('publishes')||0)+1));

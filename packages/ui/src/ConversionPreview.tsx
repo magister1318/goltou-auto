@@ -1,5 +1,5 @@
 import type { InputPlan } from '@goltou/core';
-import { bandText, photoUrls } from '@goltou/sites';
+import { bandText, expectedBlogTags, photoUrls } from '@goltou/sites';
 import { ProductPhoto } from './ProductPhoto';
 const safeLink = (href: string) => {
   try {
@@ -43,11 +43,7 @@ export function ConversionPreview({
 }) {
   const visible = expanded ? plan.steps : plan.steps.slice(0, 8);
   const photos = photoUrls(plan);
-  const tags = plan.steps.flatMap((s) =>
-    s.kind === 'text' && s.role === 'hashtags'
-      ? s.text.split(/\s+/).filter(Boolean)
-      : [],
-  );
+  const tags = plan.channel === 'blog' ? expectedBlogTags(plan) : [];
   return (
     <>
       <div className={`converted-content service-post ${plan.channel}`}>

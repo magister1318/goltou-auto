@@ -59,6 +59,31 @@ async function fixture(mode = '', extra: { tags?: boolean; photos?: number; phot
     counts: async (surface = execution.surface!) => pages.get(surface)!.evaluate<{ saves: number; publishes: number }>("({saves:Number(localStorage.getItem('saves')),publishes:Number(localStorage.getItem('publishes'))})") };
 }
 describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback editor only', () => {
+  it.each([false, true])('saves and reopens body-derived tags with explicit tags %s, retaining exact bold, links and numbers', async explicit => {
+    const f = await fixture('metadata-body-tags');
+    const text = '문의 #본문 1190000원';
+    f.plan.steps = [{ kind: 'text', role: 'title', text: '#제목' }, { kind: 'text', role: 'body', text,
+      runs: [{ text: '문의 ' }, { text: '#본문', bold: true, href: 'https://example.invalid/ask#주소' }, { text: ' 1190000원' }] },
+      ...(explicit ? [{ kind: 'text' as const, role: 'hashtags' as const, text: '#계획 #본문 #계획' }] : [])];
+    await f.execution.write();
+    const before = await f.execution.observe();
+    expect(before.tags).toEqual(explicit ? ['본문', '계획'] : ['본문']);
+    const check = (actual: typeof before) => compareDocuments(observePlan(f.plan), blogObservation(f.plan, [], actual));
+    expect(check(before).matches).toBe(true);
+    for (const tags of [[], ['본문', '외부'], ['본문', '본문'], ['다른태그']]) expect(check({ ...before, tags }).matches).toBe(false);
+    expect(check({ ...before, tokens: [{ kind: 'text', text: text.replace('1190000', '1190001') }] }).matches).toBe(false);
+    const original = f.execution.surface;
+    const saved = await f.execution.saveAndVerify();
+    expect(f.execution.surface).not.toBe(original);
+    expect(saved.tags).toEqual(before.tags);
+    expect(compareBlogFormatting(f.plan, saved)).toEqual([]);
+    expect(check(saved).matches).toBe(true);
+    for (const tags of [saved.tags.slice(1), [...saved.tags, '외부태그'], saved.tags.map(t => t === '본문' ? '다른본문' : t)]) {
+      expect(compareDocuments(observePlan(f.plan), blogObservation(f.plan, f.files, { ...saved, tags })).matches).toBe(false);
+    }
+    expect(await f.counts()).toEqual({ saves: 1, publishes: 0 });
+    expect(f.external()).toBe(0);
+  }, 30000);
   it('prevents readback from recreating an autosave, retains the saved draft, and opens the next editor without consent', async () => {
     const f = await fixture('autosave-readback');
     f.plan.steps = [{ kind: 'text', role: 'title', text: '저장 후 자동저장 예시' }, { kind: 'text', role: 'body', text: '본문' }];

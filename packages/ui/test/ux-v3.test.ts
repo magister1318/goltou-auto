@@ -170,10 +170,10 @@ describe('WP17 choices and channel outcomes', () => {
       {
         kind: 'text',
         role: 'body',
-        text: '강조 문의',
+        text: '강조 문의 #본문',
         runs: [
           { text: '강조', bold: true },
-          { text: ' 문의', href: 'https://example.invalid/ask' },
+          { text: ' 문의 #본문', href: 'https://example.invalid/ask' },
         ],
       },
       { kind: 'photos', urls: ['https://goltou.kr/a.png'] },
@@ -218,6 +218,8 @@ describe('WP17 choices and channel outcomes', () => {
     );
     expect(node.querySelectorAll('th')).toHaveLength(2);
     expect(node.querySelector('.tag-box')!.textContent).toContain('합성');
+    expect([...node.querySelectorAll('.tag-box > span')].map(e => e.textContent)).toEqual(['태그 칸', '합성', '본문']);
+    expect(node.querySelector('.post-body')!.textContent).toContain('강조 문의 #본문');
     expect(node.querySelector('.post-body')!.textContent).not.toContain(
       '#합성',
     );

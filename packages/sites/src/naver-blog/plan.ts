@@ -10,6 +10,7 @@ import { parsePublishIdentity, resolvePublishEvidence, type ResponseIdentity, ty
 import { BlogRichTextWriter } from './rich-text';
 import { BlogFormattingError, blogRunReader, normalizeBlogRuns, splitBlogRuns, type BlogRun, type FormattingStage } from './formatting';
 import { closeDraftEntries, draftEntries, draftItem, draftSaveReceipt, identifySavedDraft, openDraftEntries, type DraftEntry } from './draft-identity';
+import { expectedBlogTags, plannedBlogTags, sameBlogTags } from './tags';
 
 /** Structural subset of WP4 InputPlan. Sites has no dependency on core or a device API. */
 export interface BlogPlan {
@@ -410,16 +411,24 @@ export class BlogExecution {
         this.atomic = true;
         await this.tagInput();
         const start = this.characters;
-        const expected = step.text.split(/\s+/).filter(Boolean).map(tag => tag.replace(/^#/, ''));
-        for (const [index, tag] of expected.entries()) {
+        const expected = expectedBlogTags({ ...this.plan, steps: this.plan.steps.slice(0, this.index) });
+        await waitFor(async () => {
+          await this.guard();
+          return sameBlogTags(expected, (await readBlogDocument(s)).tags);
+        });
+        for (const tag of plannedBlogTags({ ...this.plan, steps: [step] })) {
+          // The editor already merged body hashtags when the layer opened.
+          // Keep those chips and never submit a duplicate or delete a tag.
+          if (expected.includes(tag)) continue;
           await requireTagFocus(s);
           await this.type(tag);
           await requireTagFocus(s);
           await s.pressKey({ key: 'Enter' });
+          expected.push(tag);
           await waitFor(async () => {
             await this.guard();
             const tags = (await readBlogDocument(s)).tags;
-            return JSON.stringify(tags) === JSON.stringify(expected.slice(0, index + 1));
+            return sameBlogTags(expected, tags);
           });
         }
         // Progress counts the plan's # prefixes and separators after tag commit.
@@ -520,7 +529,7 @@ export class BlogExecution {
       return null;
     }, Math.max(30000, this.files.length * 2000));
     this.readbackTimings.push({ photos: observed.tokens.filter(t => t.kind === 'photo').length, milliseconds: Date.now() - started, navigationKeys });
-    if (this.plan.steps.some(s => s.kind === 'text' && s.role === 'hashtags')) {
+    if (expectedBlogTags(this.plan).length || await point(this.surface!, tagPanelToggle)) {
       await this.tagInput(); observed = await readBlogDocument(this.surface!);
     }
     return observed;

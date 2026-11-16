@@ -7,6 +7,7 @@ export * from './control-failure';
 export * from './naver-blog';
 export * from './naver-blog/plan';
 export * from './naver-blog/formatting';
+export * from './naver-blog/tags';
 export * from './naver-blog/publish-safety';
 export * from './band';
 export * from './band/plan';
