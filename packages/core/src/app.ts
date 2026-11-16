@@ -38,7 +38,7 @@ export class AppCore {
   private readonly polishSetting: PolishStrengthStore;
   private readonly preferences: PreferencesStore;
   private readonly postMetadata: PostMetadataStore;
-  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { device: () => Promise<import('@goltou/api-client').LoginInput['device']>; deleteHost?: import('@goltou/surface').SurfaceHost; deleteLog?: import('@goltou/sites').DeleteLog; experimentTitle?: boolean; experimentTitleLabel?: string; polishStrength?: PolishStrengthStore; preferences?: PreferencesStore; postMetadata?: PostMetadataStore; openExternal?: (url: string) => Promise<void> }) {
+  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { device: () => Promise<import('@goltou/api-client').LoginInput['device']>; deleteHost?: import('@goltou/surface').SurfaceHost; deleteLog?: import('@goltou/sites').DeleteLog; bandDeleteLog?: import('@goltou/sites').BandDeleteLog; bandDeleteReview?: import('@goltou/sites').BandDeleteReview; experimentTitle?: boolean; experimentTitleLabel?: string; polishStrength?: PolishStrengthStore; preferences?: PreferencesStore; postMetadata?: PostMetadataStore; openExternal?: (url: string) => Promise<void> }) {
     this.polishSetting = runtime?.polishStrength ?? new MemoryPolishStrengthStore();
     this.postMetadata = runtime?.postMetadata ?? new MemoryPostMetadata();
     this.preferences = runtime?.preferences ?? new MemoryPreferencesStore();
@@ -202,6 +202,7 @@ export class AppCore {
         const post = await this.ownedPost(request.input.postNo, token);
         requireDeletablePost(post);
         const key = randomUUID(); this.deleteConfirmation = { key, post };
+        if (post.channel === 'band') this.runtime?.bandDeleteLog?.({ code: 'APP_PREPARED' });
         return { confirmation: key, productTitle: post.productTitle };
       }
       case 'posts.delete.confirm': {
@@ -214,14 +215,18 @@ export class AppCore {
           requireDeletablePost(post);
           if (['postUrl', 'productTitle', 'startedAt', 'productNo', 'channel', 'targetName'].some(key => post[key as keyof typeof post] !== confirmation.post[key as keyof typeof post])) throw new ApiError('conflict', '기록이 바뀌었습니다. 삭제할 글을 다시 확인해 주세요.');
           if (!this.runtime?.deleteHost) throw new ApiError('invalid', '글 삭제 기능을 사용할 수 없습니다.');
+          let alreadyAbsent = false;
           if (post.channel === 'band') {
-            const result = await removeRecordedBandPost(this.runtime.deleteHost, post);
+            this.runtime.bandDeleteLog?.({ code: 'APP_CONFIRMED' });
+            const product = await this.call('/auto/products/get', { productNo: post.productNo }, token).catch(error => { this.runtime?.bandDeleteLog?.({ code: 'PRODUCT_READ_FAILED' }); throw error; });
+            const result = await removeRecordedBandPost(this.runtime.deleteHost, post, product, this.state.settings?.defaultHashtags ?? [], this.runtime.bandDeleteLog, this.runtime.bandDeleteReview);
             if (result.status !== 'deleted') {
               this.state.postDeletion = { postNo: post.postNo, verifiedGone: false, recorded: false, outcome: result.status };
               this.emit(); return this.snapshot();
             }
+            alreadyAbsent = result.alreadyAbsent === true;
           } else await removeRecordedBlogPost(this.runtime.deleteHost, post, this.runtime.deleteLog);
-          this.pendingDeleteUpdate = deletedUpdate(post);
+          this.pendingDeleteUpdate = deletedUpdate(post, alreadyAbsent);
           this.state.postDeletion = { postNo: post.postNo, verifiedGone: true, recorded: false, outcome: 'deleted' };
           this.emit();
           await this.saveDeletion(token);
@@ -319,7 +324,9 @@ export class AppCore {
       if (saved.status !== update.status || saved.failReason !== update.failReason || saved.postUrl !== '' || !saved.finishedAt) throw new ApiError('server', '삭제 기록을 다시 읽어 확인하지 못했습니다.');
       this.state.postDeletion = { postNo: update.postNo, verifiedGone: true, recorded: true, at: saved.finishedAt };
       this.pendingDeleteUpdate = undefined; this.emit();
+      if (update.failReason.startsWith('BAND_POST_')) this.runtime?.bandDeleteLog?.({ code: 'RECORD_SAVED' });
     } catch (error) {
+      if (update.failReason.startsWith('BAND_POST_')) this.runtime?.bandDeleteLog?.({ code: 'RECORD_FAILED' });
       throw new RecordError(error, [token]);
     }
   }

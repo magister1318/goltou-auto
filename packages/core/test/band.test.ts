@@ -42,7 +42,9 @@ async function fixture(mode = 'mobile') {
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   cleanup.push(() => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }));
   const baseUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
-  const browser = await chromium.launch({ executablePath: executablePath!, headless: true, args: ['--disable-background-networking', '--no-first-run'] });
+  // Windows can assign a port Chromium reserves. Allow only this ephemeral
+  // fixture port; the context below still rejects every non-loopback request.
+  const browser = await chromium.launch({ executablePath: executablePath!, headless: true, args: ['--disable-background-networking', '--no-first-run', `--explicitly-allowed-ports=${new URL(baseUrl).port}`] });
   cleanup.push(() => browser.close());
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   let external = 0, shown = 0;
@@ -86,6 +88,14 @@ function workFor(plan: InputPlan, files: { url: string; path: string }[]) {
 const input: JobInput = { productNo: 1, mode: 'draft', targets: [{ channel: 'band', name: '밴드 A', key: '111' }], options: { polish: false, closing: false, linkCard: false } };
 
 describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pages', () => {
+  it('uses the mobile composer header submit, never the feed write button, and never submits twice', async () => {
+    const f = await fixture('mobile-service');
+    await f.execution.write();
+    expect(await f.execution.publish()).toBe(`${f.baseUrl}/band/111/post/1001`);
+    expect(await f.execution.publish()).toBe(`${f.baseUrl}/band/111/post/1001`);
+    expect(await f.counts()).toEqual({ opens: 1, posts: 1, discards: 0 });
+    expect(f.external()).toBe(0);
+  }, 20000);
   it.each([false, true])(
       'WP17 one-shot allowance consumed only immediately before submit (allowed=%s)',
       async (allowed) => {
@@ -100,7 +110,7 @@ describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pa
           value: { available: async () => allowed, consume },
         });
         await expect(f.execution.publish()).rejects.toThrow(
-          allowed ? 'BAND_POST_UNCONFIRMED' : 'REAL_BAND_PUBLISH_DISABLED',
+          allowed ? 'BAND_POST_BLOCKED:ORIGIN_BLOCKED' : 'REAL_BAND_PUBLISH_DISABLED',
         );
         expect(consume).toHaveBeenCalledTimes(1);
         expect(
@@ -110,7 +120,7 @@ describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pa
         ).toBe(allowed ? 1 : 0);
         if (allowed) {
           await expect(f.execution.publish()).rejects.toThrow(
-            'BAND_POST_UNCONFIRMED',
+            'BAND_POST_BLOCKED:ORIGIN_BLOCKED',
           );
           expect(consume).toHaveBeenCalledTimes(1);
         }
@@ -118,7 +128,28 @@ describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pa
       },
       20000,
     );
-    it('reads every opaque membership and reopens the same-URL dropdown on return without opening any composer', async () => {
+  it('persists an acknowledged block as not posted, retains its cause and never resubmits on resume or record retry', async () => {
+    const f = await fixture('post-blocked');
+    let recordRecovered = false;
+    const checkpoint = vi.fn(async (job: Job) => { if (!recordRecovered && job.failureCode?.startsWith('BAND_POST_BLOCKED:')) throw new ApiError('server', '기록하지 못했습니다.'); });
+    const recordBarrierDecision = vi.fn();
+    const runner = new ChannelRegistrationRunner({ band: { host: f.host, baseUrl: f.baseUrl, localPublish: true, recordBarrierDecision } }, checkpoint, () => {});
+    cleanup.push(async () => runner.dispose()); await runner.listBands();
+    await runner.start({ ...input, mode: 'publish', publishConfirmed: true }, '합성', 5, workFor(f.plan, f.files)); await settled(runner);
+    expect(runner.job).toMatchObject({ status: 'record_failed', publicationUncertain: false, targetResults: [{ status: 'failed', reason: 'BAND_POST_BLOCKED:TARGET_MISSING' }] });
+    expect(runner.job?.bandBarrierDecisions).toContain('BLOCK_CONFIRMED');
+    expect(checkpoint.mock.calls.at(-1)?.[0]).toMatchObject({ failureCode: 'BAND_POST_BLOCKED:TARGET_MISSING' });
+    await expect(runner.resume()).rejects.toMatchObject({ code: 'conflict' });
+    recordRecovered = true;
+    await runner.retryRecord();
+    expect(runner.job).toMatchObject({ status: 'failed', failureCode: 'BAND_POST_BLOCKED:TARGET_MISSING' });
+    expect(runner.job?.message).toContain('게시되지 않았습니다');
+    await expect(runner.resume()).rejects.toMatchObject({ code: 'conflict' });
+    expect(await f.pages.get(runner.directory.surface!)!.evaluate('({posts:Number(localStorage.getItem("posts")),presses:Number(localStorage.getItem("postPresses"))})')).toEqual({ posts: 0, presses: 1 });
+    expect(JSON.stringify(recordBarrierDecision.mock.calls)).not.toMatch(/band_key|https:|합성/);
+    expect(f.external()).toBe(0);
+  }, 20000);
+  it('reads every opaque membership and reopens the same-URL dropdown on return without opening any composer', async () => {
     const f = await fixture('new-dropdown');
     let created = 0;
     const host: SurfaceHost = { ...f.host, create: async session => {

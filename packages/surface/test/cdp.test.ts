@@ -43,6 +43,38 @@ async function fixture(handler?: (command: Command, socket: WebSocket) => boolea
 }
 
 describe('CDP Surface', () => {
+  it('rechecks keyboard authorization immediately before keydown and sends no key after refusal', async () => {
+    const f = await fixture();
+    await expect(f.surface.pressKey({ key: 'Enter' }, async () => { throw Error('CHANGED'); })).rejects.toThrow('CHANGED');
+    expect(f.commands.some(c => c.method === 'Input.dispatchKeyEvent')).toBe(false);
+    await f.surface.pressKey({ key: 'Enter' }, async () => {});
+    expect(f.commands.filter(c => c.method === 'Input.dispatchKeyEvent').map(c => c.params.type)).toEqual(['keyDown', 'keyUp']);
+  });
+  it('reads an explicitly selected GET receipt, excluding preflight and unrelated reads', async () => {
+    const f = await fixture((command, socket) => {
+      if (command.method !== 'Fetch.getResponseBody') return false;
+      socket.send(JSON.stringify({ id: command.id, result: { body: '{"result_code":1}' } })); return true;
+    });
+    const response = vi.fn();
+    await f.surface.guardRequests([{ hostname: '*', pathname: '/', prefix: true }], () => true, response,
+      r => r.method === 'GET' && new URL(r.url).pathname === '/receipt');
+    for (const [id, method, path] of [['preflight', 'OPTIONS', '/receipt'], ['other', 'GET', '/other'], ['selected', 'GET', '/receipt']]) {
+      f.event('Fetch.requestPaused', { requestId: id, request: { url: `https://example.invalid${path}`, method } });
+      await vi.waitFor(() => expect(f.commands.some(c => c.method === 'Fetch.continueRequest' && c.params.requestId === id)).toBe(true));
+      f.event('Fetch.requestPaused', { requestId: id, responseStatusCode: 200 });
+    }
+    await vi.waitFor(() => expect(response).toHaveBeenCalledOnce());
+    expect(response).toHaveBeenCalledWith({ status: 200, body: '{"result_code":1}', method: 'GET', url: 'https://example.invalid/receipt' });
+    expect(f.commands.filter(c => c.method === 'Fetch.getResponseBody')).toHaveLength(1);
+  });
+  it('reports an inspector exception as a fixed reason only after the blocking command is acknowledged', async () => {
+    const f = await fixture();
+    const blocked = vi.fn();
+    await f.surface.guardRequests([{ hostname: '*', pathname: '/', prefix: true }], () => { throw Error('PRIVATE_EXCEPTION'); }, () => {}, undefined, blocked);
+    f.event('Fetch.requestPaused', { requestId: 'synthetic-block', request: { url: 'https://example.invalid/create', method: 'POST', postData: 'PRIVATE_BODY' } });
+    await vi.waitFor(() => expect(blocked).toHaveBeenCalledWith({ url: 'https://example.invalid/create', method: 'POST' }, 'INSPECTOR_ERROR'));
+    expect(JSON.stringify(blocked.mock.calls)).not.toMatch(/PRIVATE_/);
+  });
   it('does not read a membership response body, but keeps armed publication response failures closed', async () => {
     const f = await fixture((command, socket) => {
       if(command.method === 'Fetch.continueRequest' && command.params.requestId === 'cancelled') {

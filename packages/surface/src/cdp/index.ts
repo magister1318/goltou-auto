@@ -1,4 +1,4 @@
-import type { GuardedRequest, GuardedResponse, RequestRule, KeyInput, NavigationOptions, NavigationPolicy, Surface, SurfaceDialog, SurfaceOpenOptions, SurfaceSession, SurfaceState } from '../index';
+import type { GuardedRequest, GuardedResponse, RequestBlockReason, RequestRule, KeyInput, NavigationOptions, NavigationPolicy, Surface, SurfaceDialog, SurfaceOpenOptions, SurfaceSession, SurfaceState } from '../index';
 import { inputCharacters } from '../index';
 import { CdpConnection } from './connection';
 export { CdpConnection } from './connection';
@@ -37,7 +37,7 @@ export class CdpSurface implements Surface {
   private barrierFailed = false;
   private barrierFailure = '';
   private readonly blockedRequests = new Set<string>();
-  private requestGuard: { paths: Set<string>; rules: readonly RequestRule[]; inspect: (request: GuardedRequest) => boolean | Promise<boolean>; response: (response: GuardedResponse) => void; observeResponse?: (request: Pick<GuardedRequest, 'url' | 'method'>) => boolean } | undefined;
+  private requestGuard: { paths: Set<string>; rules: readonly RequestRule[]; inspect: (request: GuardedRequest) => boolean | Promise<boolean>; response: (response: GuardedResponse) => void; observeResponse?: (request: Pick<GuardedRequest, 'url' | 'method'>) => boolean; blocked?: (request: Pick<GuardedRequest, 'url' | 'method'> | undefined, reason: RequestBlockReason) => void } | undefined;
   private readonly acceptedRequests = new Map<string, GuardedRequest>();
 
   constructor(
@@ -80,7 +80,9 @@ export class CdpSurface implements Surface {
       const requestId = String(p.requestId);
       if (p.responseStatusCode !== undefined || p.responseErrorReason !== undefined) {
         const accepted = this.acceptedRequests.get(requestId); this.acceptedRequests.delete(requestId);
-        if (accepted && p.responseErrorReason === undefined && !['GET', 'HEAD', 'OPTIONS'].includes(accepted.method)) {
+        if (accepted && p.responseErrorReason === undefined &&
+          (!['GET', 'HEAD', 'OPTIONS'].includes(accepted.method) ||
+            accepted.method === 'GET' && this.requestGuard?.observeResponse?.(accepted) === true)) {
           try {
             const result = await this.cdp.send<{ body: string; base64Encoded?: boolean }>('Fetch.getResponseBody', { requestId });
             this.requestGuard?.response({ status: Number(p.responseStatusCode), body: result.base64Encoded ? Buffer.from(result.body, 'base64').toString('utf8') : result.body, url: accepted.url, method: accepted.method });
@@ -89,10 +91,12 @@ export class CdpSurface implements Surface {
         return;
       }
       let blocked = true;
+      let reason: RequestBlockReason = 'REQUEST_INVALID';
       try {
         const url = new URL(request?.url ?? '');
         const path = `${url.hostname}${url.pathname}`;
         blocked = this.blockedRequests.has(path);
+        if (blocked) reason = 'STATIC_BLOCK';
         if (!blocked && this.requestGuard?.rules.some(r => (r.hostname === '*' || r.hostname === url.hostname) && (r.prefix ? url.pathname.startsWith(r.pathname) : r.pathname === url.pathname))) {
           const raw = p.request as GuardedRequest & { headers?: Record<string, unknown> };
           const header = (name: string) => Object.entries(raw.headers ?? {}).find(([key]) => key.toLowerCase() === name)?.[1];
@@ -100,6 +104,7 @@ export class CdpSurface implements Surface {
           const length = typeof expected === 'string' && /^\d+$/.test(expected) ? Number(expected) : undefined;
           const inline = typeof raw.postData === 'string';
           let postData = raw.postData, fetched = false;
+          let postDataFailure: GuardedRequest['postDataFailure'];
           const mustFetch = raw.hasPostData === true && !inline || length !== undefined && (!inline || Buffer.byteLength(postData!, 'utf8') !== length);
           if (mustFetch) {
             // CDP has no Fetch.getRequestPostData. Fetch's networkId addresses
@@ -108,28 +113,32 @@ export class CdpSurface implements Surface {
               try {
                 const body = await this.cdp.send<{ postData: string }>('Network.getRequestPostData', { requestId: p.networkId });
                 if (typeof body.postData === 'string') { postData = body.postData; fetched = true; }
-              } catch { /* Missing full data cannot authorize publication. */ }
-            }
+              } catch { postDataFailure = 'FETCH_FAILED'; }
+            } else postDataFailure = 'NETWORK_ID_MISSING';
           }
           const complete = typeof postData === 'string' && (!mustFetch || fetched) && (length === undefined || Buffer.byteLength(postData, 'utf8') === length);
+          if (!complete && !postDataFailure) postDataFailure = typeof postData === 'string' && length !== undefined ? 'LENGTH_MISMATCH' : 'MISSING';
+          reason = 'INSPECTOR_ERROR';
           blocked = !request || !await this.requestGuard.inspect({ url: raw.url, method: raw.method, ...(complete ? { postData: postData! } : {}),
             contentType: String(header('content-type') ?? ''), hasPostData: raw.hasPostData === true, postDataInline: inline,
-            postDataFetched: fetched, postDataComplete: complete });
+            postDataFetched: fetched, postDataComplete: complete, ...(postDataFailure ? { postDataFailure } : {}) });
+          if (blocked) reason = 'INSPECTOR_DENIED';
           if (!blocked && (this.requestGuard.observeResponse?.(raw) ?? true)) this.acceptedRequests.set(requestId, { url: raw.url, method: raw.method });
         }
       } catch { blocked = true; /* Unreadable intercepted requests fail closed. */ }
       await this.cdp.send(blocked ? 'Fetch.failRequest' : 'Fetch.continueRequest', {
         requestId: p.requestId, ...(blocked ? { errorReason: 'BlockedByClient' } : {}),
       });
+      if (blocked) this.requestGuard?.blocked?.(request ? { url: request.url, method: request.method } : undefined, reason);
   }
 
-  async guardRequests(rules: readonly RequestRule[], inspect: (request: GuardedRequest) => boolean | Promise<boolean>, response: (response: GuardedResponse) => void, observeResponse?: (request: Pick<GuardedRequest, 'url' | 'method'>) => boolean) {
+  async guardRequests(rules: readonly RequestRule[], inspect: (request: GuardedRequest) => boolean | Promise<boolean>, response: (response: GuardedResponse) => void, observeResponse?: (request: Pick<GuardedRequest, 'url' | 'method'>) => boolean, blocked?: (request: Pick<GuardedRequest, 'url' | 'method'> | undefined, reason: RequestBlockReason) => void) {
     if (this.requestGuard) throw new Error('SURFACE_REQUEST_GUARD_ALREADY_SET');
     const paths = new Set(rules.map(rule => {
       if (!(rule.hostname === '*' || /^[a-z0-9.-]+$/.test(rule.hostname)) || !/^\/[a-zA-Z0-9/_.-]*$/.test(rule.pathname)) throw new Error('SURFACE_BAD_REQUEST_BARRIER');
       return `${rule.hostname}${rule.pathname}`;
     }));
-    this.requestGuard = { paths, rules: [...rules], inspect, response, ...(observeResponse ? { observeResponse } : {}) };
+    this.requestGuard = { paths, rules: [...rules], inspect, response, ...(observeResponse ? { observeResponse } : {}), ...(blocked ? { blocked } : {}) };
     // Retain the full body for Network.getRequestPostData if Fetch omits it.
     await this.cdp.send('Network.enable', { maxPostDataSize: 16 * 1024 * 1024 });
     await this.cdp.send('Fetch.enable', { patterns: [...new Set([...paths, ...this.blockedRequests])].flatMap(path =>
@@ -235,13 +244,14 @@ export class CdpSurface implements Surface {
     for (const char of inputCharacters(text)) { await this.input('Input.insertText', { text: char }); await pause(this.inputDelayMs); }
   }
 
-  async pressKey(input: KeyInput): Promise<void> {
+  async pressKey(input: KeyInput, beforePress?: () => Promise<void>): Promise<void> {
     const key = keys[input.key] ?? (/^[a-z0-9]$/i.test(input.key)
       ? { code: /^[0-9]$/.test(input.key) ? `Digit${input.key}` : `Key${input.key.toUpperCase()}`, vk: input.key.toUpperCase().charCodeAt(0) }
       : undefined);
     if (!key) throw new Error('SURFACE_UNSUPPORTED_KEY');
     const params = { key: input.key, code: key.code, windowsVirtualKeyCode: key.vk, modifiers: input.modifiers ?? 0 };
     const text = 'text' in key ? key.text : ((params.modifiers & 7) === 0 && input.key.length === 1 ? input.key : undefined);
+    await beforePress?.();
     await this.input('Input.dispatchKeyEvent', { ...params, type: 'keyDown', ...(text ? { text } : {}) });
     await pause(this.inputDelayMs);
     await this.input('Input.dispatchKeyEvent', { ...params, type: 'keyUp' });

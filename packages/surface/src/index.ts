@@ -38,8 +38,10 @@ export interface GuardedRequest {
   url: string; method: string; postData?: string;
   contentType?: string; hasPostData?: boolean; postDataInline?: boolean;
   postDataFetched?: boolean; postDataComplete?: boolean;
+  postDataFailure?: 'MISSING' | 'NETWORK_ID_MISSING' | 'FETCH_FAILED' | 'LENGTH_MISMATCH';
 }
 export interface GuardedResponse { status: number; body: string; url?: string; method?: string }
+export type RequestBlockReason = 'STATIC_BLOCK' | 'INSPECTOR_DENIED' | 'INSPECTOR_ERROR' | 'REQUEST_INVALID';
 
 export interface Surface {
   readonly session: SurfaceSession;
@@ -60,13 +62,15 @@ export interface Surface {
   /** Re-read a safety condition immediately before mousePressed, after hover/delay. */
   click(x: number, y: number, beforePress?: () => Promise<void>): Promise<void>;
   typeText(text: string): Promise<void>;
-  pressKey(input: KeyInput): Promise<void>;
+  pressKey(input: KeyInput, beforePress?: () => Promise<void>): Promise<void>;
   attachFiles(selector: string, absolutePaths: readonly string[]): Promise<void>;
   /** Shell-enforced request barrier, installed before navigation; persists until close. */
   blockRequests?(rules: readonly { hostname: string; pathname: string }[]): Promise<void>;
   guardRequests?(rules: readonly RequestRule[], inspect: (request: GuardedRequest) => boolean | Promise<boolean>,
     response: (response: GuardedResponse) => void,
-    observeResponse?: (request: Pick<GuardedRequest, 'url' | 'method'>) => boolean): Promise<void>;
+    observeResponse?: (request: Pick<GuardedRequest, 'url' | 'method'>) => boolean,
+    /** Called only after Fetch acknowledges blocking. Request identity is ephemeral. */
+    blocked?: (request: Pick<GuardedRequest, 'url' | 'method'> | undefined, reason: RequestBlockReason) => void): Promise<void>;
   readDialog?(): Promise<SurfaceDialog | null>;
   respondDialog?(id: string, accept: boolean): Promise<void>;
   show(): Promise<void>;

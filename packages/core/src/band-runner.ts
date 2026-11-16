@@ -1,5 +1,5 @@
 import { ApiError } from '@goltou/api-client';
-import { safeFailureCode, BandDirectory, type BandExecution, type BlogExecution, type BandProgress } from '@goltou/sites';
+import { safeFailureCode, bandPostBlocked, BandDirectory, type BandExecution, type BlogExecution, type BandProgress } from '@goltou/sites';
 import { ServiceLoginController } from './service-login';
 import type { Job, JobInput, Service } from './protocol';
 import type { Checkpoint, RegistrationRunner } from './runner';
@@ -30,7 +30,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
   private readonly recording: RecordingCheckpoint;
   constructor(private readonly services: { band: BandServices; blog?: BlogServices }, checkpoint: Checkpoint, private readonly notify: (job: Job) => void) {
     this.recording = new RecordingCheckpoint(checkpoint, notify);
-    this.directory = new BandDirectory(services.band.host, services.band.baseUrl, services.band.localPublish, services.band.publishEnabled, services.band.publishAllowance);
+    this.directory = new BandDirectory(services.band.host, services.band.baseUrl, services.band.localPublish, services.band.publishEnabled, services.band.publishAllowance, services.band.recordBarrierDecision);
     this.serviceLogin = new ServiceLoginController(services.band.host);
   }
   async listBands() {
@@ -121,7 +121,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
               j.status = 'stopped_before_post'; j.secondsLeft = 0; j.message = '게시 전 멈춤 · 밴드 화면에서 확인하고 게시하거나 버려 주세요.';
               await this.emit(); return;
             }
-            result.postUrl = await this.band.publish(); j.publicationUncertain = false; result.status = 'published'; await this.emit();
+            result.postUrl = await this.band.publish(); j.bandBarrierDecisions = this.directory.decisionCodes; j.publicationUncertain = false; result.status = 'published'; await this.emit();
           }
         }
         if (j.step === 7) {
@@ -153,10 +153,13 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     if (code === 'BLOG_DRAFT_SAVED_UNVERIFIED') {
       markDraftUnverified(j); await this.emit(); return;
     }
-    j.failureCode = j.publicationUncertain ? j.step === 6 ? 'BAND_POST_UNCONFIRMED' : 'BLOG_PUBLISH_UNCONFIRMED' : safeFailureCode(error, 'CHANNEL_FAILED');
     const isBand = j.step === 6;
+    const blocked = isBand ? this.directory.blockedBeforeSend(j.activeTargetKey ?? '') : undefined;
+    if (isBand) j.bandBarrierDecisions = this.directory.decisionCodes;
+    if (blocked) j.publicationUncertain = false;
+    j.failureCode = blocked ?? (j.publicationUncertain ? isBand ? 'BAND_POST_UNCONFIRMED' : 'BLOG_PUBLISH_UNCONFIRMED' : safeFailureCode(error, 'CHANNEL_FAILED'));
     const execution = isBand ? this.band : this.blog;
-    const dialog = await execution?.dialog().catch(() => null);
+    const dialog = blocked ? null : await execution?.dialog().catch(() => null);
     if (dialog) { j.status = 'dialog_paused'; j.dialog = dialog; j.service = isBand ? 'band' : 'naver'; j.message = '서비스 확인창에서 선택해 주세요.'; }
     else if (/^(BAND_LOGIN_LOST|BAND_LOGIN_UNCONFIRMED|LOGIN_OR_EDITOR_LOST)$/.test(code)) {
       j.status = 'login_paused'; j.service = isBand ? 'band' : 'naver'; j.message = '로그인 풀림으로 멈춤';
@@ -171,6 +174,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
       j.status = !isBand && [1, 4, 5].includes(j.step) && j.targets.some(t => t.channel === 'band') ? 'channel_paused' : 'failed';
       j.message = code === 'PHOTO_HOST_NOT_ALLOWED' ? '골투에서 제공하는 주소의 사진만 내려받을 수 있습니다.' : code === 'PHOTO_DOWNLOAD_FAILED' ? '사진을 내려받지 못했습니다. 연결을 확인해 주세요.' : code === 'BAND_PHOTO_LIMIT' ? '관측한 밴드 사진 한도를 넘었습니다. 내용을 넣지 않았습니다. 확인 화면에서 사진 수를 확인해 주세요.' : code.startsWith('BAND_READBACK_MISMATCH') || code === 'BAND_INPUT_MISMATCH' ? '다시 읽은 글자 또는 사진 순서가 달라 게시 전에 멈췄습니다.' : '이 채널의 작업을 마치지 못했습니다. 작성 중인 내용은 그대로 두었습니다.';
     }
+    if (blocked) j.message = '앱이 게시 요청을 차단해 게시되지 않았습니다. 이번 게시 승인은 소진됐으며 자동으로 다시 제출하지 않습니다.';
     const choice = this.directory.choices.find(b => b.key === j.activeTargetKey);
     if (choice) { j.bandPhotoLimit = choice.photoLimit; j.bandLimitObservedAt = choice.observedAt ?? undefined; }
     if (!dialog) await this.capture(isBand, 'failure');
@@ -190,6 +194,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     this.job.status = 'stopped'; await this.emit();
   }
   async resume() {
+    if (bandPostBlocked(this.job?.failureCode)) throw new ApiError('conflict', '같은 작업을 다시 게시하지 않습니다. 등록 기록에서 결과를 확인해 주세요.');
     if (this.job?.publicationUncertain || this.job?.failureCode === 'BAND_POST_UNCONFIRMED' || this.job?.failureCode?.startsWith('BLOG_PUBLISH_')) throw new ApiError('conflict', '게시됐는지 먼저 확인해 주세요. 같은 작업을 다시 게시하지 않습니다.');
     if (this.serviceLogin.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
     if (!this.job || !['user_paused', 'login_paused', 'failed'].includes(this.job.status) || this.job.completedSteps.includes(7)) throw new ApiError('conflict', '화면의 선택을 먼저 마쳐 주세요.');

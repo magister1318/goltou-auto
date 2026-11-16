@@ -1,8 +1,13 @@
 import type { Job } from '@goltou/core/protocol';
 import { formattingMessage } from './formatting-message';
+import { bandPostBlocked } from '@goltou/sites';
 /** Never show engine codes, page messages, identifiers or transport errors. */
 export function jobMessage(job: Job): [string, string] {
   const code = job.failureCode ?? '';
+  if (bandPostBlocked(code)) return [
+    '앱이 밴드 게시 요청을 차단해 밴드에는 게시되지 않았습니다.',
+    '이번 게시 승인은 소진됐습니다. 같은 작업을 자동으로 다시 제출하지 않습니다. 등록 기록을 확인해 주세요.',
+  ];
   const formatting = formattingMessage(code);
   if (formatting) return [formatting, code.startsWith('BLOG_FORMATTING_PUBLISHED:')
     ? '발행된 글에서 서식 확인이 필요합니다. 같은 글을 다시 발행하지 마세요.'

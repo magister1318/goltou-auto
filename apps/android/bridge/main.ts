@@ -23,10 +23,20 @@ function argument(name: string): string {
 const native = new NativeBridge();
 const host = new AndroidSurfaceHost(native, argument('devtools'));
 const ai = new AiModeClient(host);
+// Private debug log contains fixed decision codes only, in request order.
+// A write failure never authorizes publication or schedules another request.
+let bandBarrierLog = Promise.resolve();
+const recordBandBarrierDecision = (code: import('../../../packages/sites/src/index').BandBarrierCode) => {
+  bandBarrierLog = bandBarrierLog.then(async () => {
+    const directory = path.join(path.dirname(argument('data')), 'wp19');
+    await mkdir(directory, { recursive: true });
+    await appendFile(path.join(directory, 'barrier-codes.jsonl'), JSON.stringify(code) + '\n', { mode: 0o600 });
+  }).catch(() => {});
+};
 const options: CoreOptions = {
   native, host,
   diagnostics: __GOLTOU_DEBUG__,
-  band: { host, publishEnabled: !__GOLTOU_DEBUG__, ...(__GOLTOU_DEBUG__ ? { publishAllowance: fileBandPostAllowance(path.join(path.dirname(argument('data')), 'one-band-post.allow')) } : {}), ...(__GOLTOU_DEBUG__ ? { capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}) },
+  band: { host, publishEnabled: !__GOLTOU_DEBUG__, ...(__GOLTOU_DEBUG__ ? { recordBarrierDecision: recordBandBarrierDecision, publishAllowance: fileBandPostAllowance(path.join(path.dirname(argument('data')), 'one-band-post.allow')) } : {}), ...(__GOLTOU_DEBUG__ ? { capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}) },
   blog: {
     lastTypedTitle: fileBlogTitleStore(path.join(path.dirname(argument('data')), 'last-blog-title.txt')),
     host, publishEnabled: true, ...(__GOLTOU_DEBUG__ ? { draftSaveLimit: 1, capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}),
@@ -48,6 +58,15 @@ const options: CoreOptions = {
 };
 async function start() {
   const runtime: NonNullable<ConstructorParameters<typeof AppCore>[4]> = { openExternal: async url => { await native.call('app.openPost', { url }); }, deleteHost: host, postMetadata: filePostMetadata(path.join(path.dirname(argument('data')), 'post-metadata.json')), device: () => native.call<import('../../../packages/api-client/src/index').LoginInput['device']>('session.device'), preferences: filePreferencesStore(path.join(path.dirname(argument('data')), 'preferences.json')), polishStrength: filePolishStrengthStore(path.join(path.dirname(argument('data')), 'polish-strength.txt')), ...(__GOLTOU_DEBUG__ ? { experimentTitle: false, experimentTitleLabel: 'WP14 ' } : {}) };
+  // Only fixed reason codes and sanitized request field names; no account data.
+  let bandDeleteLog = Promise.resolve();
+  runtime.bandDeleteLog = event => {
+    bandDeleteLog = bandDeleteLog.then(async () => {
+      const directory = path.join(path.dirname(argument('data')), 'wp19');
+      await mkdir(directory, { recursive: true });
+      await appendFile(path.join(directory, 'delete-codes.jsonl'), JSON.stringify({ at: new Date().toISOString(), ...event }) + '\n', { mode: 0o600 });
+    }).catch(() => {});
+  };
   const app = new AppCore(createApiClient(apiOrigin, fetch), new AndroidTokenStore(native),
     (checkpoint, notify) => new ChannelRegistrationRunner({ band: options.band!, blog: options.blog! }, checkpoint, notify), options.preparation,
     runtime);
@@ -57,6 +76,19 @@ async function start() {
   void native.ready().then(() => app.serviceRuntimeReady()).catch(() => {});
   native.onEvent('app.foreground', data => { if (typeof data.backgroundMs === 'number') app.foregrounded(data.backgroundMs); });
   if (__GOLTOU_DEBUG__ && argument('debug') === 'true') {
+    // A verified, guarded feed can be reviewed for device evidence. This is
+    // display only; the shell consumes touches and never exposes service input.
+    runtime.bandDeleteReview = async surface => {
+      const u = new URL((await surface.readState()).url);
+      if (!surface.restrictNavigation || !surface.onUserHidden || !['band.us', 'www.band.us'].includes(u.hostname) || !/^\/band\/\d+\/post$/.test(u.pathname)) throw Error('BAND_DELETE_REVIEW_REFUSED');
+      await surface.restrictNavigation({ allowed: ['band.us', 'www.band.us'].map(hostname => ({ hostname, pathname: u.pathname })), landing: [], fallbackUrl: `https://band.us${u.pathname}` });
+      let close!: () => void;
+      const hidden = new Promise<void>(resolve => { close = resolve; });
+      const unsubscribe = surface.onUserHidden(close);
+      const timeout = setTimeout(close, 120000);
+      try { await surface.show(); runtime.bandDeleteLog?.({ code: 'REVIEW_OPEN' }); await hidden; }
+      finally { clearTimeout(timeout); unsubscribe(); await surface.hide(); runtime.bandDeleteLog?.({ code: 'REVIEW_CLOSED' }); }
+    };
     runtime.deleteLog = async value => {
       const directory = path.join(path.dirname(argument('data')), 'wp14');
       await mkdir(directory, { recursive: true });
@@ -79,6 +111,15 @@ async function start() {
       info: async () => ({ ...await native.call<Record<string, unknown>>('debug.info'), node: process.version }),
       lifecycle: async mode => { await native.call('debug.lifecycle', { mode }); },
       capture: (surface, name) => host.capture(surface, name),
+      verifyBandPublish: async () => {
+        if (app.snapshot().job?.status === 'running') throw Error('JOB_RUNNING');
+        const { recoverBandPublish } = await import('./band-publish-recovery');
+        const ready = async () => { if (!(await native.call<{ ready: boolean }>('app.inputState')).ready) throw Error('DEVICE_CONDITION_LOST'); };
+        await ready();
+        const token = await new AndroidTokenStore(native).read();
+        if (!token) throw Error('BAND_PUBLISH_RECOVERY_REFUSED');
+        await recoverBandPublish(path.join(path.dirname(argument('data')), 'wp19', 'band-publish-context.json'), createApiClient(apiOrigin, fetch), token, host, ready);
+      },
       inspectRecordedPost: async () => {
         const { inspectRecordedPost } = await import('./publish-recovery');
         const ready = async () => {

@@ -4,6 +4,12 @@ import { click } from '../src/dom';
 import { ControlNotFoundError, safeFailureCode } from '../src/control-failure';
 
 describe('content-free control diagnostics', () => {
+  it('distinguishes known transport timeouts without retaining arbitrary method text', () => {
+    expect(safeFailureCode(new Error('CDP_TIMEOUT Input.dispatchMouseEvent'), 'CHANNEL_FAILED')).toBe('CDP_TIMEOUT:MouseInput');
+    expect(safeFailureCode(new Error('CDP_TIMEOUT Page.navigate'), 'CHANNEL_FAILED')).toBe('CDP_TIMEOUT:PageNavigate');
+    expect(safeFailureCode(new Error('CDP_TIMEOUT PRIVATE-TITLE'), 'CHANNEL_FAILED')).toBe('CHANNEL_FAILED');
+    expect(safeFailureCode(new Error('constructor'), 'CHANNEL_FAILED')).toBe('CHANNEL_FAILED');
+  });
   it('identifies a lookup outside a plan without including its selector or exact text', async () => {
     await expect(click({} as Surface, 'BLOG_DRAFT_ITEM', '[data-private-selector]', 'PRIVATE-TITLE', 0))
       .rejects.toThrow('CONTROL_NOT_FOUND:BLOG_DRAFT_ITEM:NONE:0');

@@ -1,4 +1,5 @@
 // Only fixed application identifiers and plan positions may enter a failure code.
+import { bandPostBlocked } from './band/barrier-codes';
 const controls = [
   'BLOG_TITLE', 'BLOG_BODY', 'BLOG_IMAGE_BUTTON', 'BLOG_IMAGE_LIST', 'BLOG_TAG_INPUT',
   'BLOG_TABLE_ADD_ROW', 'BLOG_SAVE', 'BLOG_DRAFT_LIST', 'BLOG_DRAFT_ITEM', 'BLOG_PUBLISH', 'BLOG_TAG_PANEL',
@@ -32,6 +33,15 @@ export class ControlNotFoundError extends Error {
 export function safeFailureCode(error: unknown, fallback: string): string {
   if (error instanceof ControlNotFoundError) return `CONTROL_NOT_FOUND:${error.control}:${error.planStepKind}:${error.planStepIndex}`;
   const code = error instanceof Error ? error.message : '';
+  const timeouts: Record<string, string> = {
+    'CDP_TIMEOUT Page.navigate': 'CDP_TIMEOUT:PageNavigate',
+    'CDP_TIMEOUT Input.dispatchMouseEvent': 'CDP_TIMEOUT:MouseInput',
+    'CDP_TIMEOUT Runtime.evaluate': 'CDP_TIMEOUT:Read',
+    'CDP_TIMEOUT Page.captureScreenshot': 'CDP_TIMEOUT:Capture',
+    'NATIVE_TIMEOUT surface.dialog': 'NATIVE_TIMEOUT:Dialog',
+  };
+  if (Object.prototype.hasOwnProperty.call(timeouts, code)) return timeouts[code]!;
+  if (bandPostBlocked(code)) return code;
   if (/^BLOG_FORMATTING_(INPUT|BEFORE_SAVE|AFTER_SAVE|REOPENED|PUBLISHED):[1-9]\d*(?:,[1-9]\d*)*$/.test(code)) return code;
   return /^[A-Z_]+(?::[A-Za-z,]+)?$/.test(code) ? code : fallback;
 }

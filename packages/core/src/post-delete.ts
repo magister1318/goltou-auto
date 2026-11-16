@@ -1,13 +1,25 @@
-import { ApiError, type Post } from '@goltou/api-client';
-import { deleteRecordedBandPost, deleteBlogPost, openPostDeletionRead, verifyPostAbsentFromList, deletePageSource, read, verifyPostGone, type DeletePage, type DeleteLog } from '@goltou/sites';
+import { ApiError, type Post, type Product } from '@goltou/api-client';
+import { createHash } from 'node:crypto';
+import { compact, bandText, deleteMobileRecordedBandPost, deleteBlogPost, openPostDeletionRead, verifyPostAbsentFromList, deletePageSource, read, verifyPostGone, type DeletePage, type DeleteLog, type BandDeleteLog, type BandDeleteReview } from '@goltou/sites';
 import type { SurfaceHost } from '@goltou/surface';
+import { makePreview } from './preparation';
 
 export { canDeletePost, deletedPost, deletedUpdate, requireDeletablePost } from './post-delete-policy';
 import { requireDeletablePost } from './post-delete-policy';
 
-export async function removeRecordedBandPost(host: SurfaceHost, post: Post) {
+export async function removeRecordedBandPost(host: SurfaceHost, post: Post, product: Product, hashtags: string[], log: BandDeleteLog = () => {}, review?: BandDeleteReview) {
   requireDeletablePost(post);
-  return deleteRecordedBandPost(host, { url: post.postUrl, title: post.productTitle });
+  const after = Date.parse(post.startedAt), before = Date.parse(post.finishedAt);
+  if (product.productNo !== post.productNo || product.title !== post.productTitle || !Number.isFinite(after) || !Number.isFinite(before) || before < after) {
+    log({ code: 'IDENTITY_REJECTED' });
+    throw new ApiError('conflict', '발행 당시 본문과 시각을 확인하지 못했습니다. 삭제하지 않고 멈췄습니다.');
+  }
+  const preview = makePreview(product, { closing: false, linkCard: false, hashtags });
+  if (!preview.verification.band.matches) { log({ code: 'IDENTITY_REJECTED' }); throw new ApiError('conflict', '본문을 확인하지 못했습니다. 삭제하지 않고 멈췄습니다.'); }
+  log({ code: 'PRODUCT_VERIFIED' });
+  const hash = (body: string) => createHash('sha256').update(compact(body)).digest('hex');
+  const expected = hash(bandText(preview.band));
+  return deleteMobileRecordedBandPost(host, { url: post.postUrl, title: post.productTitle, matchesBody: body => hash(body) === expected, createdAfter: after, createdBefore: before }, 10000, log, review);
 }
 /** Opens only the record's URL. A prior uncertain click is resolved by reading
  * that URL before any further deletion, including after restarting the app. */

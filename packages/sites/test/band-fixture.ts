@@ -26,7 +26,7 @@ export function bandFixture(mode = 'mobile') {
     };
     const compose=()=>{
       count('opens'); view.innerHTML=${JSON.stringify(desktop ? '<div class="cke_editable" contenteditable="true" role="textbox"></div>' : '<textarea class="_postTextArea" placeholder="글을 남겨 주세요"></textarea>')}+
-        '<div class="postAttachItem"><div class="_mediaListWrap"></div></div><input type="file" accept="image/*" multiple '+(mode==='limit'?'data-max-count="2"':'')+' hidden><span class="photoLimit">'+(mode==='limit'?'최대 2장':'')+'</span><button class="buttonClose _closeBtn">이전</button><button class="_btnPostSubmit">'+(desktop?'게시':'완료')+'</button>';
+        '<div class="postAttachItem"><div class="_mediaListWrap"></div></div><input type="file" accept="image/*" multiple '+(mode==='limit'?'data-max-count="2"':'')+' hidden><span class="photoLimit">'+(mode==='limit'?'최대 2장':'')+'</span><button class="buttonClose _closeBtn">이전</button>'+(mode==='mobile-service'?'<div class="postWriteSection"><div class="topBarGnbActionButtons"><button class="buttonText _btnPostWrite">완료</button></div></div>':'<button class="_btnPostSubmit">'+(desktop?'게시':'완료')+'</button>');
       view.querySelector('input').onchange=e=>{
         const files=Array.from(e.target.files);
         localStorage.setItem('attachSizes',JSON.stringify([...JSON.parse(localStorage.getItem('attachSizes')||'[]'),files.length]));
@@ -39,9 +39,9 @@ export function bandFixture(mode = 'mobile') {
         const dialog=document.createElement('div');dialog.className='modalLayerView';dialog.innerHTML='<h1>글 작성을 취소하시겠습니까?</h1><button class="_confirmBtn">확인</button><button class="cancel">취소</button>';
         dialog.querySelector('._confirmBtn').onclick=()=>{count('discards');view.replaceChildren()};dialog.querySelector('.cancel').onclick=()=>dialog.remove();view.append(dialog);
       };
-      view.querySelector('._btnPostSubmit').onclick=async ()=>{
+      view.querySelector('._btnPostSubmit,.postWriteSection .topBarGnbActionButtons ._btnPostWrite').onclick=async ()=>{
         count('postPresses');
-        const result=await fetch('/band-post-create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({band_key:location.pathname.split('/')[2]})});
+        const result=await fetch('/band-post-create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(mode==='post-blocked'?{}:{band_key:location.pathname.split('/')[2]})});
         if(!result.ok)return;
         count('posts');const body=text();const photos=Array.from(view.querySelectorAll('img')).map(n=>n.alt);localStorage.setItem('lastPost',JSON.stringify({body,photos}));
         location.href=location.pathname.replace(/\\/$/,'')+'/'+(1000+Number(localStorage.getItem('posts')));

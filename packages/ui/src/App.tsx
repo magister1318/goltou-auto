@@ -32,6 +32,7 @@ import {
   resultKind,
   historyLine,
   uncertainReason,
+  bandPostBlocked,
 } from './ux-state';
 const Experiments = __GOLTOU_DEBUG__
   ? lazy(() =>
@@ -1188,7 +1189,7 @@ export function App() {
                           : '×'}
                 </span>
                 <h1>
-                  {formattingMessage(job.failureCode) ? '서식 확인 필요' : resultKind(job) === 'record'
+                  {bandPostBlocked(job.failureCode) ? '밴드 게시 요청이 차단됐습니다' : formattingMessage(job.failureCode) ? '서식 확인 필요' : resultKind(job) === 'record'
                     ? job.targetResults?.some((t) => t.status === 'published')
                       ? '발행했습니다'
                       : job.targetResults?.some(
@@ -1208,7 +1209,7 @@ export function App() {
                 </h1>
                 {(formattingMessage(job.failureCode) || job.status !== 'draft_unverified') && (
                   <p>
-                    {formattingMessage(job.failureCode) ?? (resultKind(job) === 'record'
+                    {bandPostBlocked(job.failureCode) ? jobMessage(job).join(' ') : formattingMessage(job.failureCode) ?? (resultKind(job) === 'record'
                       ? '채널별 결과를 등록 기록에 남기지 못했습니다. 기록을 다시 저장해 주세요.'
                       : resultKind(job) === 'uncertain'
                         ? '앱이 게시 결과를 확인하지 못했습니다. 다시 올리기 전에 해당 서비스에서 먼저 확인해 주세요.'
@@ -1323,7 +1324,7 @@ export function App() {
                     >
                       블로그 실패 확인 · 밴드 진행
                     </button>
-                  ) : !/BAND_POST_UNCONFIRMED|BLOG_PUBLISH/.test(
+                  ) : !/BAND_POST_(?:UNCONFIRMED|BLOCKED)|BLOG_PUBLISH/.test(
                       job.failureCode ?? '',
                     ) &&
                     !job.publicationUncertain &&

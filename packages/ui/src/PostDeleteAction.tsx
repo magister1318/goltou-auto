@@ -5,7 +5,7 @@ import { Sheet } from './Sheet';
 export type DeleteOutcome = 'deleted' | 'not_started' | 'uncertain';
 export function deleteFeedback(outcome: 'not_started' | 'uncertain') {
   return outcome === 'not_started'
-    ? '삭제를 시작하지 못했습니다. 글은 그대로 있습니다.'
+    ? '삭제를 시작하지 못했습니다. 글 존재 여부를 다시 확인해 주세요.'
     : '삭제를 눌렀지만 지워졌는지 확인하지 못했습니다.';
 }
 export function DeleteConfirmation({

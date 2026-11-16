@@ -5,6 +5,7 @@ import { bandMobileUA } from './plan';
 
 export type BandDeleteResult = {
   status: 'deleted' | 'not_started' | 'uncertain';
+  alreadyAbsent?: boolean;
 };
 export function bandPostIdentity(value: string) {
   try {
