@@ -1,7 +1,9 @@
 import type { SurfaceHost, GuardedRequest } from '@goltou/surface';
-import { compact, waitFor } from '../dom';
+import { compact, read, waitFor } from '../dom';
 import { bandMobileUA } from './plan';
 import { bandPostIdentity } from './delete';
+import type { BandDeleteCode, BandDeleteLog } from './delete-log';
+import { bandReadBatchTarget } from './read-batch';
 
 export const bandFeedResponse = (r: Pick<GuardedRequest, 'method' | 'url'>) => {
   const u = new URL(r.url);
@@ -14,6 +16,7 @@ export function bandRecordReadAllowed(r: Pick<GuardedRequest, 'method' | 'url'>)
   // not a login document; no response body is observed or retained here.
   if (u.hostname === 'auth.band.us') return r.method === 'GET' && u.pathname === '/s/login/getKey';
   if (/^login[.]/.test(u.hostname) || /^\/(?:login|account)(?:\/|$)/.test(u.pathname)) return false;
+  if (r.method !== 'OPTIONS' && /^\/v[\d.]+\/(?:create|update|delete|remove|write|publish|submit)_/.test(u.pathname)) return false;
   return ['GET', 'HEAD', 'OPTIONS'].includes(r.method);
 }
 export function bandStoredText(value: string) {
@@ -51,26 +54,49 @@ export function parseRecordedBandFeed(body: string, target: { url: string; title
 }
 export async function openRecordedBandFeed(host: SurfaceHost, target: { url: string; title: string },
   inspectWrite: (request: GuardedRequest) => boolean = () => false,
-  onWrite: (status: number, body: string) => void = () => {}) {
+  onWrite: (status: number, body: string) => void = () => {}, log: BandDeleteLog = () => {}) {
   const id = bandPostIdentity(target.url);
   if (!id || !target.title.trim()) throw Error('BAND_RECORD_READ_IDENTITY');
   const s = await host.create('band');
-  let revision = 0, actual: RecordedBandReadback | null = null, failure = false, reading = false;
+  let revision = 0, actual: RecordedBandReadback | null = null, failure = false, reading = false, checkingUrl = false, missingRead = false, reviewingFeed = false;
   try {
     if (!s.guardRequests) throw Error('BAND_RECORD_READ_BARRIER');
     await s.guardRequests([{ hostname: '*', pathname: '/', prefix: true }], r => {
       const u = new URL(r.url);
+      // A mutation endpoint never passes through the generic GET read policy.
+      if (u.pathname === '/v1.5.0/delete_post' && r.method !== 'OPTIONS') return inspectWrite(r);
       // Keep the owned initial card stable while keyboard focus crosses the
       // feed. Scrolling must not append an unbounded set of older posts.
-      if (bandFeedResponse(r) && !reading) return false;
-      if (['GET', 'HEAD', 'OPTIONS'].includes(r.method)) return bandRecordReadAllowed(r);
+      if (bandFeedResponse(r) && !reading && (!reviewingFeed || u.searchParams.get('band_no') !== id.band)) return false;
+      if (['GET', 'HEAD', 'OPTIONS'].includes(r.method)) {
+        if (checkingUrl && r.method === 'OPTIONS') log({ code: 'PREFLIGHT_ALLOWED' });
+        return bandRecordReadAllowed(r);
+      }
+      if (checkingUrl) {
+        const batch = bandReadBatchTarget(r);
+        if (batch?.band === id.band && batch.post === id.post) { log({ code: 'READ_BATCH_ALLOWED' }); return true; }
+        if (u.hostname === 'bapi-kr.band.us') log({ code: 'READ_BATCH_BLOCKED' });
+      }
       return u.protocol === 'https:' && inspectWrite(r);
     }, r => {
       if (bandFeedResponse(r as { method: string; url: string })) {
         if (!reading) return;
         try { actual = parseRecordedBandFeed(r.body, target); reading = false; revision++; } catch { failure = true; }
-      } else if (r.method === 'POST') onWrite(r.status, r.body);
-    }, r => bandFeedResponse(r) || r.method === 'POST');
+      } else if (r.method === 'POST' && r.url && new URL(r.url).pathname === '/v1.5.0/delete_post') onWrite(r.status, r.body);
+      else if (checkingUrl && r.method === 'POST' && r.url && new URL(r.url).pathname === '/v2.0.0/batch') {
+        const codes: number[] = [];
+        const visit = (value: unknown, depth = 0) => {
+          if (!value || typeof value !== 'object' || depth > 8) return;
+          for (const [key, item] of Object.entries(value)) {
+            if (key === 'result_code' && typeof item === 'number') codes.push(item);
+            else if (item && typeof item === 'object') visit(item, depth + 1);
+          }
+        };
+        try { visit(JSON.parse(r.body)); } catch { /* Fixed result only; never retain response text. */ }
+        missingRead = codes[0] === 1 && codes.includes(1000);
+        log({ code: 'URL_RESULT', resultCodes: codes });
+      }
+    }, r => bandFeedResponse(r) || r.method === 'POST' && ['/v1.5.0/delete_post', ...(checkingUrl ? ['/v2.0.0/batch'] : [])].includes(new URL(r.url).pathname), () => log({ code: 'SURFACE_BLOCKED' }));
     const refresh = async () => {
       const before = revision;
       reading = true;
@@ -78,8 +104,44 @@ export async function openRecordedBandFeed(host: SurfaceHost, target: { url: str
       await waitFor(async () => { if (failure) throw Error('BAND_RECORD_READ_RESPONSE'); return revision > before; }, 20000);
       return actual;
     };
+    const verifyGone = async () => {
+      checkingUrl = true;
+      missingRead = false;
+      let reason: BandDeleteCode = 'URL_OPEN_FAILED';
+      let loggedDialog = false;
+      try {
+        log({ code: 'URL_OPEN' });
+        await s.open({ url: id.url, session: 'band', width: 1280, height: 900, userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36' });
+        await waitFor(async () => {
+          // A held native alert pauses Runtime.evaluate. Read it before any DOM.
+          const dialog = await s.readDialog?.();
+          const absent = /(?:삭제(?:된|되었)|존재하지 않|찾을 수 없|not (?:found|exist))/i;
+          if (dialog) {
+            reason = 'URL_ALERT_OTHER';
+            const u = new URL(dialog.url ?? 'https://invalid.invalid');
+            const samePost = bandPostIdentity(dialog.url ?? '')?.url === id.url;
+            const feed = u.protocol === 'https:' && ['band.us', 'www.band.us'].includes(u.hostname) && u.pathname.replace(/\/$/, '') === `/band/${id.band}/post` && !u.search && !u.hash;
+            if (!loggedDialog) { loggedDialog = true; log({ code: 'URL_ALERT_READ', checks: { alert: dialog.kind === 'alert', missingMessage: absent.test(dialog.message), samePost, feed, missingRead, length: dialog.message.length } }); }
+            const gone = dialog.kind === 'alert' && dialog.message.length < 300 && absent.test(dialog.message) && samePost && missingRead;
+            if (gone && s.respondDialog) { await s.respondDialog(dialog.id, true); log({ code: 'URL_ALERT_ACKNOWLEDGED' }); }
+            return gone;
+          }
+          let state;
+          try { state = await s.readState(); }
+          catch { return false; } // An alert can arrive between the native read and Runtime.
+          if (bandPostIdentity(state.url)?.url !== id.url || state.loading) { reason = 'URL_WRONG_ROUTE'; return false; }
+          const result = await read<{ post: boolean; notice: boolean }>(s, `return {post:docs.some(({d})=>!!d.querySelector('.postView,.postsDetailArea p.txtBody,article.cContentsCard p.txtBody,section.postCard p.postText')),notice:docs.some(({d})=>/(?:삭제된 게시글|게시글이 삭제되었|삭제되었거나 존재하지 않는 게시글|존재하지 않는 게시글|게시글이 존재하지 않|게시글을 찾을 수 없)/.test(d.body?.innerText||''))};`);
+          reason = result.post ? 'URL_POST_PRESENT' : 'URL_NO_DELETE_NOTICE';
+          if (result.post) throw Error('BAND_URL_POST_PRESENT');
+          return !result.post && result.notice;
+        }, 30000);
+        log({ code: 'URL_ABSENT' });
+        return true;
+      } catch { log({ code: reason }); return false; }
+      finally { checkingUrl = false; }
+    };
     await refresh();
-    return { surface: s, current: () => actual, refresh, close: () => host.destroy(s) };
+    return { surface: s, current: () => actual, refresh, verifyGone, reviewFeed: () => { reviewingFeed = true; }, close: () => host.destroy(s) };
   } catch (e) { await host.destroy(s).catch(() => {}); throw e; }
 }
 export async function readRecordedBandPost(host: SurfaceHost, target: { url: string; title: string }) {

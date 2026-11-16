@@ -102,7 +102,7 @@ export function historyLine(post: Post, date: string): string {
         : post.blogVisibility === 'public' ? '전체공개' : '공개 범위 확인 필요'
       : '';
   return [
-    `${post.channel === 'blog' ? '블로그' : '밴드'} ${deleted ? '삭제함' : historyStatus(post)}`,
+    post.failReason === 'BAND_POST_ALREADY_DELETED' && deleted ? '밴드에서 이미 삭제됨' : `${post.channel === 'blog' ? '블로그' : '밴드'} ${deleted ? '삭제함' : historyStatus(post)}`,
     destination,
     date,
   ].filter(Boolean).join(' · ');

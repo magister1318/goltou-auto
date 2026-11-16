@@ -11,6 +11,13 @@ describe('exact recorded Band feed receipt', () => {
     for (const [method, url] of [['POST', 'https://auth.band.us/s/login/getKey'], ['GET', 'https://auth.band.us/s/login/getKey/extra'], ['GET', 'https://auth.band.us/login'], ['GET', 'https://band.us/login'], ['GET', 'http://auth.band.us/s/login/getKey']])
       expect(bandRecordReadAllowed({ method: method!, url: url! })).toBe(false);
   });
+  it('does not treat mutation routes as reads when their method changes', () => {
+    for (const method of ['GET', 'HEAD', 'POST', 'PUT', 'DELETE']) {
+      for (const route of ['delete_post', 'delete_posts', 'create_post', 'update_post'])
+        expect(bandRecordReadAllowed({ method, url: `https://api-kr.band.us/v1.5.0/${route}` })).toBe(false);
+    }
+    expect(bandRecordReadAllowed({ method: 'OPTIONS', url: 'https://api-kr.band.us/v1.5.0/delete_post' })).toBe(true);
+  });
   it('decodes service markup and returns only the recorded identity and ordered photo paths', () => {
     expect(parseRecordedBandFeed(body(), target)).toEqual({ url: target.url, body: '합성 상품\n\n내용 & 안내\n#합성', createdAt: 1700000000000,
       owned: true, photos: [{ path: '/upload/one.jpg', width: 100, height: 80 }] });

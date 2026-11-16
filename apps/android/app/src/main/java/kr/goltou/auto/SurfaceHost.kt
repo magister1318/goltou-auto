@@ -215,10 +215,14 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
         if (show) check(entry.policy != null) { "ONLY_LOGIN_SURFACE_VISIBLE" }
         if (show && entry.policy != null) check(!entry.loadFailed && entry.loadedUrl == entry.view.url &&
             entry.loadedUrl?.let { entry.policy!!.allows(it) } == true) { "LOGIN_PAGE_NOT_READY" }
+        val readOnlyReview = entry.session == "band" && entry.policy?.landing?.isEmpty() == true &&
+            entry.policy!!.allowed.all { it.hostname in setOf("band.us", "www.band.us") &&
+                !it.prefix && Regex("^/band/[0-9]+/post$").matches(it.pathname) }
         (entry.frame.parent as? ViewGroup)?.removeView(entry.frame)
         (entry.view.parent as? ViewGroup)?.removeView(entry.view)
-        entry.view.isFocusable = show
-        entry.view.isFocusableInTouchMode = show
+        entry.view.isFocusable = show && !readOnlyReview
+        entry.view.isFocusableInTouchMode = show && !readOnlyReview
+        entry.view.setOnTouchListener(if (readOnlyReview) android.view.View.OnTouchListener { _, _ -> true } else null)
         if (show) {
             val column = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(Color.WHITE) }
             column.addView(Button(context).apply {
@@ -228,7 +232,8 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
                 setOnClickListener { setVisible(id, false); onUserHidden(id) }
             })
             column.addView(android.widget.TextView(context).apply {
-                text = "직접 로그인해 주세요. 끝나면 이 화면은 저절로 닫힙니다."
+                text = if (readOnlyReview) "삭제 확인을 마친 밴드 피드입니다. 읽기 전용 화면입니다."
+                    else "직접 로그인해 주세요. 끝나면 이 화면은 저절로 닫힙니다."
                 setPadding(18, 8, 18, 8)
                 setTextColor(Color.rgb(102, 115, 107))
             })
@@ -236,7 +241,7 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
             entry.frame = column
             visible.addView(column, FrameLayout.LayoutParams(-1, -1))
             visible.visibility = View.VISIBLE
-            entry.view.requestFocus()
+            if (!readOnlyReview) entry.view.requestFocus()
         } else {
             entry.frame = entry.view
             entry.view.clearFocus()

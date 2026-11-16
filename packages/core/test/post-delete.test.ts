@@ -4,7 +4,7 @@ import { deleteIdentity, requireDeleteConfirmation, type DeletePage } from '@gol
 import { AppCore, MemoryTokenStore } from '../src/app';
 import { canDeletePost, deletedPost, deletedUpdate, requireDeletablePost } from '../src/post-delete-policy';
 import type { AppRequest } from '../src/protocol';
-const bandRemove = vi.hoisted(() => vi.fn(async () => ({ status: 'deleted' as 'deleted' | 'not_started' | 'uncertain' })));
+const bandRemove = vi.hoisted(() => vi.fn(async (): Promise<{ status: 'deleted' | 'not_started' | 'uncertain'; alreadyAbsent?: boolean }> => ({ status: 'deleted' })));
 const remove = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock('../src/post-delete', async original => ({ ...await original<object>(), removeRecordedBlogPost: remove, removeRecordedBandPost: bandRemove }));
 const post: Post = { postNo: 1, productNo: 1, productTitle: '합성 상품', channel: 'blog', mode: 'publish', targetName: '', status: 'published', step: 7, failReason: '', postUrl: 'https://blog.naver.com/synthetic/9001', userName: '', startedAt: 'synthetic', finishedAt: 'synthetic', productChanged: false };
@@ -36,6 +36,7 @@ async function fixture() {
   const api = { request: async (route: string, input: unknown) => {
     if (route === '/auto/me') return { user: { userNo: 1, role: 'manager', userType: 4, name: '합성' }, settings: {} };
     if (route === '/auto/posts/list') return { total: 1, items: [record] };
+    if (route === '/auto/products/get') return { productNo: record.productNo, title: record.productTitle };
     if (route === '/auto/posts/update') { updates.push(structuredClone(input as PostUpdate)); if (fail) throw new ApiError('server', '합성 실패'); record = { ...record, ...input as PostUpdate, finishedAt: '2026-11-14T12:00:00+09:00' }; return {}; }
     throw new Error('UNEXPECTED_API');
   } } as ApiClient;
@@ -125,3 +126,16 @@ it.each(['not_started', 'uncertain', 'deleted'] as const)(
     f.app.dispose();
   },
 );
+
+it('records an already absent Band post honestly and consumes the same app confirmation', async () => {
+  const f = await fixture();
+  f.change({ channel: 'band', targetName: '합성 밴드', postUrl: 'https://band.us/band/111/post/9001' });
+  bandRemove.mockResolvedValueOnce({ status: 'deleted', alreadyAbsent: true });
+  const pending = await f.call('posts.delete.prepare', { postNo: 1 });
+  await f.call('posts.delete.confirm', pending);
+  expect(f.updates).toEqual([{ postNo: 1, step: 7, status: 'stopped', failReason: 'BAND_POST_ALREADY_DELETED', postUrl: '' }]);
+  expect(deletedPost({ status: 'stopped', failReason: 'BAND_POST_ALREADY_DELETED' })).toBe(true);
+  await expect(f.call('posts.delete.confirm', pending)).rejects.toMatchObject({ code: 'invalid' });
+  expect(bandRemove).toHaveBeenCalledOnce();
+  f.app.dispose();
+});

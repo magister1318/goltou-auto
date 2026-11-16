@@ -42,6 +42,7 @@ describe('WP17 choices and channel outcomes', () => {
     expect(historyLine({ ...post, status: 'failed', failReason: 'BLOG_PUBLISH_UNCONFIRMED' }, '날짜')).toBe('블로그 확인 필요 · 날짜');
     expect(historyLine({ ...post, status: 'failed', failReason: 'BLOG_FORMATTING_AFTER_SAVE:1' }, '날짜')).toBe('블로그 확인 필요 · 날짜');
     expect(historyLine({ ...post, channel: 'band', status: 'published', targetName: '합성 밴드' }, '날짜')).toBe('밴드 게시 · 합성 밴드 · 날짜');
+    expect(historyLine({ ...post, channel: 'band', status: 'stopped', failReason: 'BAND_POST_ALREADY_DELETED', targetName: '합성 밴드' }, '날짜')).toBe('밴드에서 이미 삭제됨 · 합성 밴드 · 날짜');
   });
   it.each([
     { loading: true, failed: false },
