@@ -38,9 +38,11 @@ export class AndroidSurfaceHost implements SurfaceHost {
     try {
       const deadline = Date.now() + 10000;
       let endpoint: string | undefined;
+      let attempt = 0;
       while (!endpoint && Date.now() < deadline) {
+        attempt++;
         endpoint = (await listTargets(this.socketPath)).find(target => target.url === `about:blank#${marker}`)?.webSocketDebuggerUrl;
-        if (!endpoint) await new Promise(resolve => setTimeout(resolve, 100));
+        if (!endpoint) { trace('android.bridge.host.AndroidSurfaceHost.create', 'wait', { counts: { attempt } }); await new Promise(resolve => setTimeout(resolve, 100)); }
       }
       if (!endpoint) throw new Error('DEVTOOLS_TARGET_NOT_FOUND');
       const cdp = await CdpConnection.connect(endpoint, { socketPath: this.socketPath });

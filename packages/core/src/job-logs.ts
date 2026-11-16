@@ -42,6 +42,9 @@ export interface JobLogRow { jobId: string; at: number; kind: JobKind; site: Log
 interface StoredRow extends JobLogRow { file: string }
 export interface LogEnvironment { appVersion?: string; commit?: string; webViewVersion?: string; deviceModel?: string }
 const dayMs = 86400000;
+function failedStep(step: TraceStep, counts?: TraceDetail['counts']): TraceStep {
+  return step === 'job' && counts?.step ? (['runner.ready', 'runner.download', 'runner.arrange', 'runner.blog_write', 'runner.blog_save', 'runner.band_write', 'runner.record'] as const)[counts.step - 1] ?? step : step;
+}
 export class JobLogStore implements TraceProvider {
   private readonly context = new AsyncLocalStorage<TraceJob>();
   private rows: StoredRow[] = [];
@@ -121,7 +124,7 @@ export class JobLogStore implements TraceProvider {
       if (step === 'barrier' && event === 'start') decisionReason = undefined;
       else if (['barrier', 'delete'].includes(step) && detail?.reason && !detail.network) decisionReason = reasonCode(detail.reason);
       if (event === 'fail' && step !== 'terminal') {
-        row.failedStep = step === 'job' && detail?.counts?.step ? (['runner.ready', 'runner.download', 'runner.arrange', 'runner.blog_write', 'runner.blog_save', 'runner.band_write', 'runner.record'] as const)[detail.counts.step - 1] ?? step : step;
+        row.failedStep = failedStep(step, detail?.counts);
         row.reason = reasonCode(detail?.reason);
       }
       const serialized = JSON.stringify({ timestamp: this.now(), jobId: id, site, kind, step, event,
@@ -165,7 +168,7 @@ export class JobLogStore implements TraceProvider {
         const failure = lines.filter(line => line.event === 'fail' && line.step !== 'terminal').at(-1);
         const row: StoredRow = { at: first.timestamp, jobId: first.jobId, kind: first.kind, site: first.site, file: `${date}/${file}`,
           result: last?.step === 'terminal' && ['succeeded', 'failed', 'stopped', 'uncertain'].includes(last.result) ? last.result : 'stopped',
-          ...(failure && traceSteps.includes(failure.step) ? { failedStep: failure.step } : {}) };
+          ...(failure && traceSteps.includes(failure.step) ? { failedStep: failedStep(failure.step, failure.counts) } : {}) };
         const correlations = lines.filter(line => /^[a-f0-9]{12}$/.test(line.recordHash ?? '')); if (correlations.length) { row.recordHashes = [...new Set<string>(correlations.map(line => line.recordHash))]; row.recordHash = row.recordHashes[0]!; }
         if (last?.step !== 'terminal') {
           row.reason = 'INTERRUPTED'; row.failedStep ??= 'recovery';

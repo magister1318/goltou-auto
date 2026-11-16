@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { ConversionPreview } from '../src/ConversionPreview';
 import type { InputPlan } from '@goltou/core';
-import { failedStepLabel, logReasonLabel } from '../src/JobLogs';
+import { failedStepLabel, logReasonLabel, JobLogFailure } from '../src/JobLogs';
 
 describe('Band preview matches the full post and folded feed', () => {
   it('keeps exact wording and all line breaks, 29 ordered full-width photos, links and tags', () => {
@@ -24,5 +24,6 @@ describe('Band preview matches the full post and folded feed', () => {
     expect(failedStepLabel('sites.band.plan.BandExecution.publish')).toBe('게시와 게시 확인');
     expect(logReasonLabel('QUERY_BLOCKED')).toContain('차단'); expect(logReasonLabel('INTERRUPTED')).toContain('앱이 종료');
     expect(logReasonLabel('UNEXPECTED_FAILURE')).not.toContain('UNEXPECTED_FAILURE');
+    expect(renderToStaticMarkup(<JobLogFailure reason="BAND_POST_UNCONFIRMED" step={6} />)).toContain('게시와 게시 확인');
   });
 });

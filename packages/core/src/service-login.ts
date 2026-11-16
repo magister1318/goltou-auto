@@ -1,7 +1,7 @@
 import { traceStep, trace, reasonCode, traceJob } from '@goltou/surface/telemetry';
 import { ApiError } from '@goltou/api-client';
 import type { Surface, SurfaceHost } from '@goltou/surface';
-import { loginLocation, safeFailureCode, serviceCheckUrls, serviceLoginState, serviceLoginUrls, serviceNavigationPolicy, type LoginService, type LoginState } from '@goltou/sites';
+import { loginLocation, serviceCheckUrls, serviceLoginState, serviceLoginUrls, serviceNavigationPolicy, type LoginService, type LoginState } from '@goltou/sites';
 
 export interface LoginUpdate { service: LoginService; state: LoginState | 'checking'; visible: boolean; error?: string }
 const mobileUA = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
@@ -18,10 +18,12 @@ export class ServiceLoginController {
   private disposed = false;
   private generation = 0;
   private visible: LoginService | null = null;
+  private states = new Map<LoginService, LoginUpdate['state']>();
   get active() { return !!this.operation || this.visible !== null; }
   constructor(private readonly host: SurfaceHost, private readonly timing = { pollMs: 1500, signalMs: 12000, loadMs: 30000 }) {}
   subscribe(listener: (update: LoginUpdate) => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   private emit(service: LoginService, state: LoginUpdate['state'], error?: string) {
+    this.states.set(service, state);
     if (!this.disposed) for (const listener of this.listeners) listener({ service, state, visible: this.visible === service, ...(error ? { error } : {}) });
   }
   private run<T>(work: () => Promise<T>): Promise<T> {
@@ -61,20 +63,15 @@ export class ServiceLoginController {
     return traceStep('core.service-login.ServiceLoginController.load', async () => {
     const surface = await this.surface(service);
     let timeout: ReturnType<typeof setTimeout> | undefined;
-    let stage = 'OPEN';
     try {
       await Promise.race([
         surface.open({ url, session: service, userAgent: mobileUA, width: 412, height: 800 }),
         new Promise<never>((_, reject) => { timeout = setTimeout(() => reject(new Error('LOGIN_LOAD_TIMEOUT')), this.timing.loadMs); }),
       ]);
-      stage = 'STATE';
       const state = await surface.readState();
       if (this.disposed || state.loading || loginLocation(service, state.url) === 'blocked') throw new Error('LOGIN_PAGE_NOT_READY');
       return surface;
     } catch (error) { trace('core.service-login.ServiceLoginController.load', 'fail', { reason: reasonCode(error) });
-      const message = error instanceof Error ? error.message : '';
-      const code = /^net::ERR_[A-Z_]+$/.test(message) ? message.slice(5) : safeFailureCode(error, 'NAVIGATION_FAILED');
-      trace('core.service-login.ServiceLoginController.load', 'fail', { reason: reasonCode(error) });
       await this.drop(service); throw error;
     }
     finally { clearTimeout(timeout); }
@@ -133,9 +130,11 @@ export class ServiceLoginController {
     this.timer = setTimeout(() => { void this.poll(); }, this.timing.pollMs);
   }
   private async poll() {
-    return traceStep('core.service-login.ServiceLoginController.poll', async () => {
-    const service = this.visible, generation = this.generation;
+    const service = this.visible;
     if (!service || this.disposed) return;
+    return traceJob('login_check', service === 'naver' ? 'naver' : 'band', async () => {
+    return traceStep('core.service-login.ServiceLoginController.poll', async () => {
+    const generation = this.generation;
     const operation = (async () => {
       try {
         let surface = this.surfaces.get(service)!;
@@ -168,11 +167,13 @@ export class ServiceLoginController {
     if (this.visible && generation === this.generation) this.schedulePoll();
 
     });
+    }, () => this.states.get(service) === 'confirmed' ? { result: 'succeeded' } : { result: this.visible ? 'stopped' : 'failed', reason: 'LOGIN_UNCONFIRMED' });
   }
   async cancel() {
-    return traceStep('core.service-login.ServiceLoginController.cancel', async () => {
     const service = this.visible;
     if (!service) return;
+    return traceJob('login_check', service === 'naver' ? 'naver' : 'band', async () => {
+    return traceStep('core.service-login.ServiceLoginController.cancel', async () => {
     this.generation++; clearTimeout(this.timer);
     // Keep the visible lock until the in-flight read and final hidden recheck finish.
     await this.operation;
@@ -184,13 +185,16 @@ export class ServiceLoginController {
     });
 
     });
+    }, () => this.states.get(service) === 'confirmed' ? { result: 'succeeded' } : { result: 'stopped', reason: 'USER_STOPPED' });
   }
   clear(service: LoginService): Promise<void> {
+    return traceJob('login_check', service === 'naver' ? 'naver' : 'band', async () => {
     if (this.visible) return Promise.reject(new ApiError('conflict', '로그인 화면을 먼저 닫아 주세요.'));
     return this.run(async () => {
       await this.drop(service);
       try { await this.host.clearSession(service); this.emit(service, 'expired'); }
-      catch { this.emit(service, 'unknown', '연결을 끊지 못했습니다. 다시 확인해 주세요.'); throw new ApiError('server', '연결을 끊지 못했습니다. 다시 확인해 주세요.'); }
+      catch (error) { trace('core.service-login.ServiceLoginController.drop', 'fail', { reason: reasonCode(error) }); this.emit(service, 'unknown', '연결을 끊지 못했습니다. 다시 확인해 주세요.'); throw new ApiError('server', '연결을 끊지 못했습니다. 다시 확인해 주세요.'); }
+    });
     });
   }
   dispose() {

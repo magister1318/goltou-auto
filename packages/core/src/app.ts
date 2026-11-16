@@ -96,7 +96,7 @@ export class AppCore {
     this.scheduleServiceChecks();
   }
   private emit() { for (const listener of this.listeners) listener(this.snapshot()); }
-  dispose() { this.disposed = true; clearTimeout(this.serviceTimer); this.serviceUnsubscribe?.(); this.runner.dispose(); this.listeners.clear(); }
+  dispose() { this.disposed = true; this.deleteConfirmation?.log?.end('stopped', 'USER_STOPPED'); this.deleteConfirmation = undefined; clearTimeout(this.serviceTimer); this.serviceUnsubscribe?.(); this.runner.dispose(); this.listeners.clear(); }
   /** Debug entry supplies the deletion capability; release exposes no command. */
   async cleanupTestPost(remove: (execution: import('@goltou/sites').BlogExecution) => Promise<void>) {
     const job = this.runner.job, execution = this.runner.blogExecution?.();
@@ -218,7 +218,7 @@ export class AppCore {
       case 'posts.delete.confirm': {
         this.requireDeleteIdle();
         const confirmation = this.deleteConfirmation; this.deleteConfirmation = undefined;
-        if (!confirmation || confirmation.key !== request.input.confirmation) throw new ApiError('invalid', '삭제할 글을 다시 선택하고 확인해 주세요.');
+        if (!confirmation || confirmation.key !== request.input.confirmation) { confirmation?.log?.end('stopped', 'DELETE_CONFIRMATION_MISMATCH'); throw new ApiError('invalid', '삭제할 글을 다시 선택하고 확인해 주세요.'); }
         return inTrace(confirmation.log, async () => {
         trace('delete', 'start', { reason: 'APP_CONFIRMED' });
         this.deleting = true;
@@ -253,9 +253,14 @@ export class AppCore {
       }
       case 'posts.delete.retryRecord': {
         if (this.deleting || !this.pendingDeleteUpdate) throw new ApiError('conflict', '다시 기록할 삭제 결과가 없습니다.');
+        const band = this.pendingDeleteUpdate.failReason?.startsWith('BAND_');
+        return traceJob(band ? 'band_delete' : 'blog_delete', band ? 'band' : 'naver', async () => {
+        this.runtime?.logs?.associate(String(this.pendingDeleteUpdate!.postNo));
+        trace('runner.record', 'retry', { reason: 'RECORD_FAILED' });
         this.deleting = true;
         try { await this.saveDeletion(token); } finally { this.deleting = false; }
         return this.snapshot();
+        });
       }
       case 'posts.list': {
         const page = await this.call('/auto/posts/list', request.input, token);

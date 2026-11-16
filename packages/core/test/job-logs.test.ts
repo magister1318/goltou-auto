@@ -70,6 +70,12 @@ describe('permanent local job logs', () => {
     expect(new JobLogStore(f.dir).list()[0]).toMatchObject({ kind: 'band_post', result: 'stopped', reason: 'INTERRUPTED' });
     expect(f.lines().filter(line => line.step === 'terminal')).toHaveLength(1);
   });
+  it('retains the actual runner failure phase when rebuilding the index after restart', () => {
+    const f = fixture(), job = f.store.begin('band_post', 'band');
+    job.line('job', 'fail', { reason: 'BAND_POST_UNCONFIRMED', counts: { step: 6 } }); job.end('uncertain', 'BAND_POST_UNCONFIRMED');
+    expect(f.store.list()[0]?.failedStep).toBe('runner.band_write');
+    expect(new JobLogStore(f.dir).list()[0]).toMatchObject({ failedStep: 'runner.band_write', result: 'uncertain', reason: 'BAND_POST_UNCONFIRMED' });
+  });
   it('expires oldest completed jobs at either the day or byte limit and preserves active trails', () => {
     let now = Date.UTC(2026, 0, 1); const f = fixture({ days: 30, bytes: 2200 }, () => now);
     f.store.begin('blog_draft', 'naver').end('succeeded'); now += 31 * 86400000;

@@ -28,6 +28,7 @@ export function logReasonLabel(reason = '') {
   if (reason === 'LOG_STORAGE_LIMIT') return '작업 로그 보관 한도에 도달해 멈췄습니다. 로그를 내보낸 뒤 작업 결과를 확인해 주세요.';
   if (reason === 'STOPPED_BEFORE_POST') return '게시 전 내용을 확인하도록 멈췄습니다.';
   if (reason === 'USER_STOPPED') return '사용자가 작업을 멈췄습니다.';
+  if (reason === 'DELETE_CONFIRMATION_MISMATCH') return '삭제 확인이 선택한 글과 맞지 않아 멈췄습니다. 글을 다시 선택해 주세요.';
   if (/RECORD/.test(reason)) return '결과 기록을 저장하거나 확인하지 못했습니다.';
   if (/LOGIN/.test(reason)) return '로그인 상태를 확인하지 못했습니다.';
   if (/IDENTITY|TARGET/.test(reason)) return '저장된 대상과 현재 글이 같은지 확인하지 못했습니다.';
@@ -42,7 +43,9 @@ export function logReasonLabel(reason = '') {
 }
 export function JobLogFailure({ log, reason, step }: { log?: JobLogRow | undefined; reason?: string | undefined; step?: number }) {
   const legacyStep = ['runner.ready', 'runner.download', 'runner.arrange', 'runner.blog_write', 'runner.blog_save', 'runner.band_write', 'runner.record'][(step ?? 0) - 1];
-  return <p className="meta">{failedStepLabel(log?.failedStep ?? legacyStep)} · {logReasonLabel(log?.reason ?? reason)}</p>;
+  const code = log?.reason ?? reason;
+  const label = code === 'BAND_POST_UNCONFIRMED' || code === 'BLOG_PUBLISH_UNCONFIRMED' ? '게시와 게시 확인' : failedStepLabel(log?.failedStep ?? legacyStep);
+  return <p className="meta">{label} · {logReasonLabel(code)}</p>;
 }
 export function JobLogs({ back }: { back(): void }) {
   const [rows, setRows] = useState<JobLogRow[]>([]), [error, setError] = useState(''), [busy, setBusy] = useState(false);
