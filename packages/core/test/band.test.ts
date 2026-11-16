@@ -86,7 +86,39 @@ function workFor(plan: InputPlan, files: { url: string; path: string }[]) {
 const input: JobInput = { productNo: 1, mode: 'draft', targets: [{ channel: 'band', name: '밴드 A', key: '111' }], options: { polish: false, closing: false, linkCard: false } };
 
 describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pages', () => {
-  it('reads every opaque membership and reopens the same-URL dropdown on return without opening any composer', async () => {
+  it.each([false, true])(
+      'WP17 one-shot allowance consumed only immediately before submit (allowed=%s)',
+      async (allowed) => {
+        const f = await fixture();
+        await f.execution.write();
+        f.execution.env.submitTimeoutMs = 300;
+        const consume = vi.fn(async () => allowed);
+        // The synthetic loopback page stays fully intercepted. This switches only
+        // the production gate path; the remote write barrier remains closed.
+        Object.defineProperty(f.directory, 'localPublish', { value: false });
+        Object.defineProperty(f.directory, 'publishAllowance', {
+          value: { available: async () => allowed, consume },
+        });
+        await expect(f.execution.publish()).rejects.toThrow(
+          allowed ? 'BAND_POST_UNCONFIRMED' : 'REAL_BAND_PUBLISH_DISABLED',
+        );
+        expect(consume).toHaveBeenCalledTimes(1);
+        expect(
+          await f
+            .page()
+            .evaluate('Number(localStorage.getItem("postPresses"))'),
+        ).toBe(allowed ? 1 : 0);
+        if (allowed) {
+          await expect(f.execution.publish()).rejects.toThrow(
+            'BAND_POST_UNCONFIRMED',
+          );
+          expect(consume).toHaveBeenCalledTimes(1);
+        }
+        expect(f.external()).toBe(0);
+      },
+      20000,
+    );
+    it('reads every opaque membership and reopens the same-URL dropdown on return without opening any composer', async () => {
     const f = await fixture('new-dropdown');
     let created = 0;
     const host: SurfaceHost = { ...f.host, create: async session => {

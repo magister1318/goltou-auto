@@ -30,6 +30,8 @@ export interface PostInput {
 }
 export interface PostUpdate { postNo: number; status: PostStatus; step: number; failReason: string; postUrl: string }
 export interface Post extends PostUpdate {
+  /** Local installation metadata; older records may lack it. */
+  blogVisibility?: 'public' | 'private';
   productNo: number; productTitle: string; channel: Channel; mode: Mode; targetName: string;
   userName: string; startedAt: string; finishedAt: string; productChanged: boolean;
 }

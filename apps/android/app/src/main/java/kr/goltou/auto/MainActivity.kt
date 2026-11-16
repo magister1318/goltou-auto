@@ -50,6 +50,11 @@ class MainActivity : ComponentActivity() {
         root.setOnApplyWindowInsetsListener { view, insets ->
             val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.ime())
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            // Notify after native IME padding has resized the WebView; the UI
+            // scrolls the focused label/field and hides tabs while editing.
+            if (::ui.isInitialized) ui.post {
+                ui.evaluateJavascript("window.dispatchEvent(new Event('goltou:keyboard'))", null)
+            }
             // Native padding owns these insets. Forwarding them also gives the
             // WebView a CSS safe-area bottom, doubling every sheet/bar's gap.
             WindowInsets.CONSUMED
