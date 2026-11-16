@@ -1,5 +1,5 @@
-import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 // Reference: ../refs/DAF/daf3/packages/engine-naver-editor/test/harness/fake-smarteditor.ts (bold toolbar selector only).
+import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import { inputCharacters, type KeyInput, type Surface } from '@goltou/surface';
 import { point, read } from '../dom';
 import { BlogFormattingError, blogRunReader, normalizeBlogRuns, splitBlogRuns, type BlogRun, type NormalizedBlogRun } from './formatting';

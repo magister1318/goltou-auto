@@ -1,4 +1,4 @@
-param([string]$Destination = (Join-Path $PSScriptRoot '../../runs/logs'))
+﻿param([string]$Destination = (Join-Path $PSScriptRoot '../../runs/logs'))
 $ErrorActionPreference = 'Stop'
 $destinationPath = [IO.Path]::GetFullPath($Destination)
 New-Item -ItemType Directory -Path $destinationPath -Force | Out-Null

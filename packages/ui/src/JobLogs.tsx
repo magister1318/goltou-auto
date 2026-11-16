@@ -39,8 +39,9 @@ export function logReasonLabel(reason = '') {
   if (reason === 'NOT_STARTED') return '작업 조건을 확인하지 못해 진행을 멈췄습니다.';
   return '이 단계의 처리를 마치지 못했습니다. 작업 로그에서 진행 순서를 확인해 주세요.';
 }
-export function JobLogFailure({ log, reason }: { log?: JobLogRow | undefined; reason?: string | undefined }) {
-  return <p className="meta">{failedStepLabel(log?.failedStep)} · {logReasonLabel(log?.reason ?? reason)}</p>;
+export function JobLogFailure({ log, reason, step }: { log?: JobLogRow | undefined; reason?: string | undefined; step?: number }) {
+  const legacyStep = ['runner.ready', 'runner.download', 'runner.arrange', 'runner.blog_write', 'runner.blog_save', 'runner.band_write', 'runner.record'][(step ?? 0) - 1];
+  return <p className="meta">{failedStepLabel(log?.failedStep ?? legacyStep)} · {logReasonLabel(log?.reason ?? reason)}</p>;
 }
 export function JobLogs({ back }: { back(): void }) {
   const [rows, setRows] = useState<JobLogRow[]>([]), [error, setError] = useState(''), [busy, setBusy] = useState(false);

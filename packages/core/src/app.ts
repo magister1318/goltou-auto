@@ -397,7 +397,7 @@ export class AppCore {
       const saved = job.completedSteps.includes(record.channel === 'blog' ? 5 : 6);
       const result = job.targetResults?.find(t => t.channel === record.channel && t.key === record.key);
       const status: PostStatus = (result?.status === 'running' && job.status === 'user_paused' ? 'stopped' : result?.status) ?? (saved ? (record.channel === 'band' && job.mode === 'draft' ? 'stopped_before_post' : job.mode === 'draft' ? 'draft_saved' : 'published') : job.status === 'failed' ? 'failed' : job.status === 'user_paused' ? 'stopped' : 'running');
-      const update = { postNo: record.postNo, status, step: job.step, failReason: ['failed', 'stopped'].includes(status) ? (result?.reason ?? job.message) : '', postUrl: status === 'published' ? (result?.postUrl ?? job.postUrl ?? (job.targetResults ? '' : `https://example.invalid/posts/${record.postNo}`)) : '' };
+      const update = { postNo: record.postNo, status, step: job.step, failReason: ['failed', 'stopped'].includes(status) ? (result?.reason ?? job.message) : '', postUrl: status === 'published' || record.channel === 'band' && status === 'failed' && result?.reason === 'BAND_POST_UNCONFIRMED' ? (result?.postUrl ?? job.postUrl ?? (job.targetResults ? '' : `https://example.invalid/posts/${record.postNo}`)) : '' };
       const identity = JSON.stringify(update);
       if (record.updates.has(identity)) {
         const failure = record.updates.get(identity);

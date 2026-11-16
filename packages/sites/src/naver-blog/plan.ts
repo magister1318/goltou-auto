@@ -1,5 +1,5 @@
-import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 // Reference: ../refs/DAF/daf3/packages/engine-naver-editor/src/insert/info-table.ts (table toolbar/control selectors only; DOM mutations excluded).
+import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import type { GuardedRequest, GuardedResponse, Surface, SurfaceDialog, SurfaceHost } from '@goltou/surface';
 import { inputCharacters } from '@goltou/surface';
 import { click, compact, point, read, sleep, waitFor } from '../dom';

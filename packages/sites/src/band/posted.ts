@@ -26,15 +26,15 @@ export function photoPath(value: string) {
   try { return new URL(value.startsWith('//') ? `https:${value}` : value).pathname; } catch { return ''; }
 }
 export async function readFullBandPost(surface: Surface): Promise<FullBandPost | null> {
-  return traceStep('sites.band.posted.readFullBandPost', async () => read(surface, `
-    const roots=docs.flatMap(({d})=>Array.from(d.querySelectorAll('.postsDetailArea ._contentListRegion'))).filter(visible);
+  return traceStep('sites.band.posted.readFullBandPost', async () => read<FullBandPost | null>(surface, `
+    const roots=docs.flatMap(({d})=>Array.from(d.querySelectorAll('.postsDetailArea ._contentListRegion,.postWrap.-postDetailPage .cContentsCard .postBody'))).filter(visible);
     if(roots.length!==1)return null;const root=roots[0];
-    const texts=Array.from(root.querySelectorAll('p.txtBody,p.postText,.postTextView')).filter(visible);if(texts.length!==1)return null;
+    const texts=Array.from(root.querySelectorAll('p.txtBody,p.postText,.postTextView,.dPostTextView > .postText')).filter(visible);if(texts.length!==1)return null;
     const text=texts[0],body=text.innerText.replace(/\\r\\n?/g,'\\n').replace(/[\\u200b-\\u200d\\ufeff]/g,'').trimEnd();
     const images=Array.from(root.querySelectorAll('img')).filter(img=>img.closest('._photoRegion,._photoListRegion,.photo,.postPhoto,.photoView,.photoRegion')||img.classList.contains('mediaImg'));
     const all=images.length?images:Array.from(root.querySelectorAll('img')).filter(img=>!img.closest('.postWriterInfo,.postAuthor,.comment,.profile'));
     return {body,photos:all.map(img=>img.currentSrc||img.src||''),lineBreaks:(body.match(/\\n/g)||[]).length,hashtags:text.querySelectorAll('button.hashTag,a.hashTag').length,links:text.querySelectorAll('a[href^="http"]').length};
-  `));
+  `).then(value => { if (!value) trace('selector', 'wait', { selector: 'body', reason: 'CONTROL_NOT_FOUND', counts: { expected: 1, observed: 0 } }); return value; }));
 }
 export function verifyFullBandPost(expected: string, uploaded: readonly string[], actual: FullBandPost) {
   const planned = normalizedBandBody(expected);

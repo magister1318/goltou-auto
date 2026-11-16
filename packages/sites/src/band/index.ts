@@ -1,5 +1,5 @@
-import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 // Reference: ../refs/golfliat/programs/golfliat-workbench/electron/renderer.js, fillBandComposerInWebview (composer/file selectors and readback only; DOM setters, synthetic paste and CKEditor mutations excluded).
+import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import type { Surface } from '@goltou/surface';
 import { click, compact, point, read, sleep, typeParagraphs, waitFor } from '../dom';
 import type { exampleArticle } from '../fixture';

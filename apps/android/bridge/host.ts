@@ -1,5 +1,5 @@
-import { traceStep, trace, reasonCode } from '../../../packages/surface/src/telemetry';
 // Reference: ../refs/DAF/daf3/apps/mobile/src/core/cdp.ts (private socket target discovery).
+import { traceStep, trace, reasonCode } from '../../../packages/surface/src/telemetry';
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
 import type { Surface, SurfaceHost, SurfaceSession } from '../../../packages/surface/src/index';

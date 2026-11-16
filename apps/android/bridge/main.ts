@@ -1,9 +1,9 @@
+// Reference: ../refs/DAF/daf3/apps/mobile/src/core/main.ts (embedded Node startup arguments).
 import { existsSync } from 'node:fs';
 import { JobLogStore } from '../../../packages/core/src/job-logs';
 import { configureTrace, trace, reasonCode } from '../../../packages/surface/src/telemetry';
 declare const __GOLTOU_COMMIT__: string;
 declare const __GOLTOU_VERSION__: string;
-// Reference: ../refs/DAF/daf3/apps/mobile/src/core/main.ts (embedded Node startup arguments).
 import path from 'node:path';
 import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { AppCore, ChannelRegistrationRunner, goltouPhotoUrl, NativeBridge, startCore, fileMediaStorage, filePolishStrengthStore, type CoreOptions } from '../../../packages/core/src/index';
@@ -108,6 +108,12 @@ async function start() {
         await ready();
         const token = await new AndroidTokenStore(native).read();
         if (!token) throw Error('BAND_PUBLISH_RECOVERY_REFUSED');
+        const cleanupContext = path.join(path.dirname(argument('data')), 'uncertain-band-cleanup.json');
+        if (existsSync(cleanupContext)) {
+          const { recoverUncertainBandForDeletion } = await import('./band-delete-recovery');
+          await recoverUncertainBandForDeletion(cleanupContext, createApiClient(apiOrigin, fetch), token, host, logs, ready);
+          return;
+        }
         await recoverBandPublish(path.join(path.dirname(argument('data')), 'wp19', 'band-publish-context.json'), createApiClient(apiOrigin, fetch), token, host, ready);
       },
       inspectRecordedPost: async () => {

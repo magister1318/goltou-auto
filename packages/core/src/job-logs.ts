@@ -88,6 +88,18 @@ export class JobLogStore implements TraceProvider {
     }
   }
   forRecord(recordIdentity: string) { const hash = this.identity(recordIdentity); return this.list().find(row => row.recordHash === hash || row.recordHashes?.includes(hash)); }
+  /** Proves one acknowledged create for this local record without retaining its URL. */
+  creationProof(recordIdentity: string) {
+    const hash = this.identity(recordIdentity);
+    for (const row of [...this.rows].reverse()) {
+      if (row.kind !== 'band_post' || row.result !== 'uncertain' || row.reason !== 'BAND_POST_UNCONFIRMED' || !(row.recordHash === hash || row.recordHashes?.includes(hash))) continue;
+      const lines = readFileSync(path.join(this.directory, row.file), 'utf8').trim().split('\n').flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } });
+      const creates = lines.filter(line => line.step === 'barrier' && line.reason === 'CREATE_ALLOWED' && !line.network);
+      const responses = lines.filter(line => line.step === 'barrier' && line.reason === 'BAND_PUBLISH_RESPONSE_OK');
+      if (creates.length === 1 && responses.length === 1) return { startedAt: row.at, acknowledgedAt: responses[0].timestamp as number };
+    }
+    return undefined;
+  }
   begin(kind: JobKind, site: LogSite): TraceJob {
     if (!kinds.includes(kind) || !sites.includes(site)) throw new Error('INVALID_LOG_JOB');
     const at = this.now(), id = randomUUID(), date = new Date(at).toISOString().slice(0, 10).replace(/-/g, '');
@@ -110,7 +122,7 @@ export class JobLogStore implements TraceProvider {
       this.durable(path.join(this.directory, row.file), JSON.stringify({ timestamp: this.now(), jobId: id, site, kind, step, event,
         duration: Number.isFinite(duration) && duration >= 0 ? duration : 0, ...data,
         ...(step === 'job' && event === 'start' ? { environment: this.environment } : {}), ...(end ? { result: end } : {}) }) + '\n');
-      if (end) { terminal = true; row.result = end; if (detail?.reason) row.reason = detail.reason; else delete row.reason; this.index(); this.retain(); }
+      if (end) { terminal = true; row.result = end; if (detail?.reason) row.reason = reasonCode(detail.reason); else if (event === 'fail') row.reason = 'UNEXPECTED_FAILURE'; else delete row.reason; this.index(); this.retain(); }
     };
     const job: TraceJob = { id, get decisionReason() { return decisionReason; }, line, end: (result, reason) => {
       if (!['succeeded', 'failed', 'stopped', 'uncertain'].includes(result)) throw new Error('INVALID_LOG_RESULT');
@@ -126,7 +138,15 @@ export class JobLogStore implements TraceProvider {
         const lastNewline = raw.lastIndexOf(10);
         if (lastNewline !== raw.length - 1) truncateSync(absolute, lastNewline + 1);
         const lines = raw.subarray(0, lastNewline + 1).toString('utf8').trim().split('\n').flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } });
-        const first = lines[0], last = lines.at(-1);
+        let first = lines[0], last = lines.at(-1);
+        if (!first) {
+          const match = /^(\d+)-([a-z_]+)-([a-f0-9-]{36})\.jsonl$/.exec(file);
+          if (match && kinds.includes(match[2] as JobKind) && Number.isSafeInteger(Number(match[1]))) {
+            const kind = match[2] as JobKind;
+            first = { timestamp: Number(match[1]), jobId: match[3], kind, site: kind.startsWith('blog') ? 'naver' : kind.startsWith('band') ? 'band' : 'app', step: 'job', event: 'start', duration: 0 };
+            this.durable(absolute, JSON.stringify(first) + '\n', false); lines.push(first); last = first;
+          }
+        }
         if (!first || !kinds.includes(first.kind) || !sites.includes(first.site) || !/^[a-f0-9-]{36}$/.test(first.jobId) || !Number.isFinite(first.timestamp)) continue;
         const failure = lines.filter(line => line.event === 'fail' && line.step !== 'terminal').at(-1);
         const row: StoredRow = { at: first.timestamp, jobId: first.jobId, kind: first.kind, site: first.site, file: `${date}/${file}`,

@@ -30,7 +30,7 @@ async function fixture(mode = '', extra: { tags?: boolean; photos?: number; phot
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   cleanup.push(() => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }));
   const port = (server.address() as { port: number }).port, editorUrl = `http://127.0.0.1:${port}/editor`;
-  const browser = await chromium.launch({ executablePath: executablePath!, headless: true, args: ['--disable-background-networking', '--no-first-run'] });
+  const browser = await chromium.launch({ executablePath: executablePath!, headless: true, args: ['--disable-background-networking', '--no-first-run', `--explicitly-allowed-ports=${port}`] });
   cleanup.push(() => browser.close());
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   let external = 0;
@@ -279,7 +279,7 @@ describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback e
     const runner = kind === 'blog' ? new BlogRegistrationRunner(services, record, () => {}) : new ChannelRegistrationRunner({ blog: services, band: { host: f.host, baseUrl: new URL(f.editorUrl).origin, localPublish: true } }, record, () => {});
     cleanup.push(async () => runner.dispose());
     await runner.start({ productNo: 1, mode: 'draft', targets: [{ channel: 'blog', name: '합성', key: 'fixture' }], options: { polish: false, closing: false, linkCard: false } }, '합성 상품', 0, work);
-    await vi.waitFor(() => expect(runner.job?.status).toBe('draft_unverified'), { timeout: 15000 });
+    await vi.waitFor(() => expect(runner.job?.status, JSON.stringify({ code: runner.job?.failureCode, step: runner.job?.step })).toBe('draft_unverified'), { timeout: 15000 });
     expect(recorded.at(-1)).toMatchObject({ status: 'draft_unverified', targetResults: [{ status: 'stopped', reason: 'BLOG_DRAFT_SAVED_UNVERIFIED' }] });
     expect(runner.job?.completedSteps).not.toContain(5);
     await expect(runner.resume()).rejects.toMatchObject({ code: 'conflict' });
@@ -522,7 +522,7 @@ describe('WP18 mandatory rich-text editor fixture', () => {
     const runner = kind === 'blog' ? new BlogRegistrationRunner(services, record, () => {}) : new ChannelRegistrationRunner({ blog: services, band: { host: f.host } }, record, () => {});
     cleanup.push(async () => runner.dispose());
     await runner.start({ productNo: 1, mode: 'draft', targets: [{ channel: 'blog', name: '합성', key: 'fixture' }], options: { polish: false, closing: false, linkCard: false } }, '합성 서식 제목', 0, work);
-    await vi.waitFor(() => expect(runner.job?.status).toBe('draft_unverified'), { timeout: 20000 });
+    await vi.waitFor(() => expect(runner.job?.status, JSON.stringify({ code: runner.job?.failureCode, step: runner.job?.step })).toBe('draft_unverified'), { timeout: 20000 });
     expect(runner.job).toMatchObject({ failureCode: 'BLOG_FORMATTING_REOPENED:1', blogFormattingIssues: [{ paragraph: 1, fields: ['bold', 'href'] }], targetResults: [{ status: 'stopped', reason: 'BLOG_FORMATTING_REOPENED:1' }] });
     expect(runner.job!.completedSteps).not.toContain(5);
     await expect(runner.resume()).rejects.toMatchObject({ code: 'conflict' });

@@ -1430,7 +1430,7 @@ export function App() {
                   >
                     {historyLine(post, recordTime(post.startedAt))}
                   </p>
-                  {!deletedPost(post) && (post.status === 'failed' || uncertainReason(post.failReason) || !!formattingMessage(post.failReason)) && <JobLogFailure log={'jobLog' in post ? post.jobLog as import('@goltou/core/job-logs').JobLogRow : undefined} reason={post.failReason} />}
+                  {!deletedPost(post) && (post.status === 'failed' || uncertainReason(post.failReason) || !!formattingMessage(post.failReason) || post.jobLog && ['failed', 'uncertain'].includes(post.jobLog.result)) && <JobLogFailure log={post.jobLog} reason={post.failReason} step={post.step} />}
                   {!deletedPost(post) && formattingMessage(post.failReason) && <p className="meta">{formattingMessage(post.failReason)}</p>}
                   {!deletedPost(post) && post.status === 'failed' && !formattingMessage(post.failReason) && (
                     <p className="meta">

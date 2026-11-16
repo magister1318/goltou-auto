@@ -1,5 +1,5 @@
-import { currentTrace, traceOperations, reasonCode } from '@goltou/surface/telemetry';
 // Reference: ../refs/DAF/daf3/apps/mobile/src/core/native.ts (trimmed request/reply channel).
+import { currentTrace, traceOperations, reasonCode } from '@goltou/surface/telemetry';
 import WebSocket from 'ws';
 
 type Pending = { resolve(value: unknown): void; reject(error: Error): void; timer: NodeJS.Timeout };

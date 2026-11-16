@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { appendFileSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, readFileSync, readdirSync, rmSync, truncateSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { JobLogStore } from '../src/job-logs';
@@ -30,6 +30,7 @@ describe('permanent local job logs', () => {
       } as unknown as TraceDetail);
     }
     job.end('failed', 'UNEXPECTED_FAILURE');
+    for (const secret of secrets) f.store.begin('band_post', 'band').end('failed', secret as never);
     const output = f.files().map(file => readFileSync(file, 'utf8')).join('') + readFileSync(path.join(f.dir, 'index.json'), 'utf8');
     for (const secret of secrets) expect(output).not.toContain(secret);
     expect(f.lines()[1]).toMatchObject({ counts: { observed: 3 }, reason: 'UNEXPECTED_FAILURE', network: { decision: 'blocked', bodyFields: ['[other]'] } });
@@ -63,6 +64,11 @@ describe('permanent local job logs', () => {
     expect(f.lines().at(-1)).toMatchObject({ recovery: 'interrupted', step: 'terminal', result: 'stopped' });
     new JobLogStore(f.dir); expect(f.lines().filter(line => line.step === 'terminal')).toHaveLength(1);
     expect(f.lines().some(line => line.step === 'runner.band_write')).toBe(true);
+  });
+  it('recovers even a kill between file creation and the first completed line', () => {
+    const f = fixture(); f.store.begin('band_post', 'band'); truncateSync(f.files()[0]!, 0);
+    expect(new JobLogStore(f.dir).list()[0]).toMatchObject({ kind: 'band_post', result: 'stopped', reason: 'INTERRUPTED' });
+    expect(f.lines().filter(line => line.step === 'terminal')).toHaveLength(1);
   });
   it('expires oldest completed jobs at either the day or byte limit and preserves active trails', () => {
     let now = Date.UTC(2026, 0, 1); const f = fixture({ days: 30, bytes: 2200 }, () => now);

@@ -1,6 +1,6 @@
+// Reference: ../refs/golfliat/programs/golfliat-workbench/electron/renderer.js, fillBandComposerInWebview (readback and file input selectors only).
 import { createdBandPosts, readFullBandPost, verifyFullBandPost, normalizedBandBody, type CreatedBandPost } from './posted';
 import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
-// Reference: ../refs/golfliat/programs/golfliat-workbench/electron/renderer.js, fillBandComposerInWebview (readback and file input selectors only).
 import type { Surface, SurfaceDialog, SurfaceHost } from '@goltou/surface';
 import { click, compact, point, read, waitFor } from '../dom';
 import { closeComposer, confirmBandPhotos, listBands } from './index';
@@ -180,6 +180,7 @@ export class BandDirectory {
   disarm() { if (this.submit) this.submit.armed = false; this.record('DISARMED'); }
   blockedBeforeSend(key: string) { return this.submit?.key === key && !this.submit.sent && this.submit.blockConfirmed ? `BAND_POST_BLOCKED:${this.submit.blocked!}` : undefined; }
   submitted(key: string) { return this.submit?.key === key && this.submit.sent && this.submit.succeeded; }
+  createdReceipt(key: string) { return this.submitted(key) && this.submit?.post ? `${this.baseUrl}/band/${key}/post/${this.submit.post}` : undefined; }
   existingTitle(title: string) { return this.feedPosts.some(post => post.body.split('\n')[0] === title); }
   createdPost(title: string, after: number): CreatedBandPost | undefined {
     const candidates = this.feedPosts.filter(post => post.owned && post.body.split('\n')[0] === title && post.createdAt >= after - 5000 && post.createdAt <= Date.now() + 5000);
@@ -257,6 +258,7 @@ export class BandExecution {
   private postAttempted = false;
   private submittedAt = 0;
   private verifiedPublished: string | undefined;
+  private createdIdentity: string | undefined;
   private discardAttempted = false;
   private restartAllowed = false;
   private verified = false;
@@ -267,6 +269,7 @@ export class BandExecution {
     if (plan.channel !== 'band') throw new Error('BAND_PLAN_REQUIRED');
   }
   get surface() { return this.env.directory.surface; }
+  get createdReceiptUrl() { return this.createdIdentity; }
   private async guard() {
     return traceStep('sites.band.plan.BandExecution.guard', async () => {
     this.env.check(); await this.env.directory.guard(true);
@@ -438,6 +441,7 @@ export class BandExecution {
       // The feed collapses empty lines and serializes only a photo prefix. It
       // establishes identity; only the full post below establishes content.
       if (!candidate || compact(candidate.body) !== compact(bandText(this.plan)) || candidate.photoCount > this.photoUrls().length || candidate.photoCount < Math.min(1, this.photoUrls().length)) return null;
+      this.createdIdentity = candidate.url;
       const uploaded = this.checkpoint?.slots.map(slot => { try { return JSON.parse(slot.signature)[0] as string; } catch { return ''; } }) ?? [];
       if (uploaded.length !== this.photoUrls().length || uploaded.some(url => !url)) throw Error('BAND_PUBLISHED_READBACK_MISMATCH');
       const state = await this.surface!.readState();

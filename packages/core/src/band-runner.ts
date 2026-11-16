@@ -188,6 +188,9 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     } else {
       const result = isBand ? this.result() : j.targetResults!.find(t => t.channel === 'blog');
       if (result && !['draft_saved', 'published'].includes(result.status)) { result.status = 'failed'; result.reason = j.failureCode; }
+      // A successful create receipt identifies the one post even when full
+      // readback fails. Preserve the link for verified deletion, never success.
+      if (isBand && result && j.failureCode === 'BAND_POST_UNCONFIRMED' && this.band?.createdReceiptUrl) result.postUrl = this.band.createdReceiptUrl;
       if ([2, 3].includes(j.step)) for (const target of j.targetResults!) if (target.status === 'running') { target.status = 'failed'; target.reason = j.failureCode; }
       j.status = !isBand && [1, 4, 5].includes(j.step) && j.targets.some(t => t.channel === 'band') ? 'channel_paused' : 'failed';
       j.message = code === 'PHOTO_HOST_NOT_ALLOWED' ? '골투에서 제공하는 주소의 사진만 내려받을 수 있습니다.' : code === 'PHOTO_DOWNLOAD_FAILED' ? '사진을 내려받지 못했습니다. 연결을 확인해 주세요.' : code === 'BAND_PHOTO_LIMIT' ? '관측한 밴드 사진 한도를 넘었습니다. 내용을 넣지 않았습니다. 확인 화면에서 사진 수를 확인해 주세요.' : code.startsWith('BAND_READBACK_MISMATCH') || code === 'BAND_INPUT_MISMATCH' ? '다시 읽은 글자 또는 사진 순서가 달라 게시 전에 멈췄습니다.' : '이 채널의 작업을 마치지 못했습니다. 작성 중인 내용은 그대로 두었습니다.';

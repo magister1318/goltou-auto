@@ -1,5 +1,5 @@
-import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 // Reference: ../refs/DAF/daf3/modules/helper/src/workflow/{editor,publish-draft}.ts and ../refs/DAF/daf3/packages/engine-naver-editor/src/{page/editor-page,verify/page,verify/draft-verifier}.ts (selectors and save/reopen sequence only).
+import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import type { Surface } from '@goltou/surface';
 import { click, compact, read, sleep, waitFor } from '../dom';
 import type { exampleArticle } from '../fixture';

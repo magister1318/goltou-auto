@@ -1,5 +1,5 @@
-import { bindTrace, currentTrace, traceOperations, reasonCode } from '../telemetry';
 // Reference: ../refs/DAF/daf3/apps/mobile/src/core/cdp.ts (request correlation and socket transport).
+import { bindTrace, currentTrace, traceOperations, reasonCode } from '../telemetry';
 import net from 'node:net';
 import WebSocket from 'ws';
 

@@ -34,14 +34,14 @@ describe('immediate publication proof from the posting context', () => {
     expect(createdBandPosts(JSON.stringify({ result_code: 1, result_data: { items: [{ post: post({ web_url: 'https://band.us/band/222/post/9001' }) }] } }), '111')).toEqual([]);
     expect(() => createdBandPosts('{"result_code":0}', '111')).toThrow('BAND_RECORD_READ_RESPONSE');
   });
-  it('rereads the actual full-post DOM, 158 breaks, 29 ordered images, 2 tags and 2 links', async () => {
+  it.each(['expanded', 'direct'])('rereads the %s full-post DOM, 158 breaks, 29 ordered images, 2 tags and 2 links', async layout => {
     browser = await chromium.launch({ executablePath: process.env.CHROMIUM || 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true });
     const context = await browser.newContext(); await context.route('**/*', route => route.abort());
     const page = await context.newPage();
     const text = Array.from({ length: 159 }, (_, i) => i === 158 ? '#합성 #태그 https://example.invalid/a https://example.invalid/b' : `합성 줄 ${i}`).join('\n');
     const photos = Array.from({ length: 29 }, (_, i) => `https://photos.invalid/synthetic-${i}.jpg`);
-    await page.setContent('<div class="postsDetailArea"><div class="_contentListRegion"><p class="txtBody" style="white-space:pre-wrap"></p>' + photos.map(url => `<img class="mediaImg" src="${url}">`).join('') + '</div></div>');
-    await page.locator('p').evaluate((element, value) => { element.textContent = value; element.innerHTML = element.innerHTML.replace(/#합성|#태그/g, '<button class="hashTag">$&</button>').replace(/https:\/\/example.invalid\/[ab]/g, '<a href="$&">$&</a>'); }, text);
+    await page.setContent((layout === 'direct' ? '<div class="postWrap -postDetailPage"><div class="cContentsCard"><div class="postBody"><div class="dPostTextView"><div class="postText" style="white-space:pre-wrap"></div></div>' : '<div class="postsDetailArea"><div class="_contentListRegion"><p class="txtBody" style="white-space:pre-wrap"></p>') + photos.map(url => `<img class="mediaImg" src="${url}">`).join('') + (layout === 'direct' ? '</div></div></div>' : '</div></div>'));
+    await page.locator(layout === 'direct' ? '.postText' : 'p').evaluate((element, value) => { element.textContent = value; element.innerHTML = element.innerHTML.replace(/#합성|#태그/g, '<button class="hashTag">$&</button>').replace(/https:\/\/example.invalid\/[ab]/g, '<a href="$&">$&</a>'); }, text);
     const surface = { evaluateReadOnly: <T>(expression: string) => page.evaluate<T>(expression) } as Surface;
     const actual = await readFullBandPost(surface); expect(actual).toMatchObject({ body: text, lineBreaks: 158, hashtags: 2, links: 2 });
     expect(() => verifyFullBandPost(text, photos, actual!)).not.toThrow();
