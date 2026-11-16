@@ -1,3 +1,4 @@
+import { currentTrace, traceOperations, reasonCode } from '@goltou/surface/telemetry';
 // Reference: ../refs/DAF/daf3/apps/mobile/src/core/native.ts (trimmed request/reply channel).
 import WebSocket from 'ws';
 
@@ -46,15 +47,22 @@ export class NativeBridge {
     socket.on('error', () => { if (this.socket === socket) this.detach(); });
   }
 
-  call<T>(op: string, args: Record<string, unknown> = {}, timeoutMs = 15000): Promise<T> {
+  async call<T>(op: string, args: Record<string, unknown> = {}, timeoutMs = 15000): Promise<T> {
+    const log = currentTrace(), started = Date.now();
+    const operation = traceOperations.find(item => item === op) ?? 'other';
+    let failed = false;
+    log?.line('native', 'start', { operation });
+    try {
     const socket = this.socket;
-    if (!socket || socket.readyState !== WebSocket.OPEN) return Promise.reject(new Error('NATIVE_NOT_CONNECTED'));
+    if (!socket || socket.readyState !== WebSocket.OPEN) throw new Error('NATIVE_NOT_CONNECTED');
     const id = this.nextId++;
-    return new Promise((resolve, reject) => {
+    return await new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`NATIVE_TIMEOUT ${op}`)); }, timeoutMs);
       this.pending.set(id, { resolve: value => resolve(value as T), reject, timer });
       socket.send(JSON.stringify({ id, op, ...args }), error => { if (error) this.detach(); });
     });
+    } catch (error) { failed = true; log?.line('native', 'fail', { operation, reason: reasonCode(error) }, Date.now() - started); throw error; }
+    finally { if (!failed) log?.line('native', 'ok', { operation }, Date.now() - started); }
   }
 
   detach(): void {

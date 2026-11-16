@@ -12,6 +12,12 @@ const safeLink = (href: string) => {
     return undefined;
   }
 };
+/** Tokens preserve every character; styling never rewrites the posting plan. */
+export function BandText({ text }: { text: string }) {
+  return <>{text.split(/(https?:\/\/[^\s<>]+|#[\p{L}\p{N}_]+)/gu).map((part, i) => /^https?:\/\//.test(part) && safeLink(part)
+    ? <a key={i} href={safeLink(part)} onClick={e => e.preventDefault()}>{part}</a>
+    : /^#[\p{L}\p{N}_]+$/u.test(part) ? <button key={i} type="button" className="band-hashtag">{part}</button> : <span key={i}>{part}</span>)}</>;
+}
 export function sourcePhotoRatios(html: string): Record<string, number> {
   if (typeof DOMParser === 'undefined') return {};
   return Object.fromEntries(
@@ -53,8 +59,9 @@ export function ConversionPreview({
         </div>
         {plan.channel === 'band' ? (
           <>
-            <div className="band-text">{bandText(plan)}</div>
-            <div className="band-photo-grid">
+            <section className="band-feed-sample" aria-label="목록 모양"><h3>목록에서는 이렇게 보입니다</h3><div className="band-text"><BandText text={Array.from(bandText(plan)).slice(0, 115).join('')} />{Array.from(bandText(plan)).length > 115 && <span className="band-more">… 더보기</span>}</div><div className="band-feed-collage">{photos.slice(0, 3).map((url, i) => <span className="band-feed-tile" key={i}><ProductPhoto url={url} preview ratio={1} />{i === 2 && photos.length > 3 && <span className="band-remaining">+{photos.length - 3}</span>}</span>)}</div></section>
+            <div className="band-text band-full-text"><BandText text={bandText(plan)} /></div>
+            <div className="band-photo-stack">
               {photos.map((url, i) => (
                 <ProductPhoto
                   key={`${i}:${url}`}

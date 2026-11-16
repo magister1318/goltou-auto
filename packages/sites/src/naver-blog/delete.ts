@@ -1,3 +1,4 @@
+import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import type { Surface, SurfaceDialog } from '@goltou/surface';
 import { point, read, sleep, waitFor } from '../dom';
 import { postIdentity, type PublishedPost } from './publish-safety';
@@ -40,13 +41,14 @@ type Rect = { x: number; y: number; width: number; height: number };
 const same = (a: Rect | undefined, b: Rect | undefined) => !!a && !!b && ['x', 'y', 'width', 'height'].every(k => a[k as keyof Rect] === b[k as keyof Rect]);
 const noop: DeleteLog = async () => {};
 export async function preparePostDelete(surface: Surface, target: DeleteTarget, log: DeleteLog = noop, run = 0) {
+    return traceStep('sites.naver-blog.delete.preparePostDelete', async () => {
   const check = async (items: DeleteDiagnostic[]) => {
     for (const item of items) await log({ ...item, run });
     const failed = items.find(i => i.pass !== 1);
     if (failed) throw new Error(`BLOG_POST_DELETE_CHECK_${failed.item}`);
   };
   const safeRead = async <T>(item: number, action: () => Promise<T>) => {
-    try { return await action(); } catch { await check([{ item, pass: 0 }]); throw new Error(`BLOG_POST_DELETE_CHECK_${item}`); }
+    try { return await action(); } catch { trace('sites.naver-blog.delete.preparePostDelete', 'fail', { reason: 'CAUGHT_FAILURE' });  await check([{ item, pass: 0 }]); throw new Error(`BLOG_POST_DELETE_CHECK_${item}`); }
   };
   const identity = async () => check(deleteIdentity(await safeRead(1, () => read<DeletePage[]>(surface, deletePageSource)), target));
   const focus = async () => check([{ item: 8, pass: Number(await safeRead(8, async () => await surface.readAppFocus?.() !== false && await read<boolean>(surface, deleteFocusSource))) }]);
@@ -82,18 +84,21 @@ export async function preparePostDelete(surface: Surface, target: DeleteTarget, 
     await check([{ item: 6, pass: Number(same(stable, now)), ...(now ?? {}), elapsedMs: Date.now() - stableAt }]);
     const visiblePoint = await point(surface, deleteSelector, '삭제');
     let hit = false;
-    try { hit = !!visiblePoint && !!await surface.readClickTarget?.(stable.x, stable.y, deleteSelector); } catch { /* numeric refusal below */ }
+    try { hit = !!visiblePoint && !!await surface.readClickTarget?.(stable.x, stable.y, deleteSelector); } catch { trace('sites.naver-blog.delete.preparePostDelete', 'fail', { reason: 'CAUGHT_FAILURE' });  /* numeric refusal below */ }
     await check([{ item: 7, pass: Number(hit), x: stable.x, y: stable.y }]);
     await focus(); await noDialog();
   };
   await beforePress();
   return { point: stable, beforePress };
-}
+
+    });
+  }
 export const deleteOpenOptions = (url: string) => ({ url, session: 'naver' as const, width: 1280, height: 900,
   userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36' });
 // A missing-post URL may show a native alert before its load event. Inspect it
 // through Surface while navigation is pending; never accept an unknown dialog.
 export async function openPostDeletionRead(surface: Surface, url: string): Promise<boolean> {
+    return traceStep('sites.naver-blog.delete.openPostDeletionRead', async () => {
   const expected = postIdentity(url);
   if (!expected) throw new Error('BLOG_POST_DELETE_IDENTITY_UNCONFIRMED');
   if (await surface.readDialog?.()) throw new Error('BLOG_POST_DELETE_EXISTING_DIALOG');
@@ -115,8 +120,11 @@ export async function openPostDeletionRead(surface: Surface, url: string): Promi
   }
   if (failure) throw failure;
   return false;
-}
+
+    });
+  }
 export async function verifyPostAbsentFromList(surface: Surface, url: string, title: string) {
+    return traceStep('sites.naver-blog.delete.verifyPostAbsentFromList', async () => {
   const receipt = postIdentity(url);
   if (!receipt) throw new Error('BLOG_POST_DELETE_IDENTITY_UNCONFIRMED');
   const blog = new URL(receipt.url).pathname.split('/')[1]!;
@@ -125,14 +133,20 @@ export async function verifyPostAbsentFromList(surface: Surface, url: string, ti
   const links = await read<string[]>(surface, `return docs.flatMap(({d})=>Array.from(d.querySelectorAll('a[href]')).map(e=>e.href));`);
   const titlePresent = await read<boolean>(surface, `return docs.some(({d})=>(d.body?.innerText||'').includes(${JSON.stringify(title)}));`);
   if (!links.some(url => postIdentity(url)) || titlePresent || links.some(url => postIdentity(url)?.url === receipt.url)) throw new Error('BLOG_POST_DELETE_LIST_UNCONFIRMED');
-}
+
+    });
+  }
 export async function verifyPostGone(surface: Surface, target: DeleteTarget) {
+    return traceStep('sites.naver-blog.delete.verifyPostGone', async () => {
   const missingAlert = await openPostDeletionRead(surface, target.url);
   if (!missingAlert) await waitFor(() => read<boolean>(surface, `return !docs.some(({d})=>d.querySelector('.se-documentTitle'))&&docs.some(({d})=>Array.from(d.querySelectorAll('.error_content,.error_wrap,[data-post-deleted]')).some(e=>visible(e)&&/삭제된|존재하지 않는|찾을 수 없/.test(e.textContent||'')));`), 10000);
   await verifyPostAbsentFromList(surface, target.url, target.title);
-}
+
+    });
+  }
 /** Three complete dry runs on this page precede the single destructive input. */
 export async function deleteBlogPost(surface: Surface, target: DeleteTarget, log: DeleteLog = noop) {
+    return traceStep('sites.naver-blog.delete.deleteBlogPost', async () => {
   const receipt = postIdentity(target.url);
   if (!receipt) throw new Error('BLOG_POST_DELETE_IDENTITY_UNCONFIRMED');
   for (let run = 1; run <= 3; run++) {
@@ -150,4 +164,6 @@ export async function deleteBlogPost(surface: Surface, target: DeleteTarget, log
   await surface.respondDialog(dialog.id, true); await sleep(800);
   await verifyPostGone(surface, target);
   await log({ item: 17, pass: 1 });
-}
+
+    });
+  }

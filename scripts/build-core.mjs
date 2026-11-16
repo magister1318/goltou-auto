@@ -1,6 +1,8 @@
+import { execFileSync } from 'node:child_process';
 // Reference: ../refs/DAF/daf3/apps/mobile/scripts/build-core.mjs (Node 18 bundle + built-in UI only).
 import { build } from 'esbuild';
 import { apiOrigin } from './app-config.mjs';
+const commit = execFileSync('git', ['rev-parse', '--short=12', 'HEAD'], { windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' } }).toString().trim();
 const debugBuild = !process.argv.includes('--release');
 import { build as viteBuild } from 'vite';
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -28,7 +30,7 @@ mkdirSync(out, { recursive: true });
 const config = { minifySyntax: true, bundle: true, platform: 'node', target: 'node18', format: 'cjs', external: ['bufferutil', 'utf-8-validate'], logLevel: 'warning' };
 await build({ ...config, entryPoints: [path.join(root, 'packages/core/src/index.ts')], outfile: path.join(out, 'core-api.cjs') });
 await build({ ...config, entryPoints: [path.join(root, 'packages/surface/src/cdp/index.ts')], outfile: path.join(out, 'surface.cjs') });
-await build({ ...config, entryPoints: [path.join(root, 'apps/android/bridge/main.ts')], outfile: path.join(out, 'engine.cjs'), define: { __GOLTOU_API_ORIGIN__: JSON.stringify(apiOrigin), __GOLTOU_DEBUG__: JSON.stringify(debugBuild) } });
+await build({ ...config, entryPoints: [path.join(root, 'apps/android/bridge/main.ts')], outfile: path.join(out, 'engine.cjs'), define: { __GOLTOU_API_ORIGIN__: JSON.stringify(apiOrigin), __GOLTOU_COMMIT__: JSON.stringify(commit), __GOLTOU_VERSION__: JSON.stringify(version.versionName), __GOLTOU_DEBUG__: JSON.stringify(debugBuild) } });
 writeFileSync(path.join(out, 'core.cjs'), `// Built-in embedded Node bootstrap. No downloaded code.\ntry { require('./engine.cjs'); } catch { console.error('CORE_LOAD_FAILED'); setInterval(() => {}, 60000); }\n`);
 await viteBuild({ configFile: path.join(root, 'packages/ui/vite.config.ts'), logLevel: 'warn',
   define: { __GOLTOU_DEBUG__: JSON.stringify(debugBuild) }, build: { outDir: path.join(out, 'ui') } });

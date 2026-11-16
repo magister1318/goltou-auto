@@ -1,3 +1,4 @@
+import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import type { Surface } from '@goltou/surface';
 import { ControlNotFoundError, type ControlId } from './control-failure';
 
@@ -16,39 +17,56 @@ export function read<T>(surface: Surface, source: string): Promise<T> {
   })()`);
 }
 export async function point(surface: Surface, selector: string, exactText?: string): Promise<{ x: number; y: number } | null> {
+    return traceStep('sites.dom.point', async () => {
   return read(surface, `for (const {d,x,y} of docs) for (const e of d.querySelectorAll(${JSON.stringify(selector)})) {
     if (!visible(e) || e.disabled) continue;
     ${exactText === undefined ? '' : `if ((e.textContent||'').trim() !== ${JSON.stringify(exactText)}) continue;`}
     const r=e.getBoundingClientRect(), px=x+r.left+r.width/2, py=y+r.top+r.height/2;
     if (px>0 && py>0 && px<innerWidth && py<innerHeight) return {x:px,y:py};
   } return null;`);
-}
+
+    });
+  }
 export async function click(surface: Surface, control: ControlId, selector: string, text?: string, timeoutMs = 8000): Promise<void> {
+    return traceStep('sites.dom.click', async () => {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const found = await point(surface, selector, text);
     if (found) { await surface.click(found.x, found.y); await sleep(350); return; }
-    await sleep(250);
+    trace('poll', 'retry'); await sleep(250);
   }
+  trace('selector', 'fail', { selector: /TITLE/.test(control) ? 'title' : /BODY/.test(control) ? 'body' : /PHOTO|IMAGE/.test(control) ? 'photo_input' : /SAVE|PUBLISH/.test(control) ? 'submit' : 'other', reason: 'CONTROL_NOT_FOUND' });
   throw new ControlNotFoundError(control);
-}
+
+    });
+  }
 export async function typeParagraphs(surface: Surface, paragraphs: readonly string[], check: () => void) {
+    return traceStep('sites.dom.typeParagraphs', async () => {
   for (let i = 0; i < paragraphs.length; i++) {
     check(); await surface.typeText(paragraphs[i]!);
     if (i < paragraphs.length - 1) { await surface.pressKey({ key: 'Enter' }); await surface.pressKey({ key: 'Enter' }); }
   }
-}
+
+    });
+  }
 export async function waitFor<T>(readValue: () => Promise<T | null | false>, timeoutMs = 15000): Promise<T> {
+    return traceStep('sites.dom.waitFor', async () => {
   const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) { const v = await readValue(); if (v) return v; await sleep(250); }
+  let attempt = 0;
+  while (Date.now() < deadline) { const v = await readValue(); if (v) return v; trace('poll', 'wait', { counts: { attempt: ++attempt } }); await sleep(250); }
   throw new Error('OBSERVATION_TIMEOUT');
-}
+
+    });
+  }
 export const compact = (text: string) => text.replace(/[\s\u200b-\u200d\ufeff]+/gu, '');
 
 /** A structural summary contains counts only. Text, attributes and URLs never leave the page. */
 export async function domSummary(surface: Surface) {
+    return traceStep('sites.dom.domSummary', async () => {
   return read<{ documents: number; editables: number; fileInputs: number; images: number; buttons: number }>(surface,
     `return {documents:docs.length,editables:docs.reduce((n,{d})=>n+d.querySelectorAll('[contenteditable="true"],textarea').length,0),
       fileInputs:docs.reduce((n,{d})=>n+d.querySelectorAll('input[type="file"]').length,0),
       images:docs.reduce((n,{d})=>n+d.images.length,0),buttons:docs.reduce((n,{d})=>n+d.querySelectorAll('button').length,0)};`);
-}
+
+    });
+  }

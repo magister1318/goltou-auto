@@ -1,3 +1,4 @@
+import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import type { Surface, SurfaceHost } from '@goltou/surface';
 import { read, sleep } from '../dom';
 import { requestFields } from '../naver-blog/request-fields';
@@ -49,6 +50,7 @@ export async function deleteRecordedBandPost(
   target: { url: string; title: string },
   timeoutMs = 10000,
 ): Promise<BandDeleteResult> {
+    return traceStep('sites.band.delete.deleteRecordedBandPost', async () => {
   const identity = bandPostIdentity(target.url);
   if (!identity || !target.title.trim()) return { status: 'not_started' };
   let surface: Surface | undefined,
@@ -86,7 +88,7 @@ export async function deleteRecordedBandPost(
               JSON.stringify([identity.post])
           )
             return false;
-        } catch {
+        } catch { trace('sites.band.delete.deleteRecordedBandPost', 'fail', { reason: 'CAUGHT_FAILURE' });
           return false;
         }
         armed = false;
@@ -197,10 +199,12 @@ export async function deleteRecordedBandPost(
       await sleep(250);
     }
     return { status: 'uncertain' };
-  } catch {
+  } catch { trace('sites.band.delete.deleteRecordedBandPost', 'fail', { reason: 'CAUGHT_FAILURE' });
     return { status: attempted ? 'uncertain' : 'not_started' };
   } finally {
     armed = false;
     if (surface) await host.destroy(surface).catch(() => {});
   }
-}
+
+    });
+  }

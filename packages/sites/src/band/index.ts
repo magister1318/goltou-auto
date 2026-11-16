@@ -1,9 +1,11 @@
+import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 // Reference: ../refs/golfliat/programs/golfliat-workbench/electron/renderer.js, fillBandComposerInWebview (composer/file selectors and readback only; DOM setters, synthetic paste and CKEditor mutations excluded).
 import type { Surface } from '@goltou/surface';
 import { click, compact, point, read, sleep, typeParagraphs, waitFor } from '../dom';
 import type { exampleArticle } from '../fixture';
 
 export async function listBands(surface: Surface) {
+    return traceStep('sites.band.index.listBands', async () => {
   const mode = await waitFor(() => read<string | null>(surface, `
     if(docs.some(({d})=>d.querySelector('._myBandListWrap a.bandCover:not(._adBandCover)')))return 'legacy';
     if(docs.some(({d})=>d.querySelector('.globalMyBandWrap a._allMyBandList')))return 'home';
@@ -47,9 +49,12 @@ export async function listBands(surface: Surface) {
       const name=(e.querySelector('.bandName')?.textContent||e.textContent||'').trim(); if (!m || !name || seen.has(m[1])) return []; seen.add(m[1]); return [{key:m[1],name:name.slice(0,100)}]; });`);
     return rows.length ? rows : null;
   });
-}
+
+    });
+  }
 const editor = 'textarea._postTextArea, [contenteditable="true"][role="textbox"], .cke_editable[contenteditable="true"], textarea[placeholder*="글"], [contenteditable="true"][data-placeholder]';
 export async function bandSnapshot(surface: Surface, expected: string) {
+    return traceStep('sites.band.index.bandSnapshot', async () => {
   return read<{ bodyMatches: boolean; bodyChars: number; rawBodyChars: number; images: number; maxLength: number | null; fileInput: boolean; draftControl: boolean }>(surface, `
     const e=docs.flatMap(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(editor)}))).find(visible);
     const text=n=>{if(n.nodeType===3)return n.textContent||'';if(n.nodeType!==1||n.tagName.toLowerCase()==='band:attachment'||/(^|\\s)(?:_?placeholder)(?:\\s|$)/.test(n.className||''))return '';return Array.from(n.childNodes).map(text).join('');};
@@ -61,8 +66,11 @@ export async function bandSnapshot(surface: Surface, expected: string) {
       maxLength:e?.hasAttribute('maxlength') ? Number(e.getAttribute('maxlength')) : null,
       fileInput:docs.some(({d})=>d.querySelector('input[type="file"]')),
       draftControl:docs.some(({d})=>Array.from(d.querySelectorAll('button,a')).some(e=>visible(e)&&/^(임시저장|임시 저장|Save draft)$/i.test((e.textContent||'').trim())))};`);
-}
+
+    });
+  }
 export async function openBandComposer(surface: Surface) {
+    return traceStep('sites.band.index.openBandComposer', async () => {
   if (!/^https:\/\/(?:www\.)?band\.us\/band\/\d+\/post\/?(?:[?#].*)?$/.test((await surface.readState()).url)) throw new Error('NOT_BAND_COMPOSE_ROUTE');
   // Never type into an existing composition or a search/comment box.
   if (!await read<boolean>(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(editor)})).some(visible));`)) {
@@ -74,8 +82,11 @@ export async function openBandComposer(surface: Surface) {
     else await click(surface, 'BAND_WRITE_DESKTOP', desktopSelector, '글쓰기');
   }
   await waitFor(() => read(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(editor)})).some(visible));`));
-}
+
+    });
+  }
 export async function fillBand(surface: Surface, article: ReturnType<typeof exampleArticle>, photos: readonly string[], check: () => void) {
+    return traceStep('sites.band.index.fillBand', async () => {
   await openBandComposer(surface);
   const empty = await bandSnapshot(surface, '');
   if (!empty.bodyMatches || empty.images) throw new Error('COMPOSER_NOT_EMPTY');
@@ -92,8 +103,11 @@ export async function fillBand(surface: Surface, article: ReturnType<typeof exam
   const result = await waitFor(async () => { const v = await bandSnapshot(surface, text); return v.images === photos.length ? v : null; }, 60000);
   if (!result.bodyMatches || result.bodyChars !== compact(text).length) throw new Error('BAND_INPUT_MISMATCH');
   return { ...result, attachmentMethod: 'file-input', paste: 'not-tested', draftBehavior: 'not-tested', stoppedBeforePost: true };
-}
+
+    });
+  }
 export async function confirmBandPhotos(surface: Surface, count: number, check: () => Promise<void> = async () => {}, selectedCount = count, timeoutMs = 60000) {
+    return traceStep('sites.band.index.confirmBandPhotos', async () => {
   let confirmed = false;
   await waitFor(async () => {
     await check();
@@ -108,8 +122,11 @@ export async function confirmBandPhotos(surface: Surface, count: number, check: 
     }
     return null;
   }, timeoutMs);
-}
+
+    });
+  }
 export async function saveBandDraftAndVerify(surface: Surface, article: ReturnType<typeof exampleArticle>, check: () => void) {
+    return traceStep('sites.band.index.saveBandDraftAndVerify', async () => {
   check();
   const label = await read<string | null>(surface, `return docs.flatMap(({d})=>Array.from(d.querySelectorAll('button'))).filter(visible).map(e=>(e.textContent||'').trim()).find(t=>/^(임시저장|임시 저장|Save draft)$/i.test(t))||null;`);
   if (!label) throw new Error('BAND_DRAFT_CONTROL_MISSING');
@@ -121,8 +138,11 @@ export async function saveBandDraftAndVerify(surface: Surface, article: ReturnTy
   const expected = [article.title, ...article.paragraphs].join('\n\n');
   const reopened = await waitFor(async () => { const v = await bandSnapshot(surface, expected); return v.bodyMatches && v.images === 5 ? v : null; });
   return { draftSaved: true, reopened: true, bodyChars: reopened.bodyChars, images: reopened.images };
-}
+
+    });
+  }
 export async function closeComposer(surface: Surface) {
+    return traceStep('sites.band.index.closeComposer', async () => {
   const cancelConfirmation = () => read<{ x: number; y: number } | null>(surface, `for(const {d,x,y} of docs) for(const dialog of d.querySelectorAll('.modalLayerView,section.lyWrap')) {
     if ((dialog.querySelector('h1,.headingMsg')?.textContent||'').trim()!=='글 작성을 취소하시겠습니까?') continue;
     const e=dialog.querySelector('button._confirmBtn,button._btnConfirm'); if(!e||!visible(e)||(e.textContent||'').trim()!=='확인') continue;
@@ -143,4 +163,6 @@ export async function closeComposer(surface: Surface) {
   if (discard) await click(surface, 'BAND_DISCARD', '[role="dialog"] button', discard);
   const remaining = await read<boolean>(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(editor)})).some(visible));`);
   if (remaining) throw new Error('BAND_DISCARD_CONFIRM_REQUIRED');
-}
+
+    });
+  }

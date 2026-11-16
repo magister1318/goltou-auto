@@ -1,3 +1,4 @@
+import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import type { SurfaceHost, GuardedRequest } from '@goltou/surface';
 import { compact, read, waitFor } from '../dom';
 import { bandMobileUA } from './plan';
@@ -55,6 +56,7 @@ export function parseRecordedBandFeed(body: string, target: { url: string; title
 export async function openRecordedBandFeed(host: SurfaceHost, target: { url: string; title: string },
   inspectWrite: (request: GuardedRequest) => boolean = () => false,
   onWrite: (status: number, body: string) => void = () => {}, log: BandDeleteLog = () => {}) {
+    return traceStep('sites.band.record-read.openRecordedBandFeed', async () => {
   const id = bandPostIdentity(target.url);
   if (!id || !target.title.trim()) throw Error('BAND_RECORD_READ_IDENTITY');
   const s = await host.create('band');
@@ -81,7 +83,7 @@ export async function openRecordedBandFeed(host: SurfaceHost, target: { url: str
     }, r => {
       if (bandFeedResponse(r as { method: string; url: string })) {
         if (!reading) return;
-        try { actual = parseRecordedBandFeed(r.body, target); reading = false; revision++; } catch { failure = true; }
+        try { actual = parseRecordedBandFeed(r.body, target); reading = false; revision++; } catch { trace('sites.band.record-read.openRecordedBandFeed', 'fail', { reason: 'CAUGHT_FAILURE' });  failure = true; }
       } else if (r.method === 'POST' && r.url && new URL(r.url).pathname === '/v1.5.0/delete_post') onWrite(r.status, r.body);
       else if (checkingUrl && r.method === 'POST' && r.url && new URL(r.url).pathname === '/v2.0.0/batch') {
         const codes: number[] = [];
@@ -92,7 +94,7 @@ export async function openRecordedBandFeed(host: SurfaceHost, target: { url: str
             else if (item && typeof item === 'object') visit(item, depth + 1);
           }
         };
-        try { visit(JSON.parse(r.body)); } catch { /* Fixed result only; never retain response text. */ }
+        try { visit(JSON.parse(r.body)); } catch { trace('sites.band.record-read.openRecordedBandFeed', 'fail', { reason: 'CAUGHT_FAILURE' });  /* Fixed result only; never retain response text. */ }
         missingRead = codes[0] === 1 && codes.includes(1000);
         log({ code: 'URL_RESULT', resultCodes: codes });
       }
@@ -128,7 +130,7 @@ export async function openRecordedBandFeed(host: SurfaceHost, target: { url: str
           }
           let state;
           try { state = await s.readState(); }
-          catch { return false; } // An alert can arrive between the native read and Runtime.
+          catch { trace('sites.band.record-read.openRecordedBandFeed', 'fail', { reason: 'CAUGHT_FAILURE' });  return false; } // An alert can arrive between the native read and Runtime.
           if (bandPostIdentity(state.url)?.url !== id.url || state.loading) { reason = 'URL_WRONG_ROUTE'; return false; }
           const result = await read<{ post: boolean; notice: boolean }>(s, `return {post:docs.some(({d})=>!!d.querySelector('.postView,.postsDetailArea p.txtBody,article.cContentsCard p.txtBody,section.postCard p.postText')),notice:docs.some(({d})=>/(?:삭제된 게시글|게시글이 삭제되었|삭제되었거나 존재하지 않는 게시글|존재하지 않는 게시글|게시글이 존재하지 않|게시글을 찾을 수 없)/.test(d.body?.innerText||''))};`);
           reason = result.post ? 'URL_POST_PRESENT' : 'URL_NO_DELETE_NOTICE';
@@ -137,14 +139,19 @@ export async function openRecordedBandFeed(host: SurfaceHost, target: { url: str
         }, 30000);
         log({ code: 'URL_ABSENT' });
         return true;
-      } catch { log({ code: reason }); return false; }
+      } catch { trace('sites.band.record-read.openRecordedBandFeed', 'fail', { reason: 'CAUGHT_FAILURE' });  log({ code: reason }); return false; }
       finally { checkingUrl = false; }
     };
     await refresh();
     return { surface: s, current: () => actual, refresh, verifyGone, reviewFeed: () => { reviewingFeed = true; }, close: () => host.destroy(s) };
-  } catch (e) { await host.destroy(s).catch(() => {}); throw e; }
-}
+  } catch (e) { trace('sites.band.record-read.openRecordedBandFeed', 'fail', { reason: reasonCode(e) });  await host.destroy(s).catch(() => {}); throw e; }
+
+    });
+  }
 export async function readRecordedBandPost(host: SurfaceHost, target: { url: string; title: string }) {
+    return traceStep('sites.band.record-read.readRecordedBandPost', async () => {
   const session = await openRecordedBandFeed(host, target);
   try { return session.current(); } finally { await session.close(); }
-}
+
+    });
+  }

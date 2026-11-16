@@ -1,3 +1,4 @@
+import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import type { Surface } from '@goltou/surface';
 import { click, read, sleep } from '../dom';
 
@@ -15,8 +16,11 @@ export function tagLayerOpen(surface: Surface): Promise<boolean> {
   return read(surface, `${layerRead} return open;`);
 }
 export async function requireTagFocus(surface: Surface): Promise<void> {
+    return traceStep('sites.naver-blog.draft-safety.requireTagFocus', async () => {
   if (!await read<boolean>(surface, `${focusRead} return tagFocused;`)) throw new Error('BLOG_TAG_FOCUS_LOST');
-}
+
+    });
+  }
 
 /** Guard the actual Surface entry points used by EVERY executor/helper input.
  * Keep surface identity/lifecycle intact for the shell. No page handlers or DOM are changed. */
@@ -45,6 +49,7 @@ export function protectBlogInputs(surface: Surface, allowLayerClick?: (x: number
 }
 
 export async function closeTagLayer(surface: Surface): Promise<void> {
+    return traceStep('sites.naver-blog.draft-safety.closeTagLayer', async () => {
   try {
     if (!await tagLayerOpen(surface)) return;
     // The real layer covers the toolbar toggle. Its loaded keydown handler
@@ -56,10 +61,15 @@ export async function closeTagLayer(surface: Surface): Promise<void> {
       if (!await tagLayerOpen(surface)) return;
       await sleep(100);
     }
-  } catch { /* Never try a background click, Tab, Enter or the final publish control. */ }
+  } catch { trace('sites.naver-blog.draft-safety.closeTagLayer', 'fail', { reason: 'CAUGHT_FAILURE' });  /* Never try a background click, Tab, Enter or the final publish control. */ }
   throw new Error('BLOG_TAG_LAYER_NOT_CLOSED');
-}
+
+    });
+  }
 
 export async function requireTagLayerClosed(surface: Surface): Promise<void> {
+    return traceStep('sites.naver-blog.draft-safety.requireTagLayerClosed', async () => {
   if (await tagLayerOpen(surface)) throw new Error('BLOG_TAG_LAYER_NOT_CLOSED');
-}
+
+    });
+  }

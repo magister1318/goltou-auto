@@ -1,3 +1,4 @@
+import { bindTrace, currentTrace, traceOperations, reasonCode } from '../telemetry';
 // Reference: ../refs/DAF/daf3/apps/mobile/src/core/cdp.ts (request correlation and socket transport).
 import net from 'node:net';
 import WebSocket from 'ws';
@@ -43,14 +44,21 @@ export class CdpConnection {
     });
   }
 
-  send<T = Record<string, unknown>>(method: string, params: Record<string, unknown> = {}, timeoutMs = 10000): Promise<T> {
-    if (this.closed) return Promise.reject(new Error('CDP_CLOSED'));
+  async send<T = Record<string, unknown>>(method: string, params: Record<string, unknown> = {}, timeoutMs = 10000): Promise<T> {
+    const log = currentTrace(), started = Date.now();
+    const operation = traceOperations.find(item => item === method) ?? 'other';
+    let failed = false;
+    log?.line('cdp', 'start', { operation });
+    try {
+    if (this.closed) throw new Error('CDP_CLOSED');
     const id = this.nextId++;
-    return new Promise((resolve, reject) => {
+    return await new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`CDP_TIMEOUT ${method}`)); }, timeoutMs);
       this.pending.set(id, { resolve: value => resolve(value as T), reject, timer });
       this.socket.send(JSON.stringify({ id, method, params }), error => { if (error) this.fail(error); });
     });
+    } catch (error) { failed = true; log?.line('cdp', 'fail', { operation, reason: reasonCode(error) }, Date.now() - started); throw error; }
+    finally { if (!failed) log?.line('cdp', 'ok', { operation }, Date.now() - started); }
   }
 
   close(): void { this.fail(new Error('CDP_CLOSED')); this.socket.close(); }
@@ -59,8 +67,9 @@ export class CdpConnection {
   on(method: string, handler: (params: Record<string, unknown>) => void): () => void {
     let listeners = this.listeners.get(method);
     if (!listeners) this.listeners.set(method, listeners = new Set());
-    listeners.add(handler);
-    return () => listeners.delete(handler);
+    const bound = bindTrace(handler);
+    listeners.add(bound);
+    return () => listeners.delete(bound);
   }
 
   private fail(error: Error): void {

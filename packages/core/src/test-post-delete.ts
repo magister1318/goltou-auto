@@ -1,3 +1,4 @@
+import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 /** Debug-only identity adapter over the regular blog deletion engine. */
 import { postIdentity, read, deleteBlogPost, deletePageSource, deleteFocusSource, deleteSelector, requireDeleteConfirmation, verifyPostAbsentFromList, type BlogExecution, type PublishedPost, type DeleteDiagnostic, type DeletePage } from '@goltou/sites';
 import type { SurfaceDialog } from '@goltou/surface';
@@ -27,6 +28,7 @@ export function testDeleteExtra(p: DeletePage): DeleteDiagnostic[] {
   ];
 }
 export async function deleteTestPost(execution: BlogExecution, record: (value: { matches: boolean; fields: string[]; photos: number; stage: string; diagnostic?: DeleteDiagnostic }) => Promise<void> = async () => {}) {
+    return traceStep('core.test-post-delete.deleteTestPost', async () => {
   if (attempted.has(execution)) throw new Error('BLOG_TEST_DELETE_ALREADY_ATTEMPTED');
   const surface = execution.surface;
   const title = execution.plan.steps.find(s => s.kind === 'text' && s.role === 'title');
@@ -39,8 +41,13 @@ export async function deleteTestPost(execution: BlogExecution, record: (value: {
     await record({ matches: diagnostic.pass === 1, fields: [], photos: 13, stage: 'diagnostic', diagnostic });
   });
   await record({ matches: true, fields: [], photos: 13, stage: 'verified-gone' });
-}
+
+    });
+  }
 export async function verifyTestPostAbsentFromList(surface: NonNullable<BlogExecution['surface']>, url: string, title: string) {
-  try { await verifyPostAbsentFromList(surface, url, title); } catch { throw new Error('BLOG_TEST_DELETE_LIST_UNCONFIRMED'); }
-}
+    return traceStep('core.test-post-delete.verifyTestPostAbsentFromList', async () => {
+  try { await verifyPostAbsentFromList(surface, url, title); } catch { trace('core.test-post-delete.verifyTestPostAbsentFromList', 'fail', { reason: 'CAUGHT_FAILURE' });  throw new Error('BLOG_TEST_DELETE_LIST_UNCONFIRMED'); }
+
+    });
+  }
 const attempted = new WeakSet<BlogExecution>();

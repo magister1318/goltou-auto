@@ -1,3 +1,4 @@
+import { loggedFixture, faultedLog, runnerLogSteps } from './log-fixture';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -449,4 +450,37 @@ describe('WP6 daily limit and real-service boundaries', () => {
     await api.request('/auto/posts/update', { postNo, status: 'stopped', step: 6, failReason: '', postUrl: '' }, token);
     await expect(api.request('/auto/posts/start', value, token)).resolves.toHaveProperty('postNo');
   });
+});
+
+describe('WP20 Band editor fixture log trail', () => {
+  it('records list and single posting with ordered write/readback/publish boundaries', async () => {
+    const f = await fixture('mobile-service');
+    await loggedFixture(path.dirname(f.files[0]!.path), 'band_post', async () => { await f.execution.write(); await f.execution.publish(); }, ['sites.band.plan.BandExecution.write', 'sites.band.plan.BandExecution.publish']);
+    expect(f.external()).toBe(0); expect((await f.counts()).posts).toBe(1);
+  }, 25000);
+});
+
+describe('WP20 list and unfinished composer log trails', () => {
+  it('logs a list load and a confirmed discard as independent jobs', async () => {
+    const f = await fixture();
+    await loggedFixture(path.dirname(f.files[0]!.path), 'band_list', () => f.directory.list(), ['sites.band.plan.BandDirectory.list']);
+    await f.execution.write();
+    await loggedFixture(path.join(path.dirname(f.files[0]!.path), 'cleanup'), 'unfinished_cleanup', () => f.execution.discard(), ['sites.band.plan.BandExecution.discard', 'sites.band.index.closeComposer']);
+    expect((await f.counts()).discards).toBe(1); expect(f.external()).toBe(0);
+  }, 20000);
+});
+
+describe('WP20 Band runner boundary fault injection with the real fake editor', () => {
+  it.each(runnerLogSteps)('ends one failed job when %s fails before its action', async failAt => {
+    const f = await fixture('mobile-service');
+    const log = faultedLog(path.dirname(f.files[0]!.path), failAt);
+    const runner = new ChannelRegistrationRunner({ band: { host: f.host, baseUrl: f.baseUrl, localPublish: true } }, async () => {}, () => {});
+    runner.directory.choices = f.directory.choices;
+    const plan: InputPlan = { channel: 'band', discarded: [], notices: [], steps: [{ kind: 'text', role: 'title', text: '합성 로그 제목' }, { kind: 'text', role: 'body', text: '합성 본문' }] };
+    try {
+      await runner.start({ ...input, mode: 'publish', publishConfirmed: true }, '합성 로그 제목', 0, workFor(plan, []));
+      await vi.waitFor(() => expect(log.store.list()[0]?.result).toBe('failed'), { timeout: 30000 });
+      expect(log.injected()).toBe(true); expect(log.store.list()).toHaveLength(1); expect(f.external()).toBe(0);
+    } finally { runner.dispose(); log.reset(); }
+  }, 40000);
 });

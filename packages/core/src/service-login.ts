@@ -1,3 +1,4 @@
+import { traceStep, trace, reasonCode, traceJob } from '@goltou/surface/telemetry';
 import { ApiError } from '@goltou/api-client';
 import type { Surface, SurfaceHost } from '@goltou/surface';
 import { loginLocation, safeFailureCode, serviceCheckUrls, serviceLoginState, serviceLoginUrls, serviceNavigationPolicy, type LoginService, type LoginState } from '@goltou/sites';
@@ -29,6 +30,7 @@ export class ServiceLoginController {
     return operation.finally(() => { if (this.operation === operation) this.operation = undefined; });
   }
   private async surface(service: LoginService) {
+    return traceStep('core.service-login.ServiceLoginController.surface', async () => {
     let surface = this.surfaces.get(service);
     if (!surface) {
       surface = await this.host.create(service);
@@ -40,17 +42,23 @@ export class ServiceLoginController {
         const cancel = surface.onUserHidden?.(() => { void this.cancel().catch(() => {}); });
         const landing = surface.onNavigationHidden?.(() => { this.landings.add(service); });
         this.unsubscribes.set(service, () => { cancel?.(); landing?.(); });
-      } catch (error) { await this.host.destroy(surface).catch(() => {}); throw error; }
+      } catch (error) { trace('core.service-login.ServiceLoginController.surface', 'fail', { reason: reasonCode(error) });  await this.host.destroy(surface).catch(() => {}); throw error; }
     }
     return surface;
+
+    });
   }
   private async drop(service: LoginService) {
+    return traceStep('core.service-login.ServiceLoginController.drop', async () => {
     const surface = this.surfaces.get(service);
     this.surfaces.delete(service); this.unsubscribes.get(service)?.(); this.unsubscribes.delete(service);
     this.landings.delete(service);
     if (surface) await this.host.destroy(surface).catch(() => {});
+
+    });
   }
   private async load(service: LoginService, url: string) {
+    return traceStep('core.service-login.ServiceLoginController.load', async () => {
     const surface = await this.surface(service);
     let timeout: ReturnType<typeof setTimeout> | undefined;
     let stage = 'OPEN';
@@ -63,15 +71,18 @@ export class ServiceLoginController {
       const state = await surface.readState();
       if (this.disposed || state.loading || loginLocation(service, state.url) === 'blocked') throw new Error('LOGIN_PAGE_NOT_READY');
       return surface;
-    } catch (error) {
+    } catch (error) { trace('core.service-login.ServiceLoginController.load', 'fail', { reason: reasonCode(error) });
       const message = error instanceof Error ? error.message : '';
       const code = /^net::ERR_[A-Z_]+$/.test(message) ? message.slice(5) : safeFailureCode(error, 'NAVIGATION_FAILED');
-      console.info('SERVICE_LOGIN_LOAD_FAILED', service, stage, code);
+      trace('core.service-login.ServiceLoginController.load', 'fail', { reason: reasonCode(error) });
       await this.drop(service); throw error;
     }
     finally { clearTimeout(timeout); }
+
+    });
   }
   private async signal(surface: Surface) {
+    return traceStep('core.service-login.ServiceLoginController.signal', async () => {
     const deadline = Date.now() + this.timing.signalMs;
     do {
       if (this.disposed) throw new Error('LOGIN_DISPOSED');
@@ -80,18 +91,23 @@ export class ServiceLoginController {
       await new Promise(resolve => setTimeout(resolve, this.timing.pollMs));
     } while (Date.now() < deadline);
     return 'unknown' as const;
+
+    });
   }
   check(service: LoginService): Promise<LoginState> {
-    if (this.visible) return Promise.reject(new ApiError('conflict', '로그인 화면을 먼저 닫아 주세요.'));
-    return this.run(async () => {
+    return traceJob('login_check', service === 'naver' ? 'naver' : 'band', async () => {
+      if (this.visible) throw new ApiError('conflict', '로그인 화면을 먼저 닫아 주세요.');
+      return this.run(async () => {
       this.emit(service, 'checking');
       try {
         const state = await this.signal(await this.load(service, serviceCheckUrls[service]));
         this.emit(service, state, state === 'unknown' ? '연결 상태를 확인하지 못했습니다. 다시 확인을 눌러 주세요.' : undefined); return state;
-      } catch { this.emit(service, 'unknown', '연결 상태를 확인하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 확인을 눌러 주세요.'); return 'unknown'; }
+      } catch { trace('core.service-login.ServiceLoginController.load', 'fail', { reason: 'LOGIN_UNCONFIRMED' }); this.emit(service, 'unknown', '연결 상태를 확인하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 확인을 눌러 주세요.'); return 'unknown'; }
     });
+    }, value => value === 'confirmed' ? { result: 'succeeded' } : { result: 'failed', reason: 'LOGIN_UNCONFIRMED' });
   }
   show(service: LoginService): Promise<void> {
+    return traceJob('login_check', service === 'naver' ? 'naver' : 'band', async () => {
     if (this.visible) return Promise.reject(new ApiError('conflict', '열린 로그인 화면을 먼저 닫아 주세요.'));
     return this.run(async () => {
       this.emit(service, 'checking');
@@ -110,12 +126,14 @@ export class ServiceLoginController {
         throw new ApiError('server', loadError);
       }
     });
+    }, () => this.visible ? { result: 'stopped', reason: 'LOGIN_UNCONFIRMED' } : { result: 'succeeded' });
   }
   private schedulePoll() {
     clearTimeout(this.timer);
     this.timer = setTimeout(() => { void this.poll(); }, this.timing.pollMs);
   }
   private async poll() {
+    return traceStep('core.service-login.ServiceLoginController.poll', async () => {
     const service = this.visible, generation = this.generation;
     if (!service || this.disposed) return;
     const operation = (async () => {
@@ -140,7 +158,7 @@ export class ServiceLoginController {
         if (state === 'confirmed') {
           await surface.hide(); this.visible = null; this.emit(service, state);
         }
-      } catch {
+      } catch { trace('core.service-login.ServiceLoginController.poll', 'fail', { reason: 'CAUGHT_FAILURE' });
         if (generation !== this.generation) return;
         await this.drop(service); this.visible = null; this.emit(service, 'unknown', loadError);
       }
@@ -148,8 +166,11 @@ export class ServiceLoginController {
     this.operation = operation;
     try { await operation; } finally { if (this.operation === operation) this.operation = undefined; }
     if (this.visible && generation === this.generation) this.schedulePoll();
+
+    });
   }
   async cancel() {
+    return traceStep('core.service-login.ServiceLoginController.cancel', async () => {
     const service = this.visible;
     if (!service) return;
     this.generation++; clearTimeout(this.timer);
@@ -159,7 +180,9 @@ export class ServiceLoginController {
       await this.surfaces.get(service)?.hide();
       this.visible = null; this.emit(service, 'checking');
       try { this.emit(service, await this.signal(await this.load(service, serviceCheckUrls[service]))); }
-      catch { this.emit(service, 'unknown'); }
+      catch { trace('core.service-login.ServiceLoginController.cancel', 'fail', { reason: 'CAUGHT_FAILURE' });  this.emit(service, 'unknown'); }
+    });
+
     });
   }
   clear(service: LoginService): Promise<void> {

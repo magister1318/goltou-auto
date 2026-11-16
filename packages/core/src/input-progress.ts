@@ -1,8 +1,10 @@
+import { trace } from '@goltou/surface/telemetry';
 import type { BlogProgress } from '@goltou/sites';
 import type { Job } from './protocol';
 
 /** Upload samples exclude text input, download, pauses and draft readback. */
 export function updateInputProgress(job: Job, value: BlogProgress): void {
+  trace('input.progress', value.activity?.phase === 'start' ? 'start' : value.activity?.phase === 'finish' ? 'ok' : 'wait', { counts: { paragraphIndex: value.activity?.blockIndex ?? 0, paragraphTotal: value.activity?.blockTotal ?? 0, photoIndex: value.photos, photoTotal: value.totalPhotos, runs: value.blogParagraph?.runs.length ?? 0 } });
   if (value.blogInputReset) {
     delete job.blogLiveRuns; delete job.activity;
     job.activityLog = job.activityLog?.filter(a => a.channel !== 'blog' || a.stage !== 'write') ?? [];

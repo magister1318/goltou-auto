@@ -1,3 +1,5 @@
+import { registrationLog, registrationAttempt } from './registration-log';
+import { inTrace, trace, traceJob, reasonCode, type TraceJob } from '@goltou/surface/telemetry';
 import { ApiError } from '@goltou/api-client';
 import { safeFailureCode, type BlogExecution } from '@goltou/sites';
 import { ServiceLoginController } from './service-login';
@@ -15,6 +17,7 @@ export class BlogRegistrationRunner implements RegistrationRunner {
   job: Job | null = null;
   readonly serviceLogin: ServiceLoginController;
   private serial = 0;
+  private log: TraceJob | undefined;
   private work: PreparationWork | undefined;
   private execution: BlogExecution | undefined;
   private abort = new AbortController();
@@ -28,6 +31,9 @@ export class BlogRegistrationRunner implements RegistrationRunner {
     if (services.localPublish && (!services.editorUrl || new URL(services.editorUrl).hostname !== '127.0.0.1')) throw new Error('LOCAL_EDITOR_REQUIRED');
   }
   async start(input: JobInput, title: string, photos: number, work?: PreparationWork) {
+    this.log = registrationLog(input);
+    return inTrace(this.log, async () => {
+    try {
     if (this.serviceLogin.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
     if (this.job && !['draft_saved', 'draft_unverified', 'published'].includes(this.job.status)) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
     if (input.targets.some(t => t.channel !== 'blog')) throw new ApiError('invalid', '현재 실제 등록은 블로그 한 곳만 지원합니다. 밴드를 꺼 주세요.');
@@ -37,13 +43,20 @@ export class BlogRegistrationRunner implements RegistrationRunner {
     await this.execution?.close();
     this.execution = undefined; this.work = work; this.abort = new AbortController();
     this.job = { startedAt: Date.now(), id: ++this.serial, productNo: input.productNo, title, mode: input.mode, blogVisibility: input.blogVisibility ?? 'public', targets: input.targets, targetResults: input.targets.map(t => ({ ...t, status: 'running' })), status: 'running', step: 1, current: 0, total: photos, completedSteps: [], service: null, message: '' };
-    try { await this.emit(); this.launch(); } catch (error) { if (!(error instanceof RecordError)) throw error; }
+    try { await this.emit(); this.launch(); } catch (error) { this.log?.end('failed', reasonCode(error)); if (!(error instanceof RecordError)) throw error; }
+    } catch (error) { this.log?.end('failed', reasonCode(error)); throw error; }
+    });
   }
   private async emit() { if (this.job) await this.recording.emit(this.job); }
-  async retryRecord() { await this.active; if (this.job) await this.recording.retry(this.job); }
-  private launch() { this.active = this.run().catch(error => { if (error instanceof RecordError) return; if (this.job) { this.job.status = 'failed'; this.job.message = '작업을 마치지 못했습니다.'; this.notify(structuredClone(this.job)); } }).finally(() => { this.active = undefined; }); }
+  async retryRecord() {
+    await this.active; if (!this.job) return;
+    this.log = registrationLog(this.job); this.log?.line('runner.record', 'retry');
+    await registrationAttempt(this.log, () => this.recording.retry(this.job!), () => this.job);
+  }
+  private launch() { this.active = registrationAttempt(this.log, () => this.run(), () => this.job).catch(error => { if (error instanceof RecordError) return; if (this.job) { this.job.status = 'failed'; this.job.message = '작업을 마치지 못했습니다.'; this.notify(structuredClone(this.job)); } }).finally(() => { this.active = undefined; }); }
   async stop() {
     if (!this.job || !['running', 'login_paused', 'dialog_paused', 'recovery_paused'].includes(this.job.status)) return;
+    this.log?.line('job', 'wait', { reason: 'USER_STOPPED' });
     this.job.status = 'user_paused'; this.abort.abort(); await this.active; await this.emit();
   }
   async resume() {
@@ -51,16 +64,18 @@ export class BlogRegistrationRunner implements RegistrationRunner {
     if (!this.job || !['user_paused', 'login_paused', 'failed'].includes(this.job.status)) throw new ApiError('conflict', '먼저 화면의 선택을 마쳐 주세요.');
     await this.execution?.hide(); this.abort = new AbortController(); this.job.status = 'running'; this.job.message = ''; this.job.service = null;
     for (const result of this.job.targetResults ?? []) if (result.status === 'failed') { result.status = 'running'; delete result.reason; }
-    await this.emit(); this.launch();
+    this.log = registrationLog(this.job); this.log?.line('job', 'retry'); await this.emit(); this.launch();
   }
   async recover(discard: boolean) {
     if (this.job?.status !== 'recovery_paused') throw new ApiError('conflict', '자동복구 안내가 없습니다.');
     await this.active;
     if (!discard) {
+      return traceJob('unfinished_cleanup', 'naver', async () => {
       await this.execution?.close(); await this.work?.cleanup();
-      for (const result of this.job.targetResults ?? []) if (!['draft_saved', 'published'].includes(result.status)) result.status = 'stopped';
-      this.job.status = 'stopped'; delete this.job.failureCode; this.job.message = '옮기기를 중단했습니다.';
+      for (const result of this.job!.targetResults ?? []) if (!['draft_saved', 'published'].includes(result.status)) result.status = 'stopped';
+      this.job!.status = 'stopped'; delete this.job!.failureCode; this.job!.message = '옮기기를 중단했습니다.';
       await this.emit(); return;
+      });
     }
     this.job.status = 'user_paused';
     this.execution?.consentToDiscard(); delete this.job.failureCode; await this.resume();
@@ -87,6 +102,9 @@ export class BlogRegistrationRunner implements RegistrationRunner {
     const check = () => { this.abort.signal.throwIfAborted(); if (this.disposed) throw new Error('RUNNER_DISPOSED'); };
     try {
       while (job.step <= 7) {
+        const phase = (['runner.ready', 'runner.download', 'runner.arrange', 'runner.blog_write', 'runner.blog_save', 'runner.band_write', 'runner.record'] as const)[job.step - 1]!;
+        const phaseStarted = Date.now();
+        trace(phase, 'start', { counts: { step: job.step } });
         check();
         if (job.step === 1) {
           const preview = this.work!.preview;
@@ -114,11 +132,13 @@ export class BlogRegistrationRunner implements RegistrationRunner {
           job.tableModes = [...this.execution!.tableModes]; job.linkCard = this.execution!.linkCard;
         }
         if (job.step === 7) { await this.execution!.close(); await this.work!.cleanup(); }
+        trace(phase, 'ok', { counts: { step: job.step } }, Date.now() - phaseStarted);
         check(); job.completedSteps.push(job.step);
         if (job.step === 7) { job.status = job.mode === 'draft' ? 'draft_saved' : 'published'; job.message = job.mode === 'draft' ? '새 편집기에서 임시글을 다시 열어 원문 대조를 마쳤습니다.' : '발행된 글에서 원문 대조를 마쳤습니다.'; job.secondsLeft = 0; await this.emit(); return; }
         job.step++; job.current = 0; delete job.secondsLeft; job.message = job.step === 6 ? '밴드 선택 없음' : ''; await this.emit();
       }
     } catch (error) {
+      trace('job', 'fail', { reason: reasonCode(error), counts: { step: job.step } });
       if (error instanceof RecordError) return;
       if (this.abort.signal.aborted || this.disposed) return;
       if (markBlogFormattingFailure(job, error)) { await this.emit(); return; }

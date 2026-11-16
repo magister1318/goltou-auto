@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": {
+  "exports": { "./job-logs": "./src/job-logs.ts",
     ".": "./src/index.ts",
     "./post-delete-policy": "./src/post-delete-policy.ts",
     "./protocol": "./src/protocol.ts",

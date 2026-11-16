@@ -62,6 +62,7 @@ export function PostDeleteAction({
   busy,
   prepare,
   remove,
+  cancel,
 }: {
   post: Post;
   scope: 'mine' | 'all';
@@ -69,6 +70,7 @@ export function PostDeleteAction({
   prepare(
     postNo: number,
   ): Promise<{ confirmation: string; productTitle: string }>;
+  cancel?(confirmation: string): Promise<void>;
   remove(confirmation: string): Promise<DeleteOutcome | void>;
 }) {
   const [pending, setPending] = useState<{
@@ -139,7 +141,7 @@ export function PostDeleteAction({
           channel={post.channel}
           bandName={post.targetName}
           busy={busy || sending}
-          cancel={() => setPending(null)}
+          cancel={() => { if (pending) void cancel?.(pending.confirmation); setPending(null); }}
           confirm={() => void confirm()}
         />
       )}

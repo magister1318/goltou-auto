@@ -1,3 +1,4 @@
+import { traceStep, trace, reasonCode } from '../../../packages/surface/src/telemetry';
 // Reference: ../refs/DAF/daf3/apps/mobile/src/core/cdp.ts (private socket target discovery).
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
@@ -30,6 +31,7 @@ export class AndroidSurfaceHost implements SurfaceHost {
   constructor(private readonly native: NativeBridge, private readonly socketPath: string) {}
 
   async create(session: SurfaceSession): Promise<Surface> {
+    return traceStep('android.bridge.host.AndroidSurfaceHost.create', async () => {
     const id = randomUUID();
     const marker = `goltou-${id}`;
     await this.native.call('surface.create', { surface: id, session, marker });
@@ -67,28 +69,39 @@ export class AndroidSurfaceHost implements SurfaceHost {
       unsubscribeNavigation = this.native.onEvent('surface.navigationHidden', data => { if (data.surface === id) for (const listener of navigationListeners) listener(); });
       this.surfaces.set(surface, id);
       return surface;
-    } catch (error) {
+    } catch (error) { trace('android.bridge.host.AndroidSurfaceHost.create', 'fail', { reason: reasonCode(error) });
       await this.native.call('surface.destroy', { surface: id }).catch(() => {});
       throw error;
     }
+
+    });
   }
 
   async destroy(surface: Surface): Promise<void> {
+    return traceStep('android.bridge.host.AndroidSurfaceHost.destroy', async () => {
     if (!this.surfaces.has(surface)) return;
     await surface.close();
+
+    });
   }
 
   async clearSession(session: SurfaceSession): Promise<void> {
+    return traceStep('android.bridge.host.AndroidSurfaceHost.clearSession', async () => {
     for (const surface of this.surfaces.keys()) if (surface.session === session) await this.destroy(surface);
     await this.native.call('profile.clear', { session }, 120000);
+
+    });
   }
 
   async capture(surface: Surface, name: string): Promise<Record<string, unknown>> {
+    return traceStep('android.bridge.host.AndroidSurfaceHost.capture', async () => {
     const id = this.surfaces.get(surface);
     if (!id) throw new Error('NO_SURFACE');
     const geometry = await surface.evaluateReadOnly<{ sensitive: boolean; viewportWidth: number; viewportHeight: number; masks: number[][] }>(redactionGeometry);
     if (!(surface instanceof CdpSurface)) throw new Error('CAPTURE_UNAVAILABLE');
     const screenshot = geometry.sensitive ? '' : await surface.captureViewport();
     return this.native.call('debug.capture', { surface: id, name, screenshot, ...geometry });
+
+    });
   }
 }

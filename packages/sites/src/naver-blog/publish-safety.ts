@@ -1,3 +1,4 @@
+import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import type { GuardedRequest, Surface } from '@goltou/surface';
 import { point, read, sleep } from '../dom';
 import { jsonNode, requestFields, walkFields } from './request-fields';
@@ -52,12 +53,15 @@ export function requireVisibility(proof: VisibilityProof, expected: BlogVisibili
   if (proof.selected !== expected) throw new Error(expected === 'private' ? 'BLOG_VISIBILITY_NOT_PRIVATE' : 'BLOG_VISIBILITY_NOT_PUBLIC');
 }
 export async function selectVisibility(surface: Surface, desired: BlogVisibility) {
+    return traceStep('sites.naver-blog.publish-safety.selectVisibility', async () => {
   const proof = await readVisibility(surface, desired);
   if (!proof.target || !await surface.readClickTarget?.(proof.target.x, proof.target.y, proof.target.selector)) throw new Error('BLOG_VISIBILITY_CONTROL_UNCONFIRMED');
   await surface.click(proof.target.x, proof.target.y);
   await sleep(350);
   requireVisibility(await readVisibility(surface, desired), desired);
-}
+
+    });
+  }
 
 /** Only the observed private shape passes, with independent labelled UI proof.
  * Walk every field (including JSON-valued form fields), preserving duplicates. */
@@ -99,6 +103,7 @@ export function requireTestPost(receipt: PublishedPost | undefined, candidate: P
   if (!receipt || !candidate || receipt.postId !== candidate.postId || receipt.url !== candidate.url || !title.startsWith(experimentPrefix)) throw new Error('BLOG_TEST_DELETE_REFUSED');
 }
 export async function guardedPublishClick(surface: Surface, visibility: BlogVisibility, check: () => void, acceptProof: (proof: VisibilityProof) => void) {
+    return traceStep('sites.naver-blog.publish-safety.guardedPublishClick', async () => {
   const target = await point(surface, finalPublishSelector);
   if (!target || !await surface.readClickTarget?.(target.x, target.y, finalPublishSelector)) throw new Error('BLOG_PUBLISH_CONTROL_UNCONFIRMED');
   check();
@@ -109,4 +114,6 @@ export async function guardedPublishClick(surface: Surface, visibility: BlogVisi
     const proof = await readVisibility(surface, visibility);
     requireVisibility(proof, visibility); acceptProof(proof);
   });
-}
+
+    });
+  }

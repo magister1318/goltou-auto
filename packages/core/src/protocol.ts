@@ -45,6 +45,8 @@ export interface AppSnapshot { serviceError?: string; postDeletion?: { outcome?:
 /** Platform-neutral contract; Android implements it with a Keystore-encrypted native channel. */
 export interface TokenStore { read(): Promise<string | null>; write(token: string | null): Promise<void> }
 export interface Commands {
+  'logs.list': { input: Record<string, never>; output: import('./job-logs').JobLogRow[] };
+  'logs.export': { input: Record<string, never>; output: Record<string, never> };
   'preferences.get': { input: Record<string, never>; output: import('./preferences').Preferences };
   'preferences.save': { input: import('./preferences').Preferences; output: import('./preferences').Preferences };
   'polish.setting.get': { input: Record<string, never>; output: import('@goltou/api-client').PolishStrength };
@@ -57,9 +59,10 @@ export interface Commands {
   'preview.prepare': { input: { productNo: number; options: PostInput['options']; retryPolish?: boolean }; output: import('./preparation').PreparedPreview };
   'preview.revert': { input: { productNo: number; paragraphId: string }; output: import('./preparation').PreparedPreview };
   'posts.delete.prepare': { input: { postNo: number }; output: { confirmation: string; productTitle: string } };
+  'posts.delete.cancel': { input: { confirmation: string }; output: Record<string, never> };
   'posts.delete.confirm': { input: { confirmation: string }; output: AppSnapshot };
   'posts.delete.retryRecord': { input: Record<string, never>; output: AppSnapshot };
-  'posts.list': { input: { scope: 'mine' | 'all'; page?: number; pageSize?: number }; output: Page<Post> };
+  'posts.list': { input: { scope: 'mine' | 'all'; page?: number; pageSize?: number }; output: Page<Post & { jobLog?: import('./job-logs').JobLogRow | undefined }> };
   'post.open': { input: { url: string }; output: AppSnapshot };
   'job.cancel': { input: Record<string, never>; output: AppSnapshot };
   'job.preview': { input: Record<string, never>; output: import('./preparation').PreparedPreview | null };

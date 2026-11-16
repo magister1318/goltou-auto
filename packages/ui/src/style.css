@@ -1013,3 +1013,22 @@ textarea { resize: none; min-height: 92px; }
 .login-state.checking .state-symbol svg { visibility: hidden; }
 .converted-content a { position: relative; display: inline; min-height: 0; line-height: inherit; }
 .converted-content a::after { content: ''; position: absolute; left: -4px; right: -4px; top: -14px; bottom: -14px; min-width: 48px; min-height: 48px; }
+
+/* Band full post: body first, original order, one full-width image per row. */
+.band-photo-stack { display: flex; flex-direction: column; gap: 8px; }
+.band-photo-stack .preview-photo { width: 100%; border: 0; border-radius: 0; }
+.band-text a, .band-hashtag { color: var(--green); text-decoration: underline; }
+.band-hashtag { display: inline; min-height: 0; padding: 0; margin: 0; border: 0; background: none; font: inherit; line-height: inherit; vertical-align: baseline; }
+.band-feed-sample { border-block: 1px solid var(--line); padding: 12px 0; margin-bottom: 16px; }
+.band-feed-sample h3 { font-size: 13px; color: var(--muted); padding-inline: 16px; }
+.band-feed-collage { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 2px; }
+.band-feed-tile { position: relative; min-width: 0; }
+.band-feed-tile .preview-photo { border: 0; border-radius: 0; }
+.band-feed-tile img { object-fit: cover; }
+.band-remaining { position: absolute; inset: 0; display: grid; place-items: center; background: #0007; color: white; font-size: 24px; }
+.band-more { color: var(--muted); }
+.job-log-list { list-style: none; padding: 0; margin: 12px 0; }
+.job-log-list li { padding: 16px 0; border-bottom: 1px solid var(--line); }
+.job-log-list time { display: block; color: var(--muted); font-size: 13px; }
+.job-log-list strong { display: inline-block; margin-right: 12px; }
+.log-export { min-height: 44px; }

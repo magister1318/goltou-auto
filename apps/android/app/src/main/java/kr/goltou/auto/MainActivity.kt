@@ -108,6 +108,19 @@ class MainActivity : ComponentActivity() {
                 retained.root.post { retained.activity?.startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, uri)) }
                 reply(org.json.JSONObject(), null)
             }
+            else if (op == "logs.environment") reply(org.json.JSONObject()
+                .put("appVersion", BuildConfig.VERSION_NAME)
+                .put("deviceModel", android.os.Build.MODEL)
+                .put("webViewVersion", android.webkit.WebView.getCurrentWebViewPackage()?.versionName ?: ""), null)
+            else if (op == "logs.export") Thread {
+                try {
+                    val zip = JobLogExport.archive(java.io.File(retained.context.filesDir, "logs"), java.io.File(retained.context.cacheDir, "job-log-share"))
+                    retained.root.post {
+                        try { JobLogExport.share(retained.activity ?: error("NO_ACTIVITY"), zip); reply(org.json.JSONObject(), null) }
+                        catch (_: Exception) { reply(null, "LOG_EXPORT_FAILED") }
+                    }
+                } catch (_: Exception) { reply(null, "LOG_EXPORT_FAILED") }
+            }.start()
             else if (op == "app.inputState") reply(org.json.JSONObject().put("ready", retained.inputReady()), null)
             else if (op.startsWith("debug.")) retained.handleDebug(op, msg, reply)
             else if (op.startsWith("session.")) secureSession.handle(op, msg, reply)
