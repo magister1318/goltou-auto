@@ -96,9 +96,14 @@ export class BandDirectory {
       if (!submit?.armed) return this.reject('NOT_ARMED');
       if (!request.postDataComplete) return this.reject(request.postDataFailure ? `BODY_${request.postDataFailure}` : 'BODY_INCOMPLETE', true);
       try {
-        const targets = requestFields(request).fields.filter(([key]) => key === 'band_key');
+        const parsed = requestFields(request);
+        const targets = parsed.fields.filter(([key]) => key === 'band_key' || key === 'band_no');
         if (!targets.length) return this.reject('TARGET_MISSING', true);
         if (targets.length !== 1) return this.reject('TARGET_DUPLICATE', true);
+        // Observed mobile create form uses band_no. Accept that alias only on
+        // this exact route/encoding; both aliases together remain ambiguous.
+        if (targets[0]![0] === 'band_no' && !(u.origin === 'https://api-kr.band.us' &&
+          u.pathname === '/v2.0.2/create_post' && parsed.encoding === 'form')) return this.reject('TARGET_MISSING', true);
         const value = targets[0]![1].value;
         if (typeof value !== 'string' && typeof value !== 'number') return this.reject('TARGET_TYPE', true);
         if (String(value) !== submit.key) return this.reject('TARGET_MISMATCH', true);

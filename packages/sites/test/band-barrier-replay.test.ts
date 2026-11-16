@@ -4,13 +4,26 @@ import { CdpConnection, CdpSurface } from '@goltou/surface/cdp';
 import type { SurfaceHost } from '@goltou/surface';
 import { BandDirectory } from '../src/band/plan';
 
-// Evidence proves this route and a client block, not the missing payload or
-// pre-create sequence. Bodies/order below are explicitly synthetic, never a
-// claimed capture. Replay runs the production CDP -> BandDirectory path offline.
+// Earlier evidence proved only this route. The observed-form case below uses
+// the later sanitized request field names/order; every value is synthetic.
+// Replay runs the production CDP -> BandDirectory path entirely offline.
 const createUrl = 'https://api-kr.band.us/v2.0.2/create_post';
 const target = 'synthetic-target';
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
+
+// Observed form field names only. No real target, content, photo URL or value.
+function observedForm(band = target) {
+  return new URLSearchParams([
+    ['band_no', band], ['content', 'synthetic content'],
+    ['set_band_notice', 'false'], ['set_major_band_notice', 'false'],
+    ['set_linked_band_notice', 'false'], ['copiable_state', 'synthetic'],
+    ['should_disable_comment', 'false'], ['band_notice_unset_at', ''],
+    ['photo', JSON.stringify(Object.fromEntries(Array.from({ length: 29 }, (_, i) =>
+      [`synthetic${i + 1}`, { url: 'https://photo.invalid/synthetic.jpg', width: 100, height: 100 }])))],
+    ['purpose', 'synthetic'],
+  ]).toString();
+}
 
 async function fixture(staticBlock = false, failBlock = false) {
   const commands: { method: string; params: Record<string, unknown> }[] = [];
@@ -54,6 +67,38 @@ async function fixture(staticBlock = false, failBlock = false) {
   const method = (id: string) => commands.find(c => ['Fetch.continueRequest', 'Fetch.failRequest'].includes(c.method) && c.params.requestId === id)?.method;
   return { directory, commands, record, request, method, emit };
 }
+
+it.each([false, true])('accepts the sanitized observed form after 29 uploads exactly once (body recovered: %s)', async recovered => {
+  const f = await fixture();
+  // The captured request sequence has 29 photo uploads before this create.
+  for (let i = 0; i < 29; i++) {
+    expect(f.method(await f.request({ url: 'https://up.band.us/v3/upload_photo', postData: '' }))).toBe('Fetch.continueRequest');
+  }
+  const body = observedForm();
+  const raw = { hasPostData: true, ...(!recovered ? { postData: body } : {}),
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8', 'Content-Length': String(Buffer.byteLength(body)) } };
+  const options = recovered ? { fetchedBody: body } : {};
+  expect(f.method(await f.request(raw, options))).toBe('Fetch.failRequest'); // not armed
+  f.directory.arm(target);
+  expect(f.method(await f.request(raw, options))).toBe('Fetch.continueRequest');
+  expect(f.method(await f.request(raw, options))).toBe('Fetch.failRequest');
+  expect(f.directory.decisionCodes.filter(c => c === 'CREATE_ALLOWED')).toHaveLength(1);
+  expect(f.directory.blockedBeforeSend(target)).toBeUndefined();
+});
+
+it.each([
+  ['wrong target', observedForm('other-synthetic-target'), createUrl, 'application/x-www-form-urlencoded', 'TARGET_MISMATCH'],
+  ['duplicate target', `${observedForm()}&band_no=${target}`, createUrl, 'application/x-www-form-urlencoded', 'TARGET_DUPLICATE'],
+  ['mixed target fields', `${observedForm()}&band_key=${target}`, createUrl, 'application/x-www-form-urlencoded', 'TARGET_DUPLICATE'],
+  ['different encoding', JSON.stringify({ band_no: target }), createUrl, 'application/json', 'TARGET_MISSING'],
+  ['different route', observedForm(), 'https://api-kr.band.us/v2.0/band/post/create', 'application/x-www-form-urlencoded', 'TARGET_MISSING'],
+] as const)('rejects the observed form with %s without allowing an editor retry', async (_name, postData, url, contentType, code) => {
+  const f = await fixture(); f.directory.arm(target);
+  expect(f.method(await f.request({ url, postData, headers: { 'Content-Type': contentType } }))).toBe('Fetch.failRequest');
+  expect(f.directory.blockedBeforeSend(target)).toBe(`BAND_POST_BLOCKED:${code}`);
+  expect(f.method(await f.request({ postData: observedForm(), headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }))).toBe('Fetch.failRequest');
+  expect(f.directory.decisionCodes).not.toContain('CREATE_ALLOWED');
+});
 
 it.each(['json', 'form', 'multipart'] as const)('passes the observed route exactly once through the production barrier (%s, synthetic payload/sequence)', async encoding => {
   const f = await fixture();
