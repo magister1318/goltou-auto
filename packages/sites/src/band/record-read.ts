@@ -1,9 +1,11 @@
+import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import type { SurfaceHost, GuardedRequest } from '@goltou/surface';
-import { compact, read, waitFor } from '../dom';
+import { compact, read, sleep, waitFor } from '../dom';
 import { bandMobileUA } from './plan';
 import { bandPostIdentity } from './delete';
 import type { BandDeleteCode, BandDeleteLog } from './delete-log';
 import { bandReadBatchTarget } from './read-batch';
+import { matchesBandCreation, type BandCreationMatch } from './publish-confirmation';
 
 export const bandFeedResponse = (r: Pick<GuardedRequest, 'method' | 'url'>) => {
   const u = new URL(r.url);
@@ -52,13 +54,15 @@ export function parseRecordedBandFeed(body: string, target: { url: string; title
   });
   return { url: id.url, body: text, createdAt: p.created_at, owned: p.author?.me === true, photos };
 }
-export async function openRecordedBandFeed(host: SurfaceHost, target: { url: string; title: string },
+type FeedTarget = { url: string; title: string } | BandCreationMatch;
+export async function openRecordedBandFeed(host: SurfaceHost, target: FeedTarget,
   inspectWrite: (request: GuardedRequest) => boolean = () => false,
-  onWrite: (status: number, body: string) => void = () => {}, log: BandDeleteLog = () => {}) {
-  const id = bandPostIdentity(target.url);
+  onWrite: (status: number, body: string) => void = () => {}, log: BandDeleteLog = () => {}, readTimeoutMs = 20000) {
+    return traceStep('sites.band.record-read.openRecordedBandFeed', async () => {
+  const id = 'url' in target ? bandPostIdentity(target.url) : /^\d{1,30}$/.test(target.band) ? { band: target.band, post: '', url: '' } : null;
   if (!id || !target.title.trim()) throw Error('BAND_RECORD_READ_IDENTITY');
   const s = await host.create('band');
-  let revision = 0, actual: RecordedBandReadback | null = null, failure = false, reading = false, checkingUrl = false, missingRead = false, reviewingFeed = false;
+  let revision = 0, actual: RecordedBandReadback | null = null, failure = '', reading = false, checkingUrl = false, missingRead = false, reviewingFeed = false;
   try {
     if (!s.guardRequests) throw Error('BAND_RECORD_READ_BARRIER');
     await s.guardRequests([{ hostname: '*', pathname: '/', prefix: true }], r => {
@@ -81,7 +85,28 @@ export async function openRecordedBandFeed(host: SurfaceHost, target: { url: str
     }, r => {
       if (bandFeedResponse(r as { method: string; url: string })) {
         if (!reading) return;
-        try { actual = parseRecordedBandFeed(r.body, target); reading = false; revision++; } catch { failure = true; }
+        // Existing recorded-post recovery binds identity from the returned
+        // post itself; only unknown-identity discovery requires the feed query.
+        if (!('url' in target) && new URL(r.url!).searchParams.get('band_no') !== id.band) return;
+        try {
+          if ('url' in target) actual = parseRecordedBandFeed(r.body, target);
+          else {
+            const value = JSON.parse(r.body);
+            if (value.result_code !== 1 || !Array.isArray(value.result_data?.items)) throw Error('BAND_RECORD_READ_RESPONSE');
+            const candidates: RecordedBandReadback[] = [];
+            for (const item of value.result_data.items) {
+              const url = item?.post?.web_url;
+              if (bandPostIdentity(url)?.band !== id.band || typeof item?.post?.content !== 'string' ||
+                compact(bandStoredText(item.post.content).split('\n')[0] ?? '') !== compact(target.title)) continue;
+              const post = parseRecordedBandFeed(JSON.stringify({ result_code: 1, result_data: { items: [item] } }), { url, title: target.title });
+              if (post && matchesBandCreation(post, target)) candidates.push(post);
+            }
+            trace('band.confirm.feed', candidates.length === 1 ? 'ok' : 'wait', { counts: { observed: candidates.length, expected: 1 } });
+            if (candidates.length > 1) throw Error('BAND_POST_IDENTITY_AMBIGUOUS');
+            actual = candidates[0] ?? null;
+          }
+          reading = false; revision++;
+        } catch (error) { failure = error instanceof Error && error.message === 'BAND_POST_IDENTITY_AMBIGUOUS' ? error.message : 'BAND_RECORD_READ_RESPONSE'; trace('sites.band.record-read.openRecordedBandFeed', 'fail', { reason: reasonCode(failure) }); }
       } else if (r.method === 'POST' && r.url && new URL(r.url).pathname === '/v1.5.0/delete_post') onWrite(r.status, r.body);
       else if (checkingUrl && r.method === 'POST' && r.url && new URL(r.url).pathname === '/v2.0.0/batch') {
         const codes: number[] = [];
@@ -92,7 +117,7 @@ export async function openRecordedBandFeed(host: SurfaceHost, target: { url: str
             else if (item && typeof item === 'object') visit(item, depth + 1);
           }
         };
-        try { visit(JSON.parse(r.body)); } catch { /* Fixed result only; never retain response text. */ }
+        try { visit(JSON.parse(r.body)); } catch { trace('sites.band.record-read.openRecordedBandFeed', 'fail', { reason: 'CAUGHT_FAILURE' });  /* Fixed result only; never retain response text. */ }
         missingRead = codes[0] === 1 && codes.includes(1000);
         log({ code: 'URL_RESULT', resultCodes: codes });
       }
@@ -101,7 +126,7 @@ export async function openRecordedBandFeed(host: SurfaceHost, target: { url: str
       const before = revision;
       reading = true;
       await s.open({ url: `https://band.us/band/${id.band}/post`, session: 'band', width: 1280, height: 900, userAgent: bandMobileUA });
-      await waitFor(async () => { if (failure) throw Error('BAND_RECORD_READ_RESPONSE'); return revision > before; }, 20000);
+      await waitFor(async () => { if (failure) throw Error(failure); return revision > before; }, readTimeoutMs);
       return actual;
     };
     const verifyGone = async () => {
@@ -128,7 +153,7 @@ export async function openRecordedBandFeed(host: SurfaceHost, target: { url: str
           }
           let state;
           try { state = await s.readState(); }
-          catch { return false; } // An alert can arrive between the native read and Runtime.
+          catch { trace('sites.band.record-read.openRecordedBandFeed', 'fail', { reason: 'CAUGHT_FAILURE' });  return false; } // An alert can arrive between the native read and Runtime.
           if (bandPostIdentity(state.url)?.url !== id.url || state.loading) { reason = 'URL_WRONG_ROUTE'; return false; }
           const result = await read<{ post: boolean; notice: boolean }>(s, `return {post:docs.some(({d})=>!!d.querySelector('.postView,.postsDetailArea p.txtBody,article.cContentsCard p.txtBody,section.postCard p.postText')),notice:docs.some(({d})=>/(?:삭제된 게시글|게시글이 삭제되었|삭제되었거나 존재하지 않는 게시글|존재하지 않는 게시글|게시글이 존재하지 않|게시글을 찾을 수 없)/.test(d.body?.innerText||''))};`);
           reason = result.post ? 'URL_POST_PRESENT' : 'URL_NO_DELETE_NOTICE';
@@ -137,14 +162,35 @@ export async function openRecordedBandFeed(host: SurfaceHost, target: { url: str
         }, 30000);
         log({ code: 'URL_ABSENT' });
         return true;
-      } catch { log({ code: reason }); return false; }
+      } catch { trace('sites.band.record-read.openRecordedBandFeed', 'fail', { reason: 'CAUGHT_FAILURE' });  log({ code: reason }); return false; }
       finally { checkingUrl = false; }
     };
     await refresh();
     return { surface: s, current: () => actual, refresh, verifyGone, reviewFeed: () => { reviewingFeed = true; }, close: () => host.destroy(s) };
-  } catch (e) { await host.destroy(s).catch(() => {}); throw e; }
-}
+  } catch (e) { trace('sites.band.record-read.openRecordedBandFeed', 'fail', { reason: reasonCode(e) });  await host.destroy(s).catch(() => {}); throw e; }
+
+    });
+  }
 export async function readRecordedBandPost(host: SurfaceHost, target: { url: string; title: string }) {
+    return traceStep('sites.band.record-read.readRecordedBandPost', async () => {
   const session = await openRecordedBandFeed(host, target);
   try { return session.current(); } finally { await session.close(); }
+
+    });
+  }
+
+/** Same authenticated feed/parser as recorded-post recovery, with no mutation permission. */
+export async function readCreatedBandPost(host: SurfaceHost, target: BandCreationMatch, timeoutMs: number, check: () => void) {
+  trace('band.confirm.feed', 'start');
+  const deadline = Date.now() + timeoutMs;
+  check();
+  const session = await openRecordedBandFeed(host, target, undefined, undefined, undefined, timeoutMs);
+  try {
+    while (!session.current() && Date.now() < deadline) {
+      check(); trace('band.confirm.feed', 'retry');
+      await sleep(Math.min(1000, Math.max(1, deadline - Date.now())));
+      if (Date.now() < deadline) await session.refresh();
+    }
+    return session.current();
+  } finally { await session.close(); }
 }

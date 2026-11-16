@@ -118,7 +118,7 @@ describe('display-only API photos', () => {
           droppedStruckCharacters: 0,
         }),
       );
-      expect(container.querySelectorAll('.preview-photo')).toHaveLength(3);
+      expect(container.querySelectorAll(channel === 'band' ? '.band-photo-stack .preview-photo' : '.preview-photo')).toHaveLength(3);
       expect(container.querySelectorAll('img')).toHaveLength(0);
       if (channel === 'blog') {
         const body = container.querySelector('.post-body')!;
@@ -131,20 +131,21 @@ describe('display-only API photos', () => {
         expect(body.children[0]!.textContent).toBe('앞 문단');
         expect(body.children[2]!.textContent).toBe('중간 문단');
       } else {
-        expect(container.querySelector('.band-text')!.textContent).toBe(
+        expect(container.querySelector('.band-full-text')!.textContent).toBe(
           '앞 문단\n\n중간 문단',
         );
         expect(
-          container.querySelector('.band-text')!.nextElementSibling?.className,
-        ).toBe('band-photo-grid');
+          container.querySelector('.band-full-text')!.nextElementSibling?.className,
+        ).toBe('band-photo-stack');
       }
-      await act(() => observers[0]!.reveal());
+      const offset = channel === 'band' ? 3 : 0;
+      await act(() => observers[offset]!.reveal());
       expect(container.querySelectorAll('img')).toHaveLength(1);
       expect(container.querySelector('img')?.src).toBe(
         'https://goltou.kr/a.jpg',
       );
-      expect(observers[0]!.disconnect).toHaveBeenCalled();
-      await act(() => observers[1]!.reveal());
+      expect(observers[offset]!.disconnect).toHaveBeenCalled();
+      await act(() => observers[offset + 1]!.reveal());
       expect([...container.querySelectorAll('img')].map(img => img.src)).toEqual([
         'https://goltou.kr/a.jpg', 'https://coresos-phinf.pstatic.net/b.jpg',
       ]);

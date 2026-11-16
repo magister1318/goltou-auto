@@ -1,3 +1,7 @@
+import { loggedFixture } from '../../core/test/log-fixture';
+import { mkdtempSync, rmSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chromium, type Browser } from 'playwright-core';
 import type { Surface, SurfaceHost, GuardedRequest, GuardedResponse } from '@goltou/surface';
@@ -100,4 +104,12 @@ describe('real mobile card/menu shape with synthetic identities', () => {
   it('does not claim deletion when the post remains after a successful response', async () => { const f = await fixture('uncertain'); expect(await f.run()).toEqual({ status: 'uncertain' }); expect(f.counts().sent).toBe(1); });
   it('refuses duplicate delete menu items', async () => { const f = await fixture('ambiguous'); expect(await f.run()).toEqual({ status: 'not_started' }); expect(f.counts().sent).toBe(0); });
   it.each(['dialog', 'missing-cancel'])('refuses an unproven %s confirmation before a destructive request', async mode => { const f = await fixture(mode); expect(await f.run()).toEqual({ status: 'not_started' }); expect(f.counts().sent).toBe(0); });
+});
+
+it('WP20 proves first-try Band deletion through its persistent step log', async () => {
+  const f = await fixture(), directory = mkdtempSync(path.join(os.tmpdir(), 'goltou-delete-log-'));
+  try {
+    const { result, lines } = await loggedFixture(directory, 'band_delete', f.run, ['sites.band.mobile-delete.deleteMobileRecordedBandPost', 'sites.band.record-read.openRecordedBandFeed']);
+    expect(result).toEqual({ status: 'deleted' }); expect(f.counts().sent).toBe(1); expect(lines.at(-1).result).toBe('succeeded');
+  } finally { rmSync(directory, { recursive: true, force: true }); }
 });

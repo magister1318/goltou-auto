@@ -1,3 +1,4 @@
+import { JobLogs, JobLogFailure } from './JobLogs';
 import { formattingMessage } from './formatting-message';
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import type {
@@ -48,6 +49,7 @@ type Screen =
   | 'connect'
   | 'service'
   | 'history'
+  | 'logs'
   | 'settings'
   | 'experiments';
 type SheetName =
@@ -134,7 +136,7 @@ export function App() {
     [returnScreen, setReturnScreen] = useState<Screen>('connect'),
     [returnSheet, setReturnSheet] = useState<SheetName>(null);
   const [scope, setScope] = useState<'mine' | 'all'>('mine'),
-    [posts, setPosts] = useState<Page<Post>>({ items: [], total: 0 }),
+    [posts, setPosts] = useState<Page<Commands['posts.list']['output']['items'][number]>>({ items: [], total: 0 }),
     [postPage, setPostPage] = useState(1),
     [postRefresh, setPostRefresh] = useState(0);
   const [settings, setSettings] = useState<Settings>({
@@ -1159,7 +1161,7 @@ export function App() {
                 <h1>
                   {job.status === 'draft_saved'
                     ? '블로그에 임시저장했습니다'
-                    : '발행했습니다'}
+                    : job.targets.every(t => t.channel === 'band') ? '게시했습니다' : '발행했습니다'}
                 </h1>
                 <p className="meta">
                   {job.title} · 사진 {product?.images.length ?? job.total}장
@@ -1191,7 +1193,7 @@ export function App() {
                 <h1>
                   {bandPostBlocked(job.failureCode) ? '밴드 게시 요청이 차단됐습니다' : formattingMessage(job.failureCode) ? '서식 확인 필요' : resultKind(job) === 'record'
                     ? job.targetResults?.some((t) => t.status === 'published')
-                      ? '발행했습니다'
+                      ? job.targets.every(t => t.channel === 'band') ? '게시했습니다' : '발행했습니다'
                       : job.targetResults?.some(
                             (t) => t.status === 'draft_saved',
                           )
@@ -1428,6 +1430,7 @@ export function App() {
                   >
                     {historyLine(post, recordTime(post.startedAt))}
                   </p>
+                  {!deletedPost(post) && (post.status === 'failed' || uncertainReason(post.failReason) || !!formattingMessage(post.failReason) || post.jobLog && ['failed', 'uncertain'].includes(post.jobLog.result)) && <JobLogFailure log={post.jobLog} reason={post.failReason} step={post.step} />}
                   {!deletedPost(post) && formattingMessage(post.failReason) && <p className="meta">{formattingMessage(post.failReason)}</p>}
                   {!deletedPost(post) && post.status === 'failed' && !formattingMessage(post.failReason) && (
                     <p className="meta">
@@ -1476,6 +1479,7 @@ export function App() {
                         prepare={(postNo) =>
                           request('posts.delete.prepare', { postNo })
                         }
+                        cancel={async confirmation => { await request('posts.delete.cancel', { confirmation }); }}
                         remove={async (confirmation) => {
                           const result = await request('posts.delete.confirm', {
                             confirmation,
@@ -1540,10 +1544,12 @@ export function App() {
             {nav('history')}
           </>
         )}
+        {screen === 'logs' && <JobLogs back={() => go('settings')} />}
         {screen === 'settings' && (
           <>
             <main className="pad settings-content">
               <h1 className="title">설정</h1>
+              <div className="choice-row"><span>작업 로그<small>단계별 진행과 결과 확인</small></span><button className="green" onClick={() => go('logs')}>보기</button></div>
               {__GOLTOU_DEBUG__ && debug && (
                 <div className="choice-row">
                   <span>디버그 편집기 읽기 점검<small>입력·저장하지 않습니다</small></span>

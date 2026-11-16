@@ -8,6 +8,11 @@ import { ChannelRegistrationRunner } from '../src/band-runner';
 import { BlogRegistrationRunner } from '../src/blog-runner';
 import type { AppRequest, Job, JobInput } from '../src/protocol';
 import type { RegistrationRunner } from '../src/runner';
+import { JobLogStore } from '../src/job-logs';
+import { configureTrace } from '@goltou/surface/telemetry';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
 const disposals: (() => void)[] = [];
 beforeEach(() => vi.useFakeTimers());
@@ -42,6 +47,21 @@ function fixture() {
 }
 
 describe('WP15 on-demand login lifecycle', () => {
+  it('gives follow-up login polls and cancellation their own durable terminal after show has ended', async () => {
+    const f = fixture(), directory = mkdtempSync(path.join(os.tmpdir(), 'goltou-login-poll-'));
+    const logs = new JobLogStore(directory); configureTrace(logs);
+    try {
+      await f.controller.show('band'); expect(logs.list()[0]?.result).toBe('stopped');
+      f.signals.band = 'confirmed'; await vi.advanceTimersByTimeAsync(1500);
+      expect(logs.list().map(row => row.result)).toEqual(['succeeded', 'stopped']);
+      f.signals.band = 'expired'; await f.controller.show('band'); await f.controller.cancel();
+      expect(logs.list()[0]).toMatchObject({ kind: 'login_check', result: 'stopped', reason: 'USER_STOPPED' });
+      for (const day of readdirSync(directory).filter(n => /^\d{8}$/.test(n))) for (const file of readdirSync(path.join(directory, day))) {
+        const lines = readFileSync(path.join(directory, day, file), 'utf8').trim().split('\n').map(s => JSON.parse(s));
+        expect(lines.filter(line => line.step === 'terminal')).toHaveLength(1);
+      }
+    } finally { f.controller.dispose(); configureTrace(undefined); rmSync(directory, { recursive: true, force: true }); }
+  });
   it.each(['naver', 'band'] as const)('creates %s in its persistent session, guards and loads before showing, then reuses it', async service => {
     const f = fixture(); await f.controller.show(service);
     expect(f.host.create).toHaveBeenCalledExactlyOnceWith(service);

@@ -1,4 +1,5 @@
 // Reference: ../refs/DAF/daf3/packages/engine-naver-editor/test/harness/fake-smarteditor.ts (bold toolbar selector only).
+import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import { inputCharacters, type KeyInput, type Surface } from '@goltou/surface';
 import { point, read } from '../dom';
 import { BlogFormattingError, blogRunReader, normalizeBlogRuns, splitBlogRuns, type BlogRun, type NormalizedBlogRun } from './formatting';
@@ -30,6 +31,7 @@ interface Cursor {
   runs: NormalizedBlogRun[]; bold: boolean | null;
 }
 export async function readBlogCursor(surface: Surface): Promise<Cursor | null> {
+    return traceStep('sites.naver-blog.rich-text.readBlogCursor', async () => {
   return read(surface, `${blogRunReader}
     for(const {d} of docs){
       const paragraphs=Array.from(d.querySelectorAll(${JSON.stringify(blogRichEditor.paragraph)}));
@@ -91,7 +93,9 @@ export async function readBlogCursor(surface: Surface): Promise<Cursor | null> {
         focused:!!buffered||!!active&&(active===p||active.contains(p)||p.contains(active))&&active.isContentEditable,
         last:paragraphs[paragraphs.length-1]===p,bold};
     }return null;`);
-}
+
+    });
+  }
 const equal = (a: readonly BlogRun[], b: readonly BlogRun[]) => JSON.stringify(normalizeBlogRuns(a)) === JSON.stringify(normalizeBlogRuns(b));
 
 /** A resumable, acknowledged prefix. Formatting is read back after each input.
@@ -114,15 +118,22 @@ export class BlogRichTextWriter {
     throw new BlogFormattingError('INPUT', [{ paragraph: this.ordinal + preceding, fields: ['input'] }]);
   }
   async requireClosedDialog(s: Surface) {
+    return traceStep('sites.naver-blog.rich-text.BlogRichTextWriter.requireClosedDialog', async () => {
     const closed = await read<boolean>(s, `return !docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(blogRichEditor.dialog)})).some(visible));`).catch(() => false);
     if (!closed) this.fail();
+
+    });
   }
   private async cursor(s: Surface, text: string, collapsed = true) {
+    return traceStep('sites.naver-blog.rich-text.BlogRichTextWriter.cursor', async () => {
     const c = await readBlogCursor(s).catch(() => null);
     if (!c || !c.focused || !c.last || c.text !== text || (collapsed && (c.anchor !== text.length || c.focus !== text.length))) this.fail();
     return c;
+
+    });
   }
   private async bold(s: Surface, text: string, value: boolean) {
+    return traceStep('sites.naver-blog.rich-text.BlogRichTextWriter.bold', async () => {
     let c = await this.cursor(s, text);
     if (c.bold === null) this.fail();
     if (c.bold !== value) {
@@ -130,8 +141,11 @@ export class BlogRichTextWriter {
       c = await this.cursor(s, text);
       if (c.bold !== value) this.fail();
     }
+
+    });
   }
   private async select(s: Surface, text: string, start: number, end: number, check: () => Promise<void>) {
+    return traceStep('sites.naver-blog.rich-text.BlogRichTextWriter.select', async () => {
     // Re-establish the endpoint by real keyboard input, then measure every move in UTF-16.
     // Chromium chooses its grapheme boundaries; no codepoint or surrogate-count assumption.
     let c = await this.toEnd(s, text, check);
@@ -146,8 +160,11 @@ export class BlogRichTextWriter {
       if (c.anchor !== end || c.focus >= previous || c.focus < start) this.fail();
     }
     if (c.anchor !== end || c.focus !== start) this.fail();
+
+    });
   }
   private async toEnd(s: Surface, text: string, check: () => Promise<void>) {
+    return traceStep('sites.naver-blog.rich-text.BlogRichTextWriter.toEnd', async () => {
     let c = await this.cursor(s, text, false);
     // Observed SmartEditor keeps link selections and ignores Ctrl+End. Collapse
     // with a real Right key, then measure every grapheme move to this paragraph's
@@ -163,8 +180,11 @@ export class BlogRichTextWriter {
       if (c.anchor !== c.focus || c.focus <= previous || c.focus > text.length) this.fail();
     }
     return this.cursor(s, text);
+
+    });
   }
   private async link(s: Surface, text: string, start: number, end: number, href: string, check: () => Promise<void>) {
+    return traceStep('sites.naver-blog.rich-text.BlogRichTextWriter.link', async () => {
     await this.select(s, text, start, end, check);
     await check();
     const control = await point(s, blogRichEditor.link); if (!control) this.fail();
@@ -187,8 +207,11 @@ export class BlogRichTextWriter {
     if (!closed) this.fail();
     // The editor must return selection/focus itself. Never restore it by script.
     await this.toEnd(s, text, check);
+
+    });
   }
   async write(s: Surface, check: () => Promise<void>, acknowledge: (added: number, runs: BlogRun[]) => Promise<void>) {
+    return traceStep('sites.naver-blog.rich-text.BlogRichTextWriter.write', async () => {
     await this.requireClosedDialog(s);
     while (this.paragraph < this.paragraphs.length) {
       const runs = this.paragraphs[this.paragraph]!;
@@ -236,5 +259,7 @@ export class BlogRichTextWriter {
         await acknowledge(1, this.finished);
       } else this.paragraph++;
     }
+
+    });
   }
 }

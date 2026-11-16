@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { trace, traceStep, reasonCode } from '@goltou/surface/telemetry';
 export { goltouPhotoUrl } from '../photo-url';
 export interface MediaStorage {
   createWorkDirectory(): Promise<string>;
@@ -11,6 +12,7 @@ export type MediaFetch = (url: string, init: { redirect: 'manual'; credentials: 
 export interface MediaDependencies { storage: MediaStorage; fetcher?: MediaFetch; allowUrl?: (url: URL) => boolean }
 
 export async function downloadPhotos(urls: readonly string[], apiUrls: readonly string[], dependencies: MediaDependencies, signal?: AbortSignal, progress: (current: number) => void = () => {}): Promise<MediaBatch> {
+  return traceStep('photo.download', async () => {
   const allowed = new Set(apiUrls);
   for (const value of urls) {
     let url: URL; try { url = new URL(value); } catch { throw new Error('API_PHOTO_URL_REQUIRED'); }
@@ -19,9 +21,10 @@ export async function downloadPhotos(urls: readonly string[], apiUrls: readonly 
   }
   const directory = await dependencies.storage.createWorkDirectory();
   const files: MediaFile[] = [];
-  const cleanup = () => dependencies.storage.removeWorkDirectory(directory);
+  const cleanup = () => traceStep('photo.cleanup', () => dependencies.storage.removeWorkDirectory(directory));
   try {
     for (const [index, url] of urls.entries()) {
+      const started = Date.now(); trace('photo.download', 'start', { counts: { photoIndex: index + 1, photoTotal: urls.length } });
       signal?.throwIfAborted();
       const controller = new AbortController();
       const cancel = () => controller.abort();
@@ -39,13 +42,16 @@ export async function downloadPhotos(urls: readonly string[], apiUrls: readonly 
         const identity = createHash('sha256').update(bytes).digest('hex').slice(0, 16);
         const path = await dependencies.storage.write(directory, `goltou-${identity}-${index + 1}${extension}`, bytes);
         files.push({ url, path }); progress(index + 1);
+        trace('photo.download', 'ok', { counts: { photoIndex: index + 1, photoTotal: urls.length, bytes: bytes.length } }, Date.now() - started);
       } finally { clearTimeout(timer); signal?.removeEventListener('abort', cancel); }
     }
     return { files, cleanup };
   } catch (error) {
+    trace('photo.download', 'fail', { reason: reasonCode(error), counts: { photoIndex: files.length + 1, photoTotal: urls.length } });
     await cleanup();
     if (signal?.aborted) throw error;
     if (error instanceof Error && ['PHOTO_DOWNLOAD_FAILED', 'EMPTY_PHOTO'].includes(error.message)) throw error;
     throw new Error('PHOTO_DOWNLOAD_FAILED');
   }
+  });
 }

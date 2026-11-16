@@ -1,3 +1,4 @@
+import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import type { GuardedResponse, Surface } from '@goltou/surface';
 import { click, read, waitFor } from '../dom';
 
@@ -6,12 +7,16 @@ export interface DraftEntry { title: string; stamp: string; id: string }
 const list = '[aria-label="임시저장된 글"]';
 export const draftItem = `${list} > li button[data-click-area="tpb*s.tlist"]`;
 export async function draftEntries(surface: Surface): Promise<DraftEntry[]> {
+    return traceStep('sites.naver-blog.draft-identity.draftEntries', async () => {
   return read(surface, `return docs.flatMap(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(draftItem)})).filter(visible).map(e=>({
     title:(e.querySelector('strong')?.textContent||'').trim(),
     stamp:(e.querySelector('time')?.getAttribute('datetime')||e.querySelector('time,span[class^="date__"]')?.textContent||'').trim(),
     id:e.getAttribute('data-log-no')||''})));`);
-}
+
+    });
+  }
 export async function openDraftEntries(surface: Surface, emptyAllowed = false) {
+    return traceStep('sites.naver-blog.draft-identity.openDraftEntries', async () => {
   const opened = () => read<boolean>(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(list)})).some(visible));`);
   if (!await opened()) {
     if (emptyAllowed && await read<boolean>(surface, `return docs.some(({d})=>d.querySelector('button[data-click-area="tpb*s.count"]')?.textContent.trim()==='0');`)) return [];
@@ -19,13 +24,18 @@ export async function openDraftEntries(surface: Surface, emptyAllowed = false) {
   }
   await waitFor(opened);
   return draftEntries(surface);
-}
+
+    });
+  }
 export async function closeDraftEntries(surface: Surface) {
+    return traceStep('sites.naver-blog.draft-identity.closeDraftEntries', async () => {
   if (await read<boolean>(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(list)})).some(visible));`)) {
     await click(surface, 'BLOG_DRAFT_CLOSE', 'button[data-click-area="tpb*s.close"]');
     await waitFor(() => read(surface, `return !docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(list)})).some(visible));`));
   }
-}
+
+    });
+  }
 const key = (entry: DraftEntry) => JSON.stringify([entry.title, entry.stamp, entry.id]);
 /** No title-only, list-order or newest-of-equal-candidates fallback. */
 export function identifySavedDraft(before: readonly DraftEntry[], after: readonly DraftEntry[], title: string, responseId?: string) {

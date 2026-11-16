@@ -1,4 +1,5 @@
 // Reference: ../refs/DAF/daf3/packages/engine-naver-editor/src/insert/info-table.ts (table toolbar/control selectors only; DOM mutations excluded).
+import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import type { GuardedRequest, GuardedResponse, Surface, SurfaceDialog, SurfaceHost } from '@goltou/surface';
 import { inputCharacters } from '@goltou/surface';
 import { click, compact, point, read, sleep, waitFor } from '../dom';
@@ -43,6 +44,7 @@ const ua = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Geck
 
 /** Read document order, cells and uploaded filenames independently of the input plan. */
 export async function readBlogDocument(surface: Surface, documentUrls?: readonly string[]): Promise<BlogReadback> {
+    return traceStep('sites.naver-blog.plan.readBlogDocument', async () => {
   return read(surface, `
     ${blogRunReader}
     const allowed=${JSON.stringify(documentUrls ?? null)};
@@ -69,7 +71,9 @@ export async function readBlogDocument(surface: Surface, documentUrls?: readonly
     }
     return {title:text(d.querySelector(${JSON.stringify(titleSelector)})).trim(),tokens,
       tags:Array.from(d.querySelectorAll('.wrap_tag a.itemTagfont, .tag_list .tag, .se-tag-list .se-tag, .post_tag .item, [data-goltou-tag], [class^="tag_textarea__"] span[class*="tag__"][aria-label]')).map(e=>(e.textContent||'').replace(/^#/,'').trim())};`);
-}
+
+    });
+  }
 const same = (a: BlogReadback, b: BlogReadback) => compact(a.title) === compact(b.title) && JSON.stringify(a.tokens.map(t => t.kind === 'text' ? ['text', t.text, normalizeBlogRuns(t.runs ?? [{text:t.text}])] : ['photo', t.identity])) === JSON.stringify(b.tokens.map(t => t.kind === 'text' ? ['text', t.text, normalizeBlogRuns(t.runs ?? [{text:t.text}])] : ['photo', t.identity])) && JSON.stringify(a.tags) === JSON.stringify(b.tags);
 
 export function plannedBlogParagraphs(plan: BlogPlan): BlogRun[][] {
@@ -139,12 +143,15 @@ export class BlogExecution {
   private recoveryConsent = false;
   private ownRecoveryDiscarded = false;
   private async prepare() {
+    return traceStep('sites.naver-blog.plan.BlogExecution.prepare', async () => {
     const lastTypedTitle = await this.env.lastTypedTitle?.read().catch(() => null);
     await prepareBlogEditor(this.surface!, this.env.check, {
       autoRecover: this.recoveryConsent ? 'decline-with-user-consent' : 'stop', lastTypedTitle: lastTypedTitle ?? null,
       onOwnRecoveryDiscarded: () => { this.ownRecoveryDiscarded = true; this.report(); },
     });
     this.recoveryConsent = false;
+
+    });
   }
   private atomic = false;
   private publishInteraction = false;
@@ -170,6 +177,7 @@ export class BlogExecution {
     if (env.publishProbe && (env.mode !== 'publish' || env.publishProbe.visibility !== this.visibility)) throw new Error('BLOG_PROBE_CONFIGURATION_MISMATCH');
   }
   async ensureReady() {
+    return traceStep('sites.naver-blog.plan.BlogExecution.ensureReady', async () => {
     this.signal({ stage: 'open', phase: 'start', opening: this.surface ? 'empty' : 'navigate' });
     try {
     if (!this.surface) await this.fresh();
@@ -180,20 +188,32 @@ export class BlogExecution {
     }
     this.signal({ stage: 'open', phase: 'finish', opening: 'empty' });
     } finally { if (this.surface) await closeTagLayer(this.surface); }
+
+    });
   }
   consentToDiscard() { this.recoveryConsent = true; }
-  async dialog(): Promise<SurfaceDialog | null> { return await this.surface?.readDialog?.() ?? null; }
+  async dialog(): Promise<SurfaceDialog | null> {
+    return traceStep('sites.naver-blog.plan.BlogExecution.dialog', async () => { return await this.surface?.readDialog?.() ?? null;
+    });
+  }
   async answerDialog(id: string, accept: boolean) {
+    return traceStep('sites.naver-blog.plan.BlogExecution.answerDialog', async () => {
     if (!this.surface?.respondDialog) throw new Error('DIALOG_UNAVAILABLE');
     await this.surface.respondDialog(id, accept);
+
+    });
   }
   private async guard() {
+    return traceStep('sites.naver-blog.plan.BlogExecution.guard', async () => {
     this.env.check();
     if (await this.dialog()) throw new Error('USER_DIALOG_REQUIRED');
     const ready = await read<boolean>(this.surface!, `return !docs.some(({d})=>d.querySelector('input[type="password"]')||d.location.hostname==='nid.naver.com')&&docs.some(({d})=>d.querySelector('.se-documentTitle'));`);
     if (!ready) throw new Error('LOGIN_OR_EDITOR_LOST');
+
+    });
   }
   private async fresh(readback = false) {
+    return traceStep('sites.naver-blog.plan.BlogExecution.fresh', async () => {
     const previous = this.surface;
     this.surface = await this.env.host.create('naver');
     // Loading a saved draft emits documentChanged too. Its three-second
@@ -224,37 +244,43 @@ export class BlogExecution {
       if (!this.surface.guardRequests) throw new Error('BLOG_REQUEST_BARRIER_UNAVAILABLE');
       const hostname = this.env.localPublish ? new URL(this.env.editorUrl!).hostname : 'blog.naver.com';
       await this.surface.guardRequests(['/RabbitWrite.naver', '/RabbitUpdate.naver', '/RabbitTempPostWrite.naver'].map(pathname => ({ hostname, pathname })), async request => {
-        if (new URL(request.url).pathname === '/RabbitTempPostWrite.naver') return this.saveAttempted && !readback && request.method === 'POST';
-        if ((this.env.mode ?? 'draft') === 'draft') return false;
+        const decision = (allowed: boolean, reason: import('@goltou/surface/telemetry').ReasonCode) => { trace('barrier', allowed ? 'ok' : 'fail', { reason }); return allowed; };
+        if (new URL(request.url).pathname === '/RabbitTempPostWrite.naver') {
+          const allowed = this.saveAttempted && !readback && request.method === 'POST';
+          return decision(allowed, allowed ? 'BLOG_DRAFT_SAVE_REQUEST_ALLOWED' : 'BLOG_DRAFT_SAVE_REQUEST_NOT_AUTHORIZED');
+        }
+        if ((this.env.mode ?? 'draft') === 'draft') return decision(false, 'BLOG_PUBLISH_REQUEST_NOT_AUTHORIZED');
         const allowedWindow = this.publishArmed; this.publishArmed = false;
         if (this.env.publishProbe) {
           // No inspector result, armed window, method, path or visibility can
           // authorize a probe. Persistence exceptions also leave it blocked.
           this.publishFailure = 'BLOG_PUBLISH_PROBE_BLOCKED';
           try { await this.env.publishProbe.record(request, this.requestProof); }
-          catch { this.publishFailure = 'BLOG_PUBLISH_PROBE_EVIDENCE_FAILED'; }
-          return false;
+          catch { trace('sites.naver-blog.plan.BlogExecution.fresh', 'fail', { reason: 'CAUGHT_FAILURE' });  this.publishFailure = 'BLOG_PUBLISH_PROBE_EVIDENCE_FAILED'; }
+          return decision(false, reasonCode(this.publishFailure));
         }
         if (!allowedWindow || new URL(request.url).pathname !== '/RabbitWrite.naver' || request.method !== 'POST') {
-          this.publishFailure = 'BLOG_PUBLISH_REQUEST_NOT_AUTHORIZED'; return false;
+          this.publishFailure = 'BLOG_PUBLISH_REQUEST_NOT_AUTHORIZED'; return decision(false, 'BLOG_PUBLISH_REQUEST_NOT_AUTHORIZED');
         }
         if (this.visibility === 'private' && (!this.requestProof || !inspectPrivateRequest(request, this.requestProof))) {
-          this.publishFailure = 'BLOG_PRIVATE_REQUEST_UNCONFIRMED'; return false;
+          this.publishFailure = 'BLOG_PRIVATE_REQUEST_UNCONFIRMED'; return decision(false, 'BLOG_PRIVATE_REQUEST_UNCONFIRMED');
         }
         this.publishRequestAccepted = true;
-        return true;
+        return decision(true, 'BLOG_PUBLISH_REQUEST_ALLOWED');
       }, response => {
         if (response.url && new URL(response.url).pathname === '/RabbitTempPostWrite.naver') {
           const receipt = draftSaveReceipt(response);
           this.saveAcknowledged ||= receipt.saved;
           this.savedDraftId = receipt.id;
+          trace('barrier', receipt.saved ? 'ok' : 'fail', { reason: receipt.saved ? 'BLOG_DRAFT_SAVE_RESPONSE_OK' : 'BLOG_DRAFT_SAVE_RESPONSE_UNCONFIRMED', counts: { status: response.status, bytes: response.body.length } });
           return;
         }
         this.responseEvidence = Promise.resolve().then(() => this.env.recordPublishResponse?.(response)).catch(() => { this.publishFailure = 'BLOG_PUBLISH_RESPONSE_EVIDENCE_FAILED'; });
         try {
           this.responsePost = parsePublishIdentity(response);
+          trace('barrier', 'ok', { reason: 'BLOG_PUBLISH_RESPONSE_OK', counts: { status: response.status, bytes: response.body.length } });
           if (this.responsePost.post) this.publishedPost = this.responsePost.post;
-        } catch (error) { this.publishFailure = error instanceof Error ? error.message : 'BLOG_PUBLISH_RESPONSE_UNCONFIRMED'; }
+        } catch (error) { trace('sites.naver-blog.plan.BlogExecution.fresh', 'fail', { reason: reasonCode(error) });  this.publishFailure = error instanceof Error ? error.message : 'BLOG_PUBLISH_RESPONSE_UNCONFIRMED'; }
       });
     }
     // Keep the previous composition until the new editor is available. Never close on stop/failure.
@@ -277,6 +303,8 @@ export class BlogExecution {
     this.recoveryConsent = false;
     this.checkpoint = await readBlogDocument(this.surface);
     if (previous) await this.env.host.destroy(previous);
+
+    });
   }
   private report(reset = false) {
     const totalCharacters = this.plan.steps.reduce((n, s) => n + (s.kind === 'text' ? Array.from(s.text).length : s.kind === 'table' ? s.rows.flat().reduce((a, t) => a + Array.from(t).length, 0) : 0), 0);
@@ -285,6 +313,7 @@ export class BlogExecution {
       photoUploadMilliseconds: this.photoUploadMilliseconds, photoUploadSamples: this.photoUploadSamples, ...(this.activity ? { activity: this.activity } : {}) });
   }
   private async type(text: string, resume = false) {
+    return traceStep('sites.naver-blog.plan.BlogExecution.type', async () => {
     const chars = inputCharacters(text);
     for (let offset = resume ? this.offset : 0; offset < chars.length;) {
       await this.guard();
@@ -301,8 +330,11 @@ export class BlogExecution {
       if (this.activity?.stage === 'write' && this.executingStep?.kind === 'text') this.activity = { ...this.activity, phase: 'progress', fraction: Math.min(.99, offset / Math.max(1, chars.length)) };
       this.report();
     }
+
+    });
   }
   private async endOfBody() {
+    return traceStep('sites.naver-blog.plan.BlogExecution.endOfBody', async () => {
     const s = this.surface!;
     const selector = '.se-component.se-text:last-child .se-text-paragraph:last-child';
     let last = await point(s, selector);
@@ -329,8 +361,11 @@ export class BlogExecution {
       const components=Array.from((d?.querySelector('.se-main-container')||d?.querySelector('.se-content'))?.querySelectorAll('.se-component')||[]).filter(e=>!e.classList.contains('se-documentTitle'));
       return !!e&&e===components[components.length-1]&&e.classList.contains('se-text');`);
     if (!atEnd) throw new Error('CURSOR_POSITION_UNCONFIRMED');
+
+    });
   }
   private async tagInput() {
+    return traceStep('sites.naver-blog.plan.BlogExecution.tagInput', async () => {
     const s = this.surface!;
     const present = await read<boolean>(s, `return docs.some(({d})=>d.querySelector(${JSON.stringify(tagInputSelector)}));`);
     if (!present && await point(s, tagPanelToggle)) {
@@ -341,11 +376,14 @@ export class BlogExecution {
       await this.guard(); await s.pressKey({ key: 'PageDown' }); await sleep(100);
     }
     await click(s, 'BLOG_TAG_INPUT', tagInputSelector);
+
+    });
   }
   async write() {
+    return traceStep('sites.naver-blog.plan.BlogExecution.write', async () => {
     this.executingStep = undefined;
     try { await this.writePlan(); this.inputFormattingFailure = undefined; }
-    catch (error) {
+    catch (error) { trace('sites.naver-blog.plan.BlogExecution.write', 'fail', { reason: reasonCode(error) });
       if (error instanceof BlogFormattingError) this.inputFormattingFailure = error;
       const step = this.executingStep;
       if (error instanceof ControlNotFoundError && step) throw error.atPlanStep(this.index + 1, step);
@@ -354,8 +392,11 @@ export class BlogExecution {
       this.executingStep = undefined;
       if (this.surface) await closeTagLayer(this.surface);
     }
+
+    });
   }
   private async writePlan() {
+    return traceStep('sites.naver-blog.plan.BlogExecution.writePlan', async () => {
     for (const step of this.plan.steps) if (step.kind === 'photos' && step.urls.some(url => !this.files.find(f => f.url === url))) throw new Error('PREPARED_PHOTOS_MISSING');
     if (!this.surface) await this.fresh();
     else {
@@ -460,8 +501,11 @@ export class BlogExecution {
     }
     this.executingStep = undefined;
     this.verifyDocument(await this.observe(), 'INPUT');
+
+    });
   }
   private async table(rows: string[][]) {
+    return traceStep('sites.naver-blog.plan.BlogExecution.table', async () => {
     const s = this.surface!;
     const original = await readBlogDocument(s);
     const fallback = async () => {
@@ -474,7 +518,7 @@ export class BlogExecution {
     await s.click(control.x, control.y); await sleep(350); await this.guard();
     // Native editor starts with a 3x3 table. Use visible control buttons to adjust it.
     try { await waitFor(() => read(s, `return docs.some(({d})=>d.querySelectorAll('.se-component.se-table').length===${before + 1});`), 3000); }
-    catch {
+    catch { trace('sites.naver-blog.plan.BlogExecution.table', 'fail', { reason: 'CAUGHT_FAILURE' });
       await this.guard(); await s.pressKey({ key: 'Escape' });
       if (!same(original, await readBlogDocument(s))) throw new Error('TABLE_DIMENSIONS_UNSTABLE');
       await this.endOfBody(); return fallback();
@@ -505,8 +549,11 @@ export class BlogExecution {
     }
     this.tableModes.push('native');
     await s.pressKey({ key: 'Escape' }); await s.pressKey({ key: 'ArrowDown' }); await this.endOfBody();
+
+    });
   }
   async observe() {
+    return traceStep('sites.naver-blog.plan.BlogExecution.observe', async () => {
     try {
     await this.guard();
     await closeTagLayer(this.surface!);
@@ -534,16 +581,22 @@ export class BlogExecution {
     }
     return observed;
     } finally { await closeTagLayer(this.surface!); }
+
+    });
   }
   async saveAndVerify() {
+    return traceStep('sites.naver-blog.plan.BlogExecution.saveAndVerify', async () => {
     try { return await this.saveAndVerifyPlan(); }
     finally {
       // The layer was verified closed before save. A native save dialog blocks
       // all page reads; leave its answer to the app instead of querying behind it.
       if (this.surface && !await this.dialog()) await closeTagLayer(this.surface);
     }
+
+    });
   }
   private async saveAndVerifyPlan() {
+    return traceStep('sites.naver-blog.plan.BlogExecution.saveAndVerifyPlan', async () => {
     await this.guard();
     if (this.formattingFailure) throw this.formattingFailure;
     if (this.inputFormattingFailure) throw this.inputFormattingFailure;
@@ -561,7 +614,7 @@ export class BlogExecution {
         await requireTagLayerClosed(this.surface!);
         await click(this.surface!, 'BLOG_SAVE', 'button[data-click-area="tpb.save"]');
       }
-      catch (error) {
+      catch (error) { trace('sites.naver-blog.plan.BlogExecution.saveAndVerifyPlan', 'fail', { reason: reasonCode(error) });
         if (await this.dialog()) throw new Error('USER_DIALOG_REQUIRED');
         if (error instanceof Error && /^BLOG_TAG_/.test(error.message)) throw error;
         /* Resolve ambiguous transport from the list, never retry input. */
@@ -575,7 +628,7 @@ export class BlogExecution {
     const s = this.surface!;
     let after: DraftEntry[];
     try { after = await openDraftEntries(s, true); }
-    catch { throw new Error(this.saveAcknowledged ? 'BLOG_DRAFT_SAVED_UNVERIFIED' : 'DRAFT_SAVE_UNCONFIRMED'); }
+    catch { trace('sites.naver-blog.plan.BlogExecution.saveAndVerifyPlan', 'fail', { reason: 'CAUGHT_FAILURE' });  throw new Error(this.saveAcknowledged ? 'BLOG_DRAFT_SAVED_UNVERIFIED' : 'DRAFT_SAVE_UNCONFIRMED'); }
     const identity = identifySavedDraft(this.draftsBefore, after, this.title.text, this.savedDraftId);
     if (!identity) throw new Error(this.saveAcknowledged || after.filter(e => e.title === this.title.text).length > this.draftsBefore.filter(e => e.title === this.title.text).length ? 'BLOG_DRAFT_SAVED_UNVERIFIED' : 'DRAFT_SAVE_UNCONFIRMED');
     this.draftIdentity = { existingSameTitle: this.draftsBefore.filter(e => e.title === this.title.text).length, source: identity.source };
@@ -591,8 +644,11 @@ export class BlogExecution {
     await s.click(target.x, target.y, matches);
     await waitFor(async () => (await readBlogDocument(s)).title === this.title.text, 15000);
     const observed = await this.observe(); this.verifyDocument(observed, 'REOPENED'); this.verified = true; return observed;
+
+    });
   }
   async publish() {
+    return traceStep('sites.naver-blog.plan.BlogExecution.publish', async () => {
     if (this.env.mode !== 'publish' || !this.verified || !this.env.publishEnabled && !this.env.localPublish) throw new Error('REAL_PUBLISH_DISABLED');
     if (this.formattingFailure) throw this.formattingFailure;
     this.signal({ stage: 'submit', phase: 'start', submission: 'publish' });
@@ -630,8 +686,11 @@ export class BlogExecution {
       this.publishArmed = false; this.publishInteraction = false;
       if (!this.publishedPost && !await this.dialog()) await closeTagLayer(s);
     }
+
+    });
   }
   async verifyPublished() {
+    return traceStep('sites.naver-blog.plan.BlogExecution.verifyPublished', async () => {
     if (!this.publishedPost) throw new Error('BLOG_PUBLISH_ID_UNCONFIRMED');
     const s = this.surface!;
     const started = Date.now(); let navigationKeys = 0;
@@ -662,8 +721,19 @@ export class BlogExecution {
     this.readbackTimings.push({ photos: value.tokens.filter(t => t.kind === 'photo').length, milliseconds: Date.now() - started, navigationKeys });
     this.publishedVerified = true;
     return value;
+
+    });
   }
-  async show() { await this.surface?.show(); }
-  async hide() { await this.surface?.hide(); }
-  async close() { if (this.surface) { await this.env.host.destroy(this.surface); this.surface = undefined; } }
+  async show() {
+    return traceStep('sites.naver-blog.plan.BlogExecution.show', async () => { await this.surface?.show();
+    });
+  }
+  async hide() {
+    return traceStep('sites.naver-blog.plan.BlogExecution.hide', async () => { await this.surface?.hide();
+    });
+  }
+  async close() {
+    return traceStep('sites.naver-blog.plan.BlogExecution.close', async () => { if (this.surface) { await this.env.host.destroy(this.surface); this.surface = undefined; }
+    });
+  }
 }

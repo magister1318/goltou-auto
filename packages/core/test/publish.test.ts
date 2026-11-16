@@ -1,3 +1,4 @@
+import { loggedFixture } from './log-fixture';
 import { afterEach, describe, expect, it } from 'vitest';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -210,4 +211,16 @@ describe('WP18 saved and published runs on a synthetic loopback service', () => 
     }
     expect(f.counts()).toMatchObject({ published: 1, submissions: 1, outside: 0 });
   }, 20000);
+});
+
+describe('WP20 publish and delete fixture log trails', () => {
+  it('proves blog publish and ordinary deletion from separate permanent job logs', async () => {
+    const f = await fixture();
+    await loggedFixture(path.dirname(f.files[0]!.path), 'blog_publish', async () => { await f.execution.write(); await f.execution.saveAndVerify(); await f.execution.publish(); }, ['sites.naver-blog.plan.BlogExecution.write', 'sites.naver-blog.plan.BlogExecution.saveAndVerify', 'sites.naver-blog.plan.BlogExecution.publish']);
+    const title = f.execution.plan.steps.find(step => step.kind === 'text' && step.role === 'title');
+    if (title?.kind !== 'text') throw Error('FIXTURE_TITLE');
+    const post: Post = { postNo: 1, productNo: 1, productTitle: title.text, channel: 'blog', mode: 'publish', status: 'published', postUrl: f.url, targetName: '', step: 7, failReason: '', userName: '', startedAt: 'synthetic', finishedAt: 'synthetic', productChanged: false };
+    await loggedFixture(path.join(path.dirname(f.files[0]!.path), 'deletion'), 'blog_delete', () => removeRecordedBlogPost(f.host, post), ['core.post-delete.removeRecordedBlogPost', 'sites.naver-blog.delete.deleteBlogPost']);
+    expect(f.counts()).toMatchObject({ published: 1, deleted: true, outside: 0, submissions: 1 });
+  }, 90000);
 });

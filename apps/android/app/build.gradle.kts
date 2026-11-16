@@ -7,6 +7,12 @@ plugins {
 }
 
 val repository = rootDir.resolve("../..").canonicalFile
+val sourceCommit = providers.exec {
+    workingDir(repository)
+    commandLine("git", "rev-parse", "HEAD")
+    environment("GIT_TERMINAL_PROMPT", "0")
+    environment("GCM_INTERACTIVE", "never")
+}.standardOutput.asText.map { it.trim() }
 val appVersion = ReleaseConfig.version(rootDir.resolve("version.properties"))
 val signingFile = System.getenv("GOLTOU_SIGNING_PROPERTIES")?.takeIf { it.isNotBlank() }
     ?.let { file(it) } ?: rootDir.resolve("release-signing.properties")
@@ -82,6 +88,7 @@ for (variant in listOf("debug", "release")) {
         inputs.files(fileTree(repository.resolve("packages")) { exclude("**/node_modules/**", "**/dist/**") },
             fileTree(repository.resolve("scripts")), fileTree(rootDir.resolve("bridge")),
             rootDir.resolve("version.properties"), repository.resolve("pnpm-lock.yaml"))
+        inputs.property("sourceCommit", sourceCommit)
         outputs.dir(layout.buildDirectory.dir("generated/$variant-core"))
     }
     tasks.matching { it.name == "pre${capitalized}Build" }.configureEach { dependsOn(bundle) }

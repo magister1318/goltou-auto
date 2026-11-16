@@ -1,3 +1,4 @@
+import { beginTrace, inTrace, trace, traceJob, reasonCode, type TraceJob } from '@goltou/surface/telemetry';
 import { randomUUID } from 'node:crypto';
 import { requireDeletablePost, removeRecordedBlogPost, removeRecordedBandPost, deletedUpdate } from './post-delete';
 import { ApiError, type ApiClient, type Channel, type PostStatus, type Product, type PostInput } from '@goltou/api-client';
@@ -19,7 +20,7 @@ export class AppCore {
   private runner: RegistrationRunner;
   private readonly createRunner: () => RegistrationRunner;
   private deleting = false;
-  private deleteConfirmation: { key: string; post: import('@goltou/api-client').Post } | undefined;
+  private deleteConfirmation: { key: string; post: import('@goltou/api-client').Post; log?: TraceJob } | undefined;
   private pendingDeleteUpdate: import('@goltou/api-client').PostUpdate | undefined;
   private starting = false;
   private preparing = false;
@@ -38,7 +39,7 @@ export class AppCore {
   private readonly polishSetting: PolishStrengthStore;
   private readonly preferences: PreferencesStore;
   private readonly postMetadata: PostMetadataStore;
-  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { device: () => Promise<import('@goltou/api-client').LoginInput['device']>; deleteHost?: import('@goltou/surface').SurfaceHost; deleteLog?: import('@goltou/sites').DeleteLog; bandDeleteLog?: import('@goltou/sites').BandDeleteLog; bandDeleteReview?: import('@goltou/sites').BandDeleteReview; experimentTitle?: boolean; experimentTitleLabel?: string; polishStrength?: PolishStrengthStore; preferences?: PreferencesStore; postMetadata?: PostMetadataStore; openExternal?: (url: string) => Promise<void> }) {
+  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { logs?: import('./job-logs').JobLogStore; exportLogs?: () => Promise<void>; serviceChecks?: readonly ('naver' | 'band')[]; device: () => Promise<import('@goltou/api-client').LoginInput['device']>; deleteHost?: import('@goltou/surface').SurfaceHost; deleteLog?: import('@goltou/sites').DeleteLog; bandDeleteLog?: import('@goltou/sites').BandDeleteLog; bandDeleteReview?: import('@goltou/sites').BandDeleteReview; experimentTitle?: boolean; experimentTitleLabel?: string; polishStrength?: PolishStrengthStore; preferences?: PreferencesStore; postMetadata?: PostMetadataStore; openExternal?: (url: string) => Promise<void> }) {
     this.polishSetting = runtime?.polishStrength ?? new MemoryPolishStrengthStore();
     this.postMetadata = runtime?.postMetadata ?? new MemoryPostMetadata();
     this.preferences = runtime?.preferences ?? new MemoryPreferencesStore();
@@ -69,8 +70,8 @@ export class AppCore {
   }
   private scheduleServiceChecks() {
     if (!this.runner.serviceLogin || this.disposed) return;
-    if (this.state.realBlog) this.pendingServiceChecks.add('naver');
-    if (this.state.realBand) this.pendingServiceChecks.add('band');
+    if (this.state.realBlog && (this.runtime?.serviceChecks?.includes('naver') ?? true)) this.pendingServiceChecks.add('naver');
+    if (this.state.realBand && (this.runtime?.serviceChecks?.includes('band') ?? true)) this.pendingServiceChecks.add('band');
     clearTimeout(this.serviceTimer);
     this.serviceTimer = setTimeout(() => { void this.checkNextService(); }, 800);
   }
@@ -95,7 +96,7 @@ export class AppCore {
     this.scheduleServiceChecks();
   }
   private emit() { for (const listener of this.listeners) listener(this.snapshot()); }
-  dispose() { this.disposed = true; clearTimeout(this.serviceTimer); this.serviceUnsubscribe?.(); this.runner.dispose(); this.listeners.clear(); }
+  dispose() { this.disposed = true; this.deleteConfirmation?.log?.end('stopped', 'USER_STOPPED'); this.deleteConfirmation = undefined; clearTimeout(this.serviceTimer); this.serviceUnsubscribe?.(); this.runner.dispose(); this.listeners.clear(); }
   /** Debug entry supplies the deletion capability; release exposes no command. */
   async cleanupTestPost(remove: (execution: import('@goltou/sites').BlogExecution) => Promise<void>) {
     const job = this.runner.job, execution = this.runner.blogExecution?.();
@@ -144,6 +145,8 @@ export class AppCore {
       if (strength !== 'spelling' && strength !== 'natural') throw new ApiError('invalid', '문장 다듬기 수준을 확인해 주세요.');
       await this.polishSetting.write(strength); return strength;
     }
+    if (request.command === 'logs.list') return this.runtime?.logs?.list() ?? [];
+    if (request.command === 'logs.export') { if (!this.runtime?.exportLogs) throw new ApiError('invalid', '로그 내보내기를 사용할 수 없습니다.'); await this.runtime.exportLogs(); return {}; }
     if (request.command === 'session.get') { await this.initialize(); return this.snapshot(); }
     if (this.preparation?.ai && ((request.command === 'service.show' || request.command === 'service.check' || request.command === 'service.clear') && request.input.service === 'ai' || request.command === 'service.hide' && this.state.visibleService === 'ai')) {
       if (this.preparing || this.starting || this.runner.serviceLogin?.active || this.state.job?.status === 'running') throw new ApiError('conflict', '진행 중인 작업을 먼저 마쳐 주세요.');
@@ -201,20 +204,32 @@ export class AppCore {
         this.requireDeleteIdle();
         const post = await this.ownedPost(request.input.postNo, token);
         requireDeletablePost(post);
-        const key = randomUUID(); this.deleteConfirmation = { key, post };
+        this.deleteConfirmation?.log?.end('stopped', 'USER_STOPPED');
+        const log = beginTrace(post.channel === 'band' ? 'band_delete' : 'blog_delete', post.channel === 'band' ? 'band' : 'naver');
+        const key = randomUUID(); this.deleteConfirmation = { key, post, ...(log ? { log } : {}) };
+        log?.line('delete', 'wait', { reason: 'APP_PREPARED' });
         if (post.channel === 'band') this.runtime?.bandDeleteLog?.({ code: 'APP_PREPARED' });
         return { confirmation: key, productTitle: post.productTitle };
+      }
+      case 'posts.delete.cancel': {
+        if (this.deleteConfirmation?.key === request.input.confirmation) { this.deleteConfirmation.log?.end('stopped', 'USER_STOPPED'); this.deleteConfirmation = undefined; }
+        return {};
       }
       case 'posts.delete.confirm': {
         this.requireDeleteIdle();
         const confirmation = this.deleteConfirmation; this.deleteConfirmation = undefined;
-        if (!confirmation || confirmation.key !== request.input.confirmation) throw new ApiError('invalid', '삭제할 글을 다시 선택하고 확인해 주세요.');
+        if (!confirmation || confirmation.key !== request.input.confirmation) { confirmation?.log?.end('stopped', 'DELETE_CONFIRMATION_MISMATCH'); throw new ApiError('invalid', '삭제할 글을 다시 선택하고 확인해 주세요.'); }
+        return inTrace(confirmation.log, async () => {
+        trace('delete', 'start', { reason: 'APP_CONFIRMED' });
         this.deleting = true;
+        let outcome: 'succeeded' | 'stopped' | 'uncertain' | 'failed' = 'failed';
+        let failure = reasonCode('UNEXPECTED_FAILURE');
         try {
           const post = await this.ownedPost(confirmation.post.postNo, token);
           requireDeletablePost(post);
           if (['postUrl', 'productTitle', 'startedAt', 'productNo', 'channel', 'targetName'].some(key => post[key as keyof typeof post] !== confirmation.post[key as keyof typeof post])) throw new ApiError('conflict', '기록이 바뀌었습니다. 삭제할 글을 다시 확인해 주세요.');
           if (!this.runtime?.deleteHost) throw new ApiError('invalid', '글 삭제 기능을 사용할 수 없습니다.');
+          this.runtime?.logs?.associate(String(post.postNo));
           let alreadyAbsent = false;
           if (post.channel === 'band') {
             this.runtime.bandDeleteLog?.({ code: 'APP_CONFIRMED' });
@@ -222,6 +237,7 @@ export class AppCore {
             const result = await removeRecordedBandPost(this.runtime.deleteHost, post, product, this.state.settings?.defaultHashtags ?? [], this.runtime.bandDeleteLog, this.runtime.bandDeleteReview);
             if (result.status !== 'deleted') {
               this.state.postDeletion = { postNo: post.postNo, verifiedGone: false, recorded: false, outcome: result.status };
+              outcome = result.status === 'uncertain' ? 'uncertain' : 'stopped'; failure = result.status === 'uncertain' ? 'UNCERTAIN' : 'NOT_STARTED';
               this.emit(); return this.snapshot();
             }
             alreadyAbsent = result.alreadyAbsent === true;
@@ -229,19 +245,26 @@ export class AppCore {
           this.pendingDeleteUpdate = deletedUpdate(post, alreadyAbsent);
           this.state.postDeletion = { postNo: post.postNo, verifiedGone: true, recorded: false, outcome: 'deleted' };
           this.emit();
-          await this.saveDeletion(token);
-        } finally { this.deleting = false; }
+          await this.saveDeletion(token); outcome = 'succeeded';
+        } catch (error) { failure = reasonCode(error); trace('delete', 'fail', { reason: failure }); throw error; }
+        finally { this.deleting = false; confirmation.log?.end(outcome, outcome === 'succeeded' ? undefined : failure); }
         return this.snapshot();
+        });
       }
       case 'posts.delete.retryRecord': {
         if (this.deleting || !this.pendingDeleteUpdate) throw new ApiError('conflict', '다시 기록할 삭제 결과가 없습니다.');
+        const band = this.pendingDeleteUpdate.failReason?.startsWith('BAND_');
+        return traceJob(band ? 'band_delete' : 'blog_delete', band ? 'band' : 'naver', async () => {
+        this.runtime?.logs?.associate(String(this.pendingDeleteUpdate!.postNo));
+        trace('runner.record', 'retry', { reason: 'RECORD_FAILED' });
         this.deleting = true;
         try { await this.saveDeletion(token); } finally { this.deleting = false; }
         return this.snapshot();
+        });
       }
       case 'posts.list': {
         const page = await this.call('/auto/posts/list', request.input, token);
-        return { ...page, items: await Promise.all(page.items.map(async post => ({ ...post, blogVisibility: post.channel === 'blog' ? await this.postMetadata.get(post.postNo) ?? post.blogVisibility : undefined }))) };
+        return { ...page, items: await Promise.all(page.items.map(async post => ({ ...post, jobLog: this.runtime?.logs?.forRecord(String(post.postNo)), blogVisibility: post.channel === 'blog' ? await this.postMetadata.get(post.postNo) ?? post.blogVisibility : undefined }))) };
       }
       case 'settings.save': await this.call('/auto/settings/save', request.input, token); this.state.settings = (await this.call('/auto/me', {}, token)).settings; break;
       case 'service.check': this.requireServiceIdle(); this.state.services[request.input.service] = request.input.service === 'ai' ? 'unknown' : request.input.service === 'band' && this.runner.checkBandLogin ? await this.runner.checkBandLogin() : request.input.service === 'naver' && this.runner.checkLogin ? await this.runner.checkLogin() : 'confirmed'; break;
@@ -371,13 +394,15 @@ export class AppCore {
     return { closing: options.closing, closingText: this.state.settings?.closingText ?? '', linkCard: options.linkCard, hashtags: this.state.settings?.defaultHashtags ?? [], polishStrength: options.polishStrength ?? 'spelling' };
   }
   private async record(job: Job, retry = false) {
+    trace('runner.record', retry ? 'retry' : 'start', { counts: { step: job.step } });
     const token = await this.token();
     for (const record of this.records) {
+      this.runtime?.logs?.associate(String(record.postNo));
       if (['draft_saved', 'published'].includes(record.status) && !(record.channel === 'blog' && job.testPostDeleted && record.status === 'published')) continue;
       const saved = job.completedSteps.includes(record.channel === 'blog' ? 5 : 6);
       const result = job.targetResults?.find(t => t.channel === record.channel && t.key === record.key);
       const status: PostStatus = (result?.status === 'running' && job.status === 'user_paused' ? 'stopped' : result?.status) ?? (saved ? (record.channel === 'band' && job.mode === 'draft' ? 'stopped_before_post' : job.mode === 'draft' ? 'draft_saved' : 'published') : job.status === 'failed' ? 'failed' : job.status === 'user_paused' ? 'stopped' : 'running');
-      const update = { postNo: record.postNo, status, step: job.step, failReason: ['failed', 'stopped'].includes(status) ? (result?.reason ?? job.message) : '', postUrl: status === 'published' ? (result?.postUrl ?? job.postUrl ?? (job.targetResults ? '' : `https://example.invalid/posts/${record.postNo}`)) : '' };
+      const update = { postNo: record.postNo, status, step: job.step, failReason: ['failed', 'stopped'].includes(status) ? (result?.reason ?? job.message) : '', postUrl: record.channel === 'band' && result?.postUrl ? result.postUrl : status === 'published' ? (result?.postUrl ?? job.postUrl ?? (job.targetResults ? '' : `https://example.invalid/posts/${record.postNo}`)) : '' };
       const identity = JSON.stringify(update);
       if (record.updates.has(identity)) {
         const failure = record.updates.get(identity);

@@ -4,12 +4,22 @@ import { deleteIdentity, requireDeleteConfirmation, type DeletePage } from '@gol
 import { AppCore, MemoryTokenStore } from '../src/app';
 import { canDeletePost, deletedPost, deletedUpdate, requireDeletablePost } from '../src/post-delete-policy';
 import type { AppRequest } from '../src/protocol';
+import { JobLogStore } from '../src/job-logs';
+import { configureTrace } from '@goltou/surface/telemetry';
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 const bandRemove = vi.hoisted(() => vi.fn(async (): Promise<{ status: 'deleted' | 'not_started' | 'uncertain'; alreadyAbsent?: boolean }> => ({ status: 'deleted' })));
 const remove = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock('../src/post-delete', async original => ({ ...await original<object>(), removeRecordedBlogPost: remove, removeRecordedBandPost: bandRemove }));
 const post: Post = { postNo: 1, productNo: 1, productTitle: '합성 상품', channel: 'blog', mode: 'publish', targetName: '', status: 'published', step: 7, failReason: '', postUrl: 'https://blog.naver.com/synthetic/9001', userName: '', startedAt: 'synthetic', finishedAt: 'synthetic', productChanged: false };
 const page: DeletePage = { url: post.postUrl, titles: [post.productTitle], privateLabels: 0, publicLabels: 1, photos: 2, edits: 1, deletes: 1 };
 describe('regular deletion identity and record policy', () => {
+  it('allows uncertain Band cleanup only with the app-created link, preserving a failed result', () => {
+    const uncertain: Post = { ...post, channel: 'band', status: 'failed', failReason: 'BAND_POST_UNCONFIRMED', postUrl: 'https://band.us/band/111/post/9001' };
+    expect(canDeletePost(uncertain, 'mine')).toBe(true);
+    for (const changed of [{ ...uncertain, postUrl: '' }, { ...uncertain, failReason: 'BAND_FAILED' }, { ...uncertain, mode: 'draft' as const }, { ...uncertain, channel: 'blog' as const }]) expect(canDeletePost(changed, 'mine')).toBe(false);
+  });
   it('accepts an ordinary public title and arbitrary photo count, without experiment markers', () => {
     expect(deleteIdentity([page], { url: post.postUrl, title: post.productTitle }).every(i => i.pass === 1)).toBe(true);
   });
@@ -47,6 +57,21 @@ async function fixture() {
   return { app, call, updates, change: (value: Partial<Post>) => { record = { ...record, ...value }; }, fail: (value: boolean) => { fail = value; } };
 }
 describe('confirmed deletion orchestration', () => {
+  it('ends prepared delete jobs on a wrong confirmation, explicit cancel and disposal', async () => {
+    const f = await fixture(), directory = mkdtempSync(path.join(os.tmpdir(), 'goltou-delete-stop-'));
+    const logs = new JobLogStore(directory); configureTrace(logs);
+    try {
+      await f.call('posts.delete.prepare', { postNo: 1 });
+      await expect(f.call('posts.delete.confirm', { confirmation: 'synthetic-wrong' })).rejects.toMatchObject({ code: 'invalid' });
+      expect(logs.list()[0]).toMatchObject({ result: 'stopped', reason: 'DELETE_CONFIRMATION_MISMATCH' });
+      const pending = await f.call('posts.delete.prepare', { postNo: 1 }); await f.call('posts.delete.cancel', pending);
+      await f.call('posts.delete.prepare', { postNo: 1 }); f.app.dispose();
+      expect(logs.list().map(row => row.result)).toEqual(['stopped', 'stopped', 'stopped']); expect(remove).not.toHaveBeenCalled();
+      for (const day of readdirSync(directory).filter(n => /^\d{8}$/.test(n))) for (const file of readdirSync(path.join(directory, day))) {
+        const lines = readFileSync(path.join(directory, day, file), 'utf8').trim().split('\n').map(s => JSON.parse(s)); expect(lines.filter(line => line.step === 'terminal')).toHaveLength(1);
+      }
+    } finally { f.app.dispose(); configureTrace(undefined); rmSync(directory, { recursive: true, force: true }); }
+  });
   it('requires an owned record and a fresh explicit confirmation; never changes the record on refusal', async () => {
     const f = await fixture();
     await expect(f.call('posts.delete.prepare', { postNo: 2 })).rejects.toMatchObject({ code: 'forbidden' });

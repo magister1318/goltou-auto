@@ -1,7 +1,8 @@
 import { ApiError, type Post, type PostUpdate } from '@goltou/api-client';
 import { postIdentity, bandPostIdentity } from '@goltou/sites';
 export function canDeletePost(post: Post, scope: 'mine' | 'all') {
-  return scope === 'mine' && post.mode === 'publish' && post.status === 'published' && !!(post.channel === 'blog' ? postIdentity(post.postUrl) : bandPostIdentity(post.postUrl));
+  const hasCreatedReceipt = post.channel === 'band' && post.status === 'failed' && post.failReason === 'BAND_POST_UNCONFIRMED';
+  return scope === 'mine' && post.mode === 'publish' && (post.status === 'published' || hasCreatedReceipt) && !!(post.channel === 'blog' ? postIdentity(post.postUrl) : bandPostIdentity(post.postUrl));
 }
 export function requireDeletablePost(post: Post) {
   if (!canDeletePost(post, 'mine')) throw new ApiError('invalid', '앱에서 발행한 내 글만 삭제할 수 있습니다.');

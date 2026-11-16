@@ -1,6 +1,6 @@
 {
   "name": "@goltou/surface", "version": "0.1.0", "private": true, "type": "module",
-  "exports": { ".": "./src/index.ts", "./cdp": "./src/cdp/index.ts" },
+  "exports": { ".": "./src/index.ts", "./cdp": "./src/cdp/index.ts", "./telemetry": "./src/telemetry.ts" },
   "scripts": { "typecheck": "tsc -p tsconfig.json" },
   "dependencies": { "ws": "8.18.3" }
 }

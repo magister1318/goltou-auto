@@ -1,3 +1,4 @@
+import { traceStep, trace, reasonCode, requestTrace, currentTrace, inTrace, expectedTelemetryRequest } from '../telemetry';
 import type { GuardedRequest, GuardedResponse, RequestBlockReason, RequestRule, KeyInput, NavigationOptions, NavigationPolicy, Surface, SurfaceDialog, SurfaceOpenOptions, SurfaceSession, SurfaceState } from '../index';
 import { inputCharacters } from '../index';
 import { CdpConnection } from './connection';
@@ -28,6 +29,7 @@ const keys: Record<string, { code: string; vk: number; text?: string }> = {
 export class CdpSurface implements Surface {
   readAppFocus?: () => Promise<boolean>;
   private closed = false;
+  private jobTrace: import('../telemetry').TraceJob | undefined;
   private navigationError: string | undefined;
   private metrics: { width: number; height: number; deviceScaleFactor: number; mobile: boolean } | undefined;
   private readonly loaded = new Set<string>();
@@ -46,14 +48,15 @@ export class CdpSurface implements Surface {
     private readonly lifecycle: SurfaceLifecycle,
     private readonly inputDelayMs = 60,
   ) {
-    cdp.on('Fetch.requestPaused', p => { void this.intercept(p).catch(error => {
+    cdp.on('Fetch.requestPaused', p => { void inTrace(this.jobTrace, () => this.intercept(p)).catch(error => {
       const message = error instanceof Error ? error.message : '';
       // Chromium can cancel a paused request before continue/fail is handled.
       // This exact error means its interception no longer exists. It does not
       // remove the installed policy, authorize another request or retry a write.
       if(p.responseStatusCode === undefined && p.responseErrorReason === undefined && /Invalid InterceptionId/i.test(message)) {
-        this.acceptedRequests.delete(String(p.requestId)); return;
+        inTrace(this.jobTrace, () => trace('barrier', 'skip', { reason: 'STALE_INTERCEPTION' })); this.acceptedRequests.delete(String(p.requestId)); return;
       }
+      inTrace(this.jobTrace, () => trace('barrier', 'fail', { reason: reasonCode(error) }));
       this.barrierFailed = true;
       const kind = /InterceptionId|interception id/i.test(message) ? 'STALE_INTERCEPTION' : /resource.*identifier/i.test(message) ? 'STALE_RESOURCE' : /response body|body.*response/i.test(message) ? 'RESPONSE_BODY' : /CDP_TIMEOUT/.test(message) ? 'TIMEOUT' : 'PROTOCOL';
       this.barrierFailure = `${p.responseErrorReason !== undefined ? 'ERROR' : p.responseStatusCode !== undefined ? 'RESPONSE' : 'REQUEST'}_${kind}`;
@@ -76,6 +79,7 @@ export class CdpSurface implements Surface {
     });
   }
   private async intercept(p: Record<string, unknown>) {
+    return traceStep('surface.cdp.index.CdpSurface.intercept', async () => {
       const request = p.request as GuardedRequest | undefined;
       const requestId = String(p.requestId);
       if (p.responseStatusCode !== undefined || p.responseErrorReason !== undefined) {
@@ -113,26 +117,33 @@ export class CdpSurface implements Surface {
               try {
                 const body = await this.cdp.send<{ postData: string }>('Network.getRequestPostData', { requestId: p.networkId });
                 if (typeof body.postData === 'string') { postData = body.postData; fetched = true; }
-              } catch { postDataFailure = 'FETCH_FAILED'; }
+              } catch { trace('surface.cdp.index.CdpSurface.intercept', 'fail', { reason: 'CAUGHT_FAILURE' });  postDataFailure = 'FETCH_FAILED'; }
             } else postDataFailure = 'NETWORK_ID_MISSING';
           }
           const complete = typeof postData === 'string' && (!mustFetch || fetched) && (length === undefined || Buffer.byteLength(postData, 'utf8') === length);
           if (!complete && !postDataFailure) postDataFailure = typeof postData === 'string' && length !== undefined ? 'LENGTH_MISMATCH' : 'MISSING';
           reason = 'INSPECTOR_ERROR';
-          blocked = !request || !await this.requestGuard.inspect({ url: raw.url, method: raw.method, ...(complete ? { postData: postData! } : {}),
+          trace('barrier', 'start');
+          const inspection = { url: raw.url, method: raw.method, ...(complete ? { postData: postData! } : {}),
             contentType: String(header('content-type') ?? ''), hasPostData: raw.hasPostData === true, postDataInline: inline,
-            postDataFetched: fetched, postDataComplete: complete, ...(postDataFailure ? { postDataFailure } : {}) });
+            postDataFetched: fetched, postDataComplete: complete, ...(postDataFailure ? { postDataFailure } : {}) };
+          blocked = !request || !await this.requestGuard.inspect(inspection);
+          trace('barrier', blocked ? expectedTelemetryRequest(inspection) ? 'blocked_expected' : 'fail' : 'ok', { ...requestTrace(inspection, !blocked), reason: currentTrace()?.decisionReason ?? (blocked ? 'INSPECTOR_DENIED' : 'REQUEST_ALLOWED') });
           if (blocked) reason = 'INSPECTOR_DENIED';
           if (!blocked && (this.requestGuard.observeResponse?.(raw) ?? true)) this.acceptedRequests.set(requestId, { url: raw.url, method: raw.method });
         }
-      } catch { blocked = true; /* Unreadable intercepted requests fail closed. */ }
+      } catch { trace('surface.cdp.index.CdpSurface.intercept', 'fail', { reason: 'CAUGHT_FAILURE' });  blocked = true; /* Unreadable intercepted requests fail closed. */ }
       await this.cdp.send(blocked ? 'Fetch.failRequest' : 'Fetch.continueRequest', {
         requestId: p.requestId, ...(blocked ? { errorReason: 'BlockedByClient' } : {}),
       });
       if (blocked) this.requestGuard?.blocked?.(request ? { url: request.url, method: request.method } : undefined, reason);
+
+    });
   }
 
   async guardRequests(rules: readonly RequestRule[], inspect: (request: GuardedRequest) => boolean | Promise<boolean>, response: (response: GuardedResponse) => void, observeResponse?: (request: Pick<GuardedRequest, 'url' | 'method'>) => boolean, blocked?: (request: Pick<GuardedRequest, 'url' | 'method'> | undefined, reason: RequestBlockReason) => void) {
+    return traceStep('surface.cdp.index.CdpSurface.guardRequests', async () => {
+    this.jobTrace = currentTrace() ?? this.jobTrace;
     if (this.requestGuard) throw new Error('SURFACE_REQUEST_GUARD_ALREADY_SET');
     const paths = new Set(rules.map(rule => {
       if (!(rule.hostname === '*' || /^[a-z0-9.-]+$/.test(rule.hostname)) || !/^\/[a-zA-Z0-9/_.-]*$/.test(rule.pathname)) throw new Error('SURFACE_BAD_REQUEST_BARRIER');
@@ -144,17 +155,26 @@ export class CdpSurface implements Surface {
     await this.cdp.send('Fetch.enable', { patterns: [...new Set([...paths, ...this.blockedRequests])].flatMap(path =>
       ['Request', 'Response'].flatMap(requestStage => [path, ...(path.startsWith('127.0.0.1/') ? [path.replace('127.0.0.1/', '127.0.0.1:*/')] : [])]
         .map(pattern => ({ urlPattern: `*://${pattern}*`, requestStage })))) });
+
+    });
   }
 
   async blockRequests(rules: readonly { hostname: string; pathname: string }[]): Promise<void> {
+    return traceStep('surface.cdp.index.CdpSurface.blockRequests', async () => {
+    this.jobTrace = currentTrace() ?? this.jobTrace;
     for (const rule of rules) {
       if (!/^[a-z0-9.-]+$/.test(rule.hostname) || !/^\/[a-zA-Z0-9/_.-]+$/.test(rule.pathname)) throw new Error('SURFACE_BAD_REQUEST_BARRIER');
       this.blockedRequests.add(`${rule.hostname}${rule.pathname}`);
     }
     await this.cdp.send('Fetch.enable', { patterns: [...this.blockedRequests].map(path => ({ urlPattern: `*://${path}*`, requestStage: 'Request' })) });
+
+    });
   }
 
   async open(options: SurfaceOpenOptions): Promise<void> {
+    return traceStep('surface.cdp.index.CdpSurface.open', async () => {
+    this.jobTrace = currentTrace() ?? this.jobTrace;
+    try { const u = new URL(options.url); trace('navigation', 'start', { navigation: { host: u.hostname, path: u.pathname } }); } catch { trace('navigation', 'fail', { reason: 'REQUEST_INVALID' }); }
     if (options.session !== this.session) throw new Error('SURFACE_SESSION_MISMATCH');
     if (!['http:', 'https:'].includes(new URL(options.url).protocol)) throw new Error('SURFACE_HTTP_URL_REQUIRED');
     if (![options.width, options.height].every(n => Number.isInteger(n) && n > 0 && n <= 8192)) throw new Error('SURFACE_BAD_VIEWPORT');
@@ -180,14 +200,20 @@ export class CdpSurface implements Surface {
       }
     }
     await this.waitForNavigation();
+
+    });
   }
 
   async evaluateReadOnly<T>(expression: string): Promise<T> {
+    return traceStep('surface.cdp.index.CdpSurface.evaluateReadOnly', async () => {
+    this.jobTrace = currentTrace() ?? this.jobTrace;
     const reply = await this.cdp.send<{ result: { value?: T }; exceptionDetails?: unknown }>('Runtime.evaluate', {
       expression, returnByValue: true, throwOnSideEffect: true, timeout: 5000,
     });
     if (reply.exceptionDetails) throw new Error('SURFACE_READ_FAILED_OR_SIDE_EFFECT');
     return reply.result.value as T;
+
+    });
   }
 
   readState(): Promise<SurfaceState> {
@@ -195,6 +221,8 @@ export class CdpSurface implements Surface {
   }
 
   async readClickTarget(x: number, y: number, selector: string): Promise<boolean> {
+    return traceStep('surface.cdp.index.CdpSurface.readClickTarget', async () => {
+    this.jobTrace = currentTrace() ?? this.jobTrace;
     // Points from read() use the outer document's layout viewport. Android CDP
     // can report the focused iframe's scroll in Page.getLayoutMetrics instead.
     // Adding that offset double-counts its scroll and can hit outside the view.
@@ -212,25 +240,33 @@ export class CdpSurface implements Surface {
       if (result.exceptionDetails) throw new Error('SURFACE_HIT_TEST_FAILED');
       return result.result.value === true;
     } finally { await this.cdp.send('Runtime.releaseObject', { objectId: object.objectId }); }
+
+    });
   }
 
   async waitForNavigation(options: NavigationOptions = {}): Promise<SurfaceState> {
+    return traceStep('surface.cdp.index.CdpSurface.waitForNavigation', async () => {
+    this.jobTrace = currentTrace() ?? this.jobTrace;
     const deadline = Date.now() + (options.timeoutMs ?? 30000);
     while (Date.now() < deadline) {
       if (this.navigationError) throw new Error(this.navigationError);
       try {
         const state = await this.readState();
         if (!state.loading && (!options.url || state.url === options.url)) return state;
-      } catch (error) {
+      } catch (error) { trace('surface.cdp.index.CdpSurface.waitForNavigation', 'fail', { reason: reasonCode(error) });
         if (error instanceof Error && /CDP_CLOSED|CDP_TIMEOUT/.test(error.message)) throw error;
         // Execution contexts disappear during navigation.
       }
       await pause(50);
     }
     throw new Error('SURFACE_NAVIGATION_TIMEOUT');
+
+    });
   }
 
   async click(x: number, y: number, beforePress?: () => Promise<void>): Promise<void> {
+    return traceStep('surface.cdp.index.CdpSurface.click', async () => {
+    this.jobTrace = currentTrace() ?? this.jobTrace;
     if (![x, y].every(Number.isFinite)) throw new Error('SURFACE_BAD_COORDINATES');
     await this.input('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y });
     await pause(this.inputDelayMs);
@@ -238,13 +274,21 @@ export class CdpSurface implements Surface {
     await this.input('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 });
     await pause(this.inputDelayMs);
     await this.input('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 });
+
+    });
   }
 
   async typeText(text: string): Promise<void> {
+    return traceStep('surface.cdp.index.CdpSurface.typeText', async () => {
+    this.jobTrace = currentTrace() ?? this.jobTrace;
     for (const char of inputCharacters(text)) { await this.input('Input.insertText', { text: char }); await pause(this.inputDelayMs); }
+
+    });
   }
 
   async pressKey(input: KeyInput, beforePress?: () => Promise<void>): Promise<void> {
+    return traceStep('surface.cdp.index.CdpSurface.pressKey', async () => {
+    this.jobTrace = currentTrace() ?? this.jobTrace;
     const key = keys[input.key] ?? (/^[a-z0-9]$/i.test(input.key)
       ? { code: /^[0-9]$/.test(input.key) ? `Digit${input.key}` : `Key${input.key.toUpperCase()}`, vk: input.key.toUpperCase().charCodeAt(0) }
       : undefined);
@@ -255,8 +299,12 @@ export class CdpSurface implements Surface {
     await this.input('Input.dispatchKeyEvent', { ...params, type: 'keyDown', ...(text ? { text } : {}) });
     await pause(this.inputDelayMs);
     await this.input('Input.dispatchKeyEvent', { ...params, type: 'keyUp' });
+
+    });
   }
   private async input(method: string, params: Record<string, unknown>): Promise<void> {
+    return traceStep('surface.cdp.index.CdpSurface.input', async () => {
+    this.jobTrace = currentTrace() ?? this.jobTrace;
     if (this.barrierFailed) throw new Error(`SURFACE_DRAFT_BARRIER_FAILED:${this.barrierFailure}`);
     if (this.dialog) throw new Error('SURFACE_DIALOG_PENDING');
     let unsubscribe = () => {};
@@ -264,9 +312,13 @@ export class CdpSurface implements Surface {
     // A modal can block the very input command that opened it. Yield to the user
     // without waiting for that command's reply or sending a second input.
     try { await Promise.race([this.cdp.send(method, params), dialog]); } finally { unsubscribe(); }
+
+    });
   }
 
   async attachFiles(selector: string, absolutePaths: readonly string[]): Promise<void> {
+    return traceStep('surface.cdp.index.CdpSurface.attachFiles', async () => {
+    this.jobTrace = currentTrace() ?? this.jobTrace;
     type Node = { nodeId: number; contentDocument?: Node; children?: Node[] };
     const { root } = await this.cdp.send<{ root: Node }>('DOM.getDocument', { depth: -1, pierce: true });
     const documents = [root];
@@ -282,48 +334,78 @@ export class CdpSurface implements Surface {
     }
     if (!nodeId) throw new Error('SURFACE_FILE_INPUT_NOT_FOUND');
     await this.cdp.send('DOM.setFileInputFiles', { nodeId, files: [...absolutePaths] });
+
+    });
   }
-  async readDialog(): Promise<SurfaceDialog | null> { return this.lifecycle.readDialog ? this.lifecycle.readDialog() : this.dialog; }
+  async readDialog(): Promise<SurfaceDialog | null> {
+    return traceStep('surface.cdp.index.CdpSurface.readDialog', async () => {
+    this.jobTrace = currentTrace() ?? this.jobTrace; const dialog = this.lifecycle.readDialog ? await this.lifecycle.readDialog() : this.dialog; if (dialog) trace('dialog', 'wait', { dialog: dialog.kind }); return dialog;
+    });
+  }
   async respondDialog(id: string, accept: boolean): Promise<void> {
+    return traceStep('surface.cdp.index.CdpSurface.respondDialog', async () => {
+    this.jobTrace = currentTrace() ?? this.jobTrace;
     if (this.lifecycle.respondDialog) return this.lifecycle.respondDialog(id, accept);
     if (this.dialog?.id !== id) throw new Error('DIALOG_ID_MISMATCH');
     await this.cdp.send('Page.handleJavaScriptDialog', { accept }); this.dialog = null;
+
+    });
   }
   /** Shell-only capture: bitmap and CSS geometry are from the same CDP viewport. */
   async captureViewport(): Promise<string> {
+    return traceStep('surface.cdp.index.CdpSurface.captureViewport', async () => {
+    this.jobTrace = currentTrace() ?? this.jobTrace;
     // Only the compositor snapshot shares the emulated CSS viewport. Native view
     // snapshots can use Android density even when their PNG has the same size.
     const params = { format: 'png', fromSurface: true, captureBeyondViewport: false };
     try { return (await this.cdp.send<{ data: string }>('Page.captureScreenshot', params, 1500)).data; }
-    catch (error) {
+    catch (error) { trace('surface.cdp.index.CdpSurface.captureViewport', 'fail', { reason: reasonCode(error) });
       if (!(error instanceof Error) || error.message !== 'CDP_TIMEOUT Page.captureScreenshot') throw error;
       // An occluded WebView can leave the first frame request unanswered.
       // Retry the read once; this never repeats an editor input or save.
       return (await this.cdp.send<{ data: string }>('Page.captureScreenshot', params)).data;
     }
+
+    });
   }
 
   async show(): Promise<void> {
+    return traceStep('surface.cdp.index.CdpSurface.show', async () => {
+    this.jobTrace = currentTrace() ?? this.jobTrace;
     // A native phone viewport and a fixed desktop emulation must not compete.
     await this.cdp.send('Emulation.clearDeviceMetricsOverride');
     await this.cdp.send('Emulation.setFocusEmulationEnabled', { enabled: false });
     await this.lifecycle.setVisible(true);
+
+    });
   }
   async restrictNavigation(policy: NavigationPolicy): Promise<void> {
+    return traceStep('surface.cdp.index.CdpSurface.restrictNavigation', async () => {
+    this.jobTrace = currentTrace() ?? this.jobTrace;
     if (!this.lifecycle.restrictNavigation) throw new Error('SURFACE_NAVIGATION_GUARD_REQUIRED');
     await this.lifecycle.restrictNavigation(policy);
+
+    });
   }
   onUserHidden(listener: () => void): () => void { return this.lifecycle.onUserHidden?.(listener) ?? (() => {}); }
   onNavigationHidden(listener: () => void): () => void { return this.lifecycle.onNavigationHidden?.(listener) ?? (() => {}); }
   async hide(): Promise<void> {
+    return traceStep('surface.cdp.index.CdpSurface.hide', async () => {
+    this.jobTrace = currentTrace() ?? this.jobTrace;
     await this.lifecycle.setVisible(false);
     if (this.metrics) await this.cdp.send('Emulation.setDeviceMetricsOverride', this.metrics);
     await this.cdp.send('Emulation.setFocusEmulationEnabled', { enabled: true });
+
+    });
   }
   async close(): Promise<void> {
+    return traceStep('surface.cdp.index.CdpSurface.close', async () => {
+    this.jobTrace = currentTrace() ?? this.jobTrace;
     if (this.closed) return;
     this.closed = true;
     this.cdp.close();
     await this.lifecycle.close();
+
+    });
   }
 }

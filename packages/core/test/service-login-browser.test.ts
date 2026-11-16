@@ -1,5 +1,8 @@
+import { loggedFixture } from './log-fixture';
+import os from 'node:os';
+import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 import type { SurfaceHost } from '@goltou/surface';
 import { CdpConnection, CdpSurface } from '@goltou/surface/cdp';
@@ -49,6 +52,8 @@ describe.runIf(Boolean(executablePath))('WP15 browser authentication fixtures (n
     await expect.poll(() => updates.at(-1)?.state).toBe('confirmed');
     expect(shown).toBe(false); expect(hides).toBe(1); expect(controller.active).toBe(false);
     await controller.show(service); expect(shows).toBe(1); expect(updates.at(-1)).toMatchObject({ state: 'confirmed', visible: false });
+    const logDirectory = mkdtempSync(path.join(os.tmpdir(), 'goltou-login-log-'));
+    try { await loggedFixture(logDirectory, 'login_check', () => controller.check(service), ['core.service-login.ServiceLoginController.load', 'core.service-login.ServiceLoginController.signal'], true); } finally { rmSync(logDirectory, { recursive: true, force: true }); }
     expect(blocked).toBe(0); expect(requests.length).toBeGreaterThan(2);
     expect(expressions.join(' ')).not.toMatch(/document\.cookie|\.value|localStorage|sessionStorage/);
   }, 15000);

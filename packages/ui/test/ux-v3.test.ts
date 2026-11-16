@@ -202,9 +202,9 @@ describe('WP17 choices and channel outcomes', () => {
         droppedStruckCharacters: 0,
       }),
     );
-    expect(node.querySelector('.band-text')!.textContent).toBe(bandText(band));
+    expect(node.querySelector('.band-full-text')!.textContent).toBe(bandText(band));
     expect(
-      node.querySelectorAll('.band-photo-grid .preview-photo'),
+      node.querySelectorAll('.band-photo-stack .preview-photo'),
     ).toHaveLength(photoUrls(band).length);
     node.innerHTML = renderToStaticMarkup(
       createElement(ConversionPreview, {
@@ -231,7 +231,7 @@ describe('WP17 choices and channel outcomes', () => {
     for (const bandName of [undefined, '합성 밴드']) {
       node.innerHTML = renderToStaticMarkup(createElement(ConversionPreview, { plan, bandName, expanded: true, droppedStruckCharacters: 0 }));
       expect(node.querySelector('.post-caption')!.textContent).toBe(`밴드 글${bandName || '밴드를 고르면 이름이 나옵니다'}`);
-      expect(node.querySelector('.band-text')!.textContent).toBe('원문');
+      expect(node.querySelector('.band-full-text')!.textContent).toBe('원문');
     }
   });
 });

@@ -1,6 +1,11 @@
 // Reference: ../refs/DAF/daf3/apps/mobile/src/core/main.ts (embedded Node startup arguments).
+import { existsSync } from 'node:fs';
+import { JobLogStore } from '../../../packages/core/src/job-logs';
+import { configureTrace, trace, reasonCode } from '../../../packages/surface/src/telemetry';
+declare const __GOLTOU_COMMIT__: string;
+declare const __GOLTOU_VERSION__: string;
 import path from 'node:path';
-import { appendFile, mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { AppCore, ChannelRegistrationRunner, goltouPhotoUrl, NativeBridge, startCore, fileMediaStorage, filePolishStrengthStore, type CoreOptions } from '../../../packages/core/src/index';
 import { createApiClient } from '../../../packages/api-client/src/index';
 import { apiOrigin } from './config';
@@ -23,28 +28,18 @@ function argument(name: string): string {
 const native = new NativeBridge();
 const host = new AndroidSurfaceHost(native, argument('devtools'));
 const ai = new AiModeClient(host);
-// Private debug log contains fixed decision codes only, in request order.
-// A write failure never authorizes publication or schedules another request.
-let bandBarrierLog = Promise.resolve();
-const recordBandBarrierDecision = (code: import('../../../packages/sites/src/index').BandBarrierCode) => {
-  bandBarrierLog = bandBarrierLog.then(async () => {
-    const directory = path.join(path.dirname(argument('data')), 'wp19');
-    await mkdir(directory, { recursive: true });
-    await appendFile(path.join(directory, 'barrier-codes.jsonl'), JSON.stringify(code) + '\n', { mode: 0o600 });
-  }).catch(() => {});
-};
+const logs = new JobLogStore(path.join(path.dirname(argument('data')), 'logs'));
+configureTrace(logs);
+logs.setEnvironment({ appVersion: __GOLTOU_VERSION__, commit: __GOLTOU_COMMIT__ });
+const recordBandBarrierDecision = (code: import('../../../packages/sites/src/index').BandBarrierCode, expected = false) => trace('barrier', expected ? 'blocked_expected' : /BLOCK|MISSING|INCOMPLETE|MISMATCH|NOT_ARMED|ALREADY_SENT|BODY_/.test(code) ? 'fail' : 'ok', { reason: reasonCode(code) });
 const options: CoreOptions = {
   native, host,
   diagnostics: __GOLTOU_DEBUG__,
-  band: { host, publishEnabled: !__GOLTOU_DEBUG__, ...(__GOLTOU_DEBUG__ ? { recordBarrierDecision: recordBandBarrierDecision, publishAllowance: fileBandPostAllowance(path.join(path.dirname(argument('data')), 'one-band-post.allow')) } : {}), ...(__GOLTOU_DEBUG__ ? { capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}) },
+  band: { host, recordBarrierDecision: recordBandBarrierDecision, publishEnabled: !__GOLTOU_DEBUG__, ...(__GOLTOU_DEBUG__ ? { publishAllowance: fileBandPostAllowance(path.join(path.dirname(argument('data')), 'one-band-post.allow')) } : {}), ...(__GOLTOU_DEBUG__ ? { capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}) },
   blog: {
     lastTypedTitle: fileBlogTitleStore(path.join(path.dirname(argument('data')), 'last-blog-title.txt')),
     host, publishEnabled: true, ...(__GOLTOU_DEBUG__ ? { draftSaveLimit: 1, capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}),
-    recordFailure: async failure => {
-      const directory = path.join(path.dirname(argument('data')), 'wp5');
-      await mkdir(directory, { recursive: true });
-      await writeFile(path.join(directory, `job-${failure.jobId}-step-${failure.step}.json`), JSON.stringify({ at: new Date().toISOString(), ...failure }));
-    },
+
   },
   preparation: {
     polish: ai.polish, ai,
@@ -57,23 +52,23 @@ const options: CoreOptions = {
   port: Number(argument('port')), token: argument('token'), uiDir: path.join(argument('bundle'), 'ui'),
 };
 async function start() {
-  const runtime: NonNullable<ConstructorParameters<typeof AppCore>[4]> = { openExternal: async url => { await native.call('app.openPost', { url }); }, deleteHost: host, postMetadata: filePostMetadata(path.join(path.dirname(argument('data')), 'post-metadata.json')), device: () => native.call<import('../../../packages/api-client/src/index').LoginInput['device']>('session.device'), preferences: filePreferencesStore(path.join(path.dirname(argument('data')), 'preferences.json')), polishStrength: filePolishStrengthStore(path.join(path.dirname(argument('data')), 'polish-strength.txt')), ...(__GOLTOU_DEBUG__ ? { experimentTitle: false, experimentTitleLabel: 'WP14 ' } : {}) };
-  // Only fixed reason codes and sanitized request field names; no account data.
-  let bandDeleteLog = Promise.resolve();
+  const runtime: NonNullable<ConstructorParameters<typeof AppCore>[4]> = { logs, exportLogs: async () => { logs.retain(); await native.call('logs.export'); }, ...(__GOLTOU_DEBUG__ && existsSync(path.join(path.dirname(argument('data')), 'band-only-test')) ? { serviceChecks: ['band'] as const } : {}), openExternal: async url => { await native.call('app.openPost', { url }); }, deleteHost: host, postMetadata: filePostMetadata(path.join(path.dirname(argument('data')), 'post-metadata.json')), device: () => native.call<import('../../../packages/api-client/src/index').LoginInput['device']>('session.device'), preferences: filePreferencesStore(path.join(path.dirname(argument('data')), 'preferences.json')), polishStrength: filePolishStrengthStore(path.join(path.dirname(argument('data')), 'polish-strength.txt')), ...(__GOLTOU_DEBUG__ ? { experimentTitle: false, experimentTitleLabel: 'WP14 ' } : {}) };
   runtime.bandDeleteLog = event => {
-    bandDeleteLog = bandDeleteLog.then(async () => {
-      const directory = path.join(path.dirname(argument('data')), 'wp19');
-      await mkdir(directory, { recursive: true });
-      await appendFile(path.join(directory, 'delete-codes.jsonl'), JSON.stringify({ at: new Date().toISOString(), ...event }) + '\n', { mode: 0o600 });
-    }).catch(() => {});
+    trace('delete', /REJECT|BLOCK|FAILED|UNCERTAIN|TIMEOUT|NOT_STARTED/.test(event.code) ? 'fail' : 'ok', { reason: reasonCode(event.code) });
+    if (event.checks) {
+      const checks = [['alert_kind', event.checks.alert, true], ['delete_notice', event.checks.missingMessage, true], ['same_post', event.checks.samePost, true], ['missing_read', event.checks.missingRead, true], ['feed_location', event.checks.feed, false]] as const;
+      for (const [check, observed, expected] of checks) trace('verification', observed === expected ? 'ok' : 'wait', { check, counts: { expected: Number(expected), observed: Number(observed) } });
+    }
+    for (const status of event.resultCodes ?? []) trace('delete', 'ok', { reason: reasonCode(event.code), counts: { status } });
   };
+  runtime.deleteLog = async value => trace('delete', value.pass ? 'ok' : 'fail', { ...(value.pass ? {} : { reason: 'VERIFICATION_MISMATCH' as const }), counts: { step: value.item, expected: value.expected ?? 0, observed: value.actual ?? 0 } });
   const app = new AppCore(createApiClient(apiOrigin, fetch), new AndroidTokenStore(native),
     (checkpoint, notify) => new ChannelRegistrationRunner({ band: options.band!, blog: options.blog! }, checkpoint, notify), options.preparation,
     runtime);
   options.app = app;
   let awake = false;
   app.subscribe(snapshot => { const next = !!snapshot.job && ['running', 'recovery_paused', 'dialog_paused', 'login_paused'].includes(snapshot.job.status); if (next !== awake) { awake = next; void native.call('app.jobState', { running: next }).catch(() => {}); } });
-  void native.ready().then(() => app.serviceRuntimeReady()).catch(() => {});
+  void native.ready().then(async () => { logs.setEnvironment({ ...await native.call<{ appVersion: string; deviceModel: string; webViewVersion: string }>('logs.environment'), commit: __GOLTOU_COMMIT__ }); app.serviceRuntimeReady(); }).catch(() => {});
   native.onEvent('app.foreground', data => { if (typeof data.backgroundMs === 'number') app.foregrounded(data.backgroundMs); });
   if (__GOLTOU_DEBUG__ && argument('debug') === 'true') {
     // A verified, guarded feed can be reviewed for device evidence. This is
@@ -89,22 +84,10 @@ async function start() {
       try { await surface.show(); runtime.bandDeleteLog?.({ code: 'REVIEW_OPEN' }); await hidden; }
       finally { clearTimeout(timeout); unsubscribe(); await surface.hide(); runtime.bandDeleteLog?.({ code: 'REVIEW_CLOSED' }); }
     };
-    runtime.deleteLog = async value => {
-      const directory = path.join(path.dirname(argument('data')), 'wp14');
-      await mkdir(directory, { recursive: true });
-      await appendFile(path.join(directory, 'record-delete-shape.jsonl'), JSON.stringify(value) + '\n', { mode: 0o600 });
-    };
     const { Experiments } = await import('../../../packages/core/src/experiments');
     const { auditConversions } = await import('../../../packages/core/src/conversion-audit');
     const { deleteTestPost } = await import('../../../packages/core/src/test-post-delete');
     const { publishProbeShape } = await import('./publish-probe');
-    const { publishResponseShape } = await import('./publish-response-shape');
-    options.blog!.recordPublishResponse = async response => {
-      const shape = publishResponseShape(response);
-      const directory = path.join(path.dirname(argument('data')), 'wp14');
-      await mkdir(directory, { recursive: true });
-      await writeFile(path.join(directory, 'publish-response-shape.json'), JSON.stringify(shape), { mode: 0o600 });
-    };
     options.experiments = new Experiments({
       host, directory: argument('data'),
       photoPaths: Array.from({ length: 5 }, (_, i) => path.join(argument('bundle'), 'fixtures', `sample-${i + 1}.png`)),
@@ -118,6 +101,12 @@ async function start() {
         await ready();
         const token = await new AndroidTokenStore(native).read();
         if (!token) throw Error('BAND_PUBLISH_RECOVERY_REFUSED');
+        const cleanupContext = path.join(path.dirname(argument('data')), 'uncertain-band-cleanup.json');
+        if (existsSync(cleanupContext)) {
+          const { recoverUncertainBandForDeletion } = await import('./band-delete-recovery');
+          await recoverUncertainBandForDeletion(cleanupContext, createApiClient(apiOrigin, fetch), token, host, logs, ready);
+          return;
+        }
         await recoverBandPublish(path.join(path.dirname(argument('data')), 'wp19', 'band-publish-context.json'), createApiClient(apiOrigin, fetch), token, host, ready);
       },
       inspectRecordedPost: async () => {

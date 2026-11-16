@@ -1,3 +1,4 @@
+import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import { ApiError, type Post, type Product } from '@goltou/api-client';
 import { createHash } from 'node:crypto';
 import { compact, bandText, deleteMobileRecordedBandPost, deleteBlogPost, openPostDeletionRead, verifyPostAbsentFromList, deletePageSource, read, verifyPostGone, type DeletePage, type DeleteLog, type BandDeleteLog, type BandDeleteReview } from '@goltou/sites';
@@ -8,6 +9,7 @@ export { canDeletePost, deletedPost, deletedUpdate, requireDeletablePost } from 
 import { requireDeletablePost } from './post-delete-policy';
 
 export async function removeRecordedBandPost(host: SurfaceHost, post: Post, product: Product, hashtags: string[], log: BandDeleteLog = () => {}, review?: BandDeleteReview) {
+    return traceStep('core.post-delete.removeRecordedBandPost', async () => {
   requireDeletablePost(post);
   const after = Date.parse(post.startedAt), before = Date.parse(post.finishedAt);
   if (product.productNo !== post.productNo || product.title !== post.productTitle || !Number.isFinite(after) || !Number.isFinite(before) || before < after) {
@@ -20,10 +22,13 @@ export async function removeRecordedBandPost(host: SurfaceHost, post: Post, prod
   const hash = (body: string) => createHash('sha256').update(compact(body)).digest('hex');
   const expected = hash(bandText(preview.band));
   return deleteMobileRecordedBandPost(host, { url: post.postUrl, title: post.productTitle, matchesBody: body => hash(body) === expected, createdAfter: after, createdBefore: before }, 10000, log, review);
-}
+
+    });
+  }
 /** Opens only the record's URL. A prior uncertain click is resolved by reading
  * that URL before any further deletion, including after restarting the app. */
 export async function removeRecordedBlogPost(host: SurfaceHost, post: Post, log: DeleteLog = async () => {}) {
+    return traceStep('core.post-delete.removeRecordedBlogPost', async () => {
   requireDeletablePost(post);
   const surface = await host.create('naver');
   try {
@@ -37,7 +42,7 @@ export async function removeRecordedBlogPost(host: SurfaceHost, post: Post, log:
       return;
     }
     await deleteBlogPost(surface, { url: post.postUrl, title: post.productTitle }, log);
-  } catch (error) {
+  } catch (error) { trace('core.post-delete.removeRecordedBlogPost', 'fail', { reason: reasonCode(error) });
     const code = error instanceof Error ? error.message : '';
     const codes = ['OBSERVATION_TIMEOUT', 'SURFACE_NAVIGATION_TIMEOUT', 'BLOG_POST_DELETE_CONFIRM_UNCONFIRMED', 'BLOG_POST_DELETE_READ_ALERT_UNCONFIRMED', 'BLOG_POST_DELETE_LIST_UNCONFIRMED', 'SURFACE_READ_FAILED_OR_SIDE_EFFECT'];
     await log({ item: 90, pass: 0, actual: codes.indexOf(code) + 1 });
@@ -55,4 +60,6 @@ export async function removeRecordedBlogPost(host: SurfaceHost, post: Post, log:
     };
     throw new ApiError('conflict', reason ? `${messages[reason] ?? '삭제할 글을 확인하지 못했습니다.'} 삭제하지 않고 멈췄습니다.` : '글 삭제 결과를 확인하지 못했습니다. 등록 기록은 바꾸지 않았습니다. 다시 시도하면 먼저 글의 존재 여부를 읽습니다.');
   } finally { await host.destroy(surface); }
-}
+
+    });
+  }

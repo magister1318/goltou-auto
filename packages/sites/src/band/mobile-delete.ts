@@ -1,3 +1,4 @@
+import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import type { SurfaceHost } from '@goltou/surface';
 import { compact, read, sleep, waitFor } from '../dom';
 import { requestFields } from '../naver-blog/request-fields';
@@ -33,6 +34,7 @@ export type BandDeleteReview = (surface: import('@goltou/surface').Surface) => P
 
 /** The stored URL, owned service receipt and the card's own permalink must agree. */
 export async function deleteMobileRecordedBandPost(host: SurfaceHost, target: BandDeleteTarget, timeoutMs = 10000, log: BandDeleteLog = () => {}, review?: BandDeleteReview): Promise<BandDeleteResult> {
+    return traceStep('sites.band.mobile-delete.deleteMobileRecordedBandPost', async () => {
   log({ code: 'START' });
   const id = bandPostIdentity(target.url);
   if (!id || !target.title.trim() || typeof target.matchesBody !== 'function' || !Number.isFinite(target.createdAfter) || !Number.isFinite(target.createdBefore) || target.createdBefore < target.createdAfter) { log({ code: 'IDENTITY_REJECTED' }); return { status: 'not_started' }; }
@@ -45,7 +47,7 @@ export async function deleteMobileRecordedBandPost(host: SurfaceHost, target: Ba
       log({ code, shape: bandDeleteShape(r) });
       if (code !== 'REQUEST_ALLOWED') return false;
       armed = false; sent = true; return true;
-    }, (status, body) => { try { success = status >= 200 && status < 300 && JSON.parse(body).result_code === 1; } catch { success = false; }
+    }, (status, body) => { try { success = status >= 200 && status < 300 && JSON.parse(body).result_code === 1; } catch { trace('sites.band.mobile-delete.deleteMobileRecordedBandPost', 'fail', { reason: 'CAUGHT_FAILURE' });  success = false; }
       log({ code: success ? 'RESPONSE_OK' : 'RESPONSE_REJECTED' });
     }, log);
     log({ code: 'FEED_READ' });
@@ -100,7 +102,7 @@ export async function deleteMobileRecordedBandPost(host: SurfaceHost, target: Ba
     const menu = 'ul.modalMoreMenu._optionContainer';
     await waitFor(() => read<boolean>(s, `const ms=docs.flatMap(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(menu)}))).filter(visible);return ms.length===1&&Array.from(ms[0].querySelectorAll('button')).some(e=>(e.textContent||'').trim()==='글 수정');`), 5000);
     try { await press(`${menu} button._menuLink`, '삭제하기'); }
-    catch (e) { if (!(await s.readDialog?.())) throw e; }
+    catch (e) { trace('sites.band.mobile-delete.deleteMobileRecordedBandPost', 'fail', { reason: reasonCode(e) });  if (!(await s.readDialog?.())) throw e; }
     const dialog = await s.readDialog?.();
     log({ code: 'DELETE_SELECTED' });
     const arm = async () => { log({ code: 'CONFIRM_VERIFIED' }); attempted = true; armed = true; log({ code: 'ARMED' }); };
@@ -125,11 +127,13 @@ export async function deleteMobileRecordedBandPost(host: SurfaceHost, target: Ba
     if (review) { if (await session.refresh()) throw Error('BAND_DELETE_IDENTITY'); session.reviewFeed(); await review(s); }
     log({ code: 'DELETED' });
     return { status: 'deleted' };
-  } catch (e) {
+  } catch (e) { trace('sites.band.mobile-delete.deleteMobileRecordedBandPost', 'fail', { reason: reasonCode(e) });
     const error = e instanceof Error ? e.message : '';
     const code: BandDeleteCode = error === 'BAND_DELETE_IDENTITY' ? 'IDENTITY_REJECTED' : error === 'BAND_DELETE_CONTROL' ? 'CONTROL_REJECTED' : error === 'BAND_DELETE_CONFIRM' ? 'CONFIRM_REJECTED' : error === 'OBSERVATION_TIMEOUT' ? 'TIMEOUT' : /^BAND_RECORD_READ_/.test(error) ? 'READ_FAILED' : 'UNEXPECTED_FAILURE';
     log({ code }); log({ code: attempted ? 'UNCERTAIN' : 'NOT_STARTED' });
     return { status: attempted ? 'uncertain' : 'not_started' };
   }
   finally { armed = false; log({ code: 'DISARMED' }); await session?.close().catch(() => {}); }
-}
+
+    });
+  }

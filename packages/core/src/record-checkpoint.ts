@@ -1,3 +1,4 @@
+import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import { ApiError } from '@goltou/api-client';
 import type { Job } from './protocol';
 import type { Checkpoint } from './runner';
@@ -23,6 +24,7 @@ export class RecordingCheckpoint {
   private retrying = false;
   constructor(private readonly checkpoint: Checkpoint, private readonly notify: (job: Job) => void) {}
   async emit(job: Job, retry = false) {
+    return traceStep('core.record-checkpoint.RecordingCheckpoint.emit', async () => {
     // Waiting for an owner's choice is not engine work. Keep this clock in the
     // snapshot so a rebuilt screen also excludes the complete pause interval.
     if (job.status === 'running' && job.pausedAt !== undefined) {
@@ -36,7 +38,7 @@ export class RecordingCheckpoint {
     const snapshot = structuredClone(job);
     if (snapshot.recordFailure) { delete snapshot.recordFailure; if (snapshot.failureCode?.startsWith('RECORD_FAILED:')) delete snapshot.failureCode; }
     try { await this.checkpoint(snapshot, retry); }
-    catch (error) {
+    catch (error) { trace('core.record-checkpoint.RecordingCheckpoint.emit', 'fail', { reason: reasonCode(error) });
       const failure = error instanceof RecordError ? error : new RecordError(error, [job.title]);
       this.pending = snapshot;
       job.recordFailure = { status: snapshot.status, message: failure.message };
@@ -47,8 +49,11 @@ export class RecordingCheckpoint {
     this.pending = undefined;
     if (job.recordFailure) { delete job.recordFailure; if (job.failureCode?.startsWith('RECORD_FAILED:')) delete job.failureCode; }
     this.notify(structuredClone(job));
+
+    });
   }
   async retry(job: Job) {
+    return traceStep('core.record-checkpoint.RecordingCheckpoint.retry', async () => {
     if (!this.pending || job.status !== 'record_failed' || this.retrying) throw new ApiError('conflict', '다시 시도할 기록이 없습니다.');
     this.retrying = true;
     const snapshot = structuredClone(this.pending);
@@ -58,9 +63,11 @@ export class RecordingCheckpoint {
       Object.assign(job, snapshot);
       if (snapshot.status === 'running') { job.status = 'user_paused'; job.message = '기록을 저장했습니다. 이어하기를 눌러 주세요.'; }
       this.notify(structuredClone(job));
-    } catch (error) {
+    } catch (error) { trace('core.record-checkpoint.RecordingCheckpoint.retry', 'fail', { reason: reasonCode(error) });
       if (!(error instanceof RecordError)) throw error;
       Object.assign(job, snapshot);
     } finally { this.retrying = false; }
+
+    });
   }
 }

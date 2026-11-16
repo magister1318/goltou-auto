@@ -1,4 +1,5 @@
 // Reference: ../refs/DAF/daf3/modules/helper/src/workflow/{editor,publish-draft}.ts and ../refs/DAF/daf3/packages/engine-naver-editor/src/{page/editor-page,verify/page,verify/draft-verifier}.ts (selectors and save/reopen sequence only).
+import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import type { Surface } from '@goltou/surface';
 import { click, compact, read, sleep, waitFor } from '../dom';
 import type { exampleArticle } from '../fixture';
@@ -6,6 +7,7 @@ import type { exampleArticle } from '../fixture';
 const titleSelector = '.se-documentTitle .se-text-paragraph, .se-documentTitle [contenteditable="true"]';
 const bodySelector = '.se-content .se-component.se-text .se-text-paragraph, .se-main-container .se-component.se-text .se-text-paragraph';
 export async function snapshot(surface: Surface) {
+    return traceStep('sites.naver-blog.index.snapshot', async () => {
   return read<{ title: string; body: string; paragraphs: number; images: number }>(surface, `
     const d=docs.find(({d})=>d.querySelector('.se-documentTitle'))?.d;
     if (!d) return {title:'',body:'',paragraphs:0,images:0};
@@ -15,9 +17,12 @@ export async function snapshot(surface: Surface) {
       body:blocks.map(text).join('\\n'),
       paragraphs:blocks.filter(p=>text(p).trim()).length,
       images:d.querySelectorAll('.se-content .se-image-resource, .se-main-container .se-image-resource').length };`);
-}
+
+    });
+  }
 /** Fixture identities and paragraph positions only. Never return image URLs or account metadata. */
 export async function blogImageLayout(surface: Surface) {
+    return traceStep('sites.naver-blog.index.blogImageLayout', async () => {
   return read<{ sample: number | null; afterParagraph: number }[]>(surface, `
     const d=docs.find(({d})=>d.querySelector('.se-documentTitle'))?.d;
     if(!d) return [];
@@ -34,7 +39,9 @@ export async function blogImageLayout(surface: Surface) {
       }
     }
     return images;`);
-}
+
+    });
+  }
 export interface BlogEditorOptions {
   /** Set only after the user agrees in the app to discard the auto-recovered unsaved composition.
    * Never authorizes deleting saved drafts or published posts. The default stops without clicking. */
@@ -43,18 +50,25 @@ export interface BlogEditorOptions {
   onOwnRecoveryDiscarded?(): void;
 }
 async function requireBlogEditor(surface: Surface) {
+    return traceStep('sites.naver-blog.index.requireBlogEditor', async () => {
   const ready = await read<boolean>(surface, `return !docs.some(({d})=>d.querySelector('input[type="password"]')||/nid\\.naver\\.com/.test(d.location.hostname))&&docs.some(({d})=>d.querySelector('.se-documentTitle'));`);
   if (!ready) throw new Error('LOGIN_OR_EDITOR_LOST');
-}
+
+    });
+  }
 async function typeBlogText(surface: Surface, text: string, check: () => void) {
+    return traceStep('sites.naver-blog.index.typeBlogText', async () => {
   // Recheck the editor between short chunks and stop when a dropped session is observed.
   const characters = Array.from(text);
   for (let offset = 0; offset < characters.length; offset += 32) {
     check(); await requireBlogEditor(surface);
     await surface.typeText(characters.slice(offset, offset + 32).join(''));
   }
-}
+
+    });
+  }
 export async function prepareBlogEditor(surface: Surface, check: () => void, options: BlogEditorOptions = {}) {
+    return traceStep('sites.naver-blog.index.prepareBlogEditor', async () => {
   await waitFor(() => read(surface, `return docs.some(({d})=>d.querySelector('.se-documentTitle'));`), 30000);
   await waitFor(() => read(surface, `return docs.some(({d})=>d.querySelector(${JSON.stringify(bodySelector)}) || Array.from(d.querySelectorAll('.se-popup-alert-confirm')).some(visible));`), 30000);
   // SmartEditor's autosave check can show its restore prompt after the first paint.
@@ -83,8 +97,11 @@ export async function prepareBlogEditor(surface: Surface, check: () => void, opt
   const embedded = await read<boolean>(surface, `return docs.some(({d})=>d.querySelector('.se-component.se-table,.se-component.se-oglink,.se-component.se-quotation,.se-component.se-video,.se-component.se-sticker'));`);
   if (initial.title || compact(initial.body) || initial.images || embedded) throw new Error('EDITOR_NOT_EMPTY');
   return { empty: true, autoRecoverDeclined: restore === 1 };
-}
+
+    });
+  }
 export async function confirmBlogPhotos(surface: Surface, count: number, check: () => void) {
+    return traceStep('sites.naver-blog.index.confirmBlogPhotos', async () => {
   // Multiple selected files require an explicit layout choice in the current editor.
   const state = await waitFor(() => read<'choice' | 'inserted' | null>(surface, `
     if(docs.some(({d})=>Array.from(d.querySelectorAll('.se-popup-image-type')).some(e=>visible(e)&&e.querySelector('input#image-type-list[name="image-type-selection"]')))) return 'choice';
@@ -94,8 +111,11 @@ export async function confirmBlogPhotos(surface: Surface, count: number, check: 
     await click(surface, 'BLOG_IMAGE_LIST', '.se-popup-image-type label[for="image-type-list"]', '개별사진');
   }
   return waitFor(async () => { const v = await snapshot(surface); return v.images === count ? v : null; }, 60000);
-}
+
+    });
+  }
 export async function fillBlog(surface: Surface, article: ReturnType<typeof exampleArticle>, photos: readonly string[], check: () => void, options: BlogEditorOptions = {}) {
+    return traceStep('sites.naver-blog.index.fillBlog', async () => {
   await prepareBlogEditor(surface, check, options);
   await requireBlogEditor(surface);
   await click(surface, 'BLOG_TITLE', titleSelector); await typeBlogText(surface, article.title, check);
@@ -116,8 +136,11 @@ export async function fillBlog(surface: Surface, article: ReturnType<typeof exam
   const before = await snapshot(surface);
   if (before.title !== article.title || compact(before.body) !== compact(article.body) || before.paragraphs !== article.paragraphs.length) throw new Error('INPUT_MISMATCH');
   return before;
-}
+
+    });
+  }
 export async function saveAndReopen(surface: Surface, article: ReturnType<typeof exampleArticle>, photos: number, check: () => void, reopenEmpty: () => Promise<Surface>, options: BlogEditorOptions = {}) {
+    return traceStep('sites.naver-blog.index.saveAndReopen', async () => {
   check();
   await requireBlogEditor(surface);
   const before = await snapshot(surface);
@@ -136,11 +159,17 @@ export async function saveAndReopen(surface: Surface, article: ReturnType<typeof
   const result = await reopenBlogDraftFromList(surface, article, photos, check);
   if (result.rawBodyChars !== before.body.length || JSON.stringify(result.imageLayout) !== JSON.stringify(layoutBefore)) throw new Error('DRAFT_LAYOUT_READBACK_MISMATCH');
   return result;
-}
+
+    });
+  }
 async function draftCount(surface: Surface) {
+    return traceStep('sites.naver-blog.index.draftCount', async () => {
   return read<number | null>(surface, `const e=docs.map(({d})=>d.querySelector('button[data-click-area="tpb*s.count"]')).find(Boolean);const text=(e?.textContent||'').replace(/[^0-9]/g,'');return text?Number(text):null;`);
-}
+
+    });
+  }
 export async function reopenBlogDraftFromList(surface: Surface, article: ReturnType<typeof exampleArticle>, photos: number, check: () => void) {
+    return traceStep('sites.naver-blog.index.reopenBlogDraftFromList', async () => {
   check(); await requireBlogEditor(surface);
   const opened = await read<boolean>(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll('[aria-label="임시저장된 글"]')).some(visible));`);
   if (!opened) await click(surface, 'BLOG_DRAFT_LIST', 'button[data-click-area="tpb*s.count"]');
@@ -163,4 +192,6 @@ export async function reopenBlogDraftFromList(surface: Surface, article: ReturnT
   const imageOrderVerified = imageLayout.length === photos && imageLayout.every((item, index) => item.sample === index + 1);
   if (!imageOrderVerified) throw new Error('DRAFT_IMAGE_ORDER_MISMATCH');
   return { titleMatches: true, titleChars: after.title.length, rawBodyChars: after.body.length, bodyChars: compact(after.body).length, expectedChars: compact(article.body).length, images: after.images, paragraphs: after.paragraphs, reopenedFromList: true, imageLayout, imageOrderVerified };
-}
+
+    });
+  }

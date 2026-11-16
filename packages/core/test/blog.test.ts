@@ -1,3 +1,4 @@
+import { loggedFixture, faultedLog, runnerLogSteps } from './log-fixture';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -29,7 +30,7 @@ async function fixture(mode = '', extra: { tags?: boolean; photos?: number; phot
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   cleanup.push(() => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }));
   const port = (server.address() as { port: number }).port, editorUrl = `http://127.0.0.1:${port}/editor`;
-  const browser = await chromium.launch({ executablePath: executablePath!, headless: true, args: ['--disable-background-networking', '--no-first-run'] });
+  const browser = await chromium.launch({ executablePath: executablePath!, headless: true, args: ['--disable-background-networking', '--no-first-run', `--explicitly-allowed-ports=${port}`] });
   cleanup.push(() => browser.close());
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   let external = 0;
@@ -278,7 +279,7 @@ describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback e
     const runner = kind === 'blog' ? new BlogRegistrationRunner(services, record, () => {}) : new ChannelRegistrationRunner({ blog: services, band: { host: f.host, baseUrl: new URL(f.editorUrl).origin, localPublish: true } }, record, () => {});
     cleanup.push(async () => runner.dispose());
     await runner.start({ productNo: 1, mode: 'draft', targets: [{ channel: 'blog', name: '합성', key: 'fixture' }], options: { polish: false, closing: false, linkCard: false } }, '합성 상품', 0, work);
-    await vi.waitFor(() => expect(runner.job?.status).toBe('draft_unverified'), { timeout: 15000 });
+    await vi.waitFor(() => expect(runner.job?.status, JSON.stringify({ code: runner.job?.failureCode, step: runner.job?.step })).toBe('draft_unverified'), { timeout: 15000 });
     expect(recorded.at(-1)).toMatchObject({ status: 'draft_unverified', targetResults: [{ status: 'stopped', reason: 'BLOG_DRAFT_SAVED_UNVERIFIED' }] });
     expect(runner.job?.completedSteps).not.toContain(5);
     await expect(runner.resume()).rejects.toMatchObject({ code: 'conflict' });
@@ -521,11 +522,38 @@ describe('WP18 mandatory rich-text editor fixture', () => {
     const runner = kind === 'blog' ? new BlogRegistrationRunner(services, record, () => {}) : new ChannelRegistrationRunner({ blog: services, band: { host: f.host } }, record, () => {});
     cleanup.push(async () => runner.dispose());
     await runner.start({ productNo: 1, mode: 'draft', targets: [{ channel: 'blog', name: '합성', key: 'fixture' }], options: { polish: false, closing: false, linkCard: false } }, '합성 서식 제목', 0, work);
-    await vi.waitFor(() => expect(runner.job?.status).toBe('draft_unverified'), { timeout: 20000 });
+    await vi.waitFor(() => expect(runner.job?.status, JSON.stringify({ code: runner.job?.failureCode, step: runner.job?.step })).toBe('draft_unverified'), { timeout: 20000 });
     expect(runner.job).toMatchObject({ failureCode: 'BLOG_FORMATTING_REOPENED:1', blogFormattingIssues: [{ paragraph: 1, fields: ['bold', 'href'] }], targetResults: [{ status: 'stopped', reason: 'BLOG_FORMATTING_REOPENED:1' }] });
     expect(runner.job!.completedSteps).not.toContain(5);
     await expect(runner.resume()).rejects.toMatchObject({ code: 'conflict' });
     expect([...f.pages.keys()].every(s => s.session === 'naver')).toBe(true);
     expect(await f.counts([...f.pages.keys()].at(-1)!)).toEqual({ saves: 1, publishes: 0 });
   }, 30000);
+});
+
+describe('WP20 real editor fixture log trail', () => {
+  it.each(['blog_draft'] as const)('records ordered %s input, save/reopen and terminal with no external request', async kind => {
+    const f = await fixture();
+    f.plan.steps = [{ kind: 'text', role: 'title', text: '합성 로그 제목' }, { kind: 'text', role: 'body', text: '합성 본문' }];
+    const steps = ['sites.naver-blog.plan.BlogExecution.write', 'sites.naver-blog.plan.BlogExecution.saveAndVerify', ...([] as string[])];
+    await loggedFixture(path.dirname(f.files[0]!.path), kind, async () => { await f.execution.write(); await f.execution.saveAndVerify(); }, steps);
+    expect(f.external()).toBe(0);
+  }, 60000);
+});
+
+describe('WP20 blog runner boundary fault injection with the real fake editor', () => {
+  it.each(runnerLogSteps)('ends one failed job when %s fails before its action', async failAt => {
+    const f = await fixture();
+    const plan: InputPlan = { channel: 'blog', discarded: [], notices: [], steps: [{ kind: 'text', role: 'title', text: '합성 로그 제목' }, { kind: 'text', role: 'body', text: '합성 본문' }] };
+    const verification = compareDocuments(observePlan(plan), observePlan(plan));
+    const preview: PreparedPreview = { productNo: 1, contentHash: 'fixture', droppedStruckCharacters: 0, options: {}, blog: plan, band: { ...plan, channel: 'band' }, verification: { blog: verification, band: verification } };
+    const work = { preview, prepared: { preview, files: [] }, download: async () => {}, arrange: async () => {}, cleanup: async () => {} };
+    const log = faultedLog(path.dirname(f.files[0]!.path), failAt);
+    const runner = new BlogRegistrationRunner({ host: f.host, editorUrl: f.editorUrl, localPublish: true }, async () => {}, () => {});
+    try {
+      await runner.start({ productNo: 1, mode: 'draft', targets: [{ channel: 'blog', key: 'synthetic', name: '합성' }], options: { polish: false, closing: false, linkCard: false } }, '합성 로그 제목', 0, work);
+      await vi.waitFor(() => expect(log.store.list()[0]?.result).toBe('failed'), { timeout: 30000 });
+      expect(log.injected()).toBe(true); expect(log.store.list()).toHaveLength(1); expect(f.external()).toBe(0);
+    } finally { runner.dispose(); log.reset(); }
+  }, 40000);
 });
