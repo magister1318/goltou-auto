@@ -1329,6 +1329,7 @@ export function App() {
                   ) : !/BAND_POST_(?:UNCONFIRMED|BLOCKED)|BLOG_PUBLISH/.test(
                       job.failureCode ?? '',
                     ) &&
+                    !uncertainReason(job.failureCode) &&
                     !job.publicationUncertain &&
                     ['failed', 'user_paused'].includes(job.status) ? (
                     <button

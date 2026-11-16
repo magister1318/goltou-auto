@@ -47,7 +47,13 @@ export function verifyFullBandPost(expected: string, uploaded: readonly string[]
   // nodejs-mobile has no ICU property escapes. Reuse the established static
   // keyword ranges; the browser DOM remains the observed tag count authority.
   const tags = Array.from(planned.matchAll(new RegExp(blogHashtagPattern.source, 'g')), match => '#' + match[2]);
-  const links = (planned.match(/https?:\/\/[^\s<>]+/g) ?? []).map(value => new URL(value).href);
+  const links = (planned.match(/https?:\/\/[^\s<>]+/g) ?? []).map(value => {
+    // Band leaves an unmatched closing parenthesis outside an autolink.
+    // Keep balanced URL parentheses and compare the complete body separately.
+    let balance = Array.from(value).reduce((n, char) => n + (char === '(' ? 1 : char === ')' ? -1 : 0), 0);
+    while (balance < 0 && value.endsWith(')')) { value = value.slice(0, -1); balance++; }
+    return new URL(value).href;
+  });
   const checks = [
     ['text', planned === normalizedBandBody(actual.body), Array.from(planned).length, Array.from(normalizedBandBody(actual.body)).length],
     ['line_breaks', (planned.match(/\n/g) ?? []).length === actual.lineBreaks, (planned.match(/\n/g) ?? []).length, actual.lineBreaks],

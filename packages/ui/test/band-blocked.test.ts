@@ -33,6 +33,8 @@ it('explains identity discovery and published-content failures without claiming 
   }
   for (const suffix of ['MISMATCH', 'UNAVAILABLE']) {
     const job = { status: 'failed', failureCode: `BAND_PUBLISHED_READBACK_${suffix}`, publicationUncertain: false } as Job;
+    expect(resultKind(job)).toBe('uncertain');
+    expect(historyStatus({ channel: 'band', status: 'failed', failReason: job.failureCode } as Post)).toBe('확인 필요');
     expect(jobMessage(job).join(' ')).toContain('글 주소는 등록 기록에 저장');
     expect(jobMessage(job).join(' ')).not.toContain('공개되지 않았습니다');
   }

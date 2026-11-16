@@ -10,6 +10,16 @@ afterEach(async () => { await browser?.close(); });
 const title = '합성 시험 제목';
 const post = (extra = {}) => ({ content: title + '\n본문\n<band:hashtag>#합성</band:hashtag>', band: { band_no: 111 }, post_no: 9001, web_url: 'https://band.us/band/111/post/9001', created_at: 1700000000000, author: { me: true }, photo_count: 10, ...extra });
 describe('immediate publication proof from the posting context', () => {
+  it.each([
+    ['참고 (https://example.invalid/guide)', 'https://example.invalid/guide'],
+    ['참고 (https://example.invalid/guide_(part))', 'https://example.invalid/guide_(part)'],
+    ['https://example.invalid/guide_%28part%29', 'https://example.invalid/guide_%28part%29'],
+  ])('verifies an autolink while retaining surrounding punctuation in the full text: %s', (body, url) => {
+    const actual = { body, photos: [], lineBreaks: 0, hashtags: 0, links: 1, tagTexts: [], linkUrls: [url] };
+    expect(() => verifyFullBandPost(body, [], actual)).not.toThrow();
+    expect(() => verifyFullBandPost(body, [], { ...actual, linkUrls: ['https://example.invalid/changed'] })).toThrow('BAND_PUBLISHED_READBACK_MISMATCH');
+    expect(() => verifyFullBandPost(body, [], { ...actual, body: body + ' changed' })).toThrow('BAND_PUBLISHED_READBACK_MISMATCH');
+  });
   it('handles a successful response without an ID and binds only one recent owned feed identity', async () => {
     let inspect!: (request: GuardedRequest) => boolean | Promise<boolean>;
     let response!: (response: GuardedResponse) => void;
