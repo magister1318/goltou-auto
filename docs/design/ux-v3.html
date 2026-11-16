@@ -1,0 +1,640 @@
+<title>골투오토 화면 시안 3차</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;800&display=swap">
+<style>
+/* Layout: a tappable phone on the left, the reasoning for the current screen on the right; stacks on a phone. */
+:root{
+  --page:#eef1ee; --ink:#18211c; --soft:#5b6a61; --line:#d3dad5; --panel:#ffffff; --accent:#0f5132; --accent-ink:#ffffff; --note:#f5f8f5;
+  --font:"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  /* app mock palette (the app itself is light only) */
+  --g9:#0f5132; --g7:#177a41; --g1:#e8f3ec; --a-ink:#17201b; --a-soft:#66736b; --a-line:#e1e6e2; --a-bg:#ffffff; --warn:#b4560b; --warn-bg:#fdf1e3; --bad:#b3261e; --bad-bg:#fbeceb;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --page:#121713; --ink:#e7ede9; --soft:#9fb0a6; --line:#2c3630; --panel:#1a211c; --accent:#4cc487; --accent-ink:#08130d; --note:#1f2822; color-scheme:dark } }
+:root[data-theme="dark"]{ --page:#121713; --ink:#e7ede9; --soft:#9fb0a6; --line:#2c3630; --panel:#1a211c; --accent:#4cc487; --accent-ink:#08130d; --note:#1f2822; color-scheme:dark }
+*{box-sizing:border-box}
+body{background:var(--page);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.6;padding-block:24px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.wrap{max-width:1040px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+.top h1{font-size:24px;font-weight:800;margin:0;letter-spacing:-.02em;text-wrap:balance}
+.top p{margin:6px 0 0;color:var(--soft);max-width:62ch}
+.stage{display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap}
+.side{flex:1 1 320px;min-width:0;display:flex;flex-direction:column;gap:16px}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px}
+.box h2{font-size:13px;font-weight:700;color:var(--soft);margin:0 0 8px;letter-spacing:.02em}
+.box h3{font-size:17px;font-weight:800;margin:0 0 6px}
+.box ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
+.jump{display:flex;flex-wrap:wrap;gap:8px}
+.jump button{font:inherit;font-size:13px;padding:7px 12px;border-radius:999px;border:1px solid var(--line);background:var(--note);color:var(--ink);cursor:pointer}
+.jump button[aria-current="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+.jump button:focus-visible,.phone button:focus-visible{outline:3px solid #3b82f6;outline-offset:2px}
+.ask{border-left:0;background:var(--note)}
+.ask li b{font-weight:700}
+/* phone */
+.phone{flex:0 0 auto;width:min(390px,100%);height:780px;background:var(--a-bg);color:var(--a-ink);border-radius:28px;border:8px solid #1c2420;overflow:hidden;position:relative;display:flex;flex-direction:column;font-size:15px;line-height:1.5}
+:where(.phone button){font:inherit;color:inherit;cursor:pointer;border:0;background:none;padding:0;text-align:left}
+.scr{flex:1;overflow-y:auto;display:flex;flex-direction:column;min-height:0}
+.hd{background:var(--g9);color:#fff;padding:18px 20px 16px}
+.hd .row{display:flex;justify-content:space-between;align-items:center;font-size:14px}
+.brand{display:flex;gap:8px;align-items:center;font-weight:700}
+.brand i{width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#35d04a,#0b7a1f);display:grid;place-items:center;font-style:normal;font-weight:800;font-size:13px;color:#fff}
+.hd h1{font-size:25px;line-height:1.25;font-weight:800;margin:14px 0 0;letter-spacing:-.02em}
+.conn{display:flex;gap:8px;padding:10px 20px;background:#0b3d26;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:6px;font-size:13px;padding:6px 10px;border-radius:999px;background:rgba(255,255,255,.12);color:#fff !important}
+.chip.need{background:#ffe2bd;color:#6b3300 !important;font-weight:700}
+.dot{width:8px;height:8px;border-radius:50%;background:#6ee7a0}.need .dot{background:#c2570a}
+.pad{padding:16px 20px}
+.search{border:1px solid var(--a-line);border-radius:10px;padding:11px 14px;color:var(--a-soft);font-size:14px}
+.tabs{display:flex;gap:18px;border-bottom:1px solid var(--a-line);margin-top:14px}
+.tabs button{padding:8px 0 10px;color:var(--a-soft);font-size:14px}
+.tabs .on{color:var(--g9) !important;font-weight:700;box-shadow:inset 0 -3px 0 var(--g9)}
+.item{display:flex;gap:14px;padding:16px 0;border-bottom:1px solid var(--a-line);width:100%;align-items:flex-start}
+.item .t{flex:1;min-width:0}
+.item strong{display:block;font-size:16px;line-height:1.35;font-weight:700}
+.item small{display:block;color:var(--a-soft);font-size:13px;margin-top:3px}
+.tag{font-size:12.5px;margin-top:6px;display:inline-block}
+.tag.ok{color:var(--g7);font-weight:700}.tag.none{color:var(--a-soft)}
+.ph{flex:0 0 76px;height:76px;border-radius:8px;background:linear-gradient(180deg,#9fd3f0 0 42%,#4fa85d 42% 70%,#2f8a45 70%)}
+.ph.b{background:linear-gradient(180deg,#f7c59f 0 38%,#3f9d6a 38% 72%,#2a7d52 72%)}
+.ph.c{background:linear-gradient(180deg,#b7c9e8 0 45%,#5aa772 45% 75%,#3d8b59 75%)}
+.nav{display:flex;border-top:1px solid var(--a-line);background:#fff}
+.nav button{flex:1;padding:14px 0;text-align:center;font-size:14px;color:var(--a-soft)}
+.nav .on{color:var(--g9) !important;font-weight:700}
+.back{padding:16px 20px 0;font-size:14px;color:var(--a-soft)}
+.title{font-size:21px;line-height:1.35;font-weight:800;letter-spacing:-.02em;margin:10px 0 4px}
+.meta{color:var(--a-soft);font-size:13.5px}
+.seg{display:flex;background:var(--g1);border-radius:10px;padding:4px;margin:14px 0}
+.seg button{flex:1;text-align:center;padding:8px 0;border-radius:7px;font-size:14px;color:var(--a-soft)}
+.seg .on{background:#fff;color:var(--g9) !important;font-weight:700}
+.big{height:170px;border-radius:10px;background:linear-gradient(180deg,#9fd3f0 0 45%,#4fa85d 45% 72%,#2f8a45 72%);margin:10px 0 4px}
+.big.b{background:linear-gradient(180deg,#f7c59f 0 40%,#3f9d6a 40% 74%,#2a7d52 74%)}
+.cap{font-size:12px;color:var(--a-soft)}
+.opt{display:flex;justify-content:space-between;gap:10px;align-items:center;border:1px solid var(--a-line);border-radius:10px;padding:12px 14px;margin-top:14px;font-size:13.5px;width:100%}
+.opt b{color:var(--g7)}
+.bar{display:flex;gap:10px;padding:12px 16px;border-top:1px solid var(--a-line);background:#fff}
+.btn{flex:1;text-align:center !important;padding:14px 10px !important;border-radius:12px;font-weight:700;font-size:15.5px}
+.btn.p{background:var(--g9) !important;color:#fff !important}
+.btn.s{background:var(--g1) !important;color:var(--g9) !important}
+.btn.d{background:var(--bad) !important;color:#fff !important}
+.btn.q{background:#f0f2f1 !important;color:var(--a-ink) !important}
+.btn small{display:block;font-weight:400;font-size:11.5px;opacity:.85;margin-top:1px}
+/* sheet */
+.dim{position:absolute;inset:0;background:rgba(10,20,14,.45);display:flex;align-items:flex-end;z-index:5}
+.sheet{background:#fff;width:100%;border-radius:20px 20px 0 0;padding:20px 20px 16px;max-height:86%;overflow-y:auto}
+.sheet h2{font-size:19px;font-weight:800;margin:0 0 4px}
+.sheet p{margin:0;color:var(--a-soft);font-size:13.5px}
+.pick{display:flex;gap:12px;align-items:flex-start;padding:14px 0;border-bottom:1px solid var(--a-line);width:100%}
+.box2{flex:0 0 22px;height:22px;border-radius:6px;border:2px solid #9aa79f;display:grid;place-items:center;margin-top:2px;font-size:14px;color:#fff}
+.on > .box2{background:var(--g7);border-color:var(--g7)}
+.pick .t strong{display:block;font-size:15.5px}
+.pick .t small{color:var(--a-soft);font-size:13px;display:block}
+.pick.off{opacity:.55}
+.two{display:flex;gap:8px;margin-top:8px}
+.two button{flex:1;text-align:center;padding:8px 0;border-radius:8px;border:1px solid var(--a-line) !important;font-size:13.5px}
+.two .on{border-color:var(--g7) !important;background:var(--g1) !important;color:var(--g9) !important;font-weight:700}
+.warnline{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:10px 12px;font-size:13.5px;margin-top:14px}
+.acts{display:flex;gap:10px;margin-top:16px}
+/* progress */
+.center{flex:1;display:flex;flex-direction:column;justify-content:center;padding:28px 24px;gap:8px}
+.kicker{font-size:13px;color:var(--a-soft)}
+.huge{font-size:26px;font-weight:800;line-height:1.3;letter-spacing:-.02em}
+.track{height:8px;border-radius:99px;background:var(--g1);overflow:hidden;margin:18px 0 6px}
+.track i{display:block;height:100%;background:var(--g7);border-radius:99px;transition:width .5s}
+.steps{display:flex;flex-direction:column;gap:10px;margin-top:18px;font-size:14.5px}
+.steps div{display:flex;gap:10px;align-items:center;color:var(--a-soft)}
+.steps .done{color:var(--a-ink)}.steps .now{color:var(--g9);font-weight:700}
+.st{width:20px;height:20px;border-radius:50%;border:2px solid #b8c3bc;display:grid;place-items:center;font-size:12px;flex:0 0 20px}
+.done .st{background:var(--g7);border-color:var(--g7);color:#fff}.now .st{border-color:var(--g7)}
+.hint{background:var(--g1);border-radius:10px;padding:12px 14px;font-size:13.5px;margin-top:20px;color:#27503a}
+/* live progress */
+.pg{flex:1;display:flex;flex-direction:column;padding:18px 20px 12px;gap:10px;min-height:0}
+.dest{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--a-soft)}
+.dest span{display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:99px;background:#f0f2f1}
+.dest .now{background:var(--g9);color:#fff;font-weight:700}.dest .ok{background:var(--g1);color:var(--g9);font-weight:700}
+.dest em{flex:0 0 14px;height:2px;background:var(--a-line)}
+.pgh{font-size:22px;font-weight:800;letter-spacing:-.02em;line-height:1.3}
+.pgs{font-size:13.5px;color:var(--a-soft);margin-top:-6px;min-height:20px}
+.paper{flex:1;min-height:0;border:1px solid var(--a-line);border-radius:12px;overflow:hidden;position:relative;background:#fbfcfb}
+.paper .in{position:absolute;left:0;right:0;bottom:0;padding:14px 14px 18px;display:flex;flex-direction:column;gap:8px}
+.paper .lab{position:absolute;top:8px;right:8px;z-index:2;font-size:11px;background:rgba(23,32,27,.72);color:#fff;border-radius:99px;padding:3px 9px}
+.paper .fade{position:absolute;left:0;right:0;top:0;height:38px;background:linear-gradient(#fbfcfb,rgba(251,252,251,0));z-index:1}
+.pt{font-size:16px;font-weight:800;line-height:1.35}.pp{font-size:12.5px;line-height:1.55;color:#2a352f}.ptag{font-size:12.5px;color:var(--g7)}
+.car{display:inline-block;width:2px;height:1em;background:var(--g7);vertical-align:-2px;margin-left:1px}
+.pim{height:92px;border-radius:8px;position:relative;overflow:hidden;background:#e7ebe8;flex:0 0 auto}
+.pim b{position:absolute;inset:0;background:linear-gradient(180deg,#9fd3f0 0 45%,#4fa85d 45% 72%,#2f8a45 72%)}
+.pim.v1 b{background:linear-gradient(180deg,#f7c59f 0 40%,#3f9d6a 40% 74%,#2a7d52 74%)}.pim.v2 b{background:linear-gradient(180deg,#b7c9e8 0 45%,#5aa772 45% 75%,#3d8b59 75%)}
+.pim u{position:absolute;left:10px;right:10px;bottom:10px;height:4px;border-radius:9px;background:rgba(0,0,0,.12);overflow:hidden}
+.pim u i{display:block;height:100%;background:var(--g7)}
+.pim s{position:absolute;left:10px;top:9px;font-size:11px;color:#55635b;text-decoration:none}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}.grid3 .pim{height:64px;border-radius:6px}
+.scan{position:absolute;left:0;right:0;height:46px;z-index:2;background:linear-gradient(rgba(23,122,65,0),rgba(23,122,65,.22));border-bottom:2px solid var(--g7)}
+.strip{display:flex;gap:3px}.strip i{flex:1;height:18px;border-radius:4px;background:#e7ebe8;position:relative;overflow:hidden}
+.strip i.up{outline:2px solid var(--g7);outline-offset:-2px}.strip i.ok{background:var(--g7)}
+.strip i.ok.v1{background:#3f9d6a}.strip i.ok.v2{background:#5aa772}
+.rowlab{display:flex;justify-content:space-between;font-size:12px;color:var(--a-soft);margin-bottom:-4px}
+.chk{display:flex;gap:6px;flex-wrap:wrap;font-size:12px}
+.chk span{padding:3px 9px;border-radius:99px;background:#f0f2f1;color:var(--a-soft)}
+.chk .now{background:#fff;box-shadow:inset 0 0 0 1.5px var(--g7);color:var(--g9)}.chk .ok{background:var(--g1);color:var(--g9);font-weight:700}
+.pg .track{margin:2px 0 0;height:6px}.pg .track i{transition:none}
+.mark{width:56px;height:56px;border-radius:50%;background:var(--g1);color:var(--g7);display:grid;place-items:center;font-size:28px;font-weight:800}
+.mark.w{background:var(--warn-bg);color:var(--warn)}.mark.x{background:var(--bad-bg);color:var(--bad)}
+.res{border-top:1px solid var(--a-line);margin-top:18px}
+.res div{display:flex;justify-content:space-between;gap:10px;padding:13px 0;border-bottom:1px solid var(--a-line);font-size:14.5px}
+.res a,.lnk{color:var(--g7) !important;font-weight:700;text-decoration:none}
+.hist .item{flex-direction:column;gap:6px}
+.st2{font-size:13px;font-weight:700}.st2.ok{color:var(--g7)}.st2.dr{color:#3a5f8a}.st2.del{color:var(--a-soft)}.st2.fail{color:var(--bad)}
+.rowact{display:flex;gap:16px;font-size:13.5px}
+.set h3{font-size:13px;color:var(--a-soft);font-weight:700;margin:22px 0 4px}
+.set .ln{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:14px 0;border-bottom:1px solid var(--a-line);width:100%;font-size:15px}
+.set .ln small{color:var(--a-soft);font-size:13px}
+.sw{width:42px;height:24px;border-radius:99px;background:#c6cfc9;position:relative;flex:0 0 42px}.sw::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff}
+.field{border:1px solid var(--a-line);border-radius:10px;padding:13px 14px;color:var(--a-soft);margin-top:10px;font-size:15px}
+.svc{flex:1;display:flex;flex-direction:column;background:#f3f4f3}
+.svcbar{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;background:#fff;border-bottom:1px solid var(--a-line);font-weight:700}
+.fake{margin:22px 18px;background:#fff;border:1px dashed #9aa79f;border-radius:12px;padding:22px 18px;display:flex;flex-direction:column;gap:12px;color:var(--a-soft);font-size:14px}
+.toast{position:absolute;left:16px;right:16px;bottom:84px;background:#17201b;color:#fff;border-radius:12px;padding:12px 16px;font-size:14px;z-index:6;text-align:center}
+@media (max-width:460px){ .phone{border-width:4px;border-radius:20px;height:720px} }
+@media (prefers-reduced-motion:reduce){ .track i{transition:none} }
+/* ---- 3차 추가: 공통 규칙 ---- */
+:root{ --row:#f6f8f6; --hi:#e3efe7; --amber:#8a5a00; --amber-bg:#fff4d6; }
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){ --row:#202a23; --hi:#24382b; } }
+:root[data-theme="dark"]{ --row:#202a23; --hi:#24382b; }
+/* M05(L05): 앱에 든 글꼴 굵기(400/500/700/900)에 맞춰 큰 제목은 700 */
+.phone .hd h1,.phone .title,.phone .huge,.phone .sheet h2,.phone .pgh{font-weight:700}
+/* M01: 누르는 영역 48dp 이상 */
+.phone .tabs button,.phone .seg button,.phone .two button,.phone .nav button,.phone .lnk,.phone .chip,.phone .back{min-height:48px;display:inline-flex;align-items:center;justify-content:center}
+.phone .back{justify-content:flex-start}
+.phone .seg button,.phone .two button,.phone .nav button{display:flex}
+.phone .lnk{padding:0 4px !important}
+/* M02: 눌린 순간 */
+.phone button:active{filter:brightness(.9)}
+.phone .item:active,.phone .pick:active,.phone .ln:active,.phone .brow:active{background:var(--g1);filter:none}
+.sheet{outline:none}
+/* 입력칸·오류 */
+.fld{display:block;margin-top:14px}
+.fld > span{display:block;font-size:13px;color:var(--a-soft);margin-bottom:6px}
+.inp{border:1px solid #c5cec8;border-radius:10px;padding:13px 14px;font-size:15px;min-height:48px;display:flex;align-items:center;color:var(--a-ink);background:#fff}
+.inp.ph0{color:#98a39c}
+.inp.err{border-color:var(--bad);box-shadow:0 0 0 1px var(--bad)}
+.inp.foc{border-color:var(--g7);box-shadow:0 0 0 2px var(--g7)}
+.emsg{color:var(--bad);font-size:13px;margin-top:6px}
+.help{color:var(--a-soft);font-size:12.5px;margin-top:6px}
+.note-bad{background:var(--bad-bg);color:var(--bad);border-radius:10px;padding:12px 14px;font-size:13.5px;margin-top:14px}
+.note-amb{background:var(--amber-bg);color:var(--amber);border-radius:10px;padding:12px 14px;font-size:13.5px;margin-top:14px}
+.note-amb button,.note-bad button{font-weight:700 !important;text-decoration:underline;min-height:32px}
+/* 목록 상태 */
+.sk{display:flex;gap:14px;padding:16px 0;border-bottom:1px solid var(--a-line)}
+.sk i{display:block;border-radius:6px;background:linear-gradient(90deg,#edf1ee,#f7f9f7,#edf1ee);background-size:200% 100%;animation:sk 1.2s linear infinite}
+.sk .l{flex:1;display:flex;flex-direction:column;gap:8px}.sk .l i{height:14px}.sk .l i:nth-child(2){width:70%}.sk .l i:nth-child(3){width:40%;height:11px}
+.sk .p{flex:0 0 76px;height:76px}
+@keyframes sk{to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){ .sk i{animation:none} }
+.state{padding:44px 8px;text-align:center;display:flex;flex-direction:column;gap:8px;align-items:center}
+.state strong{font-size:16px}.state span{color:var(--a-soft);font-size:13.5px;max-width:28ch}
+.state .btn{flex:0 0 auto;padding:12px 22px !important;margin-top:8px}
+.stale{opacity:.45;pointer-events:none}
+.loadline{display:flex;gap:8px;align-items:center;font-size:13.5px;color:var(--g9);padding:12px 0 0}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid #b9d6c4;border-top-color:var(--g7);animation:sp .8s linear infinite;flex:0 0 14px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){ .spin{animation:none} }
+.unset{color:#98a39c}
+/* 미리보기 */
+.stick{position:sticky;top:0;background:#fff;z-index:2;padding:8px 0 10px;border-bottom:1px solid var(--a-line);margin:6px -20px 0;padding-inline:20px}
+.stick .seg{margin:0 0 6px}
+.optline{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;color:var(--a-soft);width:100%;min-height:36px}
+.optline b{color:var(--g7)}
+.post{border:1px solid var(--a-line);border-radius:12px;margin-top:14px;overflow:hidden;background:#fff}
+.post .cap2{font-size:11.5px;color:var(--a-soft);background:var(--row);padding:6px 12px;border-bottom:1px solid var(--a-line);display:flex;justify-content:space-between;gap:8px}
+.post .bd{padding:14px;display:flex;flex-direction:column;gap:10px;font-size:14px;line-height:1.65}
+.post.blog .ttl{font-size:19px;font-weight:700;line-height:1.35;padding-bottom:10px;border-bottom:1px solid var(--a-line)}
+.post .im{height:150px;border-radius:4px;background:linear-gradient(180deg,#9fd3f0 0 45%,#4fa85d 45% 72%,#2f8a45 72%)}
+.post .im.b{background:linear-gradient(180deg,#f7c59f 0 40%,#3f9d6a 40% 74%,#2a7d52 74%)}
+.post .im.wait{background:var(--row);display:grid;place-items:center;color:var(--a-soft);font-size:12.5px;border:1px dashed #b8c3bc}
+.post .im.failp{background:var(--bad-bg);border:1px dashed #d9a09b;color:var(--bad);display:grid;place-items:center;font-size:12.5px;text-align:center}
+.added{font-size:11.5px;color:var(--a-soft);display:flex;align-items:center;gap:8px}
+.added::after{content:"";flex:1;height:1px;background:var(--a-line)}
+.tblw{overflow-x:auto;border:1px solid var(--a-line);border-radius:6px}
+.tbl{border-collapse:collapse;font-size:13px;min-width:100%;white-space:nowrap}
+.tbl th,.tbl td{padding:9px 12px;border-bottom:1px solid var(--a-line);text-align:left}
+.tbl th{background:var(--row);font-weight:700}.tbl tr:last-child td{border-bottom:0}
+.tagbox{border-top:1px solid var(--a-line);padding:10px 14px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:12.5px}
+.tagbox em{font-style:normal;color:var(--a-soft);margin-right:4px}
+.tagbox span{background:var(--row);border-radius:99px;padding:3px 10px;color:#2a352f}
+.post.band .who{display:flex;gap:10px;align-items:center;padding:12px 14px 0}
+.post.band .who i{width:34px;height:34px;border-radius:50%;background:var(--g1);flex:0 0 34px}
+.post.band .who b{display:block;font-size:13.5px}.post.band .who small{color:var(--a-soft);font-size:11.5px}
+.post.band .bd{white-space:pre-line;gap:0}
+.post.band .ht{color:#2b6cb0}
+.bgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;padding:0 14px 14px}
+.bgrid i{display:block;aspect-ratio:1;border-radius:3px;background:linear-gradient(180deg,#9fd3f0 0 45%,#4fa85d 45% 72%,#2f8a45 72%);position:relative}
+.bgrid i:nth-child(2n){background:linear-gradient(180deg,#f7c59f 0 40%,#3f9d6a 40% 74%,#2a7d52 74%)}
+.bgrid i.more::after{content:attr(data-n);position:absolute;inset:0;background:rgba(10,20,14,.55);color:#fff;display:grid;place-items:center;font-style:normal;font-weight:700;font-size:16px;border-radius:3px}
+.diff{margin-top:12px;font-size:12.5px;color:var(--a-soft);display:flex;flex-direction:column;gap:4px}
+.diff b{color:var(--a-ink);font-weight:500}
+/* 밴드 고르기 */
+.brow{display:flex;gap:12px;align-items:center;min-height:56px;padding:8px 0;border-bottom:1px solid var(--a-line);width:100%}
+.brow .nm{flex:1;min-width:0;font-size:15px;line-height:1.35}
+.brow .nm small{display:block;color:var(--a-soft);font-size:12.5px}
+.rad{width:22px;height:22px;border-radius:50%;border:2px solid #9aa79f;flex:0 0 22px;display:grid;place-items:center}
+.on > .rad{border-color:var(--g7)}.on > .rad::after{content:"";width:10px;height:10px;border-radius:50%;background:var(--g7)}
+.brow.on .nm{font-weight:700;color:var(--g9)}
+.sub{margin:0 0 4px 34px;border:1px solid var(--a-line);border-radius:10px;padding:0 12px;display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:52px;width:calc(100% - 34px);font-size:14px}
+.sub .v{flex:1;min-width:0}.sub .v small{display:block;font-size:11.5px;color:var(--a-soft)}
+.sub.need{border-color:var(--warn);background:var(--warn-bg)}
+.sub.plain{border-style:dashed;color:var(--a-soft);font-size:13px;flex-wrap:wrap;padding:10px 12px}
+.shd{display:flex;align-items:center;gap:6px;margin:-6px 0 6px -8px}
+.shd button{min-width:48px;min-height:48px;display:grid;place-items:center;font-size:20px}
+.quote{border:1px solid var(--a-line);background:var(--row);border-radius:10px;padding:14px;margin-top:14px;font-size:15px;color:var(--a-ink)}
+.quote small{display:block;color:var(--a-soft);font-size:12px;margin-bottom:6px}
+.btn:disabled,.btn[aria-disabled="true"]{background:#e3e7e4 !important;color:#98a39c !important}
+.why2{font-size:12.5px;color:var(--warn);margin-top:10px}
+/* 결과 */
+.mark.q{background:var(--amber-bg);color:var(--amber)}.mark.p{background:#eef0ef;color:#55635b;font-size:20px}
+.res .sv{display:flex;flex-direction:column;gap:2px}.res .sv small{font-size:12.5px;color:var(--a-soft)}
+.res .ok1{color:var(--g7);font-weight:700}.res .q1{color:var(--amber);font-weight:700}.res .w1{color:var(--a-soft)}.res .x1{color:var(--bad);font-weight:700}
+.st2.q{color:var(--amber)}
+.rowerr{background:var(--bad-bg);color:var(--bad);border-radius:8px;padding:10px 12px;font-size:13px;width:100%}
+.rowerr.amb{background:var(--amber-bg);color:var(--amber)}
+.rowerr button{font-weight:700 !important;text-decoration:underline;min-height:32px;margin-left:6px}
+/* 설정 */
+.set h3 small{font-weight:400;margin-left:6px}
+.sw.on{background:var(--g7)}.sw.on::after{left:21px}
+.swb{min-width:48px;min-height:48px;display:grid;place-items:center;flex:0 0 48px}
+.lv{margin:0 0 0 0;border-bottom:1px solid var(--a-line);padding:4px 0 8px}
+.lv .brow{border:0;min-height:52px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}.chips span{background:var(--row);border-radius:99px;padding:5px 11px;font-size:13px}
+.savebar{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 16px;border-top:1px solid var(--a-line);background:#fff;font-size:13px;color:var(--warn)}
+.savebar .btn{flex:0 0 auto;padding:10px 20px !important}
+.kbd{background:#d5d9de;padding:8px 6px 14px;display:flex;flex-direction:column;gap:7px;flex:0 0 auto}
+.kbd div{display:flex;gap:5px;justify-content:center}
+.kbd i{flex:1;max-width:34px;height:36px;border-radius:6px;background:#fff;box-shadow:0 1px 0 #9aa1a8}
+.kbd .sp{max-width:170px}
+.kbd small{align-self:center;font-size:11px;color:#5d646b}
+/* 다듬기 비교 */
+.cmp{border:1px solid var(--a-line);border-radius:10px;margin-top:12px;overflow:hidden}
+.cmp .o,.cmp .n{padding:11px 13px;font-size:13.5px;line-height:1.6}
+.cmp .o{background:var(--row);color:#55635b}.cmp .o del{background:#f6d6d3;color:var(--bad);text-decoration:line-through}
+.cmp .n ins{background:#d6efdf;text-decoration:none;color:var(--g9)}
+.cmp .lb{font-size:11px;color:var(--a-soft);display:block;margin-bottom:2px}
+.cmp .ft{display:flex;justify-content:flex-end;border-top:1px solid var(--a-line);padding:0 10px}
+.cmp.kept .n{display:none}.cmp.kept .o{background:#fff;color:var(--a-ink)}.cmp.kept .o del{background:none;color:inherit;text-decoration:none}
+/* 점검표 */
+.states{display:flex;flex-wrap:wrap;gap:8px}
+.states button{font:inherit;font-size:13px;padding:7px 12px;border-radius:8px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer}
+.states button[aria-current="true"]{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent);font-weight:700}
+.audit h2{font-size:20px;font-weight:800;margin:0 0 4px}
+.audit > p{margin:0 0 14px;color:var(--soft);max-width:70ch}
+.flt{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+.flt button{font:inherit;font-size:13px;padding:6px 12px;border-radius:999px;border:1px solid var(--line);background:var(--note);color:var(--ink);cursor:pointer}
+.flt button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.at{border-collapse:collapse;width:100%;min-width:720px;font-size:13.5px}
+.at th,.at td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+.at th{font-size:12px;color:var(--soft);font-weight:700;background:var(--note)}
+.at tr:last-child td{border-bottom:0}
+.at td:first-child{white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:700}
+.sev{display:inline-block;font-size:12px;font-weight:700;border-radius:4px;padding:1px 7px;margin-left:6px}
+.sev.h{background:#b3261e;color:#fff}.sev.m{background:#b4560b;color:#fff}.sev.l{background:var(--line);color:var(--ink)}
+.at button{font:inherit;font-size:12.5px;color:var(--accent);background:none;border:1px solid var(--line);border-radius:6px;padding:5px 9px;cursor:pointer;white-space:nowrap}
+.at button:focus-visible,.states button:focus-visible,.flt button:focus-visible{outline:3px solid #3b82f6;outline-offset:2px}
+.post .plink{color:#1a5fb4;text-decoration:underline}
+.post.blog .bd b{font-weight:700}
+</style>
+<div class="wrap">
+  <div class="top">
+    <h1>골투오토 화면 시안 3차</h1>
+    <p>11월 16일에 폰과 시뮬레이터로 모든 화면을 점검해 디자인 공백 39건을 찾았고, 그 내용과 같은 날 주신 피드백을 반영해 시안을 고쳤습니다. 직접 눌러 보실 수 있습니다. 상품과 사진은 예시입니다. 승인하신 화면만 구현하겠습니다.</p>
+  </div>
+  <div class="stage">
+    <div class="phone" id="phone" aria-label="앱 화면 시안"></div>
+    <div class="side">
+      <div class="box"><h2>화면 바로 가기</h2><div class="jump" id="jump"></div></div>
+      <div class="box" id="statesBox"><h2>이 화면의 다른 상태</h2><div class="states" id="states"></div></div>
+      <div class="box"><h2>아래에서 올라오는 창</h2><div class="states" id="sheetsJ"></div></div>
+      <div class="box" id="why"></div>
+      <div class="box ask"><h2>11월 16일에 정하신 것</h2><ul>
+        <li><b>블로그의 굵은 글씨와 링크는 필수.</b> 굵은 글씨는 눈에 잘 띄게 하려고, 링크는 고객 문의를 받으려고 꼭 필요합니다. 화면 작업 바로 다음에 실제 블로그에 굵게, 눌리는 링크로 올라가게 만듭니다.</li>
+        <li><b>내용은 그대로 옮깁니다.</b> 가격·출발일이 없는 상품에도 앱이 문구를 바꾸거나 덧붙이지 않습니다. 내용 가공은 따로 요구하실 때 다룹니다.</li>
+        <li><b>밴드 미리보기는 실제 게시 시험 결과에 맞춥니다.</b></li>
+      </ul></div>
+    </div>
+  </div>
+  <div class="audit">
+    <h2>디자인 공백 점검표</h2>
+    <p>폰에서 49장, 시뮬레이터에서 76장을 찍어 확인했습니다. 폰에서는 임시저장, 발행, 삭제, 로그아웃을 누르지 않았고, 그런 상태는 시뮬레이터로 확인했습니다. "시안에서 보기"를 누르면 위 시안이 고친 화면으로 바뀝니다.</p>
+    <div class="flt" id="flt"></div>
+    <div class="tw"><table class="at"><thead><tr><th>번호</th><th>화면</th><th>발견한 공백</th><th>고치는 방향</th><th>시안</th></tr></thead><tbody id="atb"></tbody></table></div>
+  </div>
+</div>
+<script>
+const $ = s => document.querySelector(s);
+const BANDS = ['골프투어 모임','골투 매니저 공지','주말 라운딩 번개 모임 (수도권·충청 지역 회원 전용 공지방)'];
+const MANY = [...BANDS,'동남아 골프 여행 정보','일본 골프 특가 알림','제주 라운딩 동호회','골프 용품 나눔 장터','스크린 골프 리그','해외 골프 후기 모음','골투 협력 여행사','초보 골퍼 연습 모임','부부 골프 여행'];
+const st = { screen:'home', state:{login:'ok',home:'ok',product:'blog',result:'done',connect:'ok',history:'ok',settings:'view'}, sheet:null, naver:true, band:true, pub:{blog:true,band:true,open:'public'}, bandList:'ok', bandPick:0, many:false, mode:'publish', toast:'', del:'blog', kept:{}, flt:'all', svc:'naver' };
+const BL = () => st.many ? MANY : BANDS;
+const BN = () => st.bandPick==null ? '밴드' : BL()[st.bandPick];
+let timer = null;
+const names = { login:'골투 로그인', home:'상품 목록', product:'상품 미리보기', polish:'다듬은 문장 확인', progress:'옮기는 중', result:'끝난 뒤 화면', connect:'계정 연결', svc:'네이버·밴드 로그인', history:'등록 기록', settings:'설정' };
+const variants = {
+  login:[['ok','기본'],['empty','빈칸으로 눌렀을 때'],['wrong','비밀번호가 틀렸을 때'],['off','인터넷이 끊겼을 때'],['busy','확인하는 중']],
+  home:[['ok','기본'],['loading','처음 불러오는 중'],['searching','검색하는 중'],['none','검색 결과 없음'],['empty','안 올린 상품 없음'],['err','불러오기 실패']],
+  product:[['blog','블로그 모습'],['band','밴드 모습'],['wait','사진 대기·실패'],['err','상품 읽기 실패']],
+  result:[['done','발행 완료'],['draft','임시저장 완료'],['uncertain','올라갔는지 확인 필요'],['recfail','기록 저장 실패'],['paused','잠시 멈춤'],['relogin','로그인이 풀림'],['fail','실패']],
+  connect:[['ok','연결됨'],['need','로그인 필요'],['checking','확인하는 중'],['unknown','확인하지 못함']],
+  history:[['ok','기본'],['empty','기록 없음'],['err','불러오기 실패'],['delprep','삭제를 시작하지 못함'],['delq','삭제 확인 못 함']],
+  settings:[['view','기본'],['typing','입력 중(키보드)'],['unsaved','저장 안 한 변경']]
+};
+const sheetJump = [['draft','임시저장 창'],['publish','발행 창'],['bands','밴드 고르기'],['bandsMany','밴드가 많을 때'],['pubNone','밴드를 아직 안 골랐을 때'],['pubLoading','밴드 목록 읽는 중'],['pubEmpty','쓸 수 있는 밴드 없음'],['pubErr','밴드 목록 읽기 실패'],['confirm','발행 확인'],['stop','중단 확인'],['unfinished','쓰다 만 글'],['changed','상품 내용이 바뀜'],['dialog','네이버·밴드의 확인 요청'],['delBlog','블로그 글 삭제'],['delBand','밴드 글 삭제'],['leave','저장 안 하고 나갈 때']];
+const why = {
+  login:['골투 로그인','골투 계정으로 한 번만 로그인합니다.',['빈칸이나 틀린 값은 그 입력칸 바로 아래에 앱이 직접 알려 줍니다. (M03)','로그인에 실패해도 아이디는 지우지 않습니다. 비밀번호만 다시 넣으면 됩니다. (M04)']],
+  home:['상품 목록','앱을 열면 바로 옮길 상품을 고릅니다.',['가격과 출발일은 골투에 등록된 값을 그대로 보여 줍니다. 앱이 문구를 바꾸거나 덧붙이지 않습니다.','처음 불러올 때, 검색하는 중, 검색 결과 없음, 안 올린 상품 없음, 불러오기 실패를 각각 다른 모습으로 그렸습니다. 검색하는 동안 이전 목록은 흐리게 하고 누를 수 없게 합니다. (M06)']],
+  product:['상품 미리보기','블로그와 밴드에 실제로 올라가는 모습을 각각 그대로 보여 줍니다.',['블로그 탭: 제목 칸, 본문(글과 사진이 원문 순서대로), 표, 맨 아래 태그 칸으로 나뉩니다. 굵은 글씨와 링크는 원문대로 보여 주고, 실제 블로그에도 굵게, 눌리는 링크로 올라가게 만듭니다. 지금 앱은 일반 글자로 올리고 있어서 화면 작업 바로 다음에 고칩니다. (H03)','밴드 탭: 제목이 글 첫 줄에 들어가고, 표는 줄 글로 바뀌고, 해시태그는 글 끝에 붙고, 사진은 글 아래에 모아서 올라갑니다. (H02)','탭 아래에 "원문과 달라지는 점"을 적어 두었습니다.','탭과 글 옵션 줄은 글을 내려도 위에 붙어 있습니다. 옵션 줄에는 세 가지 옵션이 모두 보입니다. (M08, M10)','표는 첫 줄을 머리글로 구분하고, 넓으면 표 안에서만 옆으로 밉니다. (M24)','사진은 실제 비율만큼 자리를 미리 잡고, 불러오는 중과 실패를 다르게 보여 줍니다. (M09)','밴드 탭의 사진 배치와 글자 수 제한은 실제 게시 시험 뒤에 실제 모습에 맞춰 한 번 더 고칩니다.']],
+  polish:['다듬은 문장 확인','문장 다듬기를 켠 경우에만 옮기기 전에 나옵니다.',['바뀐 문단만 보여 주고, 바뀐 글자에 색을 넣었습니다. 바뀌지 않은 문단은 접어 둡니다.','문단마다 "원문으로 되돌리기"가 바로 아래에 있습니다.','전송 횟수나 처리 시간 같은 내부 숫자는 뺐습니다. (M18)']],
+  progress:['옮기는 중','글이 만들어지는 모습을 실시간으로 보여 줍니다.',['2차 시안에서 승인하신 화면 그대로입니다.','밴드 차례에는 제목이 "밴드 글쓰기를 여는 중"으로 나옵니다. 지금 앱은 이때도 "네이버 여는 중"이라고 나옵니다. (M20)']],
+  result:['끝난 뒤 화면','끝난 이유에 따라 화면을 나눴습니다.',['완료 화면과 등록 기록에 공개 범위와 밴드 이름을 그대로 남깁니다. (M11)','올라갔는지 확인하지 못한 경우는 실패 화면이 아니라 "확인 필요" 화면으로 따로 그렸습니다. 이미 올라간 곳과 확인이 필요한 곳을 줄마다 따로 알려 줍니다. (H06)','글은 올라갔는데 기록만 못 남긴 경우는 "발행했습니다"로 먼저 알리고 기록만 다시 저장합니다. (M21)','기다리는 중, 시작 전, 중단함을 "중단" 하나로 뭉뚱그리지 않습니다. 멈춘 화면은 빨간 × 대신 멈춤 표시를 씁니다. (M12)','네이버나 밴드가 확인을 요청하면, 요청 내용을 그대로 읽을 수 있는 창을 띄웁니다. (H05)']],
+  connect:['계정 연결','블로그와 밴드 로그인 상태를 한 곳에서 봅니다.',['확인하는 중에는 얼마나 걸리는지 알려 줍니다.','인터넷 문제로 확인하지 못한 경우는 "로그인 필요"와 구분해서 "확인하지 못함"으로 보여 주고 다시 확인할 수 있게 합니다. (M13)']],
+  svc:['네이버·밴드 로그인','외부 화면이 보이는 유일한 순간입니다.',['"로그인"을 누르면 바로 실제 로그인 화면이 열립니다. 지금 앱에 있는 중간 안내 화면은 없애고, 꼭 필요한 한 줄만 위에 남깁니다. (M14)']],
+  history:['등록 기록','내가 옮긴 글과 상태를 봅니다.',['블로그와 밴드 줄마다 공개 범위·밴드 이름, "글 보기", "글 삭제"가 나옵니다. 밴드 글 삭제가 새로 들어갑니다.','확실한 실패는 "공개되지 않음"으로, 올라갔는지 모르는 경우는 "확인 필요"로 나눠 적습니다. (M15)','삭제 오류는 화면 맨 위가 아니라 해당 줄 바로 아래에 나옵니다. 삭제를 시작도 못 한 경우와 지워졌는지 확인하지 못한 경우를 다른 말로 알려 줍니다. (M19, M25)']],
+  settings:['설정','자주 바꾸지 않는 것만 모았습니다.',['"내 글 옵션"은 바꾸면 바로 적용되고, "공통 설정"은 저장을 눌러야 적용됩니다. 두 묶음을 나누고 그 차이를 제목 옆에 적었습니다. 저장하지 않은 변경이 있으면 아래에 표시합니다. (M16)','문장 다듬기 수준은 동그라미 선택으로 그리고, 수준마다 설명을 붙였습니다. (M17)','입력칸을 누르면 그 칸이 키보드 바로 위로 올라오고, 아래 탭은 입력하는 동안 숨깁니다. (H04)','긴 해시태그는 이름표 아래 줄에 여러 줄로 보여 줍니다. 숫자 한도는 허용 범위를 미리 알려 줍니다. (M23, M03)','글 끝 문구 입력칸 모서리의 크기 조절 손잡이를 없앱니다. (L01)']]
+};
+const sheetWhy = {
+  publish:['발행 창','어디에 올릴지 고릅니다.',['밴드를 켜면 바로 아래에 "올릴 밴드" 줄이 나옵니다. 밴드 이름은 이 줄에만 한 번 나옵니다. (L03)','"바꾸기"를 누르면 앱이 그린 밴드 목록이 열립니다. 안드로이드 기본 팝업은 더 이상 나오지 않습니다. (H01)','밴드 목록을 읽는 중이거나, 비어 있거나, 읽지 못해도 밴드를 끄고 블로그만 발행할 수 있습니다. "다음"이 눌리지 않을 때는 이유를 버튼 위에 적습니다. (H07)']],
+  bands:['밴드 고르기','글을 올릴 밴드를 고릅니다.',['한 줄 높이는 56dp 이상이고, 긴 이름은 두 줄까지 그대로 보여 줍니다.','고르면 바로 발행 창으로 돌아갑니다. 왼쪽 위 화살표나 휴대폰 뒤로가기는 고르지 않고 돌아갑니다.','마지막에 고른 밴드를 기억해 다음에 먼저 골라 둡니다.','밴드가 9개 이상이면 이름으로 찾는 칸이 나옵니다.']],
+  dialog:['네이버·밴드의 확인 요청','서비스가 무엇을 묻는지 그대로 보여 줍니다.',['지금 앱은 요청 내용 없이 "취소/확인"만 보여 줍니다. 시안은 서비스가 보낸 문장을 그대로 인용합니다. (H05)','버튼마다 누르면 어떻게 되는지 적었습니다. 알림만 있는 경우에는 "확인" 하나만 나옵니다.']],
+  unfinished:['쓰다 만 글','네이버에 저장되지 않은 글이 남아 있을 때 나옵니다.',['이 창은 뒤로가기나 바깥을 눌러도 닫히지 않고, 아무 것도 바뀌지 않습니다. 지금 앱은 뒤로가기를 누르면 작업이 중단됩니다. (M22)']],
+  del:['글 삭제','등록 기록에서 "글 삭제"를 누르면 한 번 더 확인합니다.',['블로그와 밴드 모두 같은 모양입니다. 경고는 붉은색으로 통일합니다. (L04)']]
+};
+const FIND = [
+ ['H01','h','발행 창','밴드 선택이 안드로이드 기본 팝업으로 뜸','앱이 그린 밴드 목록 창으로 교체',['product','blog','bands']],
+ ['H02','h','상품 미리보기','밴드 탭이 실제 올라가는 모습과 다름(제목 숨김, 사진 위치)','제목은 첫 줄, 사진은 글 아래 묶음으로 실제대로 표시',['product','band']],
+ ['H03','h','상품 미리보기','블로그 탭은 굵은 글씨·링크를 보여 주지만 실제로는 일반 글자로 올라감. 태그도 본문처럼 보임','실제 블로그에 굵은 글씨와 링크가 올라가게 고침(화면 작업 바로 다음). 태그 칸은 분리',['product','blog']],
+ ['H04','h','설정','입력칸을 누르면 키보드에 가려 입력하는 값이 안 보임','누른 칸을 키보드 위로 올리고 아래 탭은 숨김',['settings','typing']],
+ ['H05','h','옮기는 중','네이버·밴드가 확인을 요청할 때 요청 내용 없이 버튼만 나옴','요청 문장을 그대로 보여 주는 전용 창',['result','paused','dialog']],
+ ['H06','h','끝난 뒤 화면','올라갔는지 모르는 경우가 확정 실패처럼 보임','"확인 필요" 화면을 따로 두고 채널별로 표시',['result','uncertain']],
+ ['H07','h','발행 창','밴드 목록이 비거나 실패하면 밴드를 끌 수 없어 블로그 발행도 막힘','목록 상태와 상관없이 밴드를 끌 수 있게 함',['product','blog','pubEmpty']],
+ ['M01','m','공통','탭·스위치·글자 버튼의 누르는 영역이 44dp','모두 48dp 이상으로',null],
+ ['M02','m','공통','버튼을 눌러도 눌린 표시가 없음','모든 버튼·목록 줄에 눌린 표시',null],
+ ['M03','m','로그인·설정','빈칸·범위 오류를 앱이 알려 주지 않음','입력칸 아래에 오류 문구와 붉은 테두리',['login','empty']],
+ ['M04','m','로그인','실패하면 아이디까지 지워짐','아이디는 남기고 비밀번호만 다시 입력',['login','wrong']],
+ ['M05','m','상품 목록','가격·출발일이 없는 상품이 "0원부터 · 출발일 0개"로 나옴','고치지 않음. 등록된 값을 그대로 보여 줍니다(11.16 결정)',['home','ok']],
+ ['M06','m','상품 목록','불러오는 중·빈 목록·실패가 문장 한 줄뿐이고 서로 구분 안 됨','상태마다 다른 화면',['home','none']],
+ ['M07','m','상품 미리보기','원문과 앱이 덧붙인 출발일·가격이 섞여 반복처럼 보임','이번에는 고치지 않음. 내용 가공은 따로 요구하실 때 다룹니다',['product','blog']],
+ ['M08','m','상품 미리보기','긴 글에서 탭과 옵션까지 한참 올리고 내려야 함','탭과 옵션 줄을 위에 고정',['product','blog']],
+ ['M09','m','상품 미리보기','사진 불러오는 중이 빈 초록 칸이고, 사진이 뜨면 화면이 밀림','대기·실패 표시와 자리 미리 잡기',['product','wait']],
+ ['M10','m','상품 미리보기','옵션 요약에 링크 카드가 빠짐','세 옵션 모두 표시',['product','blog']],
+ ['M11','m','완료·등록 기록','공개 범위와 밴드 이름이 빠짐','완료와 기록에 그대로 표시',['result','done']],
+ ['M12','m','끝난 뒤 화면','기다리는 중·일시정지도 모두 "중단"과 빨간 ×로 나옴','상태별 이름과 멈춤 화면',['result','paused']],
+ ['M13','m','계정 연결','"확인 중"·"확인하지 못함"이 설계 없이 들어가 있음','기다리는 시간 안내와 다시 확인',['connect','unknown']],
+ ['M14','m','서비스 로그인','로그인 전에 긴 안내 화면이 한 단계 더 있음','바로 로그인 화면으로, 안내는 한 줄',['svc',null]],
+ ['M15','m','등록 기록','모든 실패에 "공개 여부는 서비스에서 확인"이라고 나옴','확실한 실패와 확인 필요를 구분',['history','ok']],
+ ['M16','m','설정','바로 적용되는 옵션과 저장이 필요한 값이 섞여 있음','두 묶음으로 나누고 저장 안 됨 표시',['settings','unsaved']],
+ ['M17','m','설정','문장 다듬기 수준이 글자 두 줄뿐이라 선택인지 알기 어려움','동그라미 선택과 수준별 설명',['settings','view']],
+ ['M18','m','다듬은 문장 확인','디자인 없이 원문과 고친 글이 줄줄이 나옴','바뀐 문단만, 바뀐 글자 표시, 문단별 되돌리기',['polish',null]],
+ ['M19','m','공통','오류가 화면 맨 위에만 나와 아래에서는 못 봄','오류는 누른 자리 옆에 표시',['history','delprep']],
+ ['M20','m','옮기는 중','밴드 차례인데 "네이버 여는 중"으로 나옴','채널에 맞는 문구',['progress',null]],
+ ['M21','m','끝난 뒤 화면','글은 올라갔는데 기록 저장만 실패해도 실패 화면','"발행했습니다" + 기록만 다시 저장',['result','recfail']],
+ ['M22','m','쓰다 만 글 창','뒤로가기를 누르면 창이 닫히는 게 아니라 작업이 중단됨','뒤로가기로는 아무 것도 바뀌지 않게',['product','blog','unfinished']],
+ ['M23','m','설정','해시태그가 길면 이름표가 한 글자씩 세로로 꺾임','이름표 아래 줄에 여러 줄로',['settings','view']],
+ ['M24','m','상품 미리보기','표의 칸이 좁아 글자가 줄마다 잘리고 머리글 구분이 없음','머리글 구분, 표 안에서 옆으로 밀기',['product','blog']],
+ ['M25','m','등록 기록','삭제를 시작도 못 했는데 "삭제했는지 확인하지 못했습니다"라고 나옴','두 경우를 다른 문구로',['history','delprep']],
+ ['M26','m','공통','창이 떠 있어도 뒤 화면이 스크롤됨','창이 열린 동안 뒤 화면 고정',null],
+ ['L01','l','설정','글 끝 문구 칸 모서리에 브라우저 기본 손잡이가 보임','손잡이 제거, 내용에 맞춰 높이 조절',['settings','view']],
+ ['L02','l','공통','스크롤 표시가 화면마다 다름','얇은 기본 표시로 통일',null],
+ ['L03','l','발행 창','고른 밴드 이름이 두 번 나옴','"올릴 밴드" 줄에만 한 번',['product','blog','publish']],
+ ['L04','l','글 삭제 창','삭제 경고가 일반 주의와 같은 주황색','붉은색으로',['history','ok','delBlog']],
+ ['L05','l','공통','큰 제목이 시안보다 두껍게 나옴','앱에 든 글꼴 굵기에 맞춤',null],
+ ['L06','l','공통','창에 주황색 기본 테두리가 보임','제거',null]
+];
+function go(s){ st.screen=s; st.sheet=null; if(timer){clearInterval(timer);timer=null} draw(); if(s==='progress'){ run(); paint(); } }
+function openSheet(k){
+  const pre={ bandsMany:()=>{st.many=true;st.bandList='ok';st.bandPick=0;st.pub.band=true;return 'bands'}, bands:()=>{st.many=false;st.bandList='ok';if(st.bandPick>2)st.bandPick=0;st.pub.band=true;return 'bands'},
+    publish:()=>{st.bandList='ok';st.band=true;if(st.bandPick==null)st.bandPick=0;return 'publish'}, pubNone:()=>{st.bandList='ok';st.bandPick=null;st.pub.band=true;return 'publish'}, pubLoading:()=>{st.bandList='loading';st.pub.band=true;return 'publish'}, pubEmpty:()=>{st.bandList='empty';st.pub.band=true;return 'publish'}, pubErr:()=>{st.bandList='err';st.pub.band=true;return 'publish'},
+    delBlog:()=>{st.del='blog';return 'del'}, delBand:()=>{st.del='band';return 'del'} }[k];
+  st.sheet = pre ? pre() : k; draw(); }
+function show(scr,state,sheet){ if(timer){clearInterval(timer);timer=null} st.screen=scr; if(state) st.state[scr]=state; st.sheet=null; draw(); if(scr==='progress'){ run(); paint(); } if(sheet) openSheet(sheet); $('#phone').scrollIntoView({behavior:'smooth',block:'nearest'}); }
+function toast(m){ st.toast=m; draw(); setTimeout(()=>{st.toast='';draw()},2200); }
+const T={title:'다낭 3색 골프 3박 5일 · 5성 호텔',paras:['다낭의 대표 골프장 세 곳을 도는 3박 5일 일정입니다.','1인 1,190,000원부터 · 출발일 12월 3일, 12월 10일 외 4개','숙소는 미케 비치 앞 5성 호텔이며 조식이 포함됩니다.','포함 사항은 그린피, 카트, 캐디, 공항 이동 차량입니다.'],tags:'#다낭골프 #골프투어 #골투',layout:[2,3,4,4],checks:['제목','본문 4문단','사진 13장','가격·날짜 숫자','해시태그']};
+let pg=null;
+function plan(){ const seg=[]; let t=0; const add=(o,d)=>{o.s=t;o.e=t+d;t+=d;seg.push(o)};
+  add({k:'open',site:'blog'},1400); add({k:'title',site:'blog'},T.title.length*45); let n=0;
+  T.paras.forEach((p,i)=>{ add({k:'para',i,site:'blog'},p.length*30+250); for(let j=0;j<T.layout[i];j++) add({k:'photo',n:n++,site:'blog'},820); });
+  add({k:'tags',site:'blog'},T.tags.length*40+200);
+  T.checks.forEach((c,i)=>add({k:'check',i,site:'blog'},560));
+  add({k:'send',site:'blog'},1500);
+  if(st.mode==='publish'&&st.pub.band&&st.band){ add({k:'open',site:'band'},1200); add({k:'btext',site:'band'},1500); for(let j=0;j<13;j++) add({k:'photo',n:j,site:'band'},380); [0,2].forEach((c,i)=>add({k:'check',i:c,site:'band'},520)); add({k:'send',site:'band'},1300); }
+  return {seg,total:t}; }
+function run(){ pg={...plan(),t:0}; timer=setInterval(()=>{ pg.t+=70; if(pg.t>=pg.total+500){clearInterval(timer);timer=null;st.screen='result';st.state.result=st.mode==='draft'?'draft':'done';draw();return} paint(); },70); }
+const mmss=x=>{x=Math.max(0,Math.round(x));return (x>=60?Math.floor(x/60)+'분 ':'')+(x%60)+'초'};
+function paint(){ if(!pg||!$('#pgIn')) return; const t=Math.min(pg.t,pg.total-1), cur=pg.seg.find(x=>t<x.e)||pg.seg[pg.seg.length-1], site=cur.site, both=pg.seg.some(x=>x.site==='band'), draft=st.mode==='draft';
+  const f=x=>Math.max(0,Math.min(1,(t-x.s)/(x.e-x.s))), segs=pg.seg.filter(x=>x.site===site&&x.s<=t);
+  $('#pgDest').innerHTML=`<span class="${site==='blog'?'now':'ok'}">${site==='blog'?'':'✓ '}블로그 ${draft?'임시저장':'발행'}</span>`+(both?`<em></em><span class="${site==='band'?'now':''}">밴드 게시</span>`:'');
+  const photoDone=segs.filter(x=>x.k==='photo'&&t>=x.e).length, pc=cur.k==='photo'?cur.n+1:0;
+  const H={open:[site==='blog'?'글쓰기 화면을 여는 중':'밴드 글쓰기를 여는 중',site==='blog'?'네이버 블로그':BN()],title:['제목을 쓰는 중',T.title.slice(0,Math.ceil(f(cur)*T.title.length))],para:['본문을 쓰는 중',`4문단 중 ${cur.i+1}번째 문단`],photo:['사진을 올리는 중',`13장 중 ${pc}번째 · ${Math.round(f(cur)*100)}%`],tags:['해시태그를 넣는 중',T.tags],btext:['밴드 글을 쓰는 중','제목과 본문 4문단'],check:['올라간 내용을 확인하는 중',`${T.checks[cur.i]}${cur.i===3?'가 원문과 같은지':' 확인'}`],send:[site==='band'?'밴드에 게시하는 중':draft?'임시저장하는 중':'블로그에 발행하는 중',draft?'공개되지 않습니다':site==='blog'?(st.pub.open==='public'?'전체공개':'비공개'):BN()]}[cur.k];
+  $('#pgH').textContent=H[0]; $('#pgS').textContent=H[1];
+  $('#pgLab').textContent=site==='blog'?'지금 만들어지는 블로그 글':'지금 만들어지는 밴드 글';
+  const car='<span class="car"></span>', typed=(x,txt)=>t>=x.e?txt:txt.slice(0,Math.ceil(f(x)*txt.length))+car;
+  const img=x=>{const d=t>=x.e, pop=d?Math.min(1,(t-x.e)/220):0; return `<div class="pim v${x.n%3}">${d?`<b style="opacity:${.35+.65*pop}"></b>`:`<s>사진 ${x.n+1} 올리는 중</s><u><i style="width:${Math.round(f(x)*100)}%"></i></u>`}</div>`};
+  let h='';
+  if(site==='blog'){ segs.forEach(x=>{ if(x.k==='title')h+=`<div class="pt">${typed(x,T.title)}</div>`; else if(x.k==='para')h+=`<div class="pp">${typed(x,T.paras[x.i])}</div>`; else if(x.k==='photo')h+=img(x); else if(x.k==='tags')h+=`<div class="ptag">${typed(x,T.tags)}</div>`; }); }
+  else { const bt=segs.find(x=>x.k==='btext'); if(bt){ const all=['['+T.title+']',...T.paras], k=t>=bt.e?all.length:Math.ceil(f(bt)*all.length); h+=all.slice(0,k).map((p,i)=>`<div class="${i?'pp':'pt'}" style="font-size:${i?12.5:14}px">${p}</div>`).join(''); } const ph=segs.filter(x=>x.k==='photo'); if(ph.length)h+=`<div class="grid3">${ph.map(img).join('')}</div>`; }
+  if(cur.k==='open')h=`<div class="pp" style="color:var(--a-soft)">빈 글을 준비하고 있습니다${'.'.repeat(1+Math.floor(t/350)%3)}</div>`;
+  $('#pgIn').innerHTML=h;
+  const sc=$('#pgScan'); if(cur.k==='check'){ const cs=pg.seg.filter(x=>x.site===site&&x.k==='check'), ff=(t-cs[0].s)/(cs[cs.length-1].e-cs[0].s); sc.hidden=false; sc.style.top=`calc(${Math.round(ff*100)}% - 46px)`; } else sc.hidden=true;
+  $('#pgPc').textContent=`${photoDone}/13`;
+  $('#pgStrip').innerHTML=Array.from({length:13},(_,i)=>`<i class="${i<photoDone?'ok v'+i%3:cur.k==='photo'&&cur.n===i?'up':''}"></i>`).join('');
+  const cks=pg.seg.filter(x=>x.site===site&&x.k==='check'), okN=cks.filter(x=>t>=x.e).length;
+  $('#pgCk').textContent=okN===cks.length?'원문과 같음':okN?`${okN}/${cks.length}`:'글을 다 쓴 뒤 확인합니다';
+  $('#pgChk').innerHTML=cks.map(x=>`<span class="${t>=x.e?'ok':t>=x.s?'now':''}">${t>=x.e?'✓ ':''}${T.checks[x.i]}</span>`).join('');
+  const R=4.2, pct=t/pg.total; $('#pgBar').style.width=(pct*100).toFixed(1)+'%';
+  $('#pgEl').textContent=`${Math.round(pct*100)}% · ${mmss(t*R/1000)} 지남`; $('#pgLeft').textContent=`약 ${mmss((pg.total-t)*R/1000)} 남음`; }
+const chip = (ok,label) => `<button class="chip ${ok?'':'need'}" data-go="connect"><span class="dot"></span>${label} ${ok?'연결됨':'로그인 필요'}</button>`;
+const nav = on => `<div class="nav"><button class="${on==='home'?'on':''}" data-go="home">상품</button><button class="${on==='history'?'on':''}" data-go="history">등록 기록</button><button class="${on==='settings'?'on':''}" data-go="settings">설정</button></div>`;
+const sk = '<div class="sk"><span class="l"><i></i><i></i><i></i></span><i class="p"></i></div>';
+const items = `<button class="item" data-go="product"><span class="t"><strong>다낭 3색 골프 3박 5일 · 5성 호텔</strong><small>베트남 다낭 · 1,190,000원부터 · 출발일 6개</small><span class="tag none">아직 올리지 않음</span></span><span class="ph"></span></button>
+  <button class="item" data-go="product"><span class="t"><strong>방콕 시티호텔 2색 골프 3박 5일</strong><small>태국 방콕 · 990,000원부터 · 출발일 4개</small><span class="tag ok">블로그 11.10 발행</span></span><span class="ph b"></span></button>
+  <button class="item" data-go="product"><span class="t"><strong>후쿠오카 온천 골프 2박 3일</strong><small>일본 후쿠오카 · 0원부터 · 출발일 0개</small><span class="tag ok">블로그 11.08 · 밴드 11.08</span></span><span class="ph c"></span></button>`;
+const homeBody = s => ({
+  ok:`<div class="tabs"><button class="on">전체 16</button><button>안 올린 상품 9</button></div>${items}`,
+  loading:`<div class="tabs"><button class="on">전체</button><button>안 올린 상품</button></div>${sk+sk+sk+sk}`,
+  searching:`<div class="tabs"><button class="on">전체</button><button>안 올린 상품</button></div><div class="loadline"><span class="spin"></span>"다낭"으로 찾는 중입니다</div><div class="stale">${items}</div>`,
+  none:`<div class="tabs"><button class="on">전체 0</button><button>안 올린 상품 0</button></div><div class="state"><strong>"세부 골프"로 찾은 상품이 없습니다</strong><span>상품 이름, 골프장, 지역 이름으로 다시 찾아보세요.</span><button class="btn s" data-st="home:ok">검색어 지우기</button></div>`,
+  empty:`<div class="tabs"><button>전체 16</button><button class="on">안 올린 상품 0</button></div><div class="state"><strong>모든 상품을 옮겼습니다</strong><span>새 상품이 골투에 등록되면 여기에 나타납니다.</span><button class="btn s" data-st="home:ok">전체 상품 보기</button></div>`,
+  err:`<div class="tabs"><button class="on">전체</button><button>안 올린 상품</button></div><div class="state"><strong>상품을 불러오지 못했습니다</strong><span>인터넷 연결을 확인한 뒤 다시 시도해 주세요.</span><button class="btn p" data-st="home:ok">다시 불러오기</button></div>`
+}[s]);
+const optline = `<button class="optline" data-go="settings"><span>문장 다듬기 <b>꺼짐</b> · 글 끝 문구 <b>꺼짐</b> · 링크 카드 <b>꺼짐</b></span><span class="lnk" style="min-height:36px">바꾸기</span></button>`;
+const PB = ['<b>다낭의 대표 골프장 세 곳</b>을 도는 3박 5일 일정입니다. 바나힐, 몽고메리 링크스, BRG 다낭에서 라운딩합니다.','숙소는 미케 비치 앞 <b>5성 호텔</b>이며 조식이 포함됩니다.','포함 사항은 그린피, 카트, 캐디, 공항 이동 차량입니다. 예약 문의는 <a class="plink" href="#" data-toast="블로그에서는 누르면 골투 상담 창이 열립니다">골투 상담 창</a>으로 남겨 주세요.'];
+const P = ['다낭의 대표 골프장 세 곳을 도는 3박 5일 일정입니다. 바나힐, 몽고메리 링크스, BRG 다낭에서 라운딩합니다.','숙소는 미케 비치 앞 5성 호텔이며 조식이 포함됩니다.','포함 사항은 그린피, 카트, 캐디, 공항 이동 차량입니다. 예약 문의는 골투 상담 창(https://goltou.kr/ask)으로 남겨 주세요.'];
+const blogPost = wait => `<div class="post blog"><div class="cap2"><span>블로그 글</span><span>${st.pub.open==='public'?'전체공개':'비공개'}로 발행할 때</span></div><div class="bd">
+  <div class="ttl">다낭 3색 골프 3박 5일 · 5성 호텔</div><div>${PB[0]}</div>
+  ${wait?'<div class="im wait">사진 1을 불러오는 중입니다</div>':'<div class="im"></div>'}<div>${PB[1]}</div>
+  ${wait?'<div class="im failp"><span>사진 2를 불러오지 못했습니다<br><button class="lnk" style="color:var(--bad) !important;text-decoration:underline" data-toast="사진을 다시 불러옵니다">다시 불러오기</button></span></div>':'<div class="im b"></div>'}<div>${PB[2]}</div>
+  <div class="tblw"><table class="tbl"><tr><th>출발일</th><th>일정</th><th>1인 요금</th><th>남은 자리</th></tr><tr><td>12월 3일 (목)</td><td>3박 5일</td><td>1,190,000원</td><td>8</td></tr><tr><td>12월 10일 (목)</td><td>3박 5일</td><td>1,240,000원</td><td>4</td></tr><tr><td>12월 24일 (목)</td><td>3박 5일</td><td>1,490,000원</td><td>2</td></tr></table></div></div>
+  <div class="tagbox"><em>태그 칸</em><span>다낭골프</span><span>골프투어</span><span>골투</span></div></div>
+  <div class="diff"><span>원문과 달라지는 점</span><span><b>굵은 글씨, 링크</b> 원문대로 굵게, 눌리는 링크로 올라갑니다</span><span><b>표</b> 표로 올라갑니다. 네이버에서 표를 만들지 못하면 줄 글로 바뀌고, 끝난 뒤 알려 드립니다</span><span><b>해시태그</b> 본문이 아니라 네이버의 태그 칸에 들어갑니다</span></div>`;
+const bandPost = () => `<div class="post band"><div class="cap2"><span>밴드 글</span><span>${st.bandPick==null?'밴드를 고르면 이름이 나옵니다':BN()}</span></div>
+  <div class="who"><i></i><span><b>김매니저</b><small>방금 · 밴드에 보이는 모습</small></span></div>
+  <div class="bd">다낭 3색 골프 3박 5일 · 5성 호텔
+
+${P[0]}
+
+${P[1]}
+
+${P[2]}
+
+12월 3일 (목) | 3박 5일 | 1,190,000원 | 8
+12월 10일 (목) | 3박 5일 | 1,240,000원 | 4
+12월 24일 (목) | 3박 5일 | 1,490,000원 | 2
+
+<span class="ht">#다낭골프 #골프투어 #골투</span></div>
+  <div class="bgrid"><i></i><i></i><i></i><i></i><i></i><i class="more" data-n="+8"></i></div></div>
+  <div class="diff"><span>원문과 달라지는 점</span><span><b>제목</b> 따로 칸이 없어 글 첫 줄에 들어갑니다</span><span><b>사진 13장</b> 문단 사이가 아니라 글 아래에 모아서 올라갑니다</span><span><b>굵은 글씨</b> 밴드는 굵기를 지원하지 않아 일반 글자로 올라갑니다</span><span><b>링크</b> 주소가 글자로 함께 들어갑니다. 눌리는지는 실제 게시 시험에서 확인합니다</span><span><b>표</b> 줄 글로 바뀝니다</span><span><b>해시태그</b> 글 끝에 붙습니다</span></div>`;
+const chRow = (name,cls,status,act) => `<div><span class="sv"><span>${name}</span><small class="${cls}">${status}</small></span>${act||''}</div>`;
+const resScreens = {
+  done:()=>`<div class="scr"><div class="center"><span class="mark">✓</span><div class="huge">발행했습니다</div><span class="kicker">다낭 3색 골프 3박 5일 · 사진 13장 · 3분 12초</span>
+    <div class="res">${st.pub.blog?chRow(`블로그 · ${st.pub.open==='public'?'전체공개':'비공개'}`,'ok1','발행됨','<a class="lnk" href="#" data-toast="휴대폰의 네이버 앱 또는 브라우저로 글을 엽니다">글 보기</a>'):''}${st.pub.band&&st.band?chRow(`밴드 · ${BN()}`,'ok1','게시됨','<a class="lnk" href="#" data-toast="휴대폰의 밴드 앱으로 글을 엽니다">글 보기</a>'):''}</div></div></div><div class="bar"><button class="btn s" data-go="history">등록 기록</button><button class="btn p" data-go="home">다른 상품 옮기기</button></div>`,
+  draft:()=>`<div class="scr"><div class="center"><span class="mark">✓</span><div class="huge">블로그에 임시저장했습니다</div><span class="kicker">다낭 3색 골프 3박 5일 · 사진 13장 · 3분 15초</span><div class="res">${chRow('블로그','ok1','임시저장됨 · 공개되지 않음')}</div><div class="hint">네이버 블로그 앱의 글쓰기 › 임시저장함에서 확인하고 직접 발행할 수 있습니다.</div></div></div><div class="bar"><button class="btn s" data-go="history">등록 기록</button><button class="btn p" data-go="home">다른 상품 옮기기</button></div>`,
+  uncertain:()=>`<div class="scr"><div class="center"><span class="mark q">?</span><div class="huge">밴드에 올라갔는지<br>확인이 필요합니다</div><p style="margin:0">블로그는 발행됐습니다. 밴드는 게시를 누른 뒤 응답을 받지 못해 올라갔는지 앱이 확인하지 못했습니다. 다시 올리기 전에 먼저 확인해 주세요.</p>
+    <div class="res">${chRow('블로그 · 전체공개','ok1','발행됨','<a class="lnk" href="#" data-toast="휴대폰의 네이버 앱 또는 브라우저로 글을 엽니다">글 보기</a>')}${chRow(`밴드 · ${BN()}`,'q1','확인 필요','<a class="lnk" href="#" data-toast="휴대폰의 밴드 앱으로 이 밴드를 엽니다">밴드에서 보기</a>')}</div></div></div><div class="bar"><button class="btn q" data-go="history">등록 기록</button><button class="btn p" data-toast="밴드에서 글을 찾았습니다. 게시됨으로 기록했습니다">다시 확인</button></div>`,
+  recfail:()=>`<div class="scr"><div class="center"><span class="mark">✓</span><div class="huge">발행했습니다</div><span class="kicker">다낭 3색 골프 3박 5일 · 사진 13장</span>
+    <div class="res">${chRow('블로그 · 전체공개','ok1','발행됨','<a class="lnk" href="#" data-toast="휴대폰의 네이버 앱 또는 브라우저로 글을 엽니다">글 보기</a>')}${chRow(`밴드 · ${BN()}`,'ok1','게시됨','<a class="lnk" href="#" data-toast="휴대폰의 밴드 앱으로 글을 엽니다">글 보기</a>')}</div>
+    <div class="note-amb">글은 정상으로 올라갔지만 등록 기록에 남기지 못했습니다. 기록이 없으면 상품 목록에 "아직 올리지 않음"으로 보입니다. <button data-toast="등록 기록에 저장했습니다">기록 다시 저장</button></div></div></div><div class="bar"><button class="btn p" data-go="home">다른 상품 옮기기</button></div>`,
+  paused:()=>`<div class="scr"><div class="center"><span class="mark p">❙❙</span><div class="huge">잠시 멈췄습니다</div><p style="margin:0">네이버가 확인을 요청해 블로그 발행 직전에 멈췄습니다. 아직 공개된 글은 없습니다.</p>
+    <div class="res">${chRow('블로그 · 전체공개','q1','확인을 기다리는 중')}${chRow(`밴드 · ${BN()}`,'w1','시작 전')}</div></div></div><div class="bar"><button class="btn q" data-sheet="stop">그만두기</button><button class="btn p" data-sheet="dialog">요청 내용 보기</button></div>`,
+  relogin:()=>`<div class="scr"><div class="center"><span class="mark w">!</span><div class="huge">네이버 로그인이<br>풀렸습니다</div><p style="margin:0">옮기던 글은 그대로 두었습니다. 다시 로그인하면 멈춘 곳부터 이어서 진행합니다.</p><div class="res">${chRow('블로그 · 전체공개','q1','사진 8/13에서 멈춤 · 공개되지 않음')}${chRow(`밴드 · ${BN()}`,'w1','시작 전')}</div></div></div><div class="bar"><button class="btn q" data-go="home">나중에 하기</button><button class="btn p" data-svc="naver">다시 로그인</button></div>`,
+  fail:()=>`<div class="scr"><div class="center"><span class="mark x">×</span><div class="huge">끝까지 옮기지<br>못했습니다</div><p style="margin:0">글은 공개되지 않았습니다. 네이버 화면이 평소와 달라 사진을 올리다 멈췄습니다.</p><div class="res">${chRow('블로그 · 전체공개','x1','실패 · 공개되지 않음')}${chRow(`밴드 · ${BN()}`,'w1','시작하지 않음')}</div><span class="kicker" style="margin-top:12px">다시 시도하면 처음부터 새로 옮깁니다.</span></div></div><div class="bar"><button class="btn q" data-go="home">그만두기</button><button class="btn p" data-go="progress">다시 시도</button></div>`
+};
+const kbd = `<div class="kbd"><div>${'<i></i>'.repeat(10)}</div><div>${'<i></i>'.repeat(9)}</div><div>${'<i></i>'.repeat(7)}</div><div><i></i><i class="sp"></i><i></i></div><small>휴대폰 키보드 자리</small></div>`;
+const screens = {
+  login:()=>{ const s=st.state.login, filled=s==='wrong'||s==='off'||s==='busy';
+    return `<div class="scr"><div class="hd"><div class="row"><span class="brand"><i>G</i>골투오토</span></div><h1>골투 계정으로<br>로그인하세요</h1></div><div class="pad"><p class="meta" style="margin:0">골투 매니저와 직원만 사용할 수 있습니다.</p>
+    <label class="fld"><span>아이디</span><div class="inp ${s==='empty'?'err':''} ${filled?'':'ph0'}">${filled?'manager01':'아이디'}</div>${s==='empty'?'<div class="emsg">아이디를 입력해 주세요.</div>':''}</label>
+    <label class="fld"><span>비밀번호</span><div class="inp ${s==='wrong'?'err foc':''} ${s==='off'||s==='busy'?'':'ph0'}">${s==='off'||s==='busy'?'••••••••':'비밀번호'}</div>${s==='wrong'?'<div class="emsg">아이디 또는 비밀번호가 맞지 않습니다. 비밀번호를 다시 입력해 주세요.</div>':''}</label>
+    ${s==='off'?'<div class="note-bad">인터넷에 연결되지 않아 로그인하지 못했습니다. 연결을 확인한 뒤 다시 눌러 주세요. 입력한 내용은 그대로 두었습니다.</div>':''}</div></div>
+    <div class="bar"><button class="btn p" ${s==='busy'?'aria-disabled="true"':''} data-go="home">${s==='busy'?'확인하는 중입니다':'로그인'}</button></div>`; },
+  home:()=>{ const s=st.state.home; return `<div class="scr"><div class="hd"><div class="row"><span class="brand"><i>G</i>골투오토</span><span>김매니저 님</span></div><h1>옮길 상품을<br>고르세요</h1></div><div class="conn">${chip(st.naver,'블로그')}${chip(st.band,'밴드')}</div><div class="pad"><div class="search" style="${s==='none'||s==='searching'?'color:var(--a-ink);border-color:var(--g7)':''}">${s==='none'?'세부 골프':s==='searching'?'다낭':'상품 이름, 골프장, 지역으로 찾기'}</div>${homeBody(s)}</div></div>${nav('home')}`; },
+  product:()=>{ const s=st.state.product, v=s==='band'?'band':'blog';
+    if(s==='err') return `<div class="scr"><button class="back" data-go="home">← 상품 목록</button><div class="pad" style="padding-top:0"><div class="state" style="padding-top:90px"><strong>상품 내용을 읽지 못했습니다</strong><span>인터넷 연결을 확인한 뒤 다시 시도해 주세요. 올라간 글은 없습니다.</span><button class="btn p" data-st="product:blog">다시 읽기</button></div></div></div>`;
+    return `<div class="scr"><button class="back" data-go="home">← 상품 목록</button><div class="pad" style="padding-top:0"><div class="title" style="margin-top:0">다낭 3색 골프 3박 5일 · 5성 호텔</div><div class="meta">베트남 다낭 · 1,190,000원부터 · 사진 13장</div>
+    <div class="stick"><div class="seg"><button class="${v==='blog'?'on':''}" data-st="product:blog">블로그에 올라갈 모습</button><button class="${v==='band'?'on':''}" data-st="product:band">밴드에 올라갈 모습</button></div>${optline}</div>
+    ${v==='blog'?blogPost(s==='wait'):bandPost()}</div></div>
+    <div class="bar"><button class="btn s" data-sheet="draft">임시저장<small>공개되지 않음</small></button><button class="btn p" data-sheet="publish">발행<small>바로 공개됨</small></button></div>`; },
+  polish:()=>{ const c=(i,o,n)=>`<div class="cmp ${st.kept[i]?'kept':''}"><div class="o"><span class="lb">${st.kept[i]?'원문 그대로 씁니다':'원문'}</span>${o}</div><div class="n"><span class="lb">다듬은 글</span>${n}</div><div class="ft"><button class="lnk" data-keep="${i}">${st.kept[i]?'다듬은 글로 쓰기':'원문으로 되돌리기'}</button></div></div>`;
+    return `<div class="scr"><button class="back" data-go="product">← 미리보기</button><div class="pad" style="padding-top:0"><div class="title" style="margin-top:0">다듬은 문장을 확인하세요</div><div class="meta">6문단 중 2문단을 고쳤습니다. 숫자, 날짜, 가격은 바꾸지 않았습니다.</div>
+    ${c(1,'숙소는 미케 비치 앞 5성 호텔이며 <del>조식이포함</del> <del>됩니다</del>.','숙소는 미케 비치 앞 5성 호텔이며 <ins>조식이 포함됩니다</ins>.')}
+    ${c(2,'포함 사항은 그린피, 카트, 캐디, 공항 이동 <del>차량 입니다</del>.','포함 사항은 그린피, 카트, 캐디, 공항 이동 <ins>차량입니다</ins>.')}
+    <button class="optline" style="margin-top:12px" data-toast="바뀌지 않은 문단 4개를 펼칩니다"><span>바뀌지 않은 문단 4개</span><span class="lnk" style="min-height:36px">펼치기</span></button></div></div>
+    <div class="bar"><button class="btn q" data-go="progress">모두 원문으로</button><button class="btn p" data-go="progress">이대로 옮기기</button></div>`; },
+  progress:()=>`<div class="scr"><div class="pg"><div class="dest" id="pgDest"></div><div class="pgh" id="pgH"></div><div class="pgs" id="pgS"></div>
+    <div class="rowlab"><span id="pgLab"></span></div><div class="paper"><div class="fade"></div><div class="in" id="pgIn"></div><div class="scan" id="pgScan" hidden></div></div>
+    <div class="rowlab"><span>사진</span><span id="pgPc"></span></div><div class="strip" id="pgStrip"></div>
+    <div class="rowlab"><span>올린 뒤 확인</span><span id="pgCk"></span></div><div class="chk" id="pgChk"></div>
+    <div class="track"><i id="pgBar"></i></div><div class="rowlab" style="margin:0"><span id="pgEl"></span><span id="pgLeft"></span></div></div></div><div class="bar"><button class="btn q" data-sheet="stop">중단</button></div>`,
+  result:()=>resScreens[st.state.result](),
+  connect:()=>{ const s=st.state.connect, row=(nm,key,svc)=>{ const on=s==='ok'||(s!=='need'&&s!=='checking'&&s!=='unknown'&&st[key]);
+      const stt={ok:'<small style="color:var(--g7)">✓ 연결됨'+(key==='band'?' · 글 쓸 수 있는 밴드 3개':'')+'</small>',need:'<small style="color:var(--warn)">로그인이 필요합니다</small>',checking:'<small><span class="spin" style="display:inline-block;vertical-align:-2px;margin-right:6px"></span>확인하는 중입니다. 보통 5초 안에 끝납니다</small>',unknown:'<small style="color:var(--amber)">확인하지 못했습니다. 인터넷 연결을 확인해 주세요</small>'}[s];
+      const act={ok:`<button class="lnk" data-toast="연결을 끊을지 한 번 더 묻습니다">연결 끊기</button>`,need:`<button class="btn p" style="flex:0 0 auto;padding:12px 18px !important" data-svc="${svc}">로그인</button>`,checking:'',unknown:`<button class="btn s" style="flex:0 0 auto;padding:12px 18px !important" data-st="connect:checking">다시 확인</button>`}[s];
+      return `<div class="ln" style="min-height:72px"><span>${nm}<br>${stt}</span>${act}</div>`; };
+    return `<div class="scr"><button class="back" data-go="home">← 돌아가기</button><div class="pad" style="padding-top:0"><div class="title" style="margin-top:0">계정 연결</div><p class="meta" style="margin:0">글을 올릴 네이버와 밴드에 로그인해 둡니다. 비밀번호는 실제 네이버·밴드 화면에만 입력하며 앱은 저장하지 않습니다.</p><div class="set">${row('네이버 블로그','naver','naver')}${row('네이버 밴드','band','band')}</div></div></div>`; },
+  svc:()=>`<div class="svc"><div class="svcbar"><span>${st.svc==='band'?'밴드':'네이버'} 로그인</span><button class="lnk" data-go="connect">취소</button></div><p class="kicker" style="padding:10px 18px 0;margin:0">직접 로그인해 주세요. 끝나면 이 화면은 저절로 닫힙니다.</p><div class="fake"><strong style="color:#17201b">이 자리에 실제 ${st.svc==='band'?'밴드':'네이버'} 로그인 페이지가 표시됩니다.</strong><span>아이디와 비밀번호, 2단계 인증을 직접 입력합니다. 로그인과 관계없는 페이지로는 이동할 수 없습니다.</span><button class="btn p" data-act="logged">(시안) 로그인을 마친 것으로 보기</button></div></div>`,
+  history:()=>{ const s=st.state.history, hd=`<div class="title" style="margin-top:6px">등록 기록</div><div class="tabs"><button class="on">내 기록</button><button>전체</button></div>`;
+    if(s==='empty') return `<div class="scr"><div class="pad">${hd}<div class="state"><strong>아직 옮긴 글이 없습니다</strong><span>상품을 골라 임시저장하거나 발행하면 여기에 남습니다.</span><button class="btn s" data-go="home">상품 고르러 가기</button></div></div></div>${nav('history')}`;
+    if(s==='err') return `<div class="scr"><div class="pad">${hd}<div class="state"><strong>등록 기록을 불러오지 못했습니다</strong><span>인터넷 연결을 확인한 뒤 다시 시도해 주세요.</span><button class="btn p" data-st="history:ok">다시 불러오기</button></div></div></div>${nav('history')}`;
+    const view=t=>`<a class="lnk" href="#" data-toast="${t}">글 보기</a>`, del=k=>`<button class="lnk" style="color:var(--bad) !important" data-sheet="${k}">글 삭제</button>`;
+    return `<div class="scr"><div class="pad">${hd}<div class="hist">
+    <div class="item"><strong>다낭 3색 골프 3박 5일 · 5성 호텔</strong>
+      <span class="st2 ok">블로그 발행 · 전체공개 · 11.16 13:48</span><span class="rowact">${view('휴대폰의 네이버 앱 또는 브라우저로 글을 엽니다')}${del('delBlog')}</span>
+      ${s==='delprep'?'<div class="rowerr">삭제를 시작하지 못했습니다. 글은 그대로 있습니다.<button data-st="history:ok">다시 시도</button></div>':''}${s==='delq'?'<div class="rowerr amb">삭제를 눌렀지만 지워졌는지 확인하지 못했습니다.<button data-toast="글이 지워진 것을 확인했습니다">다시 확인</button></div>':''}
+      <span class="st2 ok">밴드 게시 · 골프투어 모임 · 11.16 13:50</span><span class="rowact">${view('휴대폰의 밴드 앱으로 글을 엽니다')}${del('delBand')}</span></div>
+    <div class="item"><strong>방콕 시티호텔 2색 골프 3박 5일</strong><span class="st2 dr">블로그 임시저장 · 11.13 14:37</span><small style="color:var(--a-soft)">네이버 임시저장함에서 확인</small></div>
+    <div class="item"><strong>후쿠오카 온천 골프 2박 3일</strong><span class="st2 fail">블로그 실패 · 공개되지 않음 · 11.12 09:20</span><small style="color:var(--a-soft)">사진을 내려받지 못해 글을 쓰기 전에 멈췄습니다</small><span class="rowact"><button class="lnk" data-go="progress">다시 시도</button></span></div>
+    <div class="item"><strong>푸꾸옥 리조트 골프 3박 5일</strong><span class="st2 q">밴드 확인 필요 · 11.11 17:20</span><small style="color:var(--a-soft)">올라갔는지 앱이 확인하지 못했습니다</small><span class="rowact"><button class="lnk" data-toast="밴드에서 글을 찾았습니다. 게시됨으로 기록했습니다">다시 확인</button><a class="lnk" href="#" data-toast="휴대폰의 밴드 앱으로 이 밴드를 엽니다">밴드에서 보기</a></span></div>
+    <div class="item"><strong>세부 리조트 골프 3박 4일</strong><span class="st2 del">블로그 삭제함 · 11.11 16:02</span></div></div></div></div>${nav('history')}`; },
+  settings:()=>{ const s=st.state.settings, typing=s==='typing', dirty=s!=='view';
+    const mine=`<h3>내 계정</h3><div class="ln"><span>김매니저 · 관리자</span><button class="lnk" data-go="login">로그아웃</button></div>
+      <h3>계정 연결</h3><button class="ln" data-go="connect"><span>네이버 블로그<br><small>✓ 연결됨</small></span><span class="lnk">관리</span></button><button class="ln" data-go="connect"><span>네이버 밴드<br><small>✓ 연결됨</small></span><span class="lnk">관리</span></button>
+      <h3>내 글 옵션<small>바꾸면 바로 적용됩니다</small></h3>
+      <div class="ln" style="border-bottom:0"><span>문장 다듬기<br><small>옮기기 전에 고친 문장을 확인합니다</small></span><span class="swb"><span class="sw on"></span></span></div>
+      <div class="lv"><button class="brow on"><span class="rad"></span><span class="nm">맞춤법·띄어쓰기만<small>틀린 글자와 띄어쓰기만 고칩니다</small></span></button><button class="brow"><span class="rad"></span><span class="nm">자연스럽게<small>어색한 문장도 다듬습니다. 숫자·날짜·가격은 바꾸지 않습니다</small></span></button></div>
+      <div class="ln"><span>글 끝 문구 넣기<br><small>아래 공통 설정의 문구를 글 끝에 붙입니다</small></span><span class="swb"><span class="sw"></span></span></div>
+      <div class="ln"><span>골투 링크 카드<br><small>상품 주소를 글 끝에 넣습니다</small></span><span class="swb"><span class="sw"></span></span></div>`;
+    const common=`<h3>공통 설정<small>관리자만 바꿀 수 있고, 저장을 눌러야 적용됩니다</small></h3>
+      <label class="fld"><span>글 끝 문구</span><div class="inp" style="align-items:flex-start;min-height:76px">예약과 문의는 골투 상담 창으로 남겨 주세요.</div></label>
+      <label class="fld"><span>기본 해시태그</span><div class="chips"><span>#골투</span><span>#골프투어</span><span>#해외골프</span><span>#골프여행</span>${dirty?'<span style="background:var(--g1);color:var(--g9)">#동남아골프</span>':''}</div><div class="inp ${typing?'foc':'ph0'}" style="margin-top:8px">${typing?'#동남아골프<span class="car"></span>':'태그를 쓰고 띄어쓰기로 구분'}</div></label>
+      <label class="fld"><span>하루 밴드 게시 한도</span><div class="inp" style="max-width:120px">3</div><div class="help">1부터 10 사이 숫자입니다.</div></label><div style="height:20px"></div>`;
+    if(typing) return `<div class="scr" id="setScr"><div class="pad set" style="padding-top:0">${common}</div></div><div class="savebar"><span>저장하지 않은 변경 1건</span><button class="btn p" data-toast="공통 설정을 저장했습니다">저장</button></div>${kbd}`;
+    return `<div class="scr"><div class="pad set"><div class="title" style="margin-top:6px">설정</div>${mine}${common}</div></div>${dirty?'<div class="savebar"><span>저장하지 않은 변경 1건</span><button class="btn p" data-st="settings:view" data-toast2="공통 설정을 저장했습니다">저장</button></div>':''}<div class="nav"><button data-${dirty?'sheet="leave"':'go="home"'}>상품</button><button data-${dirty?'sheet="leave"':'go="history"'}>등록 기록</button><button class="on">설정</button></div>`; }
+};
+const sheets = {
+  draft:()=>`<h2>임시저장</h2><p>네이버 블로그의 임시저장함에 저장합니다. 다른 사람에게 보이지 않습니다.</p>
+    <div class="pick on"><span class="box2">✓</span><span class="t"><strong>네이버 블로그</strong><small>임시저장함에 저장</small></span></div>
+    <div class="pick off"><span class="box2"></span><span class="t"><strong>네이버 밴드</strong><small>밴드에는 임시저장이 없어 발행할 때만 올릴 수 있습니다</small></span></div>
+    <div class="acts"><button class="btn q" data-close>취소</button><button class="btn p" data-start="draft">블로그에 임시저장</button></div>`,
+  publish:()=>{ const L=st.bandList, picked=L==='ok'&&st.bandPick!=null, bandOn=st.pub.band&&st.band;
+    const sub=!bandOn?'':L==='ok'?(picked?`<button class="sub" data-sheet2="bands"><span class="v"><small>올릴 밴드</small>${BN()}</span><span class="lnk">바꾸기</span></button>`:`<button class="sub need" data-sheet2="bands"><span class="v">올릴 밴드를 골라 주세요</span><span class="lnk">고르기</span></button>`)
+      :L==='loading'?`<div class="sub plain"><span class="spin"></span><span class="v">밴드 목록을 읽는 중입니다</span></div>`
+      :L==='empty'?`<div class="sub plain"><span class="v">글을 쓸 수 있는 밴드가 없습니다. 밴드 앱에서 가입한 밴드와 글쓰기 권한을 확인해 주세요.</span><button class="lnk" data-bl="ok">다시 읽기</button></div>`
+      :`<div class="sub plain"><span class="v">밴드 목록을 읽지 못했습니다.</span><button class="lnk" data-bl="ok">다시 읽기</button></div>`;
+    const none=!st.pub.blog&&!bandOn, block=bandOn&&!picked, reason=none?'올릴 곳을 하나 이상 골라 주세요.':block?(L==='ok'?'올릴 밴드를 골라야 다음으로 갈 수 있습니다.':L==='loading'?'밴드 목록을 읽고 있습니다. 밴드를 끄면 블로그만 바로 발행할 수 있습니다.':'밴드를 끄면 블로그만 발행할 수 있습니다.'):'';
+    return `<h2>발행</h2><p>고른 곳에 바로 올립니다.</p>
+    <button class="pick ${st.pub.blog?'on':''}" data-tog="blog"><span class="box2">${st.pub.blog?'✓':''}</span><span class="t"><strong>네이버 블로그</strong><small>공개 범위를 고르세요</small></span></button>
+    ${st.pub.blog?`<div class="two" style="margin:0 0 6px 34px"><button class="${st.pub.open==='public'?'on':''}" data-open="public">전체공개</button><button class="${st.pub.open==='private'?'on':''}" data-open="private">비공개</button></div>`:''}
+    ${st.band?`<button class="pick ${st.pub.band?'on':''}" style="border-bottom:0" data-tog="band"><span class="box2">${st.pub.band?'✓':''}</span><span class="t"><strong>네이버 밴드</strong><small>바로 게시됩니다 · 오늘 3건 중 1건 올림</small></span></button>${sub}`:`<div class="pick off"><span class="box2"></span><span class="t"><strong>네이버 밴드</strong><small>밴드 로그인이 필요합니다</small></span><button class="lnk" data-svc="band" style="opacity:1">로그인</button></div>`}
+    ${reason?`<div class="why2">${reason}</div>`:''}
+    <div class="acts"><button class="btn q" data-close>취소</button><button class="btn p" ${none||block?'aria-disabled="true"':'data-sheet="confirm"'}>다음</button></div>`; },
+  bands:()=>`<div class="shd"><button data-sheet2="publish" aria-label="발행 창으로 돌아가기">←</button><h2 style="margin:0">올릴 밴드 고르기</h2></div><p>글을 쓸 수 있는 밴드 ${BL().length}개입니다.</p>
+    ${st.many?'<div class="inp ph0" style="margin:12px 0 4px">밴드 이름으로 찾기</div>':''}
+    <div style="margin-top:8px">${BL().map((b,i)=>`<button class="brow ${st.bandPick===i?'on':''}" data-band="${i}"><span class="rad"></span><span class="nm">${b}${st.bandPick===i?'<small>지난번에 올린 밴드</small>':''}</span></button>`).join('')}</div>`,
+  confirm:()=>`<h2>이대로 발행할까요?</h2><p>다낭 3색 골프 3박 5일 · 5성 호텔</p>
+    <div class="res">${st.pub.blog?`<div><span>네이버 블로그</span><strong>${st.pub.open==='public'?'전체공개':'비공개'}</strong></div>`:''}${st.pub.band&&st.band?`<div><span>네이버 밴드</span><strong style="text-align:right">${BN()}</strong></div>`:''}</div>
+    <div class="warnline">발행하면 ${st.pub.open==='public'||(st.pub.band&&st.band)?'바로 다른 사람에게 보입니다':'나만 볼 수 있는 글로 올라갑니다'}.${st.pub.band&&st.band?' 밴드 회원에게 새 글 알림이 갈 수 있습니다.':''} 올린 뒤에는 등록 기록에서 글을 삭제할 수 있습니다.</div>
+    <div class="acts"><button class="btn q" data-sheet2="publish">뒤로</button><button class="btn p" data-start="publish">발행하기</button></div>`,
+  stop:()=>`<h2>옮기기를 중단할까요?</h2><p>쓰던 글은 버립니다. 아직 공개된 것은 없습니다.</p><div class="acts"><button class="btn q" data-close>계속 옮기기</button><button class="btn d" data-go="home">중단</button></div>`,
+  unfinished:()=>`<h2>네이버에 쓰다 만 글이 있습니다</h2><p>네이버 글쓰기에 저장되지 않은 글이 남아 있습니다. 앱이 남긴 글인지 확인할 수 없어 여쭙니다.</p>
+    <div class="acts" style="flex-direction:column"><button class="btn p" data-go="progress">쓰다 만 글을 버리고 새로 옮기기</button><button class="btn q" data-go="home">옮기지 않기<small>쓰다 만 글은 그대로 둡니다</small></button></div><div class="help" style="text-align:center;margin-top:10px">뒤로가기를 눌러도 이 창은 닫히지 않습니다.</div>`,
+  changed:()=>`<h2>상품 내용이 바뀌었습니다</h2><p>미리보기를 본 뒤에 골투에서 이 상품이 수정됐습니다. 바뀐 내용을 다시 확인한 뒤 옮겨 주세요.</p><div class="acts"><button class="btn q" data-go="home">옮기지 않기</button><button class="btn p" data-go="product">새 내용 미리보기</button></div>`,
+  dialog:()=>`<h2>네이버에서 확인을 요청했습니다</h2><p>블로그 발행 직전에 네이버가 아래 내용을 물었습니다.</p><div class="quote"><small>네이버가 보낸 내용 그대로</small>이미지 일부가 권장 크기보다 큽니다. 계속 등록하시겠습니까?</div>
+    <div class="acts"><button class="btn q" data-go="home">취소<small>발행하지 않고 그만둡니다</small></button><button class="btn p" data-go="progress">확인<small>이어서 발행합니다</small></button></div>`,
+  del:()=>{ const b=st.del==='band'; return `<h2>${b?'밴드':'블로그'} 글을 삭제할까요?</h2><p>다낭 3색 골프 3박 5일 · 5성 호텔${b?'<br>골프투어 모임':''}</p><div class="note-bad">${b?'밴드에서 글이 지워지며 되돌릴 수 없습니다. 글에 달린 댓글도 함께 사라집니다.':'네이버 블로그에서 글이 지워지며 되돌릴 수 없습니다.'}</div><div class="acts"><button class="btn q" data-close>취소</button><button class="btn d" data-act="deleted">삭제</button></div>`; },
+  leave:()=>`<h2>저장하지 않은 변경이 있습니다</h2><p>공통 설정에서 바꾼 기본 해시태그가 아직 저장되지 않았습니다.</p><div class="acts"><button class="btn q" data-st="settings:view" data-then="home">버리고 나가기</button><button class="btn p" data-st="settings:view" data-toast2="공통 설정을 저장했습니다">저장</button></div>`
+};
+function draw(){
+  const ph=$('#phone'), keepTop=ph.querySelector('.scr')?.scrollTop||0, same=ph.dataset.k===st.screen+':'+(st.state[st.screen]||'');
+  ph.innerHTML = screens[st.screen]() + (st.sheet?`<div class="dim"><div class="sheet" tabindex="-1">${sheets[st.sheet]()}</div></div>`:'') + (st.toast?`<div class="toast" role="status">${st.toast}</div>`:'');
+  ph.dataset.k=st.screen+':'+(st.state[st.screen]||'');
+  const sc=ph.querySelector('.scr'); if(sc){ if(same) sc.scrollTop=keepTop; if(st.sheet) sc.style.overflow='hidden'; if(st.screen==='settings'&&st.state.settings==='typing') sc.scrollTop=sc.scrollHeight; }
+  $('#jump').innerHTML = Object.keys(names).map(k=>`<button data-jump="${k}" aria-current="${k===st.screen}">${names[k]}</button>`).join('');
+  const vs=variants[st.screen]; $('#statesBox').hidden=!vs; if(vs) $('#states').innerHTML=vs.map(([k,l])=>`<button data-st="${st.screen}:${k}" aria-current="${st.state[st.screen]===k&&!st.sheet}">${l}</button>`).join('');
+  $('#sheetsJ').innerHTML=sheetJump.map(([k,l])=>`<button data-sj="${k}">${l}</button>`).join('');
+  if(st.screen==='progress') paint();
+  const w=(st.sheet&&sheetWhy[st.sheet])||why[st.screen]; $('#why').innerHTML=`<h2>지금 보이는 ${st.sheet&&sheetWhy[st.sheet]?'창':'화면'}</h2><h3>${w[0]}</h3><p style="margin:0 0 8px">${w[1]}</p><ul>${w[2].map(x=>`<li>${x}</li>`).join('')}</ul>`;
+}
+function drawAudit(){
+  const sevN={h:'높음',m:'중간',l:'낮음'}, cnt=k=>FIND.filter(f=>f[1]===k).length;
+  $('#flt').innerHTML=[['all',`전체 ${FIND.length}`],['h',`높음 ${cnt('h')}`],['m',`중간 ${cnt('m')}`],['l',`낮음 ${cnt('l')}`]].map(([k,l])=>`<button data-flt="${k}" aria-pressed="${st.flt===k}">${l}</button>`).join('');
+  $('#atb').innerHTML=FIND.filter(f=>st.flt==='all'||f[1]===st.flt).map(f=>`<tr><td>${f[0]}<span class="sev ${f[1]}">${sevN[f[1]]}</span></td><td>${f[2]}</td><td>${f[3]}</td><td>${f[4]}</td><td>${f[5]?`<button data-show="${f[5].map(x=>x||'').join(':')}">시안에서 보기</button>`:'모든 화면에 적용'}</td></tr>`).join('');
+}
+const sheetHome={draft:'product',publish:'product',bands:'product',bandsMany:'product',pubNone:'product',pubLoading:'product',pubEmpty:'product',pubErr:'product',confirm:'product',stop:'progress',unfinished:'product',changed:'product',dialog:'result',delBlog:'history',delBand:'history',leave:'settings'};
+document.addEventListener('click',e=>{
+  const t=e.target.closest('[data-go],[data-jump],[data-sheet],[data-sheet2],[data-close],[data-start],[data-tog],[data-open],[data-st],[data-svc],[data-act],[data-toast],[data-band],[data-bl],[data-keep],[data-sj],[data-show],[data-flt]'); if(!t) return;
+  if(t.tagName==='A') e.preventDefault();
+  const d=t.dataset;
+  if(d.flt){ st.flt=d.flt; drawAudit(); }
+  else if(d.show){ const [a,b,c]=d.show.split(':'); show(a,b,c); }
+  else if(d.sj){ const h=sheetHome[d.sj]; if(h==='result') st.state.result='paused'; if(h==='settings') st.state.settings='unsaved'; if(h==='product'&&st.state.product==='err') st.state.product='blog'; if(h==='history') st.state.history='ok'; show(h,null,d.sj); }
+  else if(d.jump) go(d.jump);
+  else if(d.st){ const [a,b]=d.st.split(':'); st.state[a]=b; st.screen=a; st.sheet=null; if(d.toast2){ toast(d.toast2); } else if(d.then){ go(d.then); } else draw(); }
+  else if(d.go) go(d.go);
+  else if(d.sheet) openSheet(d.sheet);
+  else if(d.sheet2){ st.sheet=d.sheet2; draw(); }
+  else if('close' in d){ st.sheet=null; draw(); }
+  else if(d.start){ st.mode=d.start; go('progress'); }
+  else if(d.tog){ st.pub[d.tog]=!st.pub[d.tog]; draw(); }
+  else if(d.open){ st.pub.open=d.open; draw(); }
+  else if(d.band){ st.bandPick=+d.band; st.sheet='publish'; draw(); }
+  else if(d.bl){ st.bandList=d.bl; if(st.bandPick==null) st.bandPick=0; draw(); }
+  else if(d.keep){ st.kept[d.keep]=!st.kept[d.keep]; draw(); }
+  else if(d.svc){ st.svc=d.svc; go('svc'); }
+  else if(d.toast){ toast(d.toast); }
+  else if(d.act==='logged'){ st[st.svc==='band'?'band':'naver']=true; st.state.connect='ok'; st.screen='connect'; toast((st.svc==='band'?'밴드':'네이버')+'에 연결했습니다'); }
+  else if(d.act==='deleted'){ st.sheet=null; toast((st.del==='band'?'밴드':'블로그')+' 글을 삭제했습니다'); }
+});
+draw(); drawAudit();
+</script>
