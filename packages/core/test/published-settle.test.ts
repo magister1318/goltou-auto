@@ -20,14 +20,18 @@ async function viewer(missing = '', mobileProof = false) {
   const context = await browser.newContext({viewport:{width:1280,height:900}});
   const url = 'https://blog.naver.com/synthetic_fixture/9001';
   const plan: InputPlan = {channel:'blog',discarded:[],notices:[],steps:[{kind:'text',role:'title',text:'합성 판독 제목'}]};
-  const paragraphs = Array.from({length:99},(_,i)=>`합성 문단 ${i+1}`);
+  // The full replay below owns the 99-paragraph/29-photo scrolling regression.
+  // Keep the independent mobile visibility test small so it tests that second
+  // live document without repeating a long lazy-load sweep under worker load.
+  const shape = mobileProof ? {paragraphs:3,photos:2,fillers:0} : {paragraphs:99,photos:29,fillers:58};
+  const paragraphs = Array.from({length:shape.paragraphs},(_,i)=>`합성 문단 ${i+1}`);
   paragraphs.forEach((text,i)=>plan.steps.push({kind:'text',role:'body',text,runs:i===0?[{text,bold:true}]:i===1||i===2?[{text,href:`https://example.invalid/${i}`}]:[{text}]}));
-  const files = Array.from({length:29},(_,i)=>({url:`https://example.invalid/photo/${i}`,path:`/synthetic/goltou-1234567890abcdef-${i+1}.png`}));
+  const files = Array.from({length:shape.photos},(_,i)=>({url:`https://example.invalid/photo/${i}`,path:`/synthetic/goltou-1234567890abcdef-${i+1}.png`}));
   plan.steps.push({kind:'photos',urls:files.map(f=>f.url)},{kind:'text',role:'hashtags',text:'#one #two'});
   const body = paragraphs.map((text,i)=>`<div class="se-component se-text"><p class="se-text-paragraph"><span class="se-fs-fs15 se-ff-nanumgothic">${i===0?`<b>${text}</b>`:i===1||i===2?`<a href="https://example.invalid/${i}">${text}</a>`:text}</span></p></div>`).join('');
   // Observed real shape: 99 meaningful paragraphs plus 58 standalone U+200B
   // viewer fillers. All 29 final URLs can exist before their images load.
-  const fillers = Array.from({length:58},()=>'<div class="se-component se-text"><p class="se-text-paragraph"><span>\u200b</span></p></div>').join('');
+  const fillers = Array.from({length:shape.fillers},()=>'<div class="se-component se-text"><p class="se-text-paragraph"><span>\u200b</span></p></div>').join('');
   // The recorded viewer uses data-lazy-src, without native loading="lazy".
   // Adding both mechanisms makes background test tabs depend on Chromium's
   // unrelated native lazy-image activation heuristics.
@@ -91,6 +95,9 @@ it.each(['title','photos','tags','visibility','bold','links'])('retains the rece
 
 it('reads public openType from a separate live mobile post, independently of the requested visibility',async()=>{
   const f=await viewer('',true);
-  expect((await f.execution.verifyPublished()).visibility).toBe('public');
+  const actual=await f.execution.verifyPublished();
+  expect(actual.visibility).toBe('public');
+  expect(actual.tokens.filter(t=>t.kind==='photo'&&t.loaded)).toHaveLength(2);
+  expect(f.imageRequests()).toBe(2);
   expect(f.execution.publishedVerified).toBe(true);
 },30000);

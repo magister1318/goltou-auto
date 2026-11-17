@@ -26,7 +26,17 @@ try {
     Invoke-Checked 'pnpm.cmd' @('install', '--frozen-lockfile')
     Assert-Source
     Invoke-Checked 'pnpm.cmd' @('typecheck')
-    Invoke-Checked 'pnpm.cmd' @('test')
+    New-Item -ItemType Directory -Path (Join-Path $root 'tmp') -Force | Out-Null
+    $testReport = Join-Path $root ('tmp/install-gate-tests-' + [Guid]::NewGuid().ToString('N') + '.json')
+    try {
+        Invoke-Checked 'pnpm.cmd' @('test', '--reporter=default', '--reporter=json', ('--outputFile=' + $testReport))
+        $tests = Get-Content -LiteralPath $testReport -Raw | ConvertFrom-Json
+        $runtime = @($tests.testResults | Where-Object { $_.name -match '[/\\]runtime-compatibility\.test\.ts$' })
+        if (!$tests.success -or $tests.numTotalTests -le 0 -or $tests.numPendingTests -ne 0 -or $tests.numTodoTests -ne 0 -or
+            $runtime.Count -ne 1 -or $runtime[0].status -ne 'passed' -or @($runtime[0].assertionResults).Count -eq 0) {
+            throw 'INSTALL_GATE_FULL_SUITE_OR_RUNTIME_CHECK_MISSING'
+        }
+    } finally { if (Test-Path -LiteralPath $testReport) { Remove-Item -LiteralPath $testReport } }
     Invoke-Checked 'node' @('scripts/check-embedded-compat.mjs', '--sources')
     Invoke-Checked 'pnpm.cmd' @('build')
     Assert-Source
