@@ -21,6 +21,16 @@ CMake 3.22.1이 필요합니다. `local.properties`는 커밋하지 않습니다
 APK: `app/build/outputs/apk/debug/app-debug.apk`. ARM64와 ARMv7용 libnode 18.20.4를 포함합니다.
 libnode와 빌드된 core/UI 자산은 Git에서 제외합니다. Gradle이 변형별 core/UI 자산을 생성합니다.
 
+기기 설치는 루트에서 `powershell -NoProfile -File scripts/install-device.ps1`로 합니다.
+로컬 변경이 없는 커밋에서 의존성 설치·전체 시험·타입 검사·번들 빌드·`assembleDebug`를
+모두 통과해야 설치합니다. APK 내부 `core.cjs`·`engine.cjs`를 직접 추출해 문법과
+ICU 없는 내장 Node의 Unicode 속성 정규식 비호환성을 검사하고, APK의 소스 커밋과
+현재 HEAD를 대조합니다. 각 단계와 설치 직전 소스 변경도 거부합니다.
+확인한 APK의 동일 바이트 사본만 `adb install -r`로 설치합니다.
+`-VerifyOnly`는 전체 게이트를 실행하고 설치 직전에 멈춥니다. 여러 기기는 `-Device`로 선택합니다.
+설치 전 읽기 전용 검사에서 화면이 켜져 있고 잠금이 풀렸으며 골투오토가 전면이어야 합니다.
+기기를 깨우거나 잠금을 풀지 않으며, 조건이 맞지 않으면 설치하지 않습니다.
+
 `bridge/`는 공통 Surface를 Android 프로필·숨김 WebView·사설 DevTools 소켓과 연결합니다.
 Kotlin은 NodeRuntime, DevtoolsRelay, CoreLink, SurfaceHost와 진단 UI 호스팅만 제공합니다.
 별도의 NativeOps는 진단에 필요하지 않아 가져오지 않았습니다.
