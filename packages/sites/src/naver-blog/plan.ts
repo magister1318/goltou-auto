@@ -10,7 +10,8 @@ import { finalPublishSelector, guardedPublishClick, inspectPrivateRequest, inspe
 import { parsePublishIdentity, resolvePublishEvidence, type ResponseIdentity, type PublishedPage, type PublishIdentitySource } from './publish-identity';
 import { containsServiceLink, tokenText, ReadbackMismatch, type ReadbackIssue } from '../readback-checks';
 import { settledReadback, type ReadbackClass } from '../settled-readback';
-import { BlogRichTextWriter } from './rich-text';
+import { BlogRichTextWriter, blogBodyAtEnd } from './rich-text';
+import { insertBlogTable, tableRowRuns, exactBlogTable, type BlogTableToken } from './table';
 import { BlogFormattingError, blogRunReader, normalizeBlogRuns, splitBlogRuns, type BlogRun, type FormattingStage } from './formatting';
 import { closeDraftEntries, draftEntries, draftItem, draftSaveReceipt, identifySavedDraft, openDraftEntries, type DraftEntry } from './draft-identity';
 import { expectedBlogTags, plannedBlogTags, sameBlogTags, sameServiceBlogTags } from './tags';
@@ -18,11 +19,11 @@ import { expectedBlogTags, plannedBlogTags, sameBlogTags, sameServiceBlogTags } 
 /** Structural subset of WP4 InputPlan. Sites has no dependency on core or a device API. */
 export interface BlogPlan {
   channel: 'blog' | 'band';
-  steps: ({ kind: 'text'; role: string; text: string; runs?: BlogRun[] } | { kind: 'break' } | { kind: 'photos'; urls: string[] } | { kind: 'table'; role: string; rows: string[][] })[];
+  steps: ({ kind: 'text'; role: string; text: string; runs?: BlogRun[] } | { kind: 'break' } | { kind: 'photos'; urls: string[] } | { kind: 'table'; role: string; rows: string[][]; cellRuns?: BlogRun[][][] })[];
 }
-export type BlogToken = { kind: 'text'; text: string; runs?: BlogRun[] } | { kind: 'photo'; identity: string; loaded?: boolean };
+export type BlogToken = { kind: 'text'; text: string; runs?: BlogRun[] } | { kind: 'photo'; identity: string; loaded?: boolean } | BlogTableToken;
 export interface BlogReadback { title: string; tokens: BlogToken[]; tags: string[]; visibility?: BlogVisibility | null }
-export interface BlogProgress { characters: number; totalCharacters: number; photos: number; totalPhotos: number; photoUploadMilliseconds?: number; photoUploadSamples?: number; activity?: import('../progress').EngineActivity; ownRecoveryDiscarded?: boolean; blogParagraph?: { blockIndex: number; runs: BlogRun[] }; blogInputReset?: boolean }
+export interface BlogProgress { tableModes?: ('native'|'text-list')[]; characters: number; totalCharacters: number; photos: number; totalPhotos: number; photoUploadMilliseconds?: number; photoUploadSamples?: number; activity?: import('../progress').EngineActivity; ownRecoveryDiscarded?: boolean; blogParagraph?: { blockIndex: number; runs: BlogRun[] }; blogInputReset?: boolean }
 export interface BlogEnvironment {
   host: SurfaceHost;
   lastTypedTitle?: { read(): Promise<string | null>; write(title: string): Promise<void> };
@@ -73,7 +74,9 @@ export async function readBlogDocument(surface: Surface, documentUrls?: readonly
           tokens.push(photo);
         }
       } else if(e.classList.contains('se-table')) {
-        for(const row of e.querySelectorAll('tr')) tokens.push({kind:'text',text:Array.from(row.querySelectorAll('td,th')).map(text).join(' | '),runs:Array.from(row.querySelectorAll('td,th')).flatMap((cell,i)=>[...(i?[{text:' | ',bold:false,href:null}]:[]),...paragraphRuns(cell)])});
+        const cellRuns=Array.from(e.querySelectorAll('tr')).map(row=>Array.from(row.querySelectorAll('td,th')).map(cell=>Array.from(cell.querySelectorAll('.se-text-paragraph')).flatMap((p,i)=>[...(i?[{text:'\\n',bold:false,href:null}]:[]),...paragraphRuns(p)])));
+        tokens.push({kind:'table',rows:cellRuns.map(row=>row.map(runs=>runs.map(r=>r.text).join(''))),cellRuns,
+          merged:Array.from(e.querySelectorAll('td,th')).some(cell=>Number(cell.getAttribute('rowspan')||1)!==1||Number(cell.getAttribute('colspan')||1)!==1)});
       } else if(e.classList.contains('se-oglink')) {
         const a=e.querySelector('a[href]'); tokens.push({kind:'text',text:a?.getAttribute('href')||'',runs:[{text:a?.getAttribute('href')||'',bold:false,href:null}]});
       } else { tokens.push({kind:'text',text:'UNSUPPORTED_EDITOR_COMPONENT'}); }
@@ -84,17 +87,21 @@ export async function readBlogDocument(surface: Surface, documentUrls?: readonly
 
     });
   }
-const same = (a: BlogReadback, b: BlogReadback) => compact(a.title) === compact(b.title) && JSON.stringify(a.tokens.map(t => t.kind === 'text' ? ['text', t.text, normalizeBlogRuns(t.runs ?? [{text:t.text}])] : ['photo', t.identity])) === JSON.stringify(b.tokens.map(t => t.kind === 'text' ? ['text', t.text, normalizeBlogRuns(t.runs ?? [{text:t.text}])] : ['photo', t.identity])) && JSON.stringify(a.tags) === JSON.stringify(b.tags);
+const same = (a: BlogReadback, b: BlogReadback) => JSON.stringify(a) === JSON.stringify(b);
 
-export function plannedBlogParagraphs(plan: BlogPlan): BlogRun[][] {
+export function plannedBlogParagraphs(plan: BlogPlan, modes: readonly ('native'|'text-list')[] = []): BlogRun[][] {
+  let tableIndex = 0;
   return plan.steps.flatMap(step => {
-    if (step.kind === 'table') return step.rows.map(row => [{ text: row.join(' | ') }]);
+    if (step.kind === 'table') {
+      const fallback = modes[tableIndex++] === 'text-list';
+      return step.rows.flatMap((_,r)=>fallback ? splitBlogRuns(tableRowRuns(step,r)).filter(runs=>runs.length>0) : [tableRowRuns(step,r)]);
+    }
     if (step.kind !== 'text' || step.role === 'title' || step.role === 'hashtags') return [];
     return splitBlogRuns(step.runs ?? [{ text: step.text }]).filter(runs => runs.length > 0);
   });
 }
-export function compareBlogFormatting(plan: BlogPlan, actual: BlogReadback): import('./formatting').BlogFormattingIssue[] {
-  const expected = plannedBlogParagraphs(plan), saved = actual.tokens.filter(t => t.kind === 'text');
+export function compareBlogFormatting(plan: BlogPlan, actual: BlogReadback, modes: readonly ('native'|'text-list')[] = []): import('./formatting').BlogFormattingIssue[] {
+  const expected = plannedBlogParagraphs(plan,modes), saved = actual.tokens.flatMap(t => t.kind === 'text' ? [t] : t.kind === 'table' ? t.rows.map((row,r) => ({kind:'text' as const,text:row.join(' | '),runs:tableRowRuns(t,r)})) : []);
   const issues: import('./formatting').BlogFormattingIssue[] = [];
   for (let index = 0; index < Math.max(expected.length, saved.length); index++) {
     const planned = normalizeBlogRuns(expected[index] ?? []), token = saved[index];
@@ -133,6 +140,26 @@ export function compareBlogFormatting(plan: BlogPlan, actual: BlogReadback): imp
   return issues;
 }
 
+export function blogTablesMatch(plan: BlogPlan, actual: BlogReadback, modes: readonly ('native'|'text-list')[] = []) {
+  let offset = 0, tableIndex = 0;
+  for (const step of plan.steps) {
+    if (step.kind === 'break' || step.kind === 'text' && ['title','hashtags'].includes(step.role)) continue;
+    if (step.kind === 'photos') { offset += step.urls.length; continue; }
+    if (step.kind === 'text') { offset += splitBlogRuns(step.runs ?? [{text:step.text}]).filter(r=>r.length).length; continue; }
+    if (modes[tableIndex++] === 'text-list') {
+      for (const row of step.rows) for (const piece of row.join(' | ').split('\n').filter(Boolean)) {
+        const token = actual.tokens[offset++]; if (token?.kind !== 'text' || token.text !== piece) return false;
+      }
+    } else {
+      const token = actual.tokens[offset++]; if (token?.kind !== 'table' || !exactBlogTable(step,token)) return false;
+    }
+  }
+  return actual.tokens.filter(t=>t.kind==='table').length === plan.steps.filter(s=>s.kind==='table').filter((_,i)=>modes[i]!=='text-list').length;
+}
+export function verifyBlogTables(plan: BlogPlan, actual: BlogReadback, modes: readonly ('native'|'text-list')[] = []) {
+  if (!blogTablesMatch(plan,actual,modes)) throw new ReadbackMismatch('BLOG_READBACK_MISMATCH:table',[{field:'table'}]);
+}
+
 export class BlogExecution {
   surface: Surface | undefined;
   private index = 0;
@@ -147,8 +174,9 @@ export class BlogExecution {
   private verifyDocument(value: BlogReadback, stage: FormattingStage) {
     if (this.formattingFailure) throw this.formattingFailure;
     // Retain existing title/photo/number diagnostics before the exact run comparison.
+    verifyBlogTables(this.plan, value, this.tableModes);
     this.env.verify(value, stage);
-    const issues = compareBlogFormatting(this.plan, value);
+    const issues = compareBlogFormatting(this.plan, value, this.tableModes);
     if (issues.length) {
       const error = new BlogFormattingError(stage, issues);
       if (['AFTER_SAVE', 'REOPENED', 'PUBLISHED'].includes(stage)) this.formattingFailure = error;
@@ -344,7 +372,7 @@ export class BlogExecution {
   }
   private report(reset = false) {
     const totalCharacters = this.plan.steps.reduce((n, s) => n + (s.kind === 'text' ? Array.from(s.text).length : s.kind === 'table' ? s.rows.flat().reduce((a, t) => a + Array.from(t).length, 0) : 0), 0);
-    this.env.progress({ characters: this.characters, totalCharacters, photos: this.photos, totalPhotos: this.files.length, ...(reset ? { blogInputReset: true } : {}),
+    this.env.progress({ tableModes: [...this.tableModes], characters: this.characters, totalCharacters, photos: this.photos, totalPhotos: this.files.length, ...(reset ? { blogInputReset: true } : {}),
       ...(this.ownRecoveryDiscarded ? { ownRecoveryDiscarded: true } : {}), ...(this.blogParagraph ? { blogParagraph: this.blogParagraph } : {}),
       photoUploadMilliseconds: this.photoUploadMilliseconds, photoUploadSamples: this.photoUploadSamples, ...(this.activity ? { activity: this.activity } : {}) });
   }
@@ -369,10 +397,29 @@ export class BlogExecution {
 
     });
   }
-  private async endOfBody() {
+  private async endOfBody(appendAfterComponent = false) {
     return traceStep('sites.naver-blog.plan.BlogExecution.endOfBody', async () => {
     const s = this.surface!;
     const selector = '.se-component.se-text:last-child .se-text-paragraph:last-child';
+    if (appendAfterComponent) {
+      // Removing a table can also consume its empty append paragraph, leaving
+      // a photo as the final component. Create only a new empty native anchor.
+      for(let n=0;n<16;n++) {
+        if(await read<boolean>(s, `return docs.some(({d})=>d.querySelector(${JSON.stringify(selector)}));`)) break;
+        const bottom=await read<{x:number;y:number}|null>(s, `for(const {d,x,y}of docs){const e=d.querySelector('button.se-canvas-bottom-button');if(!e||!visible(e))continue;const b=e.getBoundingClientRect(),px=x+b.left+b.width/2,py=y+b.top+Math.min(20,b.height/2);if(px>0&&py>0&&px<innerWidth&&py<innerHeight)return{x:px,y:py};}return null;`);
+        if(bottom) {
+          await s.click(bottom.x,bottom.y,async()=>{if(s.readClickTarget&&!await s.readClickTarget(bottom.x,bottom.y,'button.se-canvas-bottom-button'))throw Error('CURSOR_POSITION_UNCONFIRMED');});
+          await s.pressKey({key:'ArrowDown'}); continue;
+        }
+        const gap=await read<{x:number;y:number}|null>(s, `for(const {d,x,y}of docs){const all=Array.from(d.querySelectorAll('.se-component')).filter(e=>!e.classList.contains('se-documentTitle'));const t=all[all.length-1];if(!t||!['se-image','se-table'].some(c=>t.classList.contains(c)))continue;const b=t.getBoundingClientRect(),px=x+b.left+b.width/2,py=y+b.bottom+12;const top=y+Math.max(0,...Array.from(d.querySelectorAll('.se-document-toolbar,.se-property-toolbar')).filter(visible).map(e=>e.getBoundingClientRect().bottom));if(px>0&&py>top&&px<innerWidth&&py<innerHeight)return{x:px,y:py};}return null;`);
+        if(gap) {
+          await s.click(gap.x,gap.y,async()=>{if(s.readClickTarget&&!await s.readClickTarget(gap.x,gap.y,'.se-content,.se-components-wrap,.se-main-container'))throw Error('CURSOR_POSITION_UNCONFIRMED');});
+          await s.pressKey({key:'ArrowDown'}); break;
+        }
+        await this.guard(); await s.pressKey({key:'PageDown'}); await sleep(100);
+      }
+    }
+
     let last = await point(s, selector);
     if (!last) {
       // SmartEditor scrolls its own canvas, rather than the outer document.
@@ -396,7 +443,7 @@ export class BlogExecution {
       while(e&&!e.classList?.contains('se-component'))e=e.parentElement;
       const components=Array.from((d?.querySelector('.se-main-container')||d?.querySelector('.se-content'))?.querySelectorAll('.se-component')||[]).filter(e=>!e.classList.contains('se-documentTitle'));
       return !!e&&e===components[components.length-1]&&e.classList.contains('se-text');`);
-    if (!atEnd) throw new Error('CURSOR_POSITION_UNCONFIRMED');
+    if (!atEnd && !await blogBodyAtEnd(s)) throw new Error('CURSOR_POSITION_UNCONFIRMED');
 
     });
   }
@@ -483,7 +530,7 @@ export class BlogExecution {
         }
       } else if (step.kind === 'table') {
         this.atomic = true;
-        await this.table(step.rows);
+        await this.table(step);
       } else if (step.kind === 'text' && step.role === 'hashtags') {
         this.atomic = true;
         await this.tagInput();
@@ -540,54 +587,25 @@ export class BlogExecution {
 
     });
   }
-  private async table(rows: string[][]) {
+  private async table(step: Extract<BlogPlan['steps'][number], {kind:'table'}>) {
     return traceStep('sites.naver-blog.plan.BlogExecution.table', async () => {
-    const s = this.surface!;
-    const original = await readBlogDocument(s);
-    const fallback = async () => {
-      this.tableModes.push('text-list');
-      for (const [i, row] of rows.entries()) { if (i) await s.pressKey({ key: 'Enter' }); await this.type(row.join(' | ')); }
-    };
-    const before = await read<number>(s, `return docs.reduce((n,{d})=>n+d.querySelectorAll('.se-component.se-table').length,0);`);
-    const control = await point(s, 'button[data-name="table"]');
-    if (!control) return fallback();
-    await s.click(control.x, control.y); await sleep(350); await this.guard();
-    // Native editor starts with a 3x3 table. Use visible control buttons to adjust it.
-    try { await waitFor(() => read(s, `return docs.some(({d})=>d.querySelectorAll('.se-component.se-table').length===${before + 1});`), 3000); }
-    catch { trace('sites.naver-blog.plan.BlogExecution.table', 'fail', { reason: 'CAUGHT_FAILURE' });
-      await this.guard(); await s.pressKey({ key: 'Escape' });
-      if (!same(original, await readBlogDocument(s))) throw new Error('TABLE_DIMENSIONS_UNSTABLE');
-      await this.endOfBody(); return fallback();
-    }
-    const shape = () => read<number[]>(s, `const tables=docs.flatMap(({d})=>Array.from(d.querySelectorAll('.se-component.se-table')));const t=tables[tables.length-1];return Array.from(t?.querySelectorAll('tr')||[]).map(r=>r.querySelectorAll('td,th').length);`);
-    let dimensions = await shape();
-    const columns = Math.max(...rows.map(r => r.length));
-    // A partially inserted table is never followed by a text fallback that could duplicate facts.
-    if (!dimensions.length || dimensions.some(n => n !== columns) || dimensions.length > rows.length) {
-      await s.pressKey({ key: 'z', modifiers: 2 }); await sleep(350); await this.guard();
-      if (!same(original, await readBlogDocument(s))) throw new Error('TABLE_DIMENSIONS_UNSTABLE');
-      await this.endOfBody(); return fallback();
-    }
-    while (dimensions.length < rows.length) {
-      await click(s, 'BLOG_TABLE_ADD_ROW', '.se-table-control.se-is-on .se-cell-controlbar-row .se-cell-add-button:last-child');
-      const previous = dimensions.length;
-      dimensions = await waitFor(async () => { const v = await shape(); return v.length === previous + 1 ? v : null; }, 5000);
-    }
-    if (dimensions.length !== rows.length) throw new Error('TABLE_DIMENSIONS_UNSTABLE');
-    for (let r = 0; r < rows.length; r++) for (let c = 0; c < columns; c++) {
-      await this.guard();
-      // Read coordinates from the last table. Scroll using keys only when necessary.
-      const cell = await waitFor(async () => {
-        const p = await read<{ x: number; y: number } | null>(s, `for(const {d,x,y} of docs){const tables=d.querySelectorAll('.se-component.se-table');const t=tables[tables.length-1];const e=t?.querySelectorAll('tr')[${r}]?.querySelectorAll('td,th')[${c}];if(e){const b=e.getBoundingClientRect();if(y+b.top>=0&&y+b.bottom<innerHeight)return {x:x+b.left+b.width/2,y:y+b.top+b.height/2};}}return null;`);
-        if (!p) await s.pressKey({ key: 'PageDown' }); return p;
-      }, 5000);
-      await s.click(cell.x, cell.y); await this.type(rows[r]?.[c] ?? '');
-    }
-    this.tableModes.push('native');
-    await s.pressKey({ key: 'Escape' }); await s.pressKey({ key: 'ArrowDown' }); await this.endOfBody();
-
+      const start = this.characters;
+      const mode = await insertBlogTable(this.surface!, step, {
+        check: () => this.guard(), snapshot: () => readBlogDocument(this.surface!), restoreEnd: () => this.endOfBody(true),
+        acknowledge: added => { this.characters += added; this.report(); },
+      });
+      this.tableModes.push(mode); this.report();
+      if (mode === 'text-list') {
+        this.characters = start;
+        for (let r = 0; r < step.rows.length; r++) {
+          if (r) await this.surface!.pressKey({key:'Enter'});
+          const runs = tableRowRuns(step, r), text = runs.map(run => run.text).join('');
+          await new BlogRichTextWriter(text, runs, 1).write(this.surface!, () => this.guard(), async added => { this.characters += added; this.report(); });
+        }
+      }
     });
   }
+
   async observe() {
     return traceStep('sites.naver-blog.plan.BlogExecution.observe', async () => {
     try {
@@ -615,7 +633,13 @@ export class BlogExecution {
     if (expectedBlogTags(this.plan).length || await point(this.surface!, tagPanelToggle)) {
       await this.tagInput(); observed = await readBlogDocument(this.surface!);
     }
-    return observed;
+    // Keep the existing non-table path; the additional settling is for tables.
+    if (!this.plan.steps.some(step=>step.kind==='table')) return observed;
+    const settled = await settledReadback({ read: () => readBlogDocument(this.surface!), check: this.env.check, timeoutMs: 15000,
+      classes: value => [{ check: 'table', reason: 'READBACK_TABLE', expected: this.plan.steps.filter(s=>s.kind==='table').filter((_,i)=>this.tableModes[i]!=='text-list').length,
+        observed: value?.tokens.filter(t=>t.kind==='table').length ?? 0, present: !!value && blogTablesMatch(this.plan,value,this.tableModes) }] });
+    if (!settled.stable) throw new ReadbackMismatch('BLOG_READBACK_MISMATCH:stability',[{field:'stability'}]);
+    return settled.value!;
     } finally { await closeTagLayer(this.surface!); }
 
     });
@@ -733,15 +757,16 @@ export class BlogExecution {
     const s = this.surface!;
     const started = Date.now(); let navigationKeys = 0;
     const ownUrls = async () => (await read<string[]>(s, `return docs.map(({d})=>d.location.href);`)).filter(url => postIdentity(url)?.url === this.publishedPost!.url);
-    const paragraphs = plannedBlogParagraphs(this.plan);
-    const runs = (value: BlogReadback | null) => value?.tokens.flatMap(t => t.kind === 'text' ? normalizeBlogRuns(t.runs ?? []) : []) ?? [];
+    const paragraphs = plannedBlogParagraphs(this.plan,this.tableModes);
+    const runs = (value: BlogReadback | null) => value?.tokens.flatMap(t => t.kind === 'text' ? normalizeBlogRuns(t.runs ?? []) : t.kind === 'table' ? t.rows.flatMap((_,r)=>normalizeBlogRuns(tableRowRuns(t,r))) : []) ?? [];
     const plannedRuns = paragraphs.flatMap(normalizeBlogRuns);
     const expectedPhotos = this.plan.steps.reduce((n, step) => n + (step.kind === 'photos' ? step.urls.length : 0), 0);
     const classes = (value: BlogReadback | null): ReadbackClass[] => {
       const photos = value?.tokens.filter(t => t.kind === 'photo') ?? [], observedRuns = runs(value);
       return [
+        { check: 'table', reason: 'READBACK_TABLE', expected: this.plan.steps.filter(s=>s.kind==='table').filter((_,i)=>this.tableModes[i]!=='text-list').length, observed: value?.tokens.filter(t=>t.kind==='table').length ?? 0, present: !!value && blogTablesMatch(this.plan,value,this.tableModes) },
         { check: 'title', reason: 'READBACK_TITLE', expected: 1, observed: value?.title ? 1 : 0, present: !!value?.title },
-        { check: 'paragraphs', reason: 'READBACK_PARAGRAPHS', expected: paragraphs.length, observed: value?.tokens.filter(t => t.kind === 'text').length ?? 0, present: (value?.tokens.filter(t => t.kind === 'text').length ?? 0) >= paragraphs.length },
+        { check: 'paragraphs', reason: 'READBACK_PARAGRAPHS', expected: paragraphs.length, observed: value?.tokens.reduce((n,t)=>n+(t.kind==='text'?1:t.kind==='table'?t.rows.length:0),0) ?? 0, present: (value?.tokens.reduce((n,t)=>n+(t.kind==='text'?1:t.kind==='table'?t.rows.length:0),0) ?? 0) >= paragraphs.length },
         { check: 'text', reason: 'READBACK_TEXT', expected: plannedRuns.reduce((n,r)=>n+r.text.length,0), observed: observedRuns.reduce((n,r)=>n+r.text.length,0), present: observedRuns.reduce((n,r)=>n+r.text.length,0) >= plannedRuns.reduce((n,r)=>n+r.text.length,0) },
         { check: 'bold', reason: 'READBACK_BOLD', expected: plannedRuns.filter(r=>r.bold).length, observed: observedRuns.filter(r=>r.bold).length, present: observedRuns.filter(r=>r.bold).length >= plannedRuns.filter(r=>r.bold).length },
         { check: 'links', reason: 'READBACK_LINKS', expected: plannedRuns.filter(r=>r.href).length, observed: observedRuns.filter(r=>r.href).length, present: observedRuns.filter(r=>r.href).length >= plannedRuns.filter(r=>r.href).length },
@@ -796,10 +821,11 @@ export class BlogExecution {
       if (!value) throw new ReadbackMismatch('BLOG_PUBLISHED_READBACK_UNAVAILABLE', settled.classes.filter(c=>!c.present).map(c=>({field:c.check==='paragraphs'?'text':c.check as ReadbackIssue['field']})));
       if (!settled.stable) throw new ReadbackMismatch('BLOG_PUBLISHED_READBACK_UNAVAILABLE', [{field:'stability'}, ...settled.classes.filter(c=>!c.present).map(c=>({field:c.check==='paragraphs'?'text' as const:c.check as ReadbackIssue['field']}))]);
       const issues: ReadbackIssue[] = [];
+      if (!blogTablesMatch(this.plan,value,this.tableModes)) issues.push({field:'table'});
       if (!settled.classes.find(c=>c.check==='photos')!.present) issues.push({field:'photos'});
       if (value.visibility !== this.visibility) issues.push({field:'visibility'});
       if (!sameServiceBlogTags(this.plan, value.tags)) issues.push({field:'hashtags'});
-      for (const issue of compareBlogFormatting(this.plan, value)) for (const field of issue.fields) issues.push({field:field==='href'?'links':field==='input'?'text':field,paragraph:issue.paragraph});
+      for (const issue of compareBlogFormatting(this.plan, value, this.tableModes)) for (const field of issue.fields) issues.push({field:field==='href'?'links':field==='input'?'text':field,paragraph:issue.paragraph});
       try { this.env.verify(value, 'PUBLISHED'); } catch(error) { if(error instanceof ReadbackMismatch) issues.push(...error.issues); else throw error; }
       if (issues.length) {
         for(const item of settled.classes) trace('verification', issues.some(issue=>issue.field===(item.check==='paragraphs'?'text':item.check))?'fail':'ok', {check:item.check,reason:item.reason,counts:{expected:item.expected,observed:item.observed}},Date.now()-started);

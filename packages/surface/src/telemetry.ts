@@ -19,11 +19,12 @@ export type JobResult = 'succeeded' | 'failed' | 'stopped' | 'uncertain';
 export interface TraceCounts {
   step?: number; paragraphIndex?: number; paragraphTotal?: number; photoIndex?: number; photoTotal?: number;
   bytes?: number; runs?: number; attempt?: number; expected?: number; observed?: number; status?: number;
+  rows?: number; columns?: number; cells?: number;
   lineBreaks?: number; hashtags?: number; links?: number;
 }
 export interface TraceDetail {
   reason?: ReasonCode; counts?: TraceCounts;
-  check?: 'title' | 'paragraphs' | 'prices' | 'departures' | 'golf_courses' | 'text' | 'photos' | 'photo_order' | 'photo_ratio' | 'links' | 'hashtags' | 'line_breaks' | 'identity' | 'focus' | 'record' | 'alert_kind' | 'delete_notice' | 'same_post' | 'missing_read' | 'feed_location' | 'bold' | 'visibility' | 'stability';
+  check?: 'table' | 'title' | 'paragraphs' | 'prices' | 'departures' | 'golf_courses' | 'text' | 'photos' | 'photo_order' | 'photo_ratio' | 'links' | 'hashtags' | 'line_breaks' | 'identity' | 'focus' | 'record' | 'alert_kind' | 'delete_notice' | 'same_post' | 'missing_read' | 'feed_location' | 'bold' | 'visibility' | 'stability';
   dialog?: 'alert' | 'confirm';
   selector?: typeof traceSelectors[number];
   operation?: typeof traceOperations[number];

@@ -6,7 +6,7 @@ import { bandPostBlocked } from '@goltou/sites';
 export function jobMessage(job: Job): [string, string] {
   const code = job.failureCode ?? '';
   if (job.readbackIssues?.length) {
-    const names = {title:'제목',text:'본문 글자',line_breaks:'줄바꿈 수',photos:'사진 수 또는 순서',order:'본문과 사진 순서',hashtags:'태그',links:'링크 주소',bold:'문단 굵기',visibility:'공개 범위',stability:'화면 로딩 상태'};
+    const names = {table:'표',title:'제목',text:'본문 글자',line_breaks:'줄바꿈 수',photos:'사진 수 또는 순서',order:'본문과 사진 순서',hashtags:'태그',links:'링크 주소',bold:'문단 굵기',visibility:'공개 범위',stability:'화면 로딩 상태'};
     const details = [...new Set(job.readbackIssues.map(issue=>`${issue.paragraph ? `${issue.paragraph}번 문단의 ` : ''}${names[issue.field]}${issue.index ? ` ${issue.index}번째가` : issue.field==='title'?'이':'가'} 계획과 다릅니다.`))].join(' ');
     return [details, existingServiceResult(job) ? '등록 기록에서 저장 또는 게시된 글을 확인해 주세요. 같은 글을 다시 올리지 마세요.' : '저장 또는 게시 전에 멈췄습니다. 내용을 확인해 주세요.'];
   }

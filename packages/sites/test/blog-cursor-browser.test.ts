@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { chromium } from 'playwright-core';
 import { expect, it } from 'vitest';
 import type { Surface } from '@goltou/surface';
-import { readBlogCursor } from '../src/naver-blog/rich-text';
+import { readBlogCursor, blogBodyAtEnd } from '../src/naver-blog/rich-text';
 
 const executablePath = [process.env.CHROMIUM, 'C:/Program Files/Google/Chrome/Application/chrome.exe',
   'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe', '/usr/bin/chromium', '/usr/bin/google-chrome'].find(p => p && existsSync(p));
@@ -69,6 +69,7 @@ it.runIf(Boolean(executablePath))('reads virtual selection endpoints without inv
       return result.result.value;
     } } as Surface;
     expect(await readBlogCursor(surface)).toMatchObject({ text: '가😀나', anchor: 4, focus: 1, focused: true });
+    expect(await blogBodyAtEnd(surface)).toBe(false);
     await page.evaluate("window.SmartEditor._editors.fixture._papyrus._selectionInfoStore.$mobx.values.start.value.$mobx.values.nodeId.value='missing-node'");
     expect(await readBlogCursor(surface)).toBeNull();
     await page.evaluate(`(() => {
@@ -78,13 +79,22 @@ it.runIf(Boolean(executablePath))('reads virtual selection endpoints without inv
       values.start.value.$mobx.values.offset.value=0;values.end.value.$mobx.values.offset.value=0;
     })()`);
     expect(await readBlogCursor(surface)).toMatchObject({ text: '', anchor: 0, focus: 0, focused: true });
+    expect(await blogBodyAtEnd(surface)).toBe(true);
     await page.evaluate(() => document.querySelector('.se-placeholder')!.remove());
     expect(await readBlogCursor(surface)).toMatchObject({ text: '', anchor: 0, focus: 0, focused: true });
+    expect(await blogBodyAtEnd(surface)).toBe(true);
     await page.evaluate(() => document.querySelector('p')!.insertAdjacentHTML('afterbegin', '<span class="__se-node">가😀</span>'));
     expect(await readBlogCursor(surface)).toMatchObject({ text: '가😀', anchor: 3, focus: 3, focused: true });
     await page.evaluate(() => { document.querySelector('#node')!.innerHTML = '<b><a href="https://example.invalid">문의</a></b>'; });
     expect(await readBlogCursor(surface)).toMatchObject({ text: '가😀문의', anchor: 3, focus: 3, runs: [
       { text: '가😀', bold: false, href: null }, { text: '문의', bold: true, href: 'https://example.invalid' },
     ] });
+    expect(await blogBodyAtEnd(surface)).toBe(false);
+    await page.evaluate(`(() => {const v=window.SmartEditor._editors.fixture._papyrus._selectionInfoStore.$mobx.values;v.start.value.$mobx.values.offset.value=2;v.end.value.$mobx.values.offset.value=2;})()`);
+    expect(await blogBodyAtEnd(surface)).toBe(true);
+    await page.evaluate(()=>{const image=document.createElement('div');image.className='se-component se-image';document.body.append(image)});
+    expect(await blogBodyAtEnd(surface)).toBe(false);
+    await page.evaluate(`window.SmartEditor._editors.fixture._papyrus._selectionInfoStore.$mobx.values.shouldBlur.value=true`);
+    expect(await blogBodyAtEnd(surface)).toBe(false);
   } finally { await browser.close(); }
 }, 20000);

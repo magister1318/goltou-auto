@@ -217,7 +217,9 @@ describe('WP17 choices and channel outcomes', () => {
     expect(node.querySelector('a')!.getAttribute('href')).toBe(
       'https://example.invalid/ask',
     );
-    expect(node.querySelectorAll('th')).toHaveLength(2);
+    expect(node.querySelectorAll('th')).toHaveLength(0);
+    expect([...node.querySelectorAll('td')].map(e=>e.textContent)).toEqual(['머리','값','가','나']);
+    expect(node.querySelectorAll('table strong')).toHaveLength(0);
     expect(node.querySelector('.tag-box')!.textContent).toContain('합성');
     expect([...node.querySelectorAll('.tag-box > span')].map(e => e.textContent)).toEqual(['태그 칸', '합성', '본문']);
     expect(node.querySelector('.post-body')!.textContent).toContain('강조 문의 #본문');

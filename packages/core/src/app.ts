@@ -264,7 +264,7 @@ export class AppCore {
       }
       case 'posts.list': {
         const page = await this.call('/auto/posts/list', request.input, token);
-        return { ...page, items: await Promise.all(page.items.map(async post => ({ ...post, jobLog: this.runtime?.logs?.forRecord(String(post.postNo)), blogVisibility: post.channel === 'blog' ? await this.postMetadata.get(post.postNo) ?? post.blogVisibility : undefined }))) };
+        return { ...page, items: await Promise.all(page.items.map(async post => ({ ...post, jobLog: this.runtime?.logs?.forRecord(String(post.postNo)), tableFallback: post.channel === 'blog' ? await this.postMetadata.getTableFallback(post.postNo) : false, blogVisibility: post.channel === 'blog' ? await this.postMetadata.get(post.postNo) ?? post.blogVisibility : undefined }))) };
       }
       case 'settings.save': await this.call('/auto/settings/save', request.input, token); this.state.settings = (await this.call('/auto/me', {}, token)).settings; break;
       case 'service.check': this.requireServiceIdle(); this.state.services[request.input.service] = request.input.service === 'ai' ? 'unknown' : request.input.service === 'band' && this.runner.checkBandLogin ? await this.runner.checkBandLogin() : request.input.service === 'naver' && this.runner.checkLogin ? await this.runner.checkLogin() : 'confirmed'; break;
@@ -411,7 +411,10 @@ export class AppCore {
         if (!failure) continue;
         if (!retry) throw failure; // Only the explicit record action may resend an uncertain update.
       }
-      try { await this.call('/auto/posts/update', update, token); }
+      try {
+        if (record.channel === 'blog' && job.tableModes?.includes('text-list')) await this.postMetadata.setTableFallback(record.postNo);
+        await this.call('/auto/posts/update', update, token);
+      }
       catch (error) {
         const failure = new RecordError(error, [token, job.title, ...this.recordPrivateText]);
         record.updates.set(identity, failure); throw failure;

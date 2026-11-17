@@ -27,7 +27,7 @@ export function assemble(product: Product, channel: InputPlan['channel'], option
     if (block.kind === 'link') text('body', channel === 'blog' || block.text === block.href ? block.text : `${block.text}\n${block.href}`, { runs: [{ text: block.text, href: block.href }] });
     if (block.kind === 'rule') text('body', '────────');
     if (block.kind === 'table') {
-      if (channel === 'blog' && !block.flattened) steps.push({ kind: 'table', role: 'body', rows: block.rows }, { kind: 'break' });
+      if (channel === 'blog' && !block.flattened) steps.push({ kind: 'table', role: 'body', rows: block.rows, ...(block.cellRuns ? { cellRuns: block.cellRuns } : {}) }, { kind: 'break' });
       else for (const row of block.rows) text('body', row.join(' | '), { tableRow: row });
     }
   }

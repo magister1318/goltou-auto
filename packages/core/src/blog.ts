@@ -42,14 +42,22 @@ export function blogObservation(plan: InputPlan, files: readonly MediaFile[], ac
     // Metadata is checked separately against its exact planned/body-derived set.
     // Keep the source observation unchanged, including its explicit tag wording.
     if (step.kind === 'text' && step.role === 'hashtags') { all.push(step.text); continue; }
+    let nativeRows: string[][] | undefined;
+    if (step.kind === 'table' && tokens[offset]?.kind === 'table') {
+      const token = tokens[offset++] as Extract<BlogToken,{kind:'table'}>;
+      nativeRows = token.rows;
+      expectedOrder.push({kind:'table',rows:step.rows});
+    }
     const lines = step.kind === 'table' ? step.rows.map(row => row.join(' | ')) : [step.text];
-    for (const line of lines) {
+    for (const [rowIndex,line] of lines.entries()) {
       // An internal newline is entered through keyboard input and may become multiple DOM paragraphs.
-      const pieces = line.split('\n').filter(t => compact(t));
+      const pieces = nativeRows ? [line] : line.split('\n').filter(t => compact(t));
       const observed: string[] = [];
       for (const piece of pieces) {
-        expectedOrder.push({ kind: 'text', text: piece });
-        const token = tokens[offset++]; observed.push(token?.kind === 'text' ? token.text : 'MISSING_TEXT');
+        if (nativeRows) observed.push(nativeRows[rowIndex]?.join(' | ') ?? 'MISSING_TEXT');
+        else { expectedOrder.push({ kind: 'text', text: piece });
+          const token = tokens[offset++]; observed.push(token?.kind === 'text' ? token.text : 'MISSING_TEXT'); }
+
       }
       const value = observed.join('\n'); all.push(value);
       if (step.role === 'body') result.paragraphs.push(value);
@@ -60,7 +68,7 @@ export function blogObservation(plan: InputPlan, files: readonly MediaFile[], ac
       }
     }
   }
-  const normalized = (values: BlogToken[]) => values.map(t => t.kind === 'photo' ? ['photo', photoIdentity(t.identity)] : ['text', compact(t.text)]);
+  const normalized = (values: BlogToken[]) => values.map(t => t.kind === 'photo' ? ['photo', photoIdentity(t.identity)] : t.kind === 'table' ? ['table',t.rows] : ['text', compact(t.text)]);
   if (JSON.stringify(normalized(expectedOrder)) !== JSON.stringify(normalized(tokens))) all.push('EDITOR_ORDER_MISMATCH');
   if (!(saved ? sameServiceBlogTags(plan, actual.tags) : sameBlogTags(expectedBlogTags(plan), actual.tags))) all.push('UNEXPECTED_TAGS');
   result.text = all.join('\n'); return result;

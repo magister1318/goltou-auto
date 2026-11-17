@@ -63,21 +63,29 @@ export function parseContents(html: string, onDroppedStruckText?: (text: string)
     if (tag === 'br') { if (!struckNodes.has(node)) { runs.push({ text: '\n' }); removedSinceText = false; } return; }
     if (tag === 'hr') { if (!struckNodes.has(node)) { flush(); blocks.push({ kind: 'rule' }); } return; }
     if (tag === 'table') {
-      flush(); let rows: string[][] = [];
+      flush(); let rows: string[][] = [], cellRuns: Run[][][] = [];
       const hasImage = (n: Node): boolean => 'tagName' in n && !forbidden.has(n.tagName) && (n.tagName === 'img' || n.childNodes.some(hasImage));
       const flatten = hasImage(node);
       if (flatten) notices.push('사진이 든 표를 원문 순서의 글자 행과 사진으로 풀어 썼습니다.');
-      const flushRows = () => { if (rows.length) { blocks.push({ kind: 'table', rows, ...(flatten ? { flattened: true } : {}) }); rows = []; } };
+      const flushRows = () => { if (rows.length) { blocks.push({ kind: 'table', rows, ...(!flatten && cellRuns.some(row => row.some(runs => runs.some(run => run.bold || run.href))) ? { cellRuns } : {}), ...(flatten ? { flattened: true } : {}) }); rows = []; cellRuns = []; } };
       function tableWalk(n: Node) {
         if ('tagName' in n && (n.tagName === 'caption' || forbidden.has(n.tagName))) { flushRows(); visit(n); flush(); return; }
         if (n.nodeName === '#comment') { visit(n); return; }
         if ('tagName' in n && n.tagName === 'tr') {
-          let row: string[] = [];
+          let row: string[] = []; const rowRuns: Run[][] = [];
           for (const cell of n.childNodes) if ('tagName' in cell && ['td', 'th'].includes(cell.tagName)) {
             const before = blocks.length;
             for (const child of cell.childNodes) visit(child);
             flush(); const cellBlocks = blocks.splice(before);
-            if (!flatten) row.push(cellBlocks.map(blockText).filter(Boolean).join('\n'));
+            if (!flatten) {
+              row.push(cellBlocks.map(blockText).filter(Boolean).join('\n'));
+              const rich: Run[] = [];
+              for (const block of cellBlocks.filter(block => blockText(block))) {
+                if (rich.length) rich.push({ text: '\n' });
+                rich.push(...(block.kind === 'paragraph' ? block.runs : block.kind === 'link' ? [{ text: block.text, href: block.href }] : [{ text: blockText(block) }]));
+              }
+              rowRuns.push(rich);
+            }
             else {
               let text: string[] = [];
               const flushCell = () => { if (text.length) { row.push(text.join('\n')); text = []; } };
@@ -89,7 +97,7 @@ export function parseContents(html: string, onDroppedStruckText?: (text: string)
               flushCell();
             }
           }
-          if (row.length) rows.push(row);
+          if (row.length) { rows.push(row); cellRuns.push(rowRuns); }
           if (flatten) flushRows();
           return;
         }

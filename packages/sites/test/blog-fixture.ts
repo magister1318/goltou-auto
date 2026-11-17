@@ -35,6 +35,7 @@ export function blogFixture(mode = '') {
     const restore=()=>{main.focus();if(linkRange){const selection=getSelection();selection.removeAllRanges();selection.addRange(linkRange)}};
     panel.querySelector('.se-custom-layer-link-apply-button').onclick=()=>{const value=panel.querySelector('input').value;panel.remove();restore();if(mode!=='link-cancelled')document.execCommand('createLink',false,mode==='link-broken'?'https://example.invalid/broken':value);boldState()};
     panel.querySelector('.se-popup-button-cancel').onclick=()=>{panel.remove();restore()};document.body.append(panel);
+    if(mode==='table-popup-move'){panel.style.top='190px';setTimeout(()=>{panel.style.top='210px'},200);const toast=document.createElement('p');toast.className='se-toast-popup-message';toast.style.cssText='position:fixed;top:180px;left:90px;width:500px;height:100px;background:white;z-index:20';document.body.append(toast);setTimeout(()=>toast.remove(),1000);}
   };
   const component=()=>{let n=getSelection()?.anchorNode;while(n&&!n.classList?.contains('se-component'))n=n.parentElement;return n};
   let cursor=null, tableUndo=null;window.attachmentSizes=[];
@@ -54,10 +55,46 @@ export function blogFixture(mode = '') {
     }
   });
   const table=document.querySelector('[data-name=table]');if(table)table.onmousedown=e=>{
-    e.preventDefault();tableUndo=main.innerHTML;const at=component();const t=document.createElement('div');t.className='se-component se-table';
-    t.innerHTML='<table>'+Array.from({length:2},()=>'<tr>'+Array.from({length:mode==='bad-table'?3:2},()=>'<td><p class="se-text-paragraph"><br></p></td>').join('')+'</tr>').join('')+'</table>';
+    e.preventDefault();tableUndo=main.innerHTML;const at=component();const t=document.createElement('div');t.className='se-component se-table';t.id='fixture-table-'+(window.tableCount=(window.tableCount||0)+1);
+    t.innerHTML='<button class="se-component-edge-button-bottom">다음 문단</button><div class="se-table-control se-is-on"><button class="se-cell-select-all-button">전체 셀</button></div><div class="se-cell-context-menu"><button class="se-cell-context-menu-button se-context-menu-button-delete">셀 삭제</button></div><table>'+Array.from({length:mode.startsWith('table-')?3:2},()=>'<tr>'+Array.from({length:mode.startsWith('table-')||mode.startsWith('bad-table')?3:2},()=>'<td><p class="se-text-paragraph"><br></p></td>').join('')+'</tr>').join('')+'</table>';
     const next=empty();if(at)at.after(t,next);else main.append(t,next);focus(t.querySelector('p'));
+    if(mode==='table-moving-no-next'){t.style.transform='translateY(80px)';let moved=false;t.addEventListener('mousemove',()=>{if(!moved){moved=true;t.style.transform='';window.tableMovedOnHover=true}});next.remove()}
+    if(mode==='bad-table-remove-anchor'&&at?.classList.contains('se-text')&&!at.textContent)at.remove();
+    t.querySelector('.se-component-edge-button-bottom').onclick=()=>focus(next.querySelector('p'));
+    let selected='all';
+    t.querySelector('.se-cell-select-all-button').onclick=()=>{selected='all'};
+    t.querySelector('.se-context-menu-button-delete').onclick=()=>{
+      if(mode==='table-cleanup-failed')return;
+      if(selected==='column')for(const row of t.querySelectorAll('tr'))row.lastElementChild.remove();
+      else if(selected==='row')t.querySelector('tr:last-child').remove();
+      else {t.remove();if(mode==='bad-table-remove-anchor')next.remove();else focus(next.querySelector('p'))}
+    };
+    const refresh=()=>{
+      if(mode.startsWith('bad-table'))return;
+      const control=t.querySelector('.se-table-control');control.querySelectorAll('ul').forEach(e=>e.remove());
+      for(const axis of ['column','row']){
+        const bar=document.createElement('ul');bar.className='se-cell-controlbar-'+axis;bar.style.cssText='display:flex;list-style:none;margin:0;padding:0';
+        const count=axis==='column'?t.querySelector('tr').cells.length:t.querySelectorAll('tr').length;
+        for(let i=0;i<count;i++){
+          const li=document.createElement('li');li.innerHTML='<button class="se-cell-select-button">선택</button><button class="se-cell-add-button">추가</button>';
+          li.querySelector('.se-cell-select-button').onclick=()=>{selected=axis};
+          li.querySelector('.se-cell-add-button').onclick=()=>{
+            if(axis==='column')for(const row of t.querySelectorAll('tr')){const cell=row.cells[0].cloneNode(true);cell.innerHTML='<p class="se-text-paragraph"><br></p>';row.append(cell)}
+            else {const row=t.querySelector('tr').cloneNode(true);for(const cell of row.cells)cell.innerHTML='<p class="se-text-paragraph"><br></p>';t.querySelector('tbody').append(row)}
+            refresh();
+          };bar.append(li);
+        }control.append(bar);
+      }
+    };refresh();
+    if(mode==='table-cell-drop')main.addEventListener('input',()=>{const p=getSelection()?.anchorNode?.parentElement?.closest('p');if(p&&t.contains(p)&&p.textContent)p.textContent='변경'});
+    const deleteCell=t.querySelector('.se-context-menu-button-delete'),remove=deleteCell.onclick;deleteCell.onclick=()=>{remove();if(t.isConnected)refresh()};
   };
+  if(mode==='bad-table-remove-anchor'||mode==='table-moving-no-next'){
+    const bottom=document.createElement('button');bottom.className='se-canvas-bottom-button';bottom.textContent='다음 입력';main.after(bottom);
+    bottom.style.height='320px';const cover=document.createElement('div');cover.style.cssText='position:fixed;bottom:0;left:0;width:100%;height:130px;background:white;z-index:3';document.body.append(cover);
+    document.querySelector('[aria-label="임시저장된 글"]').style.cssText='position:fixed;top:150px;left:20px;background:white;z-index:10';
+    bottom.onclick=()=>{window.bottomClicks=(window.bottomClicks||0)+1;const p=empty();main.append(p);focus(p.querySelector('p'))};
+  }
   const tags=document.querySelector('input[placeholder]');if(tags)tags.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const t=document.createElement('span');t.className='tag';t.textContent=tags.value;document.querySelector('.tag_list').append(t);tags.value=''}};
   let metadataTags=[];
   const tagPanel=()=>{
@@ -93,7 +130,7 @@ export function blogFixture(mode = '') {
     await fetch('/RabbitTempPostWrite.naver',{method:'POST',body:mode});
   };
   document.querySelector('[data-click-area="tpb*s.count"]').onclick=()=>{
-    const list=document.querySelector('ul');list.replaceChildren();for(const draft of store()){
+    const list=document.querySelector('[aria-label="임시저장된 글"]');list.replaceChildren();for(const draft of store()){
       const li=document.createElement('li'), b=document.createElement('button'), strong=document.createElement('strong');
       b.dataset.clickArea='tpb*s.tlist';strong.textContent=draft.title;b.append(strong);const date=document.createElement('span');date.className='date__fixture';date.textContent=draft.stamp||'';b.append(date);li.append(b);list.append(li);
       b.onclick=()=>{title.textContent=draft.title;main.innerHTML=draft.html;document.querySelector('.tag_list').innerHTML=draft.tags;metadataTags=draft.metadataTags||[];list.hidden=true;

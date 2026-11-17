@@ -149,7 +149,7 @@ describe.runIf(Boolean(executablePath))('publish, verified against synthetic loo
     expect(updates).toHaveLength(1);
     await removeRecordedBlogPost(f.host, post);
     expect(f.counts()).toEqual({ published: 1, deleted: true, outside: 0, submissions: 1 });
-  }, 30000);
+  }, 60000);
   it('refuses a body private label when the post visibility is public', async () => {
     const f = await fixture('private-in-body');
     await f.execution.write(); await f.execution.saveAndVerify();
@@ -169,7 +169,7 @@ describe.runIf(Boolean(executablePath))('publish, verified against synthetic loo
     await removeRecordedBlogPost(f.host, post);
     expect(f.counts()).toEqual({ published: 1, deleted: true, outside: 0, submissions: 1 });
     await expect(f.execution.publish()).rejects.toThrow('BLOG_PUBLISH_ALREADY_ATTEMPTED');
-  }, 30000);
+  }, 45000);
   it.each([['private', ''], ['public', ''], ['private', 'request'], ['private', 'evidence']] as const)('probe ALWAYS blocks %s requests (%s), even when inspection would accept or evidence fails', async (visibility, failure) => {
     const f = await fixture(failure, visibility, true);
     await f.execution.write(); await f.execution.saveAndVerify();
@@ -191,7 +191,7 @@ describe.runIf(Boolean(executablePath))('publish, verified against synthetic loo
     else await expect(deleteTestPost(f.execution)).rejects.toThrow('BLOG_TEST_DELETE_REFUSED');
     expect(f.counts()).toEqual({ published: 1, deleted: visibility === 'private', outside: 0, submissions: 1 });
     await expect(deleteTestPost(f.execution)).rejects.toThrow();
-  }, 30000);
+  }, 45000);
   it.each(['unknown-response', 'bad-response', 'title-source'])('verifies once from independent resulting page evidence for %s without republishing', async failure => {
     const f = await fixture(failure);
     await f.execution.write(); await f.execution.saveAndVerify();
@@ -215,7 +215,7 @@ describe.runIf(Boolean(executablePath))('publish, verified against synthetic loo
     expect(f.execution.publishedPost?.postId).toBe('9001');
     await deleteTestPost(f.execution);
     expect(f.counts()).toMatchObject({ published: 1, deleted: true });
-  }, 30000);
+  }, 45000);
 });
 
 

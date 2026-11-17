@@ -33,4 +33,21 @@ describe('app-private noncredential state', () => {
       await rm(dir, { recursive: true, force: true });
     }
   });
+  it('keeps a table fallback notice independently of retained logs and migrates legacy visibility without losing either flag',async()=>{
+    const dir=await mkdtemp(path.join(os.tmpdir(),'table-meta-'));
+    try{
+      const file=path.join(dir,'records');await writeFile(file,JSON.stringify({'91':'private'}));
+      expect(await filePostMetadata(file).getTableFallback(91)).toBe(false);
+      await filePostMetadata(file).setTableFallback(91);
+      expect(await filePostMetadata(file).get(91)).toBe('private');
+      expect(await filePostMetadata(file).getTableFallback(91)).toBe(true);
+      await filePostMetadata(file).set(91,'public');
+      expect(await filePostMetadata(file).getTableFallback(91)).toBe(true);
+      expect(await filePostMetadata(file).get(91)).toBe('public');
+      expect(await filePostMetadata(file).getTableFallback(92)).toBe(false);
+      await writeFile(file,JSON.stringify({'91':{tableFallback:'private cell text'}}));
+      await expect(filePostMetadata(file).getTableFallback(91)).rejects.toThrow('INVALID_POST_METADATA');
+    }finally{await rm(dir,{recursive:true,force:true});}
+  });
+
 });
