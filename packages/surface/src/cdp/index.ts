@@ -96,11 +96,17 @@ export class CdpSurface implements Surface {
       }
       let blocked = true;
       let reason: RequestBlockReason = 'REQUEST_INVALID';
+      let inspected: GuardedRequest | undefined;
       try {
         const url = new URL(request?.url ?? '');
         const path = `${url.hostname}${url.pathname}`;
         blocked = this.blockedRequests.has(path);
-        if (blocked) reason = 'STATIC_BLOCK';
+        if (blocked) {
+          reason = 'STATIC_BLOCK';
+          const raw = p.request as GuardedRequest & { headers?: Record<string, unknown> };
+          const contentType = Object.entries(raw.headers ?? {}).find(([key]) => key.toLowerCase() === 'content-type')?.[1];
+          trace('barrier', 'fail', { ...requestTrace({ url: raw.url, method: raw.method, contentType: String(contentType ?? ''), ...(typeof raw.postData === 'string' ? { postData: raw.postData, postDataComplete: true } : {}) }, false), reason });
+        }
         if (!blocked && this.requestGuard?.rules.some(r => (r.hostname === '*' || r.hostname === url.hostname) && (r.prefix ? url.pathname.startsWith(r.pathname) : r.pathname === url.pathname))) {
           const raw = p.request as GuardedRequest & { headers?: Record<string, unknown> };
           const header = (name: string) => Object.entries(raw.headers ?? {}).find(([key]) => key.toLowerCase() === name)?.[1];
@@ -127,12 +133,17 @@ export class CdpSurface implements Surface {
           const inspection = { url: raw.url, method: raw.method, ...(complete ? { postData: postData! } : {}),
             contentType: String(header('content-type') ?? ''), hasPostData: raw.hasPostData === true, postDataInline: inline,
             postDataFetched: fetched, postDataComplete: complete, ...(postDataFailure ? { postDataFailure } : {}) };
+          inspected = inspection;
           blocked = !request || !await this.requestGuard.inspect(inspection);
           trace('barrier', blocked ? expectedTelemetryRequest(inspection) ? 'blocked_expected' : 'fail' : 'ok', { ...requestTrace(inspection, !blocked), reason: currentTrace()?.decisionReason ?? (blocked ? 'INSPECTOR_DENIED' : 'REQUEST_ALLOWED') });
           if (blocked) reason = 'INSPECTOR_DENIED';
           if (!blocked && (this.requestGuard.observeResponse?.(raw) ?? true)) this.acceptedRequests.set(requestId, { url: raw.url, method: raw.method });
         }
-      } catch { trace('surface.cdp.index.CdpSurface.intercept', 'fail', { reason: 'CAUGHT_FAILURE' });  blocked = true; /* Unreadable intercepted requests fail closed. */ }
+      } catch {
+        trace('surface.cdp.index.CdpSurface.intercept', 'fail', { reason: 'CAUGHT_FAILURE' });
+        trace('barrier', 'fail', { ...(inspected || request ? requestTrace(inspected ?? request!, false) : {}), reason });
+        blocked = true; /* Unreadable intercepted requests fail closed. */
+      }
       await this.cdp.send(blocked ? 'Fetch.failRequest' : 'Fetch.continueRequest', {
         requestId: p.requestId, ...(blocked ? { errorReason: 'BlockedByClient' } : {}),
       });

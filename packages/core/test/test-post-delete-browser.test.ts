@@ -79,6 +79,19 @@ describe.runIf(Boolean(executablePath))('PC post cleanup in mainFrame, with sele
     expect(diagnostics.every(d => Object.values(d).every(v => typeof v === 'number'))).toBe(true);
     expect(f.presses()).toBe(1); expect(f.deleted()).toBe(true);
   }, 25000);
+  it('reads and deletes with side-effect protection when the page wraps trim', async () => {
+    const f = await fixture(false, '삭제된 글은 복구할 수 없습니다. 삭제하시겠습니까?', true);
+    await f.page.evaluate(() => {
+      String.prototype.trim = new Proxy(String.prototype.trim, { apply(target, value, args) {
+        (window as unknown as { trimSideEffect: boolean }).trimSideEffect = true;
+        return Reflect.apply(target, value, args);
+      } });
+    });
+    await expect(f.surface.evaluateReadOnly('" value ".trim()')).rejects.toThrow('SURFACE_READ_FAILED_OR_SIDE_EFFECT');
+    expect((await readBlogDocument(f.surface)).title).toBe(f.title);
+    await deleteBlogPost(f.surface, { url, title: f.title });
+    expect(f.deleted()).toBe(true); expect(f.presses()).toBe(1);
+  }, 25000);
   it('refuses moved coordinates after hover, with no destructive press', async () => {
     const f = await fixture(false, '삭제된 글은 복구할 수 없습니다. 삭제하시겠습니까?', true, true);
     const diagnostics: DeleteDiagnostic[] = [];

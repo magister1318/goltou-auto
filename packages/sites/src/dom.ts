@@ -20,7 +20,7 @@ export async function point(surface: Surface, selector: string, exactText?: stri
     return traceStep('sites.dom.point', async () => {
   return read(surface, `for (const {d,x,y} of docs) for (const e of d.querySelectorAll(${JSON.stringify(selector)})) {
     if (!visible(e) || e.disabled) continue;
-    ${exactText === undefined ? '' : `if ((e.textContent||'').trim() !== ${JSON.stringify(exactText)}) continue;`}
+    ${exactText === undefined ? '' : `if ((e.textContent||'').trimStart().trimEnd() !== ${JSON.stringify(exactText)}) continue;`}
     const r=e.getBoundingClientRect(), px=x+r.left+r.width/2, py=y+r.top+r.height/2;
     if (px>0 && py>0 && px<innerWidth && py<innerHeight) return {x:px,y:py};
   } return null;`);
