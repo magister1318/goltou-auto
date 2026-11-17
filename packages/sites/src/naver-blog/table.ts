@@ -26,11 +26,11 @@ export async function insertBlogTable(surface: Surface, table: BlogTable, hooks:
   const before = await ids(); let owned = '', reason: ReasonCode = 'TABLE_TOOL_MISSING';
   const scope = () => `.se-component.se-table[id=${JSON.stringify(owned)}]`;
   const shape = () => read<number[]>(s, `const t=docs.map(({d})=>d.querySelector(${JSON.stringify(scope())})).find(Boolean);return Array.from(t?.querySelectorAll('tr')||[]).map(r=>r.querySelectorAll('td,th').length);`);
-  const press = async (selector: string, edge?: 'row' | 'column' | 'all') => {
+  const press = async (selector: string, edge?: 'row' | 'column' | 'all' | 'bottom') => {
     await hooks.check();
     await waitFor(async () => {
       await hooks.check();
-      const at = await read<{x:number;y:number;height:number}|null>(s, `for(const {d,x,y} of docs){const e=d.querySelector(${JSON.stringify(selector)});if(!e||!visible(e))continue;const r=e.getBoundingClientRect();return {x:x+r.left+${edge === 'row' || edge === 'all' ? '1' : 'r.width/2'},y:y+r.top+${edge === 'column' || edge === 'all' ? '1' : 'r.height/2'},height:innerHeight};}return null;`);
+      const at = await read<{x:number;y:number;height:number}|null>(s, `for(const {d,x,y} of docs){const e=d.querySelector(${JSON.stringify(selector)});if(!e||!visible(e))continue;const r=e.getBoundingClientRect();return {x:x+r.left+${edge === 'row' || edge === 'all' ? '1' : 'r.width/2'},y:y+r.top+${edge === 'column' || edge === 'all' ? '1' : edge === 'bottom' ? 'Math.min(20,r.height/2)' : 'r.height/2'},height:innerHeight};}return null;`);
       if (!at) return null;
       if (at.y <= 0 || at.y >= at.height) { await s.pressKey({key:at.y<=0?'PageUp':'PageDown'}); return null; }
       if (at.x <= 0 || s.readClickTarget && !await s.readClickTarget(at.x,at.y,selector)) return null;
@@ -102,6 +102,7 @@ export async function insertBlogTable(surface: Surface, table: BlogTable, hooks:
     // beneath the last component creates its next empty text component.
     const next = `${scope()} + .se-component.se-text .se-text-paragraph:last-child`;
     if (await point(s, next)) await press(next);
+    else if (await read<boolean>(s, `return docs.some(({d})=>d.querySelector('button.se-canvas-bottom-button'));`)) await press('button.se-canvas-bottom-button','bottom');
     else {
       const gap = await read<{x:number;y:number}|null>(s, `for(const {d,x,y}of docs){const t=d.querySelector(${JSON.stringify(scope())});if(!t||t.nextElementSibling)continue;const r=t.getBoundingClientRect();const px=x+r.left+r.width/2,py=y+r.bottom+12;if(px>0&&py>0&&px<innerWidth&&py<innerHeight)return{x:px,y:py};}return null;`);
       if (!gap) throw Error(reason);

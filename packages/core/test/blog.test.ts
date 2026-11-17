@@ -589,8 +589,9 @@ describe.runIf(Boolean(executablePath))('WP29 real table input',()=>{
     expect(await f.counts()).toEqual({saves:1,publishes:0});expect(f.external()).toBe(0);
   },45000);
   it('re-reads a newly inserted table that moves on hover, without sending a misplaced cell press',async()=>{
-    const f=await fixture('table-moving');f.plan.steps=[{kind:'text',role:'title',text:'합성 이동 표'},{kind:'text',role:'body',text:'앞'},{kind:'break'},{kind:'table',role:'body',rows:[['a','b'],['c','d'],['e','f']]},{kind:'break'},{kind:'text',role:'body',text:'뒤'}];
+    const f=await fixture('table-moving-no-next');f.plan.steps=[{kind:'text',role:'title',text:'합성 이동 표'},{kind:'text',role:'body',text:'앞'},{kind:'break'},{kind:'table',role:'body',rows:[['a','b'],['c','d'],['e','f']]},{kind:'break'},{kind:'text',role:'body',text:'뒤'}];
     await f.execution.write();expect(await f.pages.get(f.execution.surface!)!.evaluate('window.tableMovedOnHover')).toBe(true);
+    expect(await f.pages.get(f.execution.surface!)!.evaluate('window.bottomClicks')).toBe(1);
     expect(f.execution.tableModes).toEqual(['native']);expect((await f.execution.saveAndVerify()).tokens).toContainEqual(expect.objectContaining({kind:'table',rows:[['a','b'],['c','d'],['e','f']]}));
     expect(await f.counts()).toEqual({saves:1,publishes:0});
   },35000);
@@ -609,7 +610,7 @@ describe.runIf(Boolean(executablePath))('WP29 real table input',()=>{
   },35000);
   it('restores a native empty paragraph after removing a table that consumed the photo append anchor',async()=>{
     const f=await fixture('bad-table-remove-anchor',{photos:1});f.plan.steps=[{kind:'text',role:'title',text:'합성 사진 뒤 폴백'},{kind:'photos',urls:[f.files[0]!.url]},{kind:'table',role:'body',rows:[['a','b'],['c','d']]},{kind:'break'},{kind:'text',role:'body',text:'뒤'}];
-    await f.execution.write();expect(f.execution.tableModes).toEqual(['text-list']);const actual=await f.execution.saveAndVerify();
+    await f.execution.write();expect(f.execution.tableModes).toEqual(['text-list']);expect(await f.pages.get(f.execution.surface!)!.evaluate('window.bottomClicks')).toBe(1);const actual=await f.execution.saveAndVerify();
     expect(actual.tokens.map(t=>t.kind)).toEqual(['photo','text','text','text']);expect(actual.tokens.filter(t=>t.kind==='text').map(t=>t.text)).toEqual(['a | b','c | d','뒤']);
     expect(await f.counts()).toEqual({saves:1,publishes:0});
   },35000);

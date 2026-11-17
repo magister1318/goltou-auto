@@ -406,6 +406,11 @@ export class BlogExecution {
       // a photo as the final component. Create only a new empty native anchor.
       for(let n=0;n<16;n++) {
         if(await read<boolean>(s, `return docs.some(({d})=>d.querySelector(${JSON.stringify(selector)}));`)) break;
+        const bottom=await read<{x:number;y:number}|null>(s, `for(const {d,x,y}of docs){const e=d.querySelector('button.se-canvas-bottom-button');if(!e||!visible(e))continue;const b=e.getBoundingClientRect(),px=x+b.left+b.width/2,py=y+b.top+Math.min(20,b.height/2);if(px>0&&py>0&&px<innerWidth&&py<innerHeight)return{x:px,y:py};}return null;`);
+        if(bottom) {
+          await s.click(bottom.x,bottom.y,async()=>{if(s.readClickTarget&&!await s.readClickTarget(bottom.x,bottom.y,'button.se-canvas-bottom-button'))throw Error('CURSOR_POSITION_UNCONFIRMED');});
+          await s.pressKey({key:'ArrowDown'}); continue;
+        }
         const gap=await read<{x:number;y:number}|null>(s, `for(const {d,x,y}of docs){const all=Array.from(d.querySelectorAll('.se-component')).filter(e=>!e.classList.contains('se-documentTitle'));const t=all[all.length-1];if(!t||!['se-image','se-table'].some(c=>t.classList.contains(c)))continue;const b=t.getBoundingClientRect(),px=x+b.left+b.width/2,py=y+b.bottom+12;const top=y+Math.max(0,...Array.from(d.querySelectorAll('.se-document-toolbar,.se-property-toolbar')).filter(visible).map(e=>e.getBoundingClientRect().bottom));if(px>0&&py>top&&px<innerWidth&&py<innerHeight)return{x:px,y:py};}return null;`);
         if(gap) {
           await s.click(gap.x,gap.y,async()=>{if(s.readClickTarget&&!await s.readClickTarget(gap.x,gap.y,'.se-content,.se-components-wrap,.se-main-container'))throw Error('CURSOR_POSITION_UNCONFIRMED');});
