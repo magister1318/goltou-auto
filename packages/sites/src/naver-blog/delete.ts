@@ -76,7 +76,7 @@ export async function preparePostDelete(surface: Surface, target: DeleteTarget, 
   const identity = async () => check(deleteIdentity(await safeRead(1, () => read<DeletePage[]>(surface, deletePageSource)), target));
   const focus = async () => check([{ item: 8, pass: Number(await safeRead(8, async () => await surface.readAppFocus?.() !== false && await read<boolean>(surface, deleteFocusSource))) }]);
   const noDialog = async () => check([{ item: 9, pass: Number(!await safeRead(9, async () => surface.readDialog?.())) }]);
-  await noDialog(); await identity(); await surface.show(); await focus();
+  await noDialog(); await identity(); await focus();
   let at = await point(surface, deleteSelector, '삭제');
   for (let i = 0; !at && i < 100; i++) {
     await noDialog(); await identity(); await focus();

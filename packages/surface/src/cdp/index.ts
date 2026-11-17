@@ -163,9 +163,7 @@ export class CdpSurface implements Surface {
     this.requestGuard = { paths, rules: [...rules], inspect, response, ...(observeResponse ? { observeResponse } : {}), ...(blocked ? { blocked } : {}) };
     // Retain the full body for Network.getRequestPostData if Fetch omits it.
     await this.cdp.send('Network.enable', { maxPostDataSize: 16 * 1024 * 1024 });
-    await this.cdp.send('Fetch.enable', { patterns: [...new Set([...paths, ...this.blockedRequests])].flatMap(path =>
-      ['Request', 'Response'].flatMap(requestStage => [path, ...(path.startsWith('127.0.0.1/') ? [path.replace('127.0.0.1/', '127.0.0.1:*/')] : [])]
-        .map(pattern => ({ urlPattern: `*://${pattern}*`, requestStage })))) });
+    await this.updateRequestPatterns();
 
     });
   }
@@ -177,9 +175,19 @@ export class CdpSurface implements Surface {
       if (!/^[a-z0-9.-]+$/.test(rule.hostname) || !/^\/[a-zA-Z0-9/_.-]+$/.test(rule.pathname)) throw new Error('SURFACE_BAD_REQUEST_BARRIER');
       this.blockedRequests.add(`${rule.hostname}${rule.pathname}`);
     }
-    await this.cdp.send('Fetch.enable', { patterns: [...this.blockedRequests].map(path => ({ urlPattern: `*://${path}*`, requestStage: 'Request' })) });
+    await this.updateRequestPatterns();
 
     });
+  }
+
+  /** Fetch.enable replaces its complete pattern set. Adding static blocks must
+   * retain an installed inspector and its response observation in either order. */
+  private async updateRequestPatterns() {
+    const paths = new Set([...(this.requestGuard?.paths ?? []), ...this.blockedRequests]);
+    const stages = this.requestGuard ? ['Request', 'Response'] : ['Request'];
+    await this.cdp.send('Fetch.enable', { patterns: [...paths].flatMap(path =>
+      stages.flatMap(requestStage => [path, ...(path.startsWith('127.0.0.1/') ? [path.replace('127.0.0.1/', '127.0.0.1:*/')] : [])]
+        .map(pattern => ({ urlPattern: `*://${pattern}*`, requestStage })))) });
   }
 
   async open(options: SurfaceOpenOptions): Promise<void> {

@@ -73,6 +73,9 @@ describe.runIf(Boolean(executablePath))('PC post cleanup in mainFrame, with sele
   }, 25000);
   it('uses the regular engine for an ordinary public post, with three full dry runs and numeric evidence', async () => {
     const f = await fixture(false, '삭제된 글은 복구할 수 없습니다. 삭제하시겠습니까?', true, false, true);
+    // Real Android refuses to show a non-login surface. Cleanup must use the
+    // same hidden input path as the editor and retain its independent focus check.
+    f.surface.show = async () => { throw new Error('ONLY_LOGIN_SURFACE_VISIBLE'); };
     const diagnostics: DeleteDiagnostic[] = [];
     await deleteBlogPost(f.surface, { url, title: f.title }, async d => { diagnostics.push(d); if (d.item === 14) expect(f.presses()).toBe(0); });
     expect(diagnostics.filter(d => d.item === 14).map(d => d.run)).toEqual([1, 2, 3]);

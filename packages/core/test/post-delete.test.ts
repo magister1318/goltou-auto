@@ -3,7 +3,7 @@ import { ApiError, type ApiClient, type Post, type PostUpdate } from '@goltou/ap
 import { deleteIdentity, requireDeleteConfirmation, type DeletePage } from '@goltou/sites';
 import { AppCore, MemoryTokenStore } from '../src/app';
 import { canDeletePost, deletedPost, deletedUpdate, requireDeletablePost } from '../src/post-delete-policy';
-import type { AppRequest } from '../src/protocol';
+import type { AppRequest, Job } from '../src/protocol';
 import { JobLogStore } from '../src/job-logs';
 import { configureTrace } from '@goltou/surface/telemetry';
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
@@ -57,6 +57,24 @@ async function fixture() {
   return { app, call, updates, change: (value: Partial<Post>) => { record = { ...record, ...value }; }, fail: (value: boolean) => { fail = value; } };
 }
 describe('confirmed deletion orchestration', () => {
+  const failedJob = (status: Job['status']): Job => ({ id: 1, productNo: 1, title: post.productTitle, mode: 'publish', targets: [{ channel: 'blog', key: 'blog', name: 'blog' }], status, step: 5, current: 0, total: 29, completedSteps: [1, 2, 3, 4], service: null, message: '', creationState: 'published', postUrl: post.postUrl, failureCode: 'BLOG_PUBLISHED_READBACK_MISMATCH' });
+  it('allows explicit cleanup of a stored receipt after terminal published readback failure', async () => {
+    const f = await fixture();
+    f.change({ status: 'failed', step: 5, failReason: 'BLOG_PUBLISHED_READBACK_MISMATCH' });
+    f.app.state.job = failedJob('failed');
+    const pending = await f.call('posts.delete.prepare', { postNo: 1 });
+    expect(remove).not.toHaveBeenCalled();
+    await f.call('posts.delete.confirm', pending);
+    expect(remove).toHaveBeenCalledTimes(1);
+    expect(f.updates).toEqual([{ ...deletedUpdate(post), step: 5 }]);
+    expect(f.app.state.job.status).toBe('failed'); // Cleanup never invents publish success.
+    f.app.dispose();
+  });
+  it.each(['running', 'record_failed', 'user_paused', 'channel_paused', 'login_paused', 'recovery_paused', 'dialog_paused'] as const)('keeps deletion blocked for an unfinished %s job', async status => {
+    const f = await fixture(); f.app.state.job = failedJob(status);
+    await expect(f.call('posts.delete.prepare', { postNo: 1 })).rejects.toMatchObject({ code: 'conflict' });
+    expect(remove).not.toHaveBeenCalled(); expect(f.updates).toEqual([]); f.app.dispose();
+  });
   it('ends prepared delete jobs on a wrong confirmation, explicit cancel and disposal', async () => {
     const f = await fixture(), directory = mkdtempSync(path.join(os.tmpdir(), 'goltou-delete-stop-'));
     const logs = new JobLogStore(directory); configureTrace(logs);

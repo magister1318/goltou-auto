@@ -57,7 +57,9 @@ export async function readBlogDocument(surface: Surface, documentUrls?: readonly
     for(const e of main?.querySelectorAll('.se-component')||[]) {
       if(e.classList.contains('se-documentTitle')) continue;
       if(e.classList.contains('se-text')) {
-        for(const p of e.querySelectorAll('.se-text-paragraph')) {const runs=paragraphRuns(p),t=runs.map(r=>r.text).join('');if(t.length) tokens.push({kind:'text',text:t,runs});}
+        // The published viewer fills otherwise empty paragraphs with U+200B.
+        // Ignore only that standalone filler; preserve every character in real text.
+        for(const p of e.querySelectorAll('.se-text-paragraph')) {const runs=paragraphRuns(p),t=runs.map(r=>r.text).join('');if(t.length&&t!=='\u200b') tokens.push({kind:'text',text:t,runs});}
       } else if(e.classList.contains('se-image')) {
         for(const img of e.querySelectorAll('.se-image-resource')) {
           const raw=[img.getAttribute('src'),img.getAttribute('data-file-name'),img.getAttribute('alt')].join(' ');

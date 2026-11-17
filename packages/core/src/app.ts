@@ -327,7 +327,9 @@ export class AppCore {
     this.emit(); return this.snapshot();
   }
   private requireDeleteIdle() {
-    if (this.deleting || this.starting || this.preparing || this.pendingDeleteUpdate || this.state.job && !['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(this.state.job.status)) throw new ApiError('conflict', '진행 중인 작업과 기록을 먼저 마쳐 주세요.');
+    // Failed readback is terminal too. Its preserved receipt must remain deletable;
+    // requireDeletablePost still checks the owned record before any site input.
+    if (this.deleting || this.starting || this.preparing || this.pendingDeleteUpdate || this.state.job && !['draft_saved', 'draft_unverified', 'published', 'stopped', 'failed'].includes(this.state.job.status)) throw new ApiError('conflict', '진행 중인 작업과 기록을 먼저 마쳐 주세요.');
   }
   private async ownedPost(postNo: number, token: string) {
     if (!Number.isSafeInteger(postNo) || postNo < 1) throw new ApiError('invalid', '등록 기록을 다시 선택해 주세요.');

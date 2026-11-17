@@ -36,7 +36,8 @@ export async function removeRecordedBlogPost(host: SurfaceHost, post: Post, log:
     await surface.blockRequests?.(['/RabbitWrite.naver', '/RabbitUpdate.naver', '/RabbitTempPostWrite.naver', '/RabbitTempPostUpdate.naver'].map(pathname => ({ hostname: 'blog.naver.com', pathname })));
     await log({ item: 80, pass: 1 });
     if (await openPostDeletionRead(surface, post.postUrl)) { await log({ item: 81, pass: 1 }); await verifyPostAbsentFromList(surface, post.postUrl, post.productTitle); return; }
-    await surface.show();
+    // Service automation stays hidden, just like editor input. Native visibility
+    // is reserved for guarded manual login; app focus is checked before deletion.
     const pages = await read<DeletePage[]>(surface, deletePageSource);
     if (!pages.some(p => p.titles.length)) {
       await verifyPostGone(surface, { url: post.postUrl, title: post.productTitle });

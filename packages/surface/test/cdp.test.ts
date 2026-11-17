@@ -44,6 +44,23 @@ async function fixture(handler?: (command: Command, socket: WebSocket) => boolea
 }
 
 describe('CDP Surface', () => {
+  it.each(['guard-first', 'block-first'])('retains the delete inspector when static write blocks are composed %s', async order => {
+    const f = await fixture(), inspect = vi.fn(() => false), response = vi.fn();
+    const guard = () => f.surface.guardRequests([{ hostname: 'blog.naver.com', pathname: '/PostDelete.naver' }], inspect, response);
+    const block = () => f.surface.blockRequests([{ hostname: 'blog.naver.com', pathname: '/RabbitWrite.naver' }]);
+    if (order === 'guard-first') { await guard(); await block(); } else { await block(); await guard(); }
+    const patterns = f.commands.filter(c => c.method === 'Fetch.enable').at(-1)!.params.patterns;
+    expect(patterns).toEqual(expect.arrayContaining([
+      { urlPattern: '*://blog.naver.com/PostDelete.naver*', requestStage: 'Request' },
+      { urlPattern: '*://blog.naver.com/PostDelete.naver*', requestStage: 'Response' },
+      { urlPattern: '*://blog.naver.com/RabbitWrite.naver*', requestStage: 'Request' },
+    ]));
+    for (const path of ['/PostDelete.naver', '/RabbitWrite.naver']) f.event('Fetch.requestPaused', { requestId: path, request: { url: 'https://blog.naver.com' + path, method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, postData: 'blogId=synthetic&logNo=9001' } });
+    await vi.waitFor(() => expect(f.commands.filter(c => c.method === 'Fetch.failRequest')).toHaveLength(2));
+    expect(inspect).toHaveBeenCalledTimes(1);
+    expect(inspect).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://blog.naver.com/PostDelete.naver', postDataComplete: true }));
+    expect(response).not.toHaveBeenCalled();
+  });
   it('explains static and inspector-error blocks with field names and no body values', async () => {
     const lines: TraceDetail[] = [];
     const job: TraceJob = { id: 'synthetic', decisionReason: undefined, line: (_step, _event, detail) => { if (detail) lines.push(detail); }, end() {} };
