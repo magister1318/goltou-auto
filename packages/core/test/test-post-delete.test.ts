@@ -24,8 +24,8 @@ describe('debug cleanup page identity without a response receipt', () => {
     { links: ['https://blog.naver.com/synthetic/9002'], titlePresent: true, allowed: false },
     { links: ['https://blog.naver.com/synthetic/9002'], titlePresent: false, allowed: true },
   ])('requires a populated list, absent identity and absent title (%#)', async ({ links, titlePresent, allowed }) => {
-    const surface = { open: async () => {}, evaluateReadOnly: async (expression: string) => expression.includes('innerText') ? titlePresent : expression.includes('e.href') ? links : true } as unknown as Surface;
-    const result = verifyTestPostAbsentFromList(surface, page.url, title);
+    const surface = { open: async () => {}, evaluateReadOnly: async () => ({ready:true,links,titlePresent,login:false}) } as unknown as Surface;
+    const result = verifyTestPostAbsentFromList(surface, page.url, title, 50);
     if (allowed) await expect(result).resolves.toBeUndefined();
     else await expect(result).rejects.toThrow('BLOG_TEST_DELETE_LIST_UNCONFIRMED');
   });
