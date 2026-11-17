@@ -1,7 +1,9 @@
 import { ApiError, type Post, type PostUpdate } from '@goltou/api-client';
 import { postIdentity, bandPostIdentity } from '@goltou/sites';
 export function canDeletePost(post: Post, scope: 'mine' | 'all') {
-  const hasCreatedReceipt = post.channel === 'band' && post.status === 'failed' && post.failReason === 'BAND_POST_UNCONFIRMED';
+  const hasCreatedReceipt = post.status === 'failed' && (post.channel === 'band'
+    ? /^(BAND_POST_UNCONFIRMED(?::[A-Z_]+)?|BAND_PUBLISHED_READBACK_(MISMATCH|UNAVAILABLE))$/.test(post.failReason)
+    : /^(BLOG_PUBLISHED_READBACK_(MISMATCH|UNAVAILABLE)|BLOG_PUBLISH_[A-Z_]+|BLOG_FORMATTING_PUBLISHED:[1-9]\d*(?:,[1-9]\d*)*)$/.test(post.failReason));
   return scope === 'mine' && post.mode === 'publish' && (post.status === 'published' || hasCreatedReceipt) && !!(post.channel === 'blog' ? postIdentity(post.postUrl) : bandPostIdentity(post.postUrl));
 }
 export function requireDeletablePost(post: Post) {

@@ -1,3 +1,5 @@
+import { JobResultActions, needsServiceReview, serviceReviewHeading } from './JobResultActions';
+import { existingServiceResult } from '@goltou/core/job-safety';
 import { JobLogs, JobLogFailure } from './JobLogs';
 import { formattingMessage } from './formatting-message';
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
@@ -33,6 +35,7 @@ import {
   resultKind,
   historyLine,
   uncertainReason,
+  canRetryHistory,
   bandPostBlocked,
 } from './ux-state';
 const Experiments = __GOLTOU_DEBUG__
@@ -1134,7 +1137,16 @@ export function App() {
         )}
         {screen === 'progress' && job && (
           <>
-            {job.status === 'running' || job.status === 'recovery_paused' ? (
+            {needsServiceReview(job) ? (
+              <main className="center">
+                <span className="mark question">!</span>
+                <h1>{serviceReviewHeading(job)}</h1>
+                <p>{jobMessage(job)[0]}</p>
+                <p className="meta">{jobMessage(job)[1]}</p>
+                {resultRows}
+                {job.status === 'record_failed' && <button className="green" disabled={busy} onClick={()=>void act(async()=>{await request('job.retryRecord',{});})}>기록 다시 시도</button>}
+              </main>
+            ) : job.status === 'running' || job.status === 'recovery_paused' ? (
               <LiveProgress key={job.id} job={job} preview={converted} />
             ) : job.status === 'login_paused' ? (
               <main className="center">
@@ -1233,125 +1245,18 @@ export function App() {
               </main>
             )}
             <div className="bar">
-              {job.status === 'running' ? (
-                <button
-                  className="btn quiet"
-                  disabled={job.activity?.stage === 'submit'}
-                  onClick={() => setSheet('stop')}
-                >
-                  중단
-                </button>
-              ) : job.status === 'login_paused' ? (
-                <>
-                  <button className="btn quiet" onClick={() => go('home')}>
-                    나중에 하기
-                  </button>
-                  <button
-                    className="btn primary"
-                    disabled={busy}
-                    onClick={() =>
-                      login(
-                        job.service === 'band' ? 'band' : 'naver',
-                        'progress',
-                        null,
-                      )
-                    }
-                  >
-                    다시 로그인
-                  </button>
-                </>
-              ) : [
-                  'draft_saved',
-                  'draft_unverified',
-                  'published',
-                  'stopped',
-                ].includes(job.status) ? (
-                <>
-                  <button
-                    className="btn secondary"
-                    onClick={() => go('history')}
-                  >
-                    등록 기록
-                  </button>
-                  <button
-                    className="btn primary"
-                    onClick={() => {
-                      setPage(1);
-                      go('home');
-                    }}
-                  >
-                    다른 상품 옮기기
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    className="btn quiet"
-                    disabled={busy}
-                    onClick={() =>
-                      void act(async () => {
-                        if (
-                          !job.publicationUncertain &&
-                          job.status !== 'record_failed'
-                        )
-                          await request('job.cancel', {});
-                        go('home');
-                      })
-                    }
-                  >
-                    그만두기
-                  </button>
-                  {job.status === 'record_failed' ? (
-                    <button
-                      className="btn primary"
-                      disabled={busy}
-                      onClick={() =>
-                        void act(async () => {
-                          await request('job.retryRecord', {});
-                        })
-                      }
-                    >
-                      기록 다시 시도
-                    </button>
-                  ) : job.status === 'channel_paused' &&
-                    !job.publicationUncertain ? (
-                    <button
-                      className="btn primary"
-                      disabled={busy}
-                      onClick={() =>
-                        void act(async () => {
-                          await request('job.continueBand', {});
-                        })
-                      }
-                    >
-                      블로그 실패 확인 · 밴드 진행
-                    </button>
-                  ) : !/BAND_POST_(?:UNCONFIRMED|BLOCKED)|BLOG_PUBLISH/.test(
-                      job.failureCode ?? '',
-                    ) &&
-                    !job.publicationUncertain &&
-                    ['failed', 'user_paused'].includes(job.status) ? (
-                    <button
-                      className="btn primary"
-                      disabled={busy}
-                      onClick={() =>
-                        void act(async () => {
-                          await request('job.resume', {});
-                        })
-                      }
-                    >
-                      {job.status === 'user_paused' ? '이어하기' : '다시 시도'}
-                    </button>
-                  ) : (
-                    <button
-                      className="btn secondary"
-                      onClick={() => go('history')}
-                    >
-                      등록 기록
-                    </button>
-                  )}
-                </>
-              )}
+              <JobResultActions job={job} busy={busy} act={action=>{
+                if (action==='history') { go('history'); return; }
+                if (action==='close' || action==='home') { setPage(1); go('home'); return; }
+                if (action==='stop') { setSheet('stop'); return; }
+                if (action==='login') { login(job.service==='band'?'band':'naver','progress',null); return; }
+                void act(async()=>{
+                  if (action==='cancel') { if (!existingServiceResult(job) && job.status!=='record_failed') await request('job.cancel',{}); go('home'); }
+                  if (action==='record') await request('job.retryRecord',{});
+                  if (action==='band') await request('job.continueBand',{});
+                  if (action==='resume') await request('job.resume',{});
+                });
+              }}/>
             </div>
           </>
         )}
@@ -1426,7 +1331,7 @@ export function App() {
                   <strong>{post.productTitle}</strong>
                   {scope === 'all' && <small>{post.userName}</small>}
                   <p
-                    className={`status ${deletedPost(post) ? 'muted' : (uncertainReason(post.failReason) || formattingMessage(post.failReason)) ? 'uncertain-status' : post.status === 'failed' ? 'danger' : post.status === 'published' ? 'green' : post.status === 'draft_saved' ? 'draft-status' : 'muted'}`}
+                    className={`status ${deletedPost(post) ? 'muted' : (post.postUrl && post.status==='failed' || uncertainReason(post.failReason) || formattingMessage(post.failReason)) ? 'uncertain-status' : post.status === 'failed' ? 'danger' : post.status === 'published' ? 'green' : post.status === 'draft_saved' ? 'draft-status' : 'muted'}`}
                   >
                     {historyLine(post, recordTime(post.startedAt))}
                   </p>
@@ -1434,14 +1339,14 @@ export function App() {
                   {!deletedPost(post) && formattingMessage(post.failReason) && <p className="meta">{formattingMessage(post.failReason)}</p>}
                   {!deletedPost(post) && post.status === 'failed' && !formattingMessage(post.failReason) && (
                     <p className="meta">
-                      {uncertainReason(post.failReason)
-                        ? '올라갔는지 앱이 확인하지 못했습니다. 다시 올리기 전에 해당 서비스에서 먼저 확인해 주세요.'
-                        : '공개하기 전에 멈췄습니다. 원인을 확인한 뒤 다시 시도해 주세요.'}
+                      {post.postUrl || uncertainReason(post.failReason)
+                        ? post.postUrl ? '글은 올라갔습니다. 저장된 글 주소에서 확인해 주세요. 같은 글을 다시 올리지 마세요.' : '저장 또는 게시 결과를 해당 서비스에서 확인해 주세요. 같은 글을 다시 올리지 마세요.'
+                        : canRetryHistory(post) ? '공개하기 전에 멈췄습니다. 원인을 확인한 뒤 다시 시도해 주세요.' : '작업 결과를 확인해 주세요. 같은 글을 바로 다시 올리지 마세요.'}
                     </p>
                   )}
                   {!deletedPost(post) && (
                     <div className="row-actions">
-                      {post.status === 'published' && post.postUrl && (
+                      {post.postUrl && (
                         <button
                           className="green"
                           disabled={busy}
@@ -1455,11 +1360,11 @@ export function App() {
                         </button>
                       )}
                       {(post.status === 'draft_saved' ||
-                        post.failReason === 'BLOG_DRAFT_SAVED_UNVERIFIED' || /^BLOG_FORMATTING_(AFTER_SAVE|REOPENED):/.test(post.failReason ?? '')) && (
+                        post.failReason === 'BLOG_DRAFT_SAVED_UNVERIFIED' || /^BLOG_SAVED_READBACK_|^BLOG_FORMATTING_(AFTER_SAVE|REOPENED):/.test(post.failReason ?? '')) && (
                         <small>네이버 임시저장함에서 확인</small>
                       )}
                       {post.status === 'failed' &&
-                        !uncertainReason(post.failReason) && !formattingMessage(post.failReason) && (
+                        canRetryHistory(post) && (
                           <button
                             className="green"
                             disabled={busy}

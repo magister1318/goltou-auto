@@ -15,8 +15,8 @@ vi.mock('../src/post-delete', async original => ({ ...await original<object>(), 
 const post: Post = { postNo: 1, productNo: 1, productTitle: '합성 상품', channel: 'blog', mode: 'publish', targetName: '', status: 'published', step: 7, failReason: '', postUrl: 'https://blog.naver.com/synthetic/9001', userName: '', startedAt: 'synthetic', finishedAt: 'synthetic', productChanged: false };
 const page: DeletePage = { url: post.postUrl, titles: [post.productTitle], privateLabels: 0, publicLabels: 1, photos: 2, edits: 1, deletes: 1 };
 describe('regular deletion identity and record policy', () => {
-  it('allows uncertain Band cleanup only with the app-created link, preserving a failed result', () => {
-    const uncertain: Post = { ...post, channel: 'band', status: 'failed', failReason: 'BAND_POST_UNCONFIRMED', postUrl: 'https://band.us/band/111/post/9001' };
+  it.each(['BAND_POST_UNCONFIRMED', 'BAND_PUBLISHED_READBACK_MISMATCH', 'BAND_PUBLISHED_READBACK_UNAVAILABLE'])('allows %s cleanup only with the app-created link, preserving a failed result', failReason => {
+    const uncertain: Post = { ...post, channel: 'band', status: 'failed', failReason, postUrl: 'https://band.us/band/111/post/9001' };
     expect(canDeletePost(uncertain, 'mine')).toBe(true);
     for (const changed of [{ ...uncertain, postUrl: '' }, { ...uncertain, failReason: 'BAND_FAILED' }, { ...uncertain, mode: 'draft' as const }, { ...uncertain, channel: 'blog' as const }]) expect(canDeletePost(changed, 'mine')).toBe(false);
   });

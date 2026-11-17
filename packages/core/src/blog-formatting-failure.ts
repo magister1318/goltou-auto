@@ -5,6 +5,9 @@ import type { Job } from './protocol';
 export function markBlogFormattingFailure(job: Job, error: unknown): boolean {
   if (!(error instanceof BlogFormattingError)) return false;
   job.blogFormattingIssues = error.issues;
+  job.readbackIssues = error.issues.flatMap(issue=>issue.fields.map(field=>({field:field==='href'?'links' as const:field==='bold'?'bold' as const:'text' as const,paragraph:issue.paragraph})));
+  if (error.stage==='PUBLISHED') job.creationState = 'published';
+  else if (['AFTER_SAVE','REOPENED'].includes(error.stage) && job.creationState!=='uncertain') job.creationState = 'draft_saved';
   job.failureCode = error.message;
   const saved = ['AFTER_SAVE', 'REOPENED'].includes(error.stage);
   job.status = saved ? 'draft_unverified' : 'failed';

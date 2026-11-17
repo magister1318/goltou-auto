@@ -86,6 +86,7 @@ export function blogFixture(mode = '') {
     if(mode==='duplicate')drafts.push(drafts[drafts.length-1]);localStorage.setItem('drafts',JSON.stringify(drafts));
     if(mode==='autosave-readback')localStorage.removeItem('leftover');
     localStorage.setItem('saves',String(Number(localStorage.getItem('saves')||0)+1));
+    if(mode==='body-change-after-save')main.querySelector('.se-text-paragraph').textContent+=' 바뀜';
     if(mode==='format-drop-after-save')for(const e of main.querySelectorAll('b,strong,a'))e.replaceWith(...e.childNodes);
     if(mode!=='ambiguous')document.querySelector('[data-click-area="tpb*s.count"]').textContent=drafts.length;
     if(mode==='dialog')confirm('로컬 저장 확인');

@@ -8,6 +8,7 @@ import { ControlNotFoundError } from '../control-failure';
 import { closeTagLayer, protectBlogInputs, requireTagFocus, requireTagLayerClosed, tagInputSelector, tagPanelToggle } from './draft-safety';
 import { finalPublishSelector, guardedPublishClick, inspectPrivateRequest, postIdentity, readVisibility, requireVisibility, selectVisibility, type BlogVisibility, type PublishedPost, type VisibilityProof } from './publish-safety';
 import { parsePublishIdentity, resolvePublishEvidence, type ResponseIdentity, type PublishedPage, type PublishIdentitySource } from './publish-identity';
+import { containsServiceLink, tokenText } from '../readback-checks';
 import { BlogRichTextWriter } from './rich-text';
 import { BlogFormattingError, blogRunReader, normalizeBlogRuns, splitBlogRuns, type BlogRun, type FormattingStage } from './formatting';
 import { closeDraftEntries, draftEntries, draftItem, draftSaveReceipt, identifySavedDraft, openDraftEntries, type DraftEntry } from './draft-identity';
@@ -36,7 +37,7 @@ export interface BlogEnvironment {
   beforeSave(): void;
   check(): void;
   progress(value: BlogProgress): void;
-  verify(value: BlogReadback): void;
+  verify(value: BlogReadback, stage?: FormattingStage): void;
 }
 const titleSelector = '.se-documentTitle .se-text-paragraph';
 const bodySelector = '.se-component.se-text .se-text-paragraph';
@@ -98,7 +99,26 @@ export function compareBlogFormatting(plan: BlogPlan, actual: BlogReadback): imp
       return JSON.stringify(parts);
     };
     if (projection(planned, 'bold') !== projection(observed, 'bold')) fields.push('bold');
-    if (projection(planned, 'href') !== projection(observed, 'href')) fields.push('href');
+    // Explicit links keep their exact destination and extent. Extra automatic
+    // anchors in plain URL text use the viewer's own boundary, at that position.
+    let position = 0;
+    const hrefGroups: {text:string;href:string|null;start:number}[] = [];
+    for (const run of observed) {
+      const last = hrefGroups[hrefGroups.length-1];
+      if (last && last.href === run.href) last.text += run.text;
+      else hrefGroups.push({text:run.text,href:run.href,start:position});
+      position += run.text.length;
+    }
+    const plannedText = planned.map(r=>r.text).join('');
+    const plainRanges: [number,number][] = [];
+    let offset = 0;
+    for (const run of planned) { if (!run.href) plainRanges.push([offset,offset+run.text.length]); offset += run.text.length; }
+    const automatic = hrefGroups.filter(group => group.href &&
+      Array.from({length:group.text.length},(_,i)=>group.start+i).every(i=>plainRanges.some(([a,b])=>i>=a&&i<b)) &&
+      containsServiceLink(plannedText,{text:group.text,href:group.href,start:tokenText(plannedText.slice(0,group.start)).length}));
+    offset = 0;
+    const explicitObserved = observed.map(run=>{ const start=offset; offset+=run.text.length; return {...run,href:automatic.some(a=>start>=a.start&&offset<=a.start+a.text.length)?null:run.href}; });
+    if (projection(planned, 'href') !== projection(explicitObserved, 'href')) fields.push('href');
     if (fields.length) issues.push({ paragraph: index + 1, fields });
   }
   return issues;
@@ -118,7 +138,7 @@ export class BlogExecution {
   private verifyDocument(value: BlogReadback, stage: FormattingStage) {
     if (this.formattingFailure) throw this.formattingFailure;
     // Retain existing title/photo/number diagnostics before the exact run comparison.
-    this.env.verify(value);
+    this.env.verify(value, stage);
     const issues = compareBlogFormatting(this.plan, value);
     if (issues.length) {
       const error = new BlogFormattingError(stage, issues);
@@ -132,6 +152,9 @@ export class BlogExecution {
   private photoUploadSamples = 0;
   readonly readbackTimings: { photos: number; milliseconds: number; navigationKeys: number }[] = [];
   private checkpoint: BlogReadback | undefined;
+  get creationState(): 'none' | 'draft_saved' | 'published' | 'uncertain' {
+    return this.publishedPost ? 'published' : this.publishAttempted ? 'uncertain' : this.saveAcknowledged || this.draftIdentity ? 'draft_saved' : this.saveAttempted ? 'uncertain' : 'none';
+  }
   private saveAttempted = false;
   private draftsBefore: DraftEntry[] = [];
   private saveAcknowledged = false;
