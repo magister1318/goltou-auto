@@ -36,7 +36,7 @@ await build({ ...config, entryPoints: [path.join(root, 'apps/android/bridge/main
 writeFileSync(path.join(out, 'core.cjs'), `// Built-in embedded Node bootstrap. No downloaded code.\ntry { require('./engine.cjs'); } catch (error) { const code = ['ERR_UNKNOWN_BUILTIN_MODULE','MODULE_NOT_FOUND','ENOENT','EACCES','EINVAL','ENOSYS'].includes(error?.code) ? error.code : 'BOOT_ERROR'; const kind = ['TypeError','ReferenceError','SyntaxError','Error'].includes(error?.name) ? error.name : 'Error'; console.error('CORE_LOAD_FAILED', code, kind, /async_hooks|AsyncLocalStorage/.test(error?.message || '') ? 'ASYNC_CONTEXT' : 'BOOT'); setInterval(() => {}, 60000); }\n`);
 checkFiles(['core.cjs', 'engine.cjs'].map(file => path.join(out, file)), true);
 await viteBuild({ configFile: path.join(root, 'packages/ui/vite.config.ts'), logLevel: 'warn',
-  define: { __GOLTOU_DEBUG__: JSON.stringify(debugBuild) }, build: { outDir: path.join(out, 'ui') } });
+  define: { __GOLTOU_DEBUG__: JSON.stringify(debugBuild), __GOLTOU_VERSION__: JSON.stringify(version.versionName), __GOLTOU_VERSION_CODE__: version.versionCode }, build: { outDir: path.join(out, 'ui') } });
 if (debugBuild) cpSync(path.join(root, 'packages/sites/fixtures'), path.join(out, 'fixtures'), { recursive: true });
 const hash = createHash('sha256');
 hash.update(JSON.stringify({ version: version.versionName, versionCode: Number(version.versionCode), debug: debugBuild }));

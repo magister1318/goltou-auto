@@ -1,4 +1,5 @@
-param([Parameter(Mandatory=$true)][string]$Apk, [Parameter(Mandatory=$true)][string]$ExpectedCommit)
+param([Parameter(Mandatory=$true)][string]$Apk, [Parameter(Mandatory=$true)][string]$ExpectedCommit,
+      [ValidateSet('debug','release')][string]$Variant)
 $ErrorActionPreference = 'Stop'
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ('goltou-apk-check-' + [Guid]::NewGuid().ToString('N'))
@@ -14,6 +15,12 @@ try {
     } finally { $zip.Dispose() }
     $manifest = Get-Content -LiteralPath (Join-Path $temporary 'manifest.json') -Raw | ConvertFrom-Json
     if ($ExpectedCommit -cnotmatch '^[a-f0-9]{40}$' -or $manifest.sourceCommit -cne $ExpectedCommit) { throw 'APK_COMMIT_MISMATCH' }
+    if ($Variant -and ($manifest.debug -isnot [bool] -or $manifest.debug -ne ($Variant -eq 'debug'))) { throw 'APK_VARIANT_MISMATCH' }
+    if ($Variant -eq 'release') {
+        . (Join-Path $PSScriptRoot 'apk-signature.ps1')
+        $certificate = Get-ApkCertificate $Apk -Release
+        Write-Output ('RELEASE_SIGNATURE_PASSED V2=true V3=true CERT_SHA256=' + $certificate)
+    }
     & node (Join-Path $PSScriptRoot 'check-embedded-compat.mjs') (Join-Path $temporary 'core.cjs') (Join-Path $temporary 'engine.cjs')
     if ($LASTEXITCODE -ne 0) { throw 'APK_EMBEDDED_COMPAT_FAILED' }
     $algorithm = [Security.Cryptography.SHA256]::Create()

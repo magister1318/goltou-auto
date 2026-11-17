@@ -28,6 +28,9 @@ class AppSession(application: Application) : AndroidViewModel(application) {
     lateinit var link: CoreLink
     val initialized get() = ::ui.isInitialized
     var activity: MainActivity? = null
+    var localDataReply: ((JSONObject?, String?) -> Unit)? = null
+    var localDataText: String? = null
+    var localDataMode: String? = null
     var disposed = false
     var foreground = false
     var backgroundAt: Long = 0

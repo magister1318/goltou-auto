@@ -27,6 +27,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var surfaces: SurfaceHost
     private lateinit var link: CoreLink
     private lateinit var session: AppSession
+    private val localDataDocuments = LocalDataDocuments(this) { session }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,9 +44,9 @@ class MainActivity : ComponentActivity() {
             session.creations++
             return
         }
-        // Required in both variants: embedded Node -> private relay -> WebView's CDP socket.
-        // Android exposes the upstream abstract socket to adb as well; see docs/release.md.
-        WebView.setWebContentsDebuggingEnabled(true)
+        // WP30 owner decision: keep the existing CDP driver AND Fetch request barriers.
+        // Process-wide: stopping DevTools disconnects retained targets and their guards.
+        WebView.setWebContentsDebuggingEnabled(BuildConfig.WEBVIEW_CONTROL_ENABLED)
         val root = FrameLayout(session.context)
         root.setOnApplyWindowInsetsListener { view, insets ->
             val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.ime())
@@ -121,6 +122,12 @@ class MainActivity : ComponentActivity() {
                     }
                 } catch (_: Exception) { reply(null, "LOG_EXPORT_FAILED") }
             }.start()
+            else if (op == "localData.export" || op == "localData.import") retained.root.post {
+                try {
+                    val current = retained.activity ?: error("NO_ACTIVITY")
+                    current.localDataDocuments.start(op.substringAfter('.'), if (msg.has("text")) msg.getString("text") else null, reply)
+                } catch (_: Exception) { reply(null, "LOCAL_DATA_TRANSFER_FAILED") }
+            }
             else if (op == "app.inputState") reply(org.json.JSONObject().put("ready", retained.inputReady()), null)
             else if (op.startsWith("debug.")) retained.handleDebug(op, msg, reply)
             else if (op.startsWith("session.")) secureSession.handle(op, msg, reply)

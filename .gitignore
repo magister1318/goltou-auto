@@ -9,6 +9,9 @@ build/
 *.jks
 local.properties
 release-signing.properties
+keystore.properties
+release-key/
+release-out/
 .env
 .env.*
 var/

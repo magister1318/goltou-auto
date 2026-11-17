@@ -47,6 +47,8 @@ export interface AppSnapshot { serviceError?: string; postDeletion?: { outcome?:
 /** Platform-neutral contract; Android implements it with a Keystore-encrypted native channel. */
 export interface TokenStore { read(): Promise<string | null>; write(token: string | null): Promise<void> }
 export interface Commands {
+  'localData.export': { input: Record<string, never>; output: { cancelled: boolean } };
+  'localData.import': { input: Record<string, never>; output: { cancelled: boolean; preferences?: import('./preferences').Preferences; polishStrength?: import('@goltou/api-client').PolishStrength } };
   'logs.list': { input: Record<string, never>; output: import('./job-logs').JobLogRow[] };
   'logs.export': { input: Record<string, never>; output: Record<string, never> };
   'preferences.get': { input: Record<string, never>; output: import('./preferences').Preferences };

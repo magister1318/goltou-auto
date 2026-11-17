@@ -1459,7 +1459,27 @@ export function App() {
           <>
             <main className="pad settings-content">
               <h1 className="title">설정</h1>
+              <p>골투오토 {__GOLTOU_VERSION__} ({__GOLTOU_VERSION_CODE__})</p>
               <div className="choice-row"><span>작업 로그<small>단계별 진행과 결과 확인</small></span><button className="green" onClick={() => go('logs')}>보기</button></div>
+              <div className="choice-row"><span>앱 데이터 옮기기<small>글 옵션·기록의 공개 범위·표 표시만 옮깁니다. 로그인은 포함하지 않습니다.</small></span>
+                <div>
+                  <button className="green" disabled={busy || active || !preferencesReady} onClick={() => void act(async () => {
+                    await preferencesWrites.current;
+                    const result = await request('localData.export', {});
+                    if (!result.cancelled) setNotice('앱 데이터를 파일로 내보냈습니다. 작업 로그도 따로 내보내 주세요.');
+                  })}>데이터 내보내기</button>
+                  <button className="green" disabled={busy || active || !preferencesReady} onClick={() => void act(async () => {
+                    await preferencesWrites.current;
+                    const result = await request('localData.import', {});
+                    if (!result.cancelled && result.preferences && result.polishStrength) {
+                      const value = result.preferences;
+                      lastBand.current = value.lastBandKey; setBandKey(value.lastBandKey);
+                      setOptions({ polish: value.polish, closing: value.closing, linkCard: value.linkCard, polishStrength: result.polishStrength });
+                      setNotice('앱 데이터를 가져왔습니다. 등록 내역과 공통 설정은 같은 골투 계정으로 로그인하면 다시 읽습니다.');
+                    }
+                  })}>데이터 가져오기</button>
+                </div>
+              </div>
               {__GOLTOU_DEBUG__ && debug && (
                 <div className="choice-row">
                   <span>디버그 편집기 읽기 점검<small>입력·저장하지 않습니다</small></span>

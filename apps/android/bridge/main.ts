@@ -13,6 +13,7 @@ declare const __GOLTOU_DEBUG__: boolean;
 import { AndroidTokenStore } from './session';
 import { AiModeClient } from '../../../packages/sites/src/ai-mode';
 import { AndroidSurfaceHost } from './host';
+import { fileLocalDataTransfer } from '../../../packages/core/src/local-data-transfer';
 import { filePreferencesStore } from '../../../packages/core/src/preferences';
 import { fileBandPostAllowance } from '../../../packages/core/src/band-allowance';
 import { filePostMetadata } from '../../../packages/core/src/post-metadata';
@@ -54,7 +55,7 @@ const options: CoreOptions = {
 async function start() {
   const serviceChecks = __GOLTOU_DEBUG__ && existsSync(path.join(path.dirname(argument('data')), 'blog-only-test')) ? ['naver'] as const
     : __GOLTOU_DEBUG__ && existsSync(path.join(path.dirname(argument('data')), 'band-only-test')) ? ['band'] as const : undefined;
-  const runtime: NonNullable<ConstructorParameters<typeof AppCore>[4]> = { logs, exportLogs: async () => { logs.retain(); await native.call('logs.export'); }, ...(serviceChecks ? { serviceChecks } : {}), openExternal: async url => { await native.call('app.openPost', { url }); }, deleteHost: host, postMetadata: filePostMetadata(path.join(path.dirname(argument('data')), 'post-metadata.json')), device: () => native.call<import('../../../packages/api-client/src/index').LoginInput['device']>('session.device'), preferences: filePreferencesStore(path.join(path.dirname(argument('data')), 'preferences.json')), polishStrength: filePolishStrengthStore(path.join(path.dirname(argument('data')), 'polish-strength.txt')), ...(__GOLTOU_DEBUG__ ? { experimentTitle: false, experimentTitleLabel: 'WP14 ' } : {}) };
+  const runtime: NonNullable<ConstructorParameters<typeof AppCore>[4]> = { localData: fileLocalDataTransfer(path.dirname(argument('data'))), transferLocalData: async (mode, text) => (await native.call<{ text: string | null }>('localData.' + mode, text === undefined ? {} : { text }, 300000)).text, logs, exportLogs: async () => { logs.retain(); await native.call('logs.export'); }, ...(serviceChecks ? { serviceChecks } : {}), openExternal: async url => { await native.call('app.openPost', { url }); }, deleteHost: host, postMetadata: filePostMetadata(path.join(path.dirname(argument('data')), 'post-metadata.json')), device: () => native.call<import('../../../packages/api-client/src/index').LoginInput['device']>('session.device'), preferences: filePreferencesStore(path.join(path.dirname(argument('data')), 'preferences.json')), polishStrength: filePolishStrengthStore(path.join(path.dirname(argument('data')), 'polish-strength.txt')), ...(__GOLTOU_DEBUG__ ? { experimentTitle: false, experimentTitleLabel: 'WP14 ' } : {}) };
   runtime.bandDeleteLog = event => {
     trace('delete', /REJECT|BLOCK|FAILED|UNCERTAIN|TIMEOUT|NOT_STARTED/.test(event.code) ? 'fail' : 'ok', { reason: reasonCode(event.code) });
     if (event.checks) {

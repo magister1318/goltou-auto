@@ -1,88 +1,73 @@
-# 사내 APK 배포
+# 사내 APK 배포 준비
 
-패키지는 `kr.goltou.auto`, 이름은 `골투오토`다. 스토어에 올리지 않는다.
-Android 11 이상 ARM64/ARMv7 휴대폰용이다. Android System WebView를 최신으로 유지한다.
+패키지 kr.goltou.auto, 이름 골투오토. Android 11 이상 ARM64/ARMv7용이다.
+버전은 apps/android/version.properties에서 관리하고 설정에 표시한다.
 
-## 키는 한 번만 만들기
+**WP30 Part 2의 1.0.0 (3)는 소유자 결정으로 release 제어 채널을 켠 사내 전환용 준비본이다.
+실제 release 휴대폰 동작과 Blog 임시저장 왕복은 전환 후 확인한다.**
 
-담당자가 저장소 밖의 접근 제한 폴더에서 다음 명령을 한 번 실행한다.
-비밀번호는 프롬프트에서 직접 입력한다. 이번 WP12에서는 실제 배포 키를 만들지 않았다.
+## 서명
 
-```powershell
-keytool -genkeypair -keystore C:/CompanySecrets/goltou-auto-release.jks -alias goltou-auto -keyalg RSA -keysize 3072 -validity 10000
-```
+영구 배포 키는 저장소 밖에서 보관한다. 새로 만들거나 WP12 일회용 키를 쓰지 않는다.
+키 폴더는 담당자만 접근하며 두 번째 안전한 장소에도 보관한다. 분실하면 기존 배포 앱을
+같은 신원으로 업데이트할 수 없다. 키와 비밀번호를 로그·Git·보고서에 넣지 않는다.
 
-키와 비밀번호는 회사 비밀 보관소에 별도로 백업하고 담당자를 정한다.
-키를 잃거나 다른 키로 서명하면 기존 앱 위에 업데이트할 수 없다.
-휴대폰에서 앱을 삭제한 뒤 다시 설치해야 하며 로그인과 앱 데이터가 지워진다.
-debug 앱에서 배포 키 앱으로 바꿀 때도 같다. 자동으로 삭제하지 않는다.
+Gradle은 GOLTOU_SIGNING_PROPERTIES의 외부 properties 또는 Git에서 제외된
+apps/android/release-signing.properties를 읽는다. 항목 이름은 storeFile, storePassword,
+keyAlias, keyPassword다. 상대 키 경로는 properties 파일 기준이다. 키는 반드시 저장소 밖에 둔다.
+설정 누락은 release 빌드 실패이며 debug 키로 대신하지 않는다.
+공개 인증서 지문은 apps/android/release-certificate.sha256이다.
+`pnpm check:secrets`는 Git index의 키 파일·비밀 설정·비밀번호 속성을 검사한다.
 
-저장소 밖 `C:/CompanySecrets/goltou-auto-signing.properties`를 만든다.
-아래 `<...>`는 담당자가 채우는 자리이며 파일은 Git에 넣지 않는다.
-경로는 `/`로 쓴다. 상대 키 경로는 이 properties 파일 기준이다.
+## 검증과 빌드
 
-```properties
-storeFile=C:/CompanySecrets/goltou-auto-release.jks
-storePassword=<키 저장소 비밀번호>
-keyAlias=goltou-auto
-keyPassword=<키 비밀번호>
-```
-
-환경 변수 `GOLTOU_SIGNING_PROPERTIES`에 이 파일의 절대 경로를 지정한다.
-대신 Git에서 제외된 `apps/android/release-signing.properties`를 써도 되지만,
-키 파일은 반드시 저장소 밖에 둔다. 설정 누락·잘못된 키는 빌드 실패이며 debug 키로 대체하지 않는다.
-
-## main에서 빌드
-
-JDK 17, Node 18.20.4 이상, pnpm 10.11.0과 Android SDK 36, build-tools 36.0.0,
-NDK 27.3.13750724, CMake 3.22.1이 필요하다. 내장 Node는 18.20.4로 고정되어 있다.
-로컬 변경이 없는 checkout에서 실행한다. 배포할 커밋 SHA도 보관한다.
+JDK 17, Node 18.20.4 이상, pnpm 10.11.0, Android SDK/build-tools 36,
+NDK 27.3.13750724, CMake 3.22.1이 필요하다. 내장 Node는 18.20.4다.
+깨끗한 커밋에서 외부 서명 설정의 경로만 환경 변수에 지정하고 실행한다.
 
 ```powershell
 $env:GIT_TERMINAL_PROMPT='0'
 $env:GCM_INTERACTIVE='never'
-git fetch origin main
-git switch --detach origin/main
-git rev-parse HEAD
-pnpm install --frozen-lockfile
-pnpm android:libnode
-pnpm typecheck
-pnpm test
-pnpm build
-$env:GOLTOU_SIGNING_PROPERTIES='C:/CompanySecrets/goltou-auto-signing.properties'
-cd apps/android
-./gradlew.bat :buildSrc:test assembleRelease --console=plain --no-daemon
+# GOLTOU_SIGNING_PROPERTIES는 담당자의 외부 파일을 가리키도록 로컬 지정
+./scripts/install-device.ps1 -Variant release -VerifyOnly -ArtifactDirectory ../release-out
 ```
 
-Gradle이 release 전용 Node·UI 자산을 다시 만든다. 이전 debug 자산은 포함하지 않는다.
-APK는 `apps/android/app/build/outputs/apk/release/app-release.apk`다.
-`apps/android/version.properties`에서만 Android 버전을 바꾼다. 새 배포마다 versionCode를 올린다.
-R8/리소스 축소는 내장 Node·JNI 호환성을 실기기에서 검증하기 전까지 꺼 둔다.
-서명 블록의 스토어용 SDK 메타데이터는 제외한다. 같은 환경·키의 재빌드는 비교하지만
-다른 PC/도구 버전까지 APK 바이트 동일성을 보장하지는 않는다.
+의존성 → 타입 → 전체 시험(건너뜀·TODO 0, 런타임 시험 포함) → 소스 호환성 → 번들 빌드 →
+assembleRelease → 실제 APK 내부 번들·소스 커밋·변형·v2/v3 서명·인증서를 검사한다.
+검증한 동일 사본과 SHA-256 파일을 외부 폴더로 복사한다. 검사 중 HEAD/소스 변경은 거부한다.
+별도로 `:buildSrc:test testDebugUnitTest testReleaseUnitTest assembleDebug`도 확인한다.
+R8/리소스 축소는 JNI와 내장 Node 검증 전까지 끈다.
 
-## 휴대폰 설치·업데이트
+## 설치 전 인증서 대조
 
-실제 배포 키로 서명한 APK만 회사 휴대폰에 전달한다. 파일을 열고 해당 파일 앱의
-‘이 출처 허용’을 켜 설치한다. 업데이트는 같은 키와 더 큰 versionCode를 사용한다.
-USB로 설치할 때는 `adb -s <기기> install -r <APK경로>`를 쓴다.
-서명 오류가 나면 멈추고 담당자가 데이터 손실과 전환 시점을 결정한다.
-설치 뒤 앱 시작과 직접 로그인을 확인하고 시험 계정에서는 임시저장·재열람까지만 확인한다.
-`runs/wp12-release-throwaway`의 시험 키/APK는 배포·업데이트에 쓰지 않는다.
+읽기 전용으로 상태와 인증서를 비교한다. dumpsys package의 짧은 signatures 값은 SHA-256이
+아니다. pm path로 설치 APK를 찾아 APK만 PC로 읽어 apksigner로 확인하며 private 데이터는 읽지 않는다.
 
-## 현재 보안 예외
+```powershell
+. ./scripts/apk-signature.ps1
+Compare-InstalledCertificate ../release-out/goltou-auto-1.0.0-3-release.apk
+```
 
-외부 평문 통신은 차단한다. UI HTTP·네이티브 WebSocket 때문에 `127.0.0.1`과
-`localhost`만 평문 예외다. 코어는 loopback에만 바인딩하고 실행마다 새 토큰으로 인증한다.
-Node의 API·사진 요청은 별도로 HTTPS로 제한한다. 백업과 기기 간 데이터 이전은 끈다.
+DIFFERENT이면 설치 금지다. 앱 삭제·초기화·오류 우회를 하지 않는다.
+SAME인 검증된 향후 배포본만 `install-device.ps1 -Variant release`로 설치한다.
+게이트는 인증서와 화면 켜짐·잠금 해제·앱 전면, APK 해시를 대조하고 `adb install -r`만 쓴다.
+실패하면 다른 플래그나 삭제로 재시도하지 않는다. 파일 설치는 [INSTALL](INSTALL.md)을 따른다.
 
-자동 입력은 Node → 앱 전용 `files/devtools.sock` → WebView의
-`@webview_devtools_remote_<pid>`로 CDP를 연결한다. 그래서 release에서도
-`setWebContentsDebuggingEnabled(true)`가 필요하다. 끄면 대상 검색·입력이 작동하지 않는다.
-공개 API에는 ‘같은 프로세스만 허용’ 옵션이 없어 adb 접근까지 없앨 수 없다.
-일반 다른 UID 앱은 Chromium의 자격 검사로 거절되지만 같은 UID·root·adb shell은 접근할 수 있다.
-사설 중계만으로 원래 소켓을 숨겼다고 보지 않는다. 배포 휴대폰은 USB/무선 디버깅을 끄고
-기존 adb 승인을 취소한다. 소유자가 이 제한을 수용할지 결정해야 한다.
-근거: [Android WebView 설명](https://developer.android.com/reference/android/webkit/WebView#setWebContentsDebuggingEnabled(boolean)),
-[Chromium 소켓 생성](https://chromium.googlesource.com/chromium/src/+/main/android_webview/browser/aw_devtools_server.cc),
-[접속 자격 검사](https://chromium.googlesource.com/chromium/src/+/main/content/browser/android/devtools_auth.cc).
+## 제어 채널과 접근 범위
+
+release는 debuggable/JNI debug false이며 WEBVIEW_CONTROL_ENABLED=true는 별도로 유지한다.
+소유자는 사내 비공개 배포에서 기존 CDP 드라이버를 쓰기로 결정했다.
+현재 AndroidSurfaceHost.create는 사설 릴레이의 /json/list와 CDP에 의존한다.
+요청 allowlist도 CdpSurface.guardRequests의 Fetch.enable과 POST 본문·응답 관찰을 쓴다.
+릴레이는 앱 private 파일 소켓에서 WebView abstract 소켓으로 연결하며 CDP TCP 포트는 열지 않는다.
+일반 다른 앱/인터넷에 직접 열려 있지 않지만 승인된 USB/무선 adb와 root는 페이지를 읽고 조작할 수 있다.
+직원 휴대폰의 USB/무선 디버깅은 꺼 둔다. 외부 Intent로 자동 작업을 지시하는 경로는 없다.
+
+앱 UI의 작업별 발행 확인과 Fetch 본문/응답 차단기를 유지하며 debug 허용 파일은 release에 넣지 않는다.
+데이터 백업과 WP20 로그 내보내기는
+네이티브 로컬 경로라 CDP/adb가 필요 없지만 실제 release 기기의 문서 선택·공유 UI는 미검증이다.
+
+근거: [WebView API](https://developer.android.com/reference/android/webkit/WebView#setWebContentsDebuggingEnabled(boolean)),
+[apksigner](https://developer.android.com/tools/apksigner),
+[앱 서명과 업데이트](https://developer.android.com/studio/publish/app-signing).
+자세한 결과와 데이터 전환 제안은 [WP30 보고서](reports/WP30.md)를 따른다.

@@ -8,6 +8,7 @@
     "typecheck": "pnpm -r typecheck && tsc -p apps/android/bridge/tsconfig.json",
     "test": "vitest run",
     "build": "node scripts/build-core.mjs",
+    "check:secrets": "node scripts/check-signing-secrets.mjs",
     "sim": "pnpm build && node scripts/simulate-ux-v2.mjs --interactive",
     "sim:check": "pnpm build && node scripts/simulate-ux-v2.mjs",
     "sim:shots": "pnpm build && node scripts/simulate-ux-v2.mjs",

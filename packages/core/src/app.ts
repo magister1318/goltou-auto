@@ -23,6 +23,7 @@ export class AppCore {
   private deleteConfirmation: { key: string; post: import('@goltou/api-client').Post; log?: TraceJob } | undefined;
   private pendingDeleteUpdate: import('@goltou/api-client').PostUpdate | undefined;
   private starting = false;
+  private transferringLocalData = false;
   private preparing = false;
   private authenticating = false;
   private initialization: Promise<void> | undefined;
@@ -39,7 +40,7 @@ export class AppCore {
   private readonly polishSetting: PolishStrengthStore;
   private readonly preferences: PreferencesStore;
   private readonly postMetadata: PostMetadataStore;
-  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { logs?: import('./job-logs').JobLogStore; exportLogs?: () => Promise<void>; serviceChecks?: readonly ('naver' | 'band')[]; device: () => Promise<import('@goltou/api-client').LoginInput['device']>; deleteHost?: import('@goltou/surface').SurfaceHost; deleteLog?: import('@goltou/sites').DeleteLog; bandDeleteLog?: import('@goltou/sites').BandDeleteLog; bandDeleteReview?: import('@goltou/sites').BandDeleteReview; experimentTitle?: boolean; experimentTitleLabel?: string; polishStrength?: PolishStrengthStore; preferences?: PreferencesStore; postMetadata?: PostMetadataStore; openExternal?: (url: string) => Promise<void> }) {
+  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { localData?: import('./local-data-transfer').LocalDataTransfer; transferLocalData?: (mode: 'export' | 'import', text?: string) => Promise<string | null>; logs?: import('./job-logs').JobLogStore; exportLogs?: () => Promise<void>; serviceChecks?: readonly ('naver' | 'band')[]; device: () => Promise<import('@goltou/api-client').LoginInput['device']>; deleteHost?: import('@goltou/surface').SurfaceHost; deleteLog?: import('@goltou/sites').DeleteLog; bandDeleteLog?: import('@goltou/sites').BandDeleteLog; bandDeleteReview?: import('@goltou/sites').BandDeleteReview; experimentTitle?: boolean; experimentTitleLabel?: string; polishStrength?: PolishStrengthStore; preferences?: PreferencesStore; postMetadata?: PostMetadataStore; openExternal?: (url: string) => Promise<void> }) {
     this.polishSetting = runtime?.polishStrength ?? new MemoryPolishStrengthStore();
     this.postMetadata = runtime?.postMetadata ?? new MemoryPostMetadata();
     this.preferences = runtime?.preferences ?? new MemoryPreferencesStore();
@@ -133,6 +134,23 @@ export class AppCore {
     finally { this.preparing = false; }
   }
   async handle(request: AppRequest): Promise<unknown> {
+    if (this.transferringLocalData) throw new ApiError('conflict', '데이터 옮기기를 먼저 마쳐 주세요.');
+    if (request.command === 'localData.export' || request.command === 'localData.import') {
+      this.requireServiceIdle();
+      if (this.state.visibleService || this.runner.serviceLogin?.active) throw new ApiError('conflict', '연결 창을 먼저 닫아 주세요.');
+      if (!this.runtime?.localData || !this.runtime.transferLocalData) throw new ApiError('invalid', '이 기기에서는 데이터 옮기기를 사용할 수 없습니다.');
+      this.starting = true; this.transferringLocalData = true;
+      try {
+        if (request.command === 'localData.export') {
+          const text = await this.runtime.localData.export();
+          return { cancelled: (await this.runtime.transferLocalData('export', text)) === null };
+        }
+        const text = await this.runtime.transferLocalData('import');
+        if (text === null) return { cancelled: true };
+        await this.runtime.localData.import(text);
+        return { cancelled: false, preferences: await this.preferences.read(), polishStrength: await this.polishSetting.read() };
+      } finally { this.starting = false; this.transferringLocalData = false; }
+    }
     if (this.deleting && !['session.get', 'posts.list', 'products.list', 'products.get'].includes(request.command)) throw new ApiError('conflict', '글 삭제가 진행 중입니다.');
     if (request.command === 'preferences.get') return this.preferences.read();
     if (request.command === 'preferences.save') {
