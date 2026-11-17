@@ -30,7 +30,7 @@ function decode(text: string): Backup {
   if (Buffer.byteLength(text, 'utf8') > maximumBytes) throw Error('LOCAL_DATA_TOO_LARGE');
   try {
     const v: unknown = JSON.parse(text);
-    if (!exact(v, ['format', 'version', 'preferences', 'polishStrength', 'postMetadata']) || v.format !== 'goltou-auto-local' || v.version !== 1 || !['spelling', 'natural'].includes(String(v.polishStrength))) throw Error();
+    if (!exact(v, ['format', 'version', 'preferences', 'polishStrength', 'postMetadata']) || v.format !== 'goltou-auto-local' || v.version !== 1 || v.polishStrength !== 'spelling' && v.polishStrength !== 'natural') throw Error();
     return { format: 'goltou-auto-local', version: 1, preferences: preferences(v.preferences), polishStrength: v.polishStrength as Backup['polishStrength'], postMetadata: metadata(v.postMetadata) };
   } catch { throw Error('LOCAL_DATA_INVALID'); }
 }
@@ -63,7 +63,9 @@ export function fileLocalDataTransfer(directory: string): LocalDataTransfer {
         if (current[key]?.visibility && entry.visibility && current[key]!.visibility !== entry.visibility) throw Error('LOCAL_DATA_METADATA_CONFLICT');
         current[key] = { ...current[key], ...entry };
       }
-      const values = [JSON.stringify(backup.preferences), backup.polishStrength + '\n', JSON.stringify(current)];
+      // Merging must not produce a state that cannot subsequently be exported.
+      const merged = decode(JSON.stringify({ ...backup, postMetadata: current }));
+      const values = [JSON.stringify(merged.preferences), merged.polishStrength + '\n', JSON.stringify(merged.postMetadata)];
       await mkdir(directory, { recursive: true });
       let written = 0;
       try {

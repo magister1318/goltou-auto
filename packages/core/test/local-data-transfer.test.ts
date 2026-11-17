@@ -59,6 +59,24 @@ it('exports safe defaults without creating any local files', async () => {
   expect(data.preferences).toEqual({ polish: false, closing: false, linkCard: false, lastBandKey: '' });
   expect(data.postMetadata).toEqual({}); expect(await readdir(dir)).toEqual([]);
 });
+it.each([['natural'], { value: 'natural' }, false])('requires a literal polish level rather than a coercible value (%j)', async polishStrength => {
+  const { transfer } = await populated(); const dir = await directory();
+  const data = JSON.parse(await transfer.export()); data.polishStrength = polishStrength;
+  await expect(fileLocalDataTransfer(dir).import(JSON.stringify(data))).rejects.toThrow('LOCAL_DATA_INVALID');
+  expect(await readdir(dir)).toEqual([]);
+});
+it('rejects a merged backup exceeding the export limit before any file changes', async () => {
+  const { transfer } = await populated(); const target = await directory();
+  const data = JSON.parse(await transfer.export());
+  data.postMetadata = Object.fromEntries(Array.from({ length: 6500 }, (_, i) => [String(i + 1), { visibility: 'public', tableFallback: true }]));
+  const existing = JSON.stringify(Object.fromEntries(Array.from({ length: 6500 }, (_, i) => [String(i + 10000), { visibility: 'public', tableFallback: true }])));
+  expect(Buffer.byteLength(JSON.stringify(data))).toBeLessThan(512 * 1024);
+  expect(Buffer.byteLength(existing)).toBeLessThan(512 * 1024);
+  await writeFile(path.join(target, 'post-metadata.json'), existing);
+  await expect(fileLocalDataTransfer(target).import(JSON.stringify(data))).rejects.toThrow('LOCAL_DATA_TOO_LARGE');
+  expect(await readFile(path.join(target, 'post-metadata.json'), 'utf8')).toBe(existing);
+  expect(await readdir(target)).toEqual(['post-metadata.json']);
+});
 it.each(['not JSON', ' '.repeat(512 * 1024 + 1)])('rejects malformed or oversized imports', async text => {
   const dir = await directory(); await expect(fileLocalDataTransfer(dir).import(text)).rejects.toThrow(/^LOCAL_DATA_/);
   expect(await readdir(dir)).toEqual([]);
