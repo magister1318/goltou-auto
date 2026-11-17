@@ -59,3 +59,12 @@ it.each(['SAME', 'DIFFERENT'])('compares installed and release certificates with
     ". ./scripts/apk-signature.ps1; function Get-ApkCertificate([string]$Path,[switch]$Release) { if($Release -or $env:CERT_TEST_RESULT -eq 'SAME') { return ('A'*64) }; return ('B'*64) }; function adb { $global:LASTEXITCODE=0; if(($args[0..2] -join ' ') -eq 'shell pm path') { return 'package:/data/app/synthetic/base.apk' }; if($args[0] -eq 'pull') { [IO.File]::WriteAllText($args[2], 'fixture'); return }; throw 'MUTATING_ADB_CALL_FORBIDDEN' }; Compare-InstalledCertificate 'synthetic-release.apk'"], { env: { ...process.env, CERT_TEST_RESULT: comparison } });
   expect(result.stdout.trim()).toBe(comparison);
 });
+it('checks both schemes over the v2 platform range even when manifest minSdk would skip v2', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'scheme-range-test-')); directories.push(directory);
+  const signer = path.join(directory, 'signer.ps1');
+  await writeFile(signer, `if (($args -join ' ') -notmatch '--min-sdk-version 24') { throw 'V2_RANGE_NOT_CHECKED' }\nWrite-Output 'Verified using v2 scheme (APK Signature Scheme v2): true'\nWrite-Output 'Verified using v3 scheme (APK Signature Scheme v3): true'\nWrite-Output ('Signer #1 certificate SHA-256 digest: ' + $env:CERT_TEST_DIGEST)\n$global:LASTEXITCODE=0\n`);
+  const digest = (await readFile('apps/android/release-certificate.sha256', 'utf8')).trim();
+  const result = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+    ". ./scripts/apk-signature.ps1; function Get-ApkSigner { return $env:CERT_TEST_SIGNER }; Get-ApkCertificate 'synthetic.apk' -Release"], { env: { ...process.env, CERT_TEST_SIGNER: signer, CERT_TEST_DIGEST: digest } });
+  expect(result.stdout.trim()).toBe(digest);
+});

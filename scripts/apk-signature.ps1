@@ -13,7 +13,11 @@ function Read-CertificateDigest([string]$Verification) {
     return $matches[0].Groups[1].Value.ToUpperInvariant()
 }
 function Get-ApkCertificate([string]$Path, [switch]$Release) {
-    try { $result = & (Get-ApkSigner) verify --verbose --print-certs $Path 2>&1 }
+    # With manifest minSdk=30 apksigner verifies v3 and can skip a present v2.
+    # Expand only the verification range, never the app's installation minSdk.
+    $arguments = @('verify', '--verbose', '--print-certs')
+    if ($Release) { $arguments += @('--min-sdk-version', '24') }
+    try { $result = & (Get-ApkSigner) @arguments $Path 2>&1 }
     catch { throw 'APK_SIGNATURE_INVALID' }
     if ($LASTEXITCODE -ne 0) { throw 'APK_SIGNATURE_INVALID' }
     $verification = $result -join "`n"
