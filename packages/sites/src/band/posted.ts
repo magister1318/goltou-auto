@@ -2,6 +2,7 @@ import type { Surface } from '@goltou/surface';
 import { trace, traceStep } from '@goltou/surface/telemetry';
 import { read } from '../dom';
 import { settledReadback } from '../settled-readback';
+import { blogHashtagPattern } from '../naver-blog/tag-patterns';
 import { containsServiceLink, ReadbackMismatch, tokenText, type ReadbackIssue, type ServiceLink, type ServiceTextToken } from '../readback-checks';
 
 export interface CreatedBandPost { url: string; body: string; createdAt: number; owned: boolean; photoCount: number; }
@@ -53,7 +54,10 @@ export async function readFullBandPost(surface: Surface): Promise<FullBandPost |
 }
 export async function settleFullBandPost(surface: Surface, expected: string, uploaded: readonly string[], check: () => void, timeoutMs = 90000, readCurrent = () => readFullBandPost(surface)) {
   const planned = normalizedBandBody(expected);
-  const expectedTags = (planned.match(/(?:^|\s)#[\p{L}\p{N}_]+/gu) ?? []).length;
+  // The embedded runtime has no ICU property escapes. Reuse the existing
+  // explicit keyword ranges for presence counts; Band's exact token positions
+  // and wording are still verified independently below.
+  const expectedTags = (planned.match(blogHashtagPattern) ?? []).length;
   const expectedLinks = (planned.match(/https?:\/\/[^\s]+/g) ?? []).length;
   const result = await settledReadback({ read: readCurrent, check, timeoutMs,
     classes: value => [
