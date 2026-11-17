@@ -12,7 +12,7 @@ import { containsServiceLink, tokenText } from '../readback-checks';
 import { BlogRichTextWriter } from './rich-text';
 import { BlogFormattingError, blogRunReader, normalizeBlogRuns, splitBlogRuns, type BlogRun, type FormattingStage } from './formatting';
 import { closeDraftEntries, draftEntries, draftItem, draftSaveReceipt, identifySavedDraft, openDraftEntries, type DraftEntry } from './draft-identity';
-import { expectedBlogTags, plannedBlogTags, sameBlogTags } from './tags';
+import { expectedBlogTags, plannedBlogTags, sameBlogTags, sameServiceBlogTags } from './tags';
 
 /** Structural subset of WP4 InputPlan. Sites has no dependency on core or a device API. */
 export interface BlogPlan {
@@ -725,12 +725,22 @@ export class BlogExecution {
     const s = this.surface!;
     const started = Date.now(); let navigationKeys = 0;
     const ownUrls = async () => (await read<string[]>(s, `return docs.map(({d})=>d.location.href);`)).filter(url => postIdentity(url)?.url === this.publishedPost!.url);
+    let pendingTags: BlogReadback | undefined;
     const value = await waitFor(async () => {
       this.env.check();
+      pendingTags = undefined;
       const urls = await ownUrls();
       const actual = await readBlogDocument(s, urls).catch(() => null);
       if (!actual) return false;
-      if (actual.tokens.every(t => t.kind !== 'photo' || t.identity)) return actual;
+      if (actual.tokens.every(t => t.kind !== 'photo' || t.identity)) {
+        // The PC viewer can render the title/body/photos before loading its tags.
+        // Wait on the same exact metadata policy as final verification, without
+        // another submit or any edits to the published page.
+        if (sameServiceBlogTags(this.plan, actual.tags)) return actual;
+        pendingTags = actual;
+        trace('verification', 'wait', { check: 'hashtags', counts: { expected: plannedBlogTags(this.plan).length, observed: actual.tags.length } });
+        return false;
+      }
       const focus = await read<{ x: number; y: number } | null>(s, `for(const {d,x,y} of docs) {
         if(!${JSON.stringify(urls)}.includes(d.location.href))continue;
         const e=d.querySelector(${JSON.stringify(titleSelector)});if(!e||!visible(e))continue;
@@ -740,7 +750,12 @@ export class BlogExecution {
       await s.click(focus.x, focus.y);
       await s.pressKey({ key: 'PageDown' }); navigationKeys++;
       return false;
-    }, Math.max(30000, this.files.length * 2000));
+    }, Math.max(30000, this.files.length * 2000)).catch(error => {
+      // Preserve the final content-mismatch diagnosis and receipt when metadata
+      // never becomes valid. Stop/focus/read failures still propagate unchanged.
+      if (error instanceof Error && error.message === 'OBSERVATION_TIMEOUT' && pendingTags) return pendingTags;
+      throw error;
+    });
     const identities = await read<string[]>(s, `return docs.map(({d})=>d.location.href);`);
     if (!identities.some(url => postIdentity(url)?.url === this.publishedPost!.url)) throw new Error('BLOG_PUBLISH_ID_UNCONFIRMED');
     if (this.visibility === 'private') {
