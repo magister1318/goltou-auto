@@ -96,20 +96,14 @@ export function ConversionPreview({
                       aria-label="표, 좌우로 밀어 보기"
                     >
                       <table>
-                        <thead>
-                          <tr>
-                            {step.rows[0]?.map((cell, c) => (
-                              <th key={c} scope="col">
-                                {cell}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
                         <tbody>
-                          {step.rows.slice(1).map((row, r) => (
+                          {step.rows.map((row, r) => (
                             <tr key={r}>
                               {row.map((cell, c) => (
-                                <td key={c}>{cell}</td>
+                                <td key={c}>{(step.cellRuns?.[r]?.[c] ?? [{text:cell}]).map((run,n)=>{
+                                  const content=run.bold ? <strong>{run.text}</strong> : run.text;
+                                  return run.href && safeLink(run.href) ? <a key={n} href={safeLink(run.href)} onClick={e=>e.preventDefault()}>{content}</a> : <span key={n}>{content}</span>;
+                                })}</td>
                               ))}
                             </tr>
                           ))}
@@ -177,8 +171,7 @@ export function ConversionPreview({
         ) : (
           <>
             <p>
-              굵은 글씨와 링크는 원문대로 미리보기에 표시합니다. 실제 블로그
-              입력의 서식 적용은 다음 작업에서 확인합니다.
+              굵은 글씨, 링크와 표를 원문 순서대로 옮깁니다.
             </p>
             <p>
               표를 만들지 못하면 줄 글로 바뀌고, 끝난 뒤 알려 드립니다.

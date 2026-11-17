@@ -50,7 +50,7 @@ async function fixture(mode = '', extra: { tags?: boolean; photos?: number; phot
     return shim;
   }
   const steps: InputPlan['steps'] = [{ kind: 'text', role: 'title', text: '[골투오토 실험] WP5 로컬' }, { kind: 'break' }];
-  for (let i = 0; i < 5; i++) steps.push({ kind: 'text', role: 'body', text: `안내 ${i + 1} 문단입니다.` }, { kind: 'break' }, { kind: 'photos', urls: [files[i]!.url] });
+  for (let i = 0; i < Math.min(5, files.length); i++) steps.push({ kind: 'text', role: 'body', text: `안내 ${i + 1} 문단입니다.` }, { kind: 'break' }, { kind: 'photos', urls: [files[i]!.url] });
   steps.push({ kind: 'table', role: 'departures', rows: [['2026-12-03', '1190000원'], ['2026-12-10', '1250000원']] }, { kind: 'break' }, { kind: 'text', role: 'courses', text: '예시CC' }, { kind: 'break' });
   if (extra.tags) steps.push({ kind: 'text', role: 'closing', text: '문의해 주세요.' }, { kind: 'break' }, { kind: 'text', role: 'linkCard', text: 'https://example.invalid/product' }, { kind: 'break' }, { kind: 'text', role: 'hashtags', text: '#골프 #예시' });
   const plan: InputPlan = { channel: 'blog', steps, discarded: [], notices: [] };
@@ -572,4 +572,45 @@ describe('WP20 blog runner boundary fault injection with the real fake editor', 
       expect(log.injected()).toBe(true); expect(log.store.list()).toHaveLength(1); expect(f.external()).toBe(0);
     } finally { runner.dispose(); log.reset(); }
   }, 40000);
+});
+
+
+describe.runIf(Boolean(executablePath))('WP29 real table input',()=>{
+  it('resizes the observed 3x3 by controls, preserves rich cells and surrounding photo/text order through a fresh draft',async()=>{
+    const f=await fixture('table-popup-move',{photos:2});
+    const cells=[['가','굵게 문의'],['','두 줄\n다음'],['끝','값']];
+    const cellRuns=[[[{text:'가'}],[{text:'굵게',bold:true},{text:' 문의',href:'https://example.invalid/a%2Fb?x=1&y=2'}]],[[],[{text:'두 줄\n다음'}]],[[{text:'끝'}],[{text:'값'}]]];
+    f.plan.steps=[{kind:'text',role:'title',text:'합성 표'},{kind:'text',role:'body',text:'앞'},{kind:'break'},{kind:'photos',urls:[f.files[0]!.url]},{kind:'table',role:'body',rows:cells,cellRuns},{kind:'break'},{kind:'text',role:'body',text:'뒤'},{kind:'break'},{kind:'photos',urls:[f.files[1]!.url]}];
+    await f.execution.write();expect(f.execution.tableModes).toEqual(['native']);
+    const actual=await f.execution.saveAndVerify();
+    expect(actual.tokens.map(t=>t.kind)).toEqual(['text','photo','table','text','photo']);
+    expect(actual.tokens[2]).toMatchObject({kind:'table',rows:cells});
+    expect(compareBlogFormatting(f.plan,actual)).toEqual([]);
+    expect(await f.counts()).toEqual({saves:1,publishes:0});expect(f.external()).toBe(0);
+  },45000);
+  it('grows columns and shrinks rows without padding or adding a heading',async()=>{
+    const f=await fixture('table-real');f.plan.steps=[{kind:'text',role:'title',text:'합성 크기'},{kind:'table',role:'body',rows:[['a','b','c','d']]}];
+    await f.execution.write();expect(f.execution.tableModes).toEqual(['native']);
+    expect((await f.execution.saveAndVerify()).tokens).toContainEqual(expect.objectContaining({kind:'table',rows:[['a','b','c','d']]}));
+  },30000);
+  it.each(['fallback','bad-table','table-cell-drop'])('removes only the new component and records visible %s fallback before saving exact text lines',async mode=>{
+    const f=await fixture(mode);f.plan.steps=[{kind:'text',role:'title',text:'합성 폴백'},{kind:'text',role:'body',text:'앞'},{kind:'break'},{kind:'table',role:'body',rows:[['a','b'],['c','d']]},{kind:'break'},{kind:'text',role:'body',text:'뒤'}];
+    const log=await loggedFixture(path.dirname(f.files[0]!.path),'blog_draft',async()=>{await f.execution.write();return f.execution.saveAndVerify();},['table_insert_started']);
+    expect(f.execution.tableModes).toEqual(['text-list']);expect(log.result.tokens.map(t=>t.kind)).toEqual(['text','text','text','text']);
+    expect(log.result.tokens.filter(t=>t.kind==='text').map(t=>t.text)).toEqual(['앞','a | b','c | d','뒤']);
+    expect(log.lines.filter(l=>l.step==='table_fallback')).toEqual([expect.objectContaining({reason:mode==='fallback'?'TABLE_TOOL_MISSING':mode==='bad-table'?'TABLE_SIZE_MISMATCH':'TABLE_CELL_MISMATCH'})]);
+    expect(await f.counts()).toEqual({saves:1,publishes:0});
+  },35000);
+  it('preserves multiline cells, bold and links when the recorded fallback uses text paragraphs',async()=>{
+    const f=await fixture('fallback');const cellRuns=[[[{text:'a\nx'}],[{text:'굵게',bold:true},{text:' 문의',href:'https://example.invalid/cell'}]],[[],[{text:'d'}]]];
+    f.plan.steps=[{kind:'text',role:'title',text:'합성 여러 줄 폴백'},{kind:'table',role:'body',rows:[['a\nx','굵게 문의'],['','d']],cellRuns}];
+    await f.execution.write();const actual=await f.execution.saveAndVerify();expect(f.execution.tableModes).toEqual(['text-list']);
+    expect(actual.tokens.filter(t=>t.kind==='text').map(t=>t.text)).toEqual(['a','x | 굵게 문의',' | d']);
+    expect(compareBlogFormatting(f.plan,actual,f.execution.tableModes)).toEqual([]);expect(await f.counts()).toEqual({saves:1,publishes:0});
+  },30000);
+  it('refuses every save if removal of its half-created table cannot be confirmed',async()=>{
+    const f=await fixture('table-cleanup-failed');f.plan.steps=[{kind:'text',role:'title',text:'합성 제거 실패'},{kind:'table',role:'body',rows:[['a','b']]}];
+    await expect(f.execution.write()).rejects.toThrow();expect(f.execution.tableModes).toEqual([]);
+    expect(f.beforeSave).not.toHaveBeenCalled();expect(await f.counts()).toEqual({saves:0,publishes:0});
+  },25000);
 });

@@ -1,5 +1,6 @@
 /** Fixed source identifiers. Never expand these lists from runtime page data. */
 export const traceSteps = [
+  "table_insert_started", "table_size", "cells_filled", "table_verified", "table_fallback",
   "band.confirm.response", "band.confirm.feed", "band.confirm.record", "band.confirm.detail",
   "photo.download",
   "photo.cleanup",
@@ -147,6 +148,7 @@ export const traceSteps = [
   "android.bridge.host.AndroidSurfaceHost.capture"
 ] as const;
 export const traceReasons = [
+  "READBACK_TABLE", "TABLE_TOOL_MISSING", "TABLE_SHAPE_UNSUPPORTED", "TABLE_INSERT_UNCONFIRMED", "TABLE_SIZE_MISMATCH", "TABLE_CELL_MISMATCH", "TABLE_EXIT_UNCONFIRMED", "TABLE_CLEANUP_UNCONFIRMED", "TABLE_CONTROL_MISSING",
   "BAND_RESPONSE_IDENTITY", "BAND_RESPONSE_NO_IDENTITY", "BAND_RESPONSE_UNOBSERVED", "BAND_IDENTITY_STORED",
   "BAND_CREATE_REJECTED", "BAND_PUBLISHED_READBACK_UNAVAILABLE", "BAND_POST_IDENTITY_AMBIGUOUS",
   "IDENTITY_READ_FAILED", "IDENTITY_NOT_FOUND",

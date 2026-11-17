@@ -15,6 +15,20 @@ function fixture(limits?: { days: number; bytes: number }, now?: () => number) {
   return { dir, store, files, lines };
 }
 describe('permanent local job logs', () => {
+  it('logs table counts and fixed reasons only, and retains the history fallback notice after restart', () => {
+    const f=fixture(), job=f.store.begin('blog_draft','naver');
+    f.store.run(job,()=>f.store.associate('synthetic-record'));
+    job.line('table_insert_started','start');
+    job.line('table_size','ok',{counts:{rows:3,columns:2,cellText:'NEVER_STORE'} as never});
+    job.line('cells_filled','ok',{counts:{cells:6}});
+    job.line('table_fallback','ok',{reason:'TABLE_CELL_MISMATCH',text:'NEVER_STORE'} as never);
+    job.line('verification','ok',{check:'table',reason:'READBACK_TABLE',counts:{expected:1,observed:1}});
+    job.end('succeeded');
+    expect(JSON.stringify(f.lines())).not.toContain('NEVER_STORE');
+    expect(f.lines().find(l=>l.step==='table_size').counts).toEqual({rows:3,columns:2});
+    expect(f.lines().find(l=>l.step==='cells_filled').counts).toEqual({cells:6});
+    expect(new JobLogStore(f.dir).forRecord('synthetic-record')).toMatchObject({tableFallback:true,result:'succeeded'});
+  });
   it('retains the published readback failure code instead of an unexplained terminal failure', () => {
     const f = fixture(), job = f.store.begin('blog_publish', 'naver');
     job.end('failed', 'BLOG_PUBLISHED_READBACK_MISMATCH');

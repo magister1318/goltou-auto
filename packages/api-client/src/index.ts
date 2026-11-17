@@ -32,6 +32,7 @@ export interface PostUpdate { postNo: number; status: PostStatus; step: number; 
 export interface Post extends PostUpdate {
   /** Local installation metadata; older records may lack it. */
   blogVisibility?: 'public' | 'private';
+  tableFallback?: boolean;
   productNo: number; productTitle: string; channel: Channel; mode: Mode; targetName: string;
   userName: string; startedAt: string; finishedAt: string; productChanged: boolean;
 }

@@ -2,7 +2,7 @@ export interface Run { text: string; bold?: boolean; href?: string }
 export type Block =
   | { kind: 'paragraph'; id: string; runs: Run[] }
   | { kind: 'image'; url: string }
-  | { kind: 'table'; rows: string[][]; flattened?: boolean }
+  | { kind: 'table'; rows: string[][]; cellRuns?: Run[][][]; flattened?: boolean }
   | { kind: 'rule' }
   | { kind: 'link'; text: string; href: string };
 export interface Discard { reason: string; tag: string; offset: number | null }
@@ -12,7 +12,7 @@ export type InputStep =
   | { kind: 'text'; role: Role; text: string; runs?: Run[]; paragraphId?: string; tableRow?: string[] }
   | { kind: 'break' }
   | { kind: 'photos'; urls: string[] }
-  | { kind: 'table'; role: Role; rows: string[][] };
+  | { kind: 'table'; role: Role; rows: string[][]; cellRuns?: Run[][][] };
 export interface InputPlan { channel: 'blog' | 'band'; steps: InputStep[]; discarded: Discard[]; notices: string[] }
 export interface ConvertOptions { closing?: boolean; closingText?: string; linkCard?: boolean; hashtags?: string[]; polishStrength?: import('@goltou/api-client').PolishStrength }
 export const runText = (runs: readonly Run[]) => runs.map(run => run.text).join('');

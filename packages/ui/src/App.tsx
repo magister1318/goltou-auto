@@ -1,3 +1,4 @@
+import { TableNotice } from './TableNotice';
 import { JobResultActions, needsServiceReview, serviceReviewHeading } from './JobResultActions';
 import { existingServiceResult } from '@goltou/core/job-safety';
 import { JobLogs, JobLogFailure } from './JobLogs';
@@ -1143,6 +1144,7 @@ export function App() {
                 <h1>{serviceReviewHeading(job)}</h1>
                 <p>{jobMessage(job)[0]}</p>
                 <p className="meta">{jobMessage(job)[1]}</p>
+                <TableNotice fallback={job.tableModes?.includes('text-list')} />
                 {resultRows}
                 {job.status === 'record_failed' && <button className="green" disabled={busy} onClick={()=>void act(async()=>{await request('job.retryRecord',{});})}>기록 다시 시도</button>}
               </main>
@@ -1178,6 +1180,7 @@ export function App() {
                 <p className="meta">
                   {job.title} · 사진 {product?.images.length ?? job.total}장
                 </p>
+                <TableNotice fallback={job.tableModes?.includes('text-list')} />
                 {resultRows}
                 {job.status === 'draft_saved' && (
                   <p className="hint">
@@ -1233,6 +1236,7 @@ export function App() {
                   </p>
                 )}
                 <p className="meta">{jobMessage(job)[1]}</p>
+                <TableNotice fallback={job.tableModes?.includes('text-list')} />
                 {resultRows}
                 {job.status === 'dialog_paused' && (
                   <button
@@ -1335,6 +1339,7 @@ export function App() {
                   >
                     {historyLine(post, recordTime(post.startedAt))}
                   </p>
+                  <TableNotice fallback={post.tableFallback || post.jobLog?.tableFallback} />
                   {!deletedPost(post) && (post.status === 'failed' || uncertainReason(post.failReason) || !!formattingMessage(post.failReason) || post.jobLog && ['failed', 'uncertain'].includes(post.jobLog.result)) && <JobLogFailure log={post.jobLog} reason={post.failReason} step={post.step} />}
                   {!deletedPost(post) && formattingMessage(post.failReason) && <p className="meta">{formattingMessage(post.failReason)}</p>}
                   {!deletedPost(post) && post.status === 'failed' && !formattingMessage(post.failReason) && (

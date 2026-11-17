@@ -1,7 +1,7 @@
 // Reference: ../refs/DAF/daf3/packages/engine-naver-editor/test/harness/fake-smarteditor.ts (bold toolbar selector only).
 import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import { inputCharacters, type KeyInput, type Surface } from '@goltou/surface';
-import { point, read } from '../dom';
+import { point, read, waitFor } from '../dom';
 import { BlogFormattingError, blogRunReader, normalizeBlogRuns, splitBlogRuns, type BlogRun, type NormalizedBlogRun } from './formatting';
 
 /** WP18 REAL-EDITOR ADAPTER. Phase B observed toolbar DOM and the focused input-buffer iframe.
@@ -30,11 +30,11 @@ interface Cursor {
   text: string; anchor: number; focus: number; focused: boolean; last: boolean;
   runs: NormalizedBlogRun[]; bold: boolean | null;
 }
-export async function readBlogCursor(surface: Surface): Promise<Cursor | null> {
+export async function readBlogCursor(surface: Surface, selector: string = blogRichEditor.paragraph): Promise<Cursor | null> {
     return traceStep('sites.naver-blog.rich-text.readBlogCursor', async () => {
   return read(surface, `${blogRunReader}
     for(const {d} of docs){
-      const paragraphs=Array.from(d.querySelectorAll(${JSON.stringify(blogRichEditor.paragraph)}));
+      const paragraphs=Array.from(d.querySelectorAll(${JSON.stringify(selector)}));
       const active=d.activeElement;
       const buffered=Array.from(d.querySelectorAll(${JSON.stringify(blogRichEditor.inputBuffer)})).includes(active)&&/^input_buffer[0-9]+$/.test(active.id)
         &&active.contentDocument?.activeElement===active.contentDocument?.body&&active.contentDocument?.body?.isContentEditable===true;
@@ -109,7 +109,7 @@ export class BlogRichTextWriter {
   private linked = 0;
   private finished: BlogRun[] = [];
   private entering = false;
-  constructor(text: string, runs: readonly BlogRun[], private readonly ordinal: number) {
+  constructor(text: string, runs: readonly BlogRun[], private readonly ordinal: number, private readonly selector: string = blogRichEditor.paragraph) {
     if (runs.map(r => r.text).join('') !== text) throw new BlogFormattingError('INPUT', [{ paragraph: ordinal, fields: ['text'] }]);
     this.paragraphs = splitBlogRuns(runs);
   }
@@ -126,7 +126,7 @@ export class BlogRichTextWriter {
   }
   private async cursor(s: Surface, text: string, collapsed = true) {
     return traceStep('sites.naver-blog.rich-text.BlogRichTextWriter.cursor', async () => {
-    const c = await readBlogCursor(s).catch(() => null);
+    const c = await readBlogCursor(s, this.selector).catch(() => null);
     if (!c || !c.focused || !c.last || c.text !== text || (collapsed && (c.anchor !== text.length || c.focus !== text.length))) this.fail();
     return c;
 
@@ -189,8 +189,19 @@ export class BlogRichTextWriter {
     await check();
     const control = await point(s, blogRichEditor.link); if (!control) this.fail();
     await s.click(control.x, control.y);
-    const address = await point(s, blogRichEditor.address); if (!address) this.fail();
-    await s.click(address.x, address.y); await s.pressKey(blogRichEditor.selectAddress);
+    // The real layer moves 6px while opening; a transient editor toast can
+    // also cover it after a table edit. Wait for a stable, hittable input.
+    let previous = '', stableSince = 0;
+    const address = await waitFor(async () => {
+      await check(); const p = await point(s, blogRichEditor.address), signature = JSON.stringify(p);
+      if (!p || signature !== previous) { previous = signature; stableSince = Date.now(); return null; }
+      if (Date.now() - stableSince < 350) return null;
+      return !s.readClickTarget || await s.readClickTarget(p.x,p.y,blogRichEditor.address) ? p : null;
+    }, 5000).catch(() => this.fail());
+    await s.click(address.x, address.y, async () => {
+      if (s.readClickTarget && !await s.readClickTarget(address.x,address.y,blogRichEditor.address)) this.fail();
+    });
+    await s.pressKey(blogRichEditor.selectAddress);
     const addressMatches = (expected: string | null) => read<boolean>(s, `const inputs=docs.flatMap(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(blogRichEditor.address)})).filter(visible));
       if(inputs.length!==1)return false;const e=inputs[0];return e===e.ownerDocument.activeElement&&${expected === null ? 'e.selectionStart===0&&e.selectionEnd===e.value.length' : `e.value===${JSON.stringify(expected)}`};`).catch(() => false);
     if (!await addressMatches(null)) this.fail();

@@ -335,6 +335,7 @@ textarea {
   table-layout: fixed;
 }
 .converted-content td {
+  white-space: pre-wrap;
   border: 1px solid var(--line);
   padding: 6px;
   overflow-wrap: anywhere;
