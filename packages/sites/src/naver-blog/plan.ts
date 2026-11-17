@@ -614,6 +614,8 @@ export class BlogExecution {
     if (expectedBlogTags(this.plan).length || await point(this.surface!, tagPanelToggle)) {
       await this.tagInput(); observed = await readBlogDocument(this.surface!);
     }
+    // Keep the existing non-table path; the additional settling is for tables.
+    if (!this.plan.steps.some(step=>step.kind==='table')) return observed;
     const settled = await settledReadback({ read: () => readBlogDocument(this.surface!), check: this.env.check, timeoutMs: 15000,
       classes: value => [{ check: 'table', reason: 'READBACK_TABLE', expected: this.plan.steps.filter(s=>s.kind==='table').filter((_,i)=>this.tableModes[i]!=='text-list').length,
         observed: value?.tokens.filter(t=>t.kind==='table').length ?? 0, present: !!value && blogTablesMatch(this.plan,value,this.tableModes) }] });

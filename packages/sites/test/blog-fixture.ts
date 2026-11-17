@@ -68,7 +68,7 @@ export function blogFixture(mode = '') {
       else {t.remove();focus(next.querySelector('p'))}
     };
     const refresh=()=>{
-      if(!mode.startsWith('table-'))return;
+      if(mode==='bad-table')return;
       const control=t.querySelector('.se-table-control');control.querySelectorAll('ul').forEach(e=>e.remove());
       for(const axis of ['column','row']){
         const bar=document.createElement('ul');bar.className='se-cell-controlbar-'+axis;bar.style.cssText='display:flex;list-style:none;margin:0;padding:0';
