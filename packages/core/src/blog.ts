@@ -10,6 +10,7 @@ export interface BlogServices {
   lastTypedTitle?: import('./blog-title-store').BlogTitleStore;
   editorUrl?: string;
   localPublish?: boolean;
+  publishedSettleMs?: number;
   publishEnabled?: boolean;
   draftSaveLimit?: number;
   publishProbe?: NonNullable<import('@goltou/sites').BlogEnvironment['publishProbe']>;

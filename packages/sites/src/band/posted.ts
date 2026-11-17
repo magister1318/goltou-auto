@@ -1,6 +1,8 @@
 import type { Surface } from '@goltou/surface';
 import { trace, traceStep } from '@goltou/surface/telemetry';
 import { read } from '../dom';
+import { settledReadback } from '../settled-readback';
+import { blogHashtagPattern } from '../naver-blog/tag-patterns';
 import { containsServiceLink, ReadbackMismatch, tokenText, type ReadbackIssue, type ServiceLink, type ServiceTextToken } from '../readback-checks';
 
 export interface CreatedBandPost { url: string; body: string; createdAt: number; owned: boolean; photoCount: number; }
@@ -19,7 +21,7 @@ export function createdBandPosts(body: string, band: string): CreatedBandPost[] 
     return [{ url: `https://band.us${u.pathname}`, body: storedText(p.content), createdAt: p.created_at as number, owned: author?.me === true, photoCount: p.photo_count as number }];
   });
 }
-export interface FullBandPost { body: string; photos: string[]; lineBreaks: number; hashtags: number; links: number; tagTexts: string[]; linkUrls: string[]; tagTokens: ServiceTextToken[]; linkTokens: ServiceLink[]; }
+export interface FullBandPost { body: string; photos: string[]; photosLoaded?: number; lineBreaks: number; hashtags: number; links: number; tagTexts: string[]; linkUrls: string[]; tagTokens: ServiceTextToken[]; linkTokens: ServiceLink[]; }
 /** innerText omits trailing spaces on each rendered line; preserve every line and all wording. */
 export function normalizedBandBody(body: string) { return body.replace(/\r\n?/g, '\n').replace(/[\u200b-\u200d\ufeff]/g, '').split('\n').map(line => line.trimEnd()).join('\n').trimEnd(); }
 export function photoPath(value: string) {
@@ -47,8 +49,36 @@ export async function readFullBandPost(surface: Surface): Promise<FullBandPost |
       if(linkNodes.includes(n))linkTokens.push({text:label,start:offset,href:n.href});
       for(const child of n.childNodes)walk(child);
     };walk(text);
-    return {tagTokens,linkTokens,body,photos:all.map(img=>img.currentSrc||img.src||''),lineBreaks:(body.match(/\\n/g)||[]).length,hashtags:tagTexts.length,links:linkUrls.length,tagTexts,linkUrls};
+    return {tagTokens,linkTokens,body,photos:all.map(img=>img.currentSrc||img.src||''),photosLoaded:all.filter(img=>img.complete&&img.naturalWidth>0&&img.naturalHeight>0).length,lineBreaks:(body.match(/\\n/g)||[]).length,hashtags:tagTexts.length,links:linkUrls.length,tagTexts,linkUrls};
   `).then(value => { if (!value) trace('selector', 'wait', { selector: 'body', reason: 'CONTROL_NOT_FOUND', counts: { expected: 1, observed: 0 } }); return value; }));
+}
+export async function settleFullBandPost(surface: Surface, expected: string, uploaded: readonly string[], check: () => void, timeoutMs = 90000, readCurrent = () => readFullBandPost(surface)) {
+  const planned = normalizedBandBody(expected);
+  // The embedded runtime has no ICU property escapes. Reuse the existing
+  // explicit keyword ranges for presence counts; Band's exact token positions
+  // and wording are still verified independently below.
+  const expectedTags = (planned.match(blogHashtagPattern) ?? []).length;
+  const expectedLinks = (planned.match(/https?:\/\/[^\s]+/g) ?? []).length;
+  const result = await settledReadback({ read: readCurrent, check, timeoutMs,
+    classes: value => [
+      {check:'title',reason:'READBACK_TITLE',expected:1,observed:value?.body.split('\n')[0]?1:0,present:!!value?.body.split('\n')[0]},
+      {check:'text',reason:'READBACK_TEXT',expected:planned.length,observed:value?.body.length??0,present:(value?.body.length??0)>=planned.length},
+      {check:'line_breaks',reason:'READBACK_PARAGRAPHS',expected:(planned.match(/\n/g)??[]).length,observed:value?.lineBreaks??0,present:(value?.lineBreaks??0)>=(planned.match(/\n/g)??[]).length},
+      {check:'photos',reason:'READBACK_PHOTOS',expected:uploaded.length,observed:value?.photosLoaded??0,present:!!value&&value.photos.length>=uploaded.length&&value.photosLoaded===value.photos.length},
+      {check:'hashtags',reason:'READBACK_TAGS',expected:expectedTags,observed:value?.hashtags??0,present:(value?.hashtags??0)>=expectedTags},
+      {check:'links',reason:'READBACK_LINKS',expected:expectedLinks,observed:value?.links??0,present:(value?.links??0)>=expectedLinks},
+    ],
+    reveal: async value => { if(value&&(value.photosLoaded??0)<uploaded.length)await surface.pressKey({key:'PageDown'}); },
+  });
+  if(!result.value)throw Error('BAND_PUBLISHED_READBACK_UNAVAILABLE');
+  if(!result.stable)throw new ReadbackMismatch('BAND_PUBLISHED_READBACK_UNAVAILABLE',[{field:'stability'},...result.classes.filter(c=>!c.present).map(c=>({field:c.check as ReadbackIssue['field']}))]);
+  const issues: ReadbackIssue[] = [];
+  if(result.value.photosLoaded!==uploaded.length)issues.push({field:'photos'});
+  if((result.value.hashtags??0)<expectedTags)issues.push({field:'hashtags'});
+  if((result.value.links??0)<expectedLinks)issues.push({field:'links'});
+  try { verifyFullBandPost(expected,uploaded,result.value); } catch(error) { if(error instanceof ReadbackMismatch)issues.push(...error.issues);else throw error; }
+  if(issues.length)throw new ReadbackMismatch('BAND_PUBLISHED_READBACK_MISMATCH',issues);
+  return result.value;
 }
 export function verifyFullBandPost(expected: string, uploaded: readonly string[], actual: FullBandPost) {
   const planned = normalizedBandBody(expected);

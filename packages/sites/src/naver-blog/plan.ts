@@ -8,19 +8,20 @@ import { ControlNotFoundError } from '../control-failure';
 import { closeTagLayer, protectBlogInputs, requireTagFocus, requireTagLayerClosed, tagInputSelector, tagPanelToggle } from './draft-safety';
 import { finalPublishSelector, guardedPublishClick, inspectPrivateRequest, inspectPublicRequestDecision, postIdentity, readVisibility, requireVisibility, selectVisibility, type BlogVisibility, type PublishedPost, type VisibilityProof } from './publish-safety';
 import { parsePublishIdentity, resolvePublishEvidence, type ResponseIdentity, type PublishedPage, type PublishIdentitySource } from './publish-identity';
-import { containsServiceLink, tokenText } from '../readback-checks';
+import { containsServiceLink, tokenText, ReadbackMismatch, type ReadbackIssue } from '../readback-checks';
+import { settledReadback, type ReadbackClass } from '../settled-readback';
 import { BlogRichTextWriter } from './rich-text';
 import { BlogFormattingError, blogRunReader, normalizeBlogRuns, splitBlogRuns, type BlogRun, type FormattingStage } from './formatting';
 import { closeDraftEntries, draftEntries, draftItem, draftSaveReceipt, identifySavedDraft, openDraftEntries, type DraftEntry } from './draft-identity';
-import { expectedBlogTags, plannedBlogTags, sameBlogTags } from './tags';
+import { expectedBlogTags, plannedBlogTags, sameBlogTags, sameServiceBlogTags } from './tags';
 
 /** Structural subset of WP4 InputPlan. Sites has no dependency on core or a device API. */
 export interface BlogPlan {
   channel: 'blog' | 'band';
   steps: ({ kind: 'text'; role: string; text: string; runs?: BlogRun[] } | { kind: 'break' } | { kind: 'photos'; urls: string[] } | { kind: 'table'; role: string; rows: string[][] })[];
 }
-export type BlogToken = { kind: 'text'; text: string; runs?: BlogRun[] } | { kind: 'photo'; identity: string };
-export interface BlogReadback { title: string; tokens: BlogToken[]; tags: string[] }
+export type BlogToken = { kind: 'text'; text: string; runs?: BlogRun[] } | { kind: 'photo'; identity: string; loaded?: boolean };
+export interface BlogReadback { title: string; tokens: BlogToken[]; tags: string[]; visibility?: BlogVisibility | null }
 export interface BlogProgress { characters: number; totalCharacters: number; photos: number; totalPhotos: number; photoUploadMilliseconds?: number; photoUploadSamples?: number; activity?: import('../progress').EngineActivity; ownRecoveryDiscarded?: boolean; blogParagraph?: { blockIndex: number; runs: BlogRun[] }; blogInputReset?: boolean }
 export interface BlogEnvironment {
   host: SurfaceHost;
@@ -31,6 +32,8 @@ export interface BlogEnvironment {
   editorUrl?: string;
   /** Loopback fixtures only. Never bypasses visibility or content verification. */
   localPublish?: boolean;
+  /** Loopback timing tests may shorten the deadline; production always uses the generous default. */
+  publishedSettleMs?: number;
   /** Debug shell capability, separate from real publish authorization. ALWAYS blocks. */
   publishProbe?: { visibility: BlogVisibility; record(request: GuardedRequest, proof: VisibilityProof | undefined): Promise<void> };
   recordPublishResponse?(response: GuardedResponse): Promise<void>;
@@ -44,7 +47,7 @@ const bodySelector = '.se-component.se-text .se-text-paragraph';
 const ua = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36';
 
 /** Read document order, cells and uploaded filenames independently of the input plan. */
-export async function readBlogDocument(surface: Surface, documentUrls?: readonly string[]): Promise<BlogReadback> {
+export async function readBlogDocument(surface: Surface, documentUrls?: readonly string[], published = false): Promise<BlogReadback> {
     return traceStep('sites.naver-blog.plan.readBlogDocument', async () => {
   return read(surface, `
     ${blogRunReader}
@@ -62,9 +65,12 @@ export async function readBlogDocument(surface: Surface, documentUrls?: readonly
         for(const p of e.querySelectorAll('.se-text-paragraph')) {const runs=paragraphRuns(p),t=runs.map(r=>r.text).join('');if(t.length&&t!=='\u200b') tokens.push({kind:'text',text:t,runs});}
       } else if(e.classList.contains('se-image')) {
         for(const img of e.querySelectorAll('.se-image-resource')) {
-          const raw=[img.getAttribute('src'),img.getAttribute('data-file-name'),img.getAttribute('alt')].join(' ');
+          const raw=[img.currentSrc,img.getAttribute('src'),img.getAttribute('data-lazy-src'),img.getAttribute('data-src'),img.getAttribute('data-file-name'),img.getAttribute('alt')].join(' ');
           const match=/goltou-[a-f0-9]{16}-[0-9]+\\.[a-z]+/i.exec(raw);
-          tokens.push({kind:'photo',identity:match?match[0]:''});
+          const photo={kind:'photo',identity:match?match[0]:''};
+          // Object spread is rejected by Chromium's throwOnSideEffect reader.
+          if(${published})photo.loaded=img.complete&&img.naturalWidth>0&&img.naturalHeight>0&&/goltou-[a-f0-9]{16}-[0-9]+/i.test(img.currentSrc||img.getAttribute('src')||'');
+          tokens.push(photo);
         }
       } else if(e.classList.contains('se-table')) {
         for(const row of e.querySelectorAll('tr')) tokens.push({kind:'text',text:Array.from(row.querySelectorAll('td,th')).map(text).join(' | '),runs:Array.from(row.querySelectorAll('td,th')).flatMap((cell,i)=>[...(i?[{text:' | ',bold:false,href:null}]:[]),...paragraphRuns(cell)])});
@@ -705,7 +711,9 @@ export class BlogExecution {
         const pages = await read<PublishedPage[]>(s, `return docs.map(({d})=>({url:d.location.href,titles:Array.from(d.querySelectorAll('.se-documentTitle .se-text-paragraph')).map(e=>(e.textContent||'').trimStart().trimEnd())}));`).catch(() => []);
         const evidence = resolvePublishEvidence(this.responsePost, [state.url], pages, this.title.text);
         const identity = evidence.post;
-        if (!identity || !pages.some(p => postIdentity(p.url)?.url === identity.url && p.titles.length === 1 && p.titles[0] === this.title.text)) return false;
+        // Retain a proven response/navigation identity before viewer hydration.
+        // Title and every other content class settle together below.
+        if (!identity) return false;
         this.publishedPost = identity;
         this.publishedIdentitySources = evidence.sources;
         return true;
@@ -725,32 +733,89 @@ export class BlogExecution {
     const s = this.surface!;
     const started = Date.now(); let navigationKeys = 0;
     const ownUrls = async () => (await read<string[]>(s, `return docs.map(({d})=>d.location.href);`)).filter(url => postIdentity(url)?.url === this.publishedPost!.url);
-    const value = await waitFor(async () => {
-      this.env.check();
-      const urls = await ownUrls();
-      const actual = await readBlogDocument(s, urls).catch(() => null);
-      if (!actual) return false;
-      if (actual.tokens.every(t => t.kind !== 'photo' || t.identity)) return actual;
-      const focus = await read<{ x: number; y: number } | null>(s, `for(const {d,x,y} of docs) {
-        if(!${JSON.stringify(urls)}.includes(d.location.href))continue;
-        const e=d.querySelector(${JSON.stringify(titleSelector)});if(!e||!visible(e))continue;
-        const r=e.getBoundingClientRect();return {x:x+r.left+r.width/2,y:y+r.top+r.height/2};
-      }return null;`);
-      if (!focus || !await s.readClickTarget?.(focus.x, focus.y, titleSelector)) throw new Error('BLOG_PUBLISHED_FOCUS_UNCONFIRMED');
-      await s.click(focus.x, focus.y);
-      await s.pressKey({ key: 'PageDown' }); navigationKeys++;
-      return false;
-    }, Math.max(30000, this.files.length * 2000));
-    const identities = await read<string[]>(s, `return docs.map(({d})=>d.location.href);`);
-    if (!identities.some(url => postIdentity(url)?.url === this.publishedPost!.url)) throw new Error('BLOG_PUBLISH_ID_UNCONFIRMED');
-    if (this.visibility === 'private') {
-      const privateMarked = await read<boolean>(s, `return docs.some(({d})=>${JSON.stringify(await ownUrls())}.includes(d.location.href)&&Array.from(d.querySelectorAll('.post_visibility, .blog2_visibility, .post_author, [data-post-visibility], .se-documentTitle .blog2_container .writer .desc .txt')).some(e=>visible(e)&&(e.textContent||'').trimStart().trimEnd()==='비공개'));`);
-      if (!privateMarked) throw new Error('BLOG_PUBLISHED_PRIVATE_UNCONFIRMED');
-    }
-    this.verifyDocument(value, 'PUBLISHED');
+    const paragraphs = plannedBlogParagraphs(this.plan);
+    const runs = (value: BlogReadback | null) => value?.tokens.flatMap(t => t.kind === 'text' ? normalizeBlogRuns(t.runs ?? []) : []) ?? [];
+    const plannedRuns = paragraphs.flatMap(normalizeBlogRuns);
+    const expectedPhotos = this.plan.steps.reduce((n, step) => n + (step.kind === 'photos' ? step.urls.length : 0), 0);
+    const classes = (value: BlogReadback | null): ReadbackClass[] => {
+      const photos = value?.tokens.filter(t => t.kind === 'photo') ?? [], observedRuns = runs(value);
+      return [
+        { check: 'title', reason: 'READBACK_TITLE', expected: 1, observed: value?.title ? 1 : 0, present: !!value?.title },
+        { check: 'paragraphs', reason: 'READBACK_PARAGRAPHS', expected: paragraphs.length, observed: value?.tokens.filter(t => t.kind === 'text').length ?? 0, present: (value?.tokens.filter(t => t.kind === 'text').length ?? 0) >= paragraphs.length },
+        { check: 'text', reason: 'READBACK_TEXT', expected: plannedRuns.reduce((n,r)=>n+r.text.length,0), observed: observedRuns.reduce((n,r)=>n+r.text.length,0), present: observedRuns.reduce((n,r)=>n+r.text.length,0) >= plannedRuns.reduce((n,r)=>n+r.text.length,0) },
+        { check: 'bold', reason: 'READBACK_BOLD', expected: plannedRuns.filter(r=>r.bold).length, observed: observedRuns.filter(r=>r.bold).length, present: observedRuns.filter(r=>r.bold).length >= plannedRuns.filter(r=>r.bold).length },
+        { check: 'links', reason: 'READBACK_LINKS', expected: plannedRuns.filter(r=>r.href).length, observed: observedRuns.filter(r=>r.href).length, present: observedRuns.filter(r=>r.href).length >= plannedRuns.filter(r=>r.href).length },
+        { check: 'photos', reason: 'READBACK_PHOTOS', expected: expectedPhotos, observed: photos.filter(t=>t.kind==='photo'&&t.identity&&t.loaded).length, present: photos.length >= expectedPhotos && photos.every(t=>t.kind==='photo'&&!!t.identity&&t.loaded===true) },
+        { check: 'hashtags', reason: 'READBACK_TAGS', expected: plannedBlogTags(this.plan).length, observed: value?.tags.length ?? 0, present: (value?.tags.length ?? 0) >= plannedBlogTags(this.plan).length },
+        { check: 'visibility', reason: 'READBACK_VISIBILITY', expected: 1, observed: value?.visibility ? 1 : 0, present: !!value?.visibility },
+      ];
+    };
+    let mobile: Surface | undefined, sweepStarted = false;
+    try {
+      // Public visibility has an independently observed openType=2 on the real
+      // mobile post. Never infer it merely from the requested publish setting.
+      if (!this.env.localPublish && this.visibility === 'public') {
+        mobile = await this.env.host.create('naver');
+        if (!mobile.blockRequests) throw Error('BLOG_READBACK_BARRIER_UNAVAILABLE');
+        await mobile.blockRequests([{ hostname: 'blog.naver.com', pathname: '/RabbitWrite.naver' }, { hostname: 'blog.naver.com', pathname: '/RabbitAutoSaveWrite.naver' }]);
+        await mobile.open({ url: this.publishedPost.url.replace('https://blog.naver.com/', 'https://m.blog.naver.com/'), session: 'naver', width: 412, height: 900, userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36' });
+      }
+      const settled = await settledReadback({
+        timeoutMs: this.env.localPublish && this.env.publishedSettleMs !== undefined ? this.env.publishedSettleMs : Math.max(90000, expectedPhotos * 4000),
+        check: this.env.check, classes,
+        read: async () => {
+          const urls = await ownUrls();
+          const hasViewer = await read<boolean>(s, `return docs.some(({d})=>${JSON.stringify(urls)}.includes(d.location.href)&&!!d.querySelector('.se-documentTitle'));`);
+          if (!hasViewer) return null;
+          const actual = await readBlogDocument(s, urls, true);
+          if (mobile) {
+            const proof = await read<{url:string;title:string;openType:number|null;login:boolean}>(mobile, `return {url:location.href,title:document.querySelector(${JSON.stringify(titleSelector)})?.textContent||'',openType:typeof openType==='number'?openType:null,login:!!document.querySelector('input[type="password"]')};`);
+            if (proof.login) throw Error('LOGIN_OR_EDITOR_LOST');
+            actual.visibility = postIdentity(proof.url)?.url === this.publishedPost!.url && proof.title.trimStart().trimEnd() === actual.title ? proof.openType === 2 ? 'public' : proof.openType === 0 ? 'private' : null : null;
+          } else {
+            actual.visibility = await read<BlogVisibility|null>(s, `for(const {d} of docs){if(!${JSON.stringify(urls)}.includes(d.location.href))continue;const values=Array.from(d.querySelectorAll('.post_visibility, .blog2_visibility, .post_author, [data-post-visibility], .se-documentTitle .blog2_container .writer .desc .txt')).filter(visible).map(e=>(e.textContent||'').trimStart().trimEnd());if(values.includes('전체공개'))return 'public';if(values.includes('비공개'))return 'private';}return null;`);
+          }
+          return actual;
+        },
+        reveal: async value => {
+          if (value && classes(value).find(c=>c.check==='photos')?.present) return;
+          // Focus once at the top, then retain that focus while advancing.
+          // Re-clicking the title each poll would reset the lazy-load sweep.
+          if (!sweepStarted) {
+            const urls = await ownUrls();
+            const focusSelector = `${titleSelector}, ${bodySelector}`;
+            const focus = await read<{x:number;y:number}|null>(s, `for(const {d,x,y} of docs){if(!${JSON.stringify(urls)}.includes(d.location.href))continue;for(const e of d.querySelectorAll(${JSON.stringify(focusSelector)})){if(!visible(e)||e.querySelector('a,button,input'))continue;const r=e.getBoundingClientRect();if(y+r.top>=0&&y+r.bottom<innerHeight)return{x:x+r.left+r.width/2,y:y+r.top+r.height/2};}}return null;`);
+            if (!focus) return;
+            if (!await s.readClickTarget?.(focus.x, focus.y, focusSelector)) throw Error('BLOG_PUBLISHED_FOCUS_UNCONFIRMED');
+            await s.click(focus.x, focus.y); sweepStarted = true;
+          }
+          await s.pressKey({key:'PageDown'}); navigationKeys++;
+        },
+      });
+      const value = settled.value;
+      if (!value) throw new ReadbackMismatch('BLOG_PUBLISHED_READBACK_UNAVAILABLE', settled.classes.filter(c=>!c.present).map(c=>({field:c.check==='paragraphs'?'text':c.check as ReadbackIssue['field']})));
+      if (!settled.stable) throw new ReadbackMismatch('BLOG_PUBLISHED_READBACK_UNAVAILABLE', [{field:'stability'}, ...settled.classes.filter(c=>!c.present).map(c=>({field:c.check==='paragraphs'?'text' as const:c.check as ReadbackIssue['field']}))]);
+      const issues: ReadbackIssue[] = [];
+      if (!settled.classes.find(c=>c.check==='photos')!.present) issues.push({field:'photos'});
+      if (value.visibility !== this.visibility) issues.push({field:'visibility'});
+      if (!sameServiceBlogTags(this.plan, value.tags)) issues.push({field:'hashtags'});
+      for (const issue of compareBlogFormatting(this.plan, value)) for (const field of issue.fields) issues.push({field:field==='href'?'links':field==='input'?'text':field,paragraph:issue.paragraph});
+      try { this.env.verify(value, 'PUBLISHED'); } catch(error) { if(error instanceof ReadbackMismatch) issues.push(...error.issues); else throw error; }
+      if (issues.length) {
+        for(const item of settled.classes) trace('verification', issues.some(issue=>issue.field===(item.check==='paragraphs'?'text':item.check))?'fail':'ok', {check:item.check,reason:item.reason,counts:{expected:item.expected,observed:item.observed}},Date.now()-started);
+        trace('verification', settled.stable?'ok':'fail', {check:'stability',reason:'READBACK_STABILITY',counts:{expected:2,observed:settled.stable?2:1}},Date.now()-started);
+        if (issues.length===1 && issues[0]?.field==='visibility' && this.visibility==='private') throw Error('BLOG_PUBLISHED_PRIVATE_UNCONFIRMED');
+        throw new ReadbackMismatch('BLOG_READBACK_MISMATCH:'+ [...new Set(issues.map(i=>i.field))].join(','), issues);
+      }
     this.readbackTimings.push({ photos: value.tokens.filter(t => t.kind === 'photo').length, milliseconds: Date.now() - started, navigationKeys });
+    const pages = await read<PublishedPage[]>(s, `return docs.map(({d})=>({url:d.location.href,titles:Array.from(d.querySelectorAll('.se-documentTitle .se-text-paragraph')).map(e=>(e.textContent||'').trimStart().trimEnd())}));`);
+    const evidence = resolvePublishEvidence(this.responsePost, [(await s.readState()).url], pages, this.title.text);
+    if (evidence.post?.url !== this.publishedPost.url) throw Error('BLOG_PUBLISH_ID_UNCONFIRMED');
+    this.publishedIdentitySources = evidence.sources;
+    trace('verification','ok',{check:'stability',reason:'READBACK_STABILITY',counts:{expected:2,observed:2}},Date.now()-started);
     this.publishedVerified = true;
     return value;
+    } finally { if (mobile) await this.env.host.destroy(mobile); }
 
     });
   }

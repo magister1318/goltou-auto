@@ -39,7 +39,7 @@ async function fixture(failure = '', visibility: 'public' | 'private' = 'private
       const final=panel.querySelector('[data-click-area="tpb*i.publish"]');
       if(${JSON.stringify(failure)}==='hover')final.onmouseover=()=>{radios.querySelector('#public').checked=true};
       final.onclick=async()=>{
-        const snapshot={title:title.textContent,html:main.innerHTML,tags:document.querySelector('.tag_list').innerHTML};
+        const snapshot={title:title.textContent,html:main.innerHTML,tags:${JSON.stringify(failure)}.startsWith('tags-')?Array.from(panel.querySelectorAll('[aria-label]')).map(e=>'<span class="tag">'+e.textContent+'</span>').join(''):document.querySelector('.tag_list').innerHTML};
         const openType=Number(${JSON.stringify(failure)}==='request'?'2':panel.querySelector('[name=open_type]:checked').value);
         try { const response=await fetch('/RabbitWrite.naver',{method:'POST',body:new URLSearchParams({blogId:'synthetic',documentModel:JSON.stringify(snapshot),mediaResources:'{}',populationParams:JSON.stringify({configuration:{openType}}),productApiVersion:'v1',tokenId:'synthetic'})});
           await response.text();location.href=${JSON.stringify(failure === 'title-source' ? 'https://blog.naver.com/synthetic-shell' : url)}; }catch{}
@@ -65,13 +65,15 @@ async function fixture(failure = '', visibility: 'public' | 'private' = 'private
   await context.route('**/*', route => {
     const target = new URL(route.request().url());
     if (target.hostname === '127.0.0.1') return route.continue();
-    if (target.hostname === 'blog.naver.com' && target.pathname.startsWith('/photos/')) return route.fulfill({ body: '' });
+    if (target.hostname === 'blog.naver.com' && target.pathname.startsWith('/photos/')) return route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=', 'base64') });
     if (target.href === 'https://blog.naver.com/synthetic-shell') return route.fulfill({ contentType: 'text/html', body: `<div class="se-documentTitle"><p class="se-text-paragraph">${stored.title}</p></div><div class="se-viewer">stale editor content</div><iframe src="${url}"></iframe>` });
     if (target.hostname === 'blog.naver.com' && target.pathname === '/PostList.naver') return route.fulfill({ contentType: 'text/html', body: '<main data-post-list><a href="/synthetic_fixture/9002">other synthetic post</a></main>' });
     if (target.href === 'https://blog.naver.com/delete-fixture') { deleted = true; return route.fulfill({ body: '{}' }); }
     if (target.href === url) {
       const marker = failure === 'writer-private' ? '<div class="blog2_container"><span class="writer"><span class="desc"><span class="txt">비공개</span></span></span></div>' : '';
-      const html = deleted ? '<div data-post-deleted>삭제된 글입니다</div>' : `<div class="se-documentTitle"><p class="se-text-paragraph">${stored.title}</p>${marker}</div><div class="se-viewer">${failure === 'content' ? stored.html.replace('1190000','1190001') : failure === 'formatting' ? stored.html.replace(/<\/?(?:b|strong|a)\b[^>]*>/g, '') : stored.html}</div><div class="tag_list">${stored.tags}</div>${marker ? '' : `<div class="post_visibility">${visibility === 'private' && failure !== 'private-in-body' ? '비공개' : '전체공개'}</div>`}${failure === 'private-in-body' ? '<div class="blog2_container"><span class="writer"><span class="desc"><span class="txt">비공개</span></span></span></div>' : ''}<div class="area_btn_postedit"><a href="#">수정</a><a href="#" class="_deletePost" onclick="event.preventDefault();if(confirm('삭제된 글은 복구할 수 없습니다. 삭제하시겠습니까?'))fetch('/delete-fixture',{method:'POST'})">삭제</a></div>`;
+      const tags = ['tags-late', 'tags-missing'].includes(failure) ? '' : stored.tags;
+      const hydration = failure === 'tags-late' ? `<script>setTimeout(()=>{document.querySelector('.tag_list').innerHTML=${JSON.stringify(stored.tags)}},1500)</script>` : '';
+      const html = deleted ? '<div data-post-deleted>삭제된 글입니다</div>' : `<div class="se-documentTitle"><p class="se-text-paragraph">${stored.title}</p>${marker}</div><div class="se-viewer">${failure === 'content' ? stored.html.replace('1190000','1190001') : failure === 'formatting' ? stored.html.replace(/<\/?(?:b|strong|a)\b[^>]*>/g, '') : stored.html}</div><div class="tag_list">${tags}</div>${hydration}${marker ? '' : `<div class="post_visibility">${visibility === 'private' && failure !== 'private-in-body' ? '비공개' : '전체공개'}</div>`}${failure === 'private-in-body' ? '<div class="blog2_container"><span class="writer"><span class="desc"><span class="txt">비공개</span></span></span></div>' : ''}<div class="area_btn_postedit"><a href="#">수정</a><a href="#" class="_deletePost" onclick="event.preventDefault();if(confirm('삭제된 글은 복구할 수 없습니다. 삭제하시겠습니까?'))fetch('/delete-fixture',{method:'POST'})">삭제</a></div>`;
       return route.fulfill({ contentType: 'text/html; charset=utf-8', body: html });
     }
     outside++; return route.abort();
@@ -93,13 +95,35 @@ async function fixture(failure = '', visibility: 'public' | 'private' = 'private
     { kind: 'photos', urls: files.map(file => file.url) },
     { kind: 'table', role: 'departures', rows: [['2026-12-03', '1190000원']] },
   ], discarded: [], notices: [] };
+  if (failure.startsWith('tags-')) plan.steps.push({ kind: 'text', role: 'hashtags', text: '#one #two' });
   const probed: string[] = [];
-  const execution = createBlogExecution(plan, files, { host, editorUrl, localPublish: true,
+  const execution = createBlogExecution(plan, files, { host, editorUrl, localPublish: true, publishedSettleMs: 3500,
     ...(probe ? { publishProbe: { visibility, record: async (request: import('@goltou/surface').GuardedRequest) => { probed.push(new URL(request.url).pathname); if (failure === 'evidence') throw new Error('DISK_FAILED'); } } } : {}),
   }, { mode: 'publish', visibility, beforeSave() {}, check() {}, progress() {} });
   return { execution, host, url, files, probed, counts: () => ({ published, deleted, outside, submissions }) };
 }
 describe.runIf(Boolean(executablePath))('publish, verified against synthetic loopback service only', () => {
+  it('waits for delayed published tags and ends one successful job without republishing', async () => {
+    const f = await fixture('tags-late', 'public', false, false, true);
+    const log = await loggedFixture(path.dirname(f.files[0]!.path), 'blog_publish', async () => {
+      await f.execution.write(); await f.execution.saveAndVerify();
+      expect(await f.execution.publish()).toBe(f.url);
+    }, ['sites.naver-blog.plan.BlogExecution.publish']);
+    expect(f.execution.publishedVerified).toBe(true);
+    expect(log.lines.some(row => row.step === 'verification' && row.event === 'wait' && row.check === 'hashtags' && row.counts?.observed === 0)).toBe(true);
+    expect(log.lines.filter(row => row.step === 'terminal').map(row => row.result)).toEqual(['succeeded']);
+    expect(f.counts()).toEqual({ published: 1, deleted: false, outside: 0, submissions: 1 });
+    await expect(f.execution.publish()).rejects.toThrow('BLOG_PUBLISH_ALREADY_ATTEMPTED');
+  }, 90000);
+  it('keeps permanently missing published tags failed with the receipt and no second submit', async () => {
+    const f = await fixture('tags-missing', 'public', false, false, true);
+    await f.execution.write(); await f.execution.saveAndVerify();
+    await expect(f.execution.publish()).rejects.toThrow('BLOG_READBACK_MISMATCH');
+    expect(f.execution.publishedVerified).toBe(false);
+    expect(f.execution.publishedPost?.url).toBe(f.url);
+    expect(f.counts()).toEqual({ published: 1, deleted: false, outside: 0, submissions: 1 });
+    await expect(f.execution.publish()).rejects.toThrow('BLOG_PUBLISH_ALREADY_ATTEMPTED');
+  }, 90000);
   it('reads the observed writer private marker, restores only the original failed record and then uses regular deletion', async () => {
     const product: Product = { productNo: 1, title: '일반 합성 상품', country: '', region: '', updatedAt: '', contentHash: 'synthetic-hash', contentsHtml: '<p>본문 15 안내</p>' + Array.from({ length: 13 }, (_, i) => `<img src="https://example.invalid/${i + 1}">`).join(''), images: Array.from({ length: 13 }, (_, i) => ({ order: i + 1, url: `https://example.invalid/${i + 1}` })), departures: [{ date: '2026-12-03', price: 1190000 }], golfCourses: [], productUrl: 'https://example.invalid/product' };
     const f = await fixture('writer-private', 'private', false, true, true, product);
@@ -203,7 +227,7 @@ describe('WP18 saved and published runs on a synthetic loopback service', () => 
     const f = await fixture(loss ? 'formatting' : '', 'private', false, false, true, product);
     await f.execution.write(); await f.execution.saveAndVerify();
     if (loss) {
-      await expect(f.execution.publish()).rejects.toMatchObject({ message: 'BLOG_FORMATTING_PUBLISHED:1', issues: [{ paragraph: 1, fields: ['bold', 'href'] }] });
+      await expect(f.execution.publish()).rejects.toMatchObject({ message: 'BLOG_READBACK_MISMATCH:bold,links', issues: [{ paragraph: 1, field: 'bold' }, { paragraph: 1, field: 'links' }] });
       expect(f.execution.publishedVerified).toBe(false);
       await expect(f.execution.publish()).rejects.toThrow();
     } else {

@@ -2,6 +2,7 @@ import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import type { GuardedRequest, Surface, SurfaceDialog } from '@goltou/surface';
 import { point, read, sleep, waitFor } from '../dom';
 import { postIdentity, type PublishedPost } from './publish-safety';
+import { settledReadback } from '../settled-readback';
 
 export interface DeletePage { url: string; titles: string[]; privateLabels: number; publicLabels: number; photos: number; edits?: number; deletes?: number }
 export const deleteSelector = '.area_btn_postedit a._deletePost';
@@ -146,16 +147,34 @@ export async function openPostDeletionRead(surface: Surface, url: string): Promi
 
     });
   }
-export async function verifyPostAbsentFromList(surface: Surface, url: string, title: string) {
+export async function verifyPostAbsentFromList(surface: Surface, url: string, title: string, timeoutMs = 90000) {
     return traceStep('sites.naver-blog.delete.verifyPostAbsentFromList', async () => {
   const receipt = postIdentity(url);
   if (!receipt) throw new Error('BLOG_POST_DELETE_IDENTITY_UNCONFIRMED');
   const blog = new URL(receipt.url).pathname.split('/')[1]!;
   await surface.open(deleteOpenOptions(`https://blog.naver.com/PostList.naver?blogId=${encodeURIComponent(blog)}&from=postList&categoryNo=0`));
-  await waitFor(() => read<boolean>(surface, `return docs.some(({d})=>d.querySelector('.blog2_post_function,.post-list,.list_post,.blog2_list,[data-post-list]'));`), 10000);
-  const links = await read<string[]>(surface, `return docs.flatMap(({d})=>Array.from(d.querySelectorAll('a[href]')).map(e=>e.href));`);
-  const titlePresent = await read<boolean>(surface, `return docs.some(({d})=>(d.body?.innerText||'').includes(${JSON.stringify(title)}));`);
-  if (!links.some(url => postIdentity(url)) || titlePresent || links.some(url => postIdentity(url)?.url === receipt.url)) throw new Error('BLOG_POST_DELETE_LIST_UNCONFIRMED');
+  const settled = await settledReadback({ timeoutMs,
+    check() {},
+    read: async () => {
+      if (await surface.readAppFocus?.() === false) throw Error('BLOG_POST_DELETE_CHECK_8');
+      if (await surface.readDialog?.()) throw Error('BLOG_POST_DELETE_READ_ALERT_UNCONFIRMED');
+      const snapshot = await read<{ready:boolean;links:string[];titlePresent:boolean;login:boolean}>(surface, `
+        const roots=docs.map(({d})=>d).filter(d=>d.querySelector('.blog2_post_function,.post-list,.list_post,.blog2_list,[data-post-list]'));
+        return {ready:roots.length>0&&roots.every(d=>d.readyState==='complete'),
+          links:roots.flatMap(d=>Array.from(d.querySelectorAll('a[href]')).map(e=>e.href)),
+          titlePresent:docs.some(({d})=>(d.body?.innerText||'').includes(${JSON.stringify(title)})),
+          login:docs.some(({d})=>!!d.querySelector('input[type="password"]'))};`);
+      if(snapshot.login)throw Error('LOGIN_OR_EDITOR_LOST');
+      const postUrls = [...new Set(snapshot.links.map(postIdentity).filter((p):p is PublishedPost=>!!p&&new URL(p.url).pathname.split('/')[1]===blog).map(p=>p.url))].sort();
+      return {ready:snapshot.ready,postUrls,titlePresent:snapshot.titlePresent,targetPresent:postUrls.includes(receipt.url)};
+    },
+    classes: value => [
+      {check:'feed_location',reason:'READBACK_POST_LIST',expected:1,observed:value?.ready?1:0,present:!!value?.ready},
+      {check:'links',reason:'READBACK_POST_LIST_LINKS',expected:1,observed:value?.postUrls.length??0,present:(value?.postUrls.length??0)>0},
+      {check:'same_post',reason:'READBACK_POST_LIST_ABSENCE',expected:0,observed:value?.targetPresent||value?.titlePresent?1:0,present:!!value&&!value.targetPresent&&!value.titlePresent},
+    ],
+  });
+  if(!settled.stable||settled.classes.some(item=>!item.present))throw Error('BLOG_POST_DELETE_LIST_UNCONFIRMED');
 
     });
   }

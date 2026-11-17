@@ -1,5 +1,5 @@
 /** Diagnostics contain field names and positions only, never service content. */
-export interface ReadbackIssue { field: 'title' | 'text' | 'line_breaks' | 'photos' | 'order' | 'hashtags' | 'links' | 'bold'; index?: number; paragraph?: number }
+export interface ReadbackIssue { field: 'title' | 'text' | 'line_breaks' | 'photos' | 'order' | 'hashtags' | 'links' | 'bold' | 'visibility' | 'stability'; index?: number; paragraph?: number }
 export class ReadbackMismatch extends Error {
   constructor(code: string, readonly issues: ReadbackIssue[]) { super(code); }
 }

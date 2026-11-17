@@ -44,9 +44,9 @@ export async function deleteTestPost(execution: BlogExecution, record: (value: {
 
     });
   }
-export async function verifyTestPostAbsentFromList(surface: NonNullable<BlogExecution['surface']>, url: string, title: string) {
+export async function verifyTestPostAbsentFromList(surface: NonNullable<BlogExecution['surface']>, url: string, title: string, timeoutMs = 90000) {
     return traceStep('core.test-post-delete.verifyTestPostAbsentFromList', async () => {
-  try { await verifyPostAbsentFromList(surface, url, title); } catch { trace('core.test-post-delete.verifyTestPostAbsentFromList', 'fail', { reason: 'CAUGHT_FAILURE' });  throw new Error('BLOG_TEST_DELETE_LIST_UNCONFIRMED'); }
+  try { await verifyPostAbsentFromList(surface, url, title, timeoutMs); } catch { trace('core.test-post-delete.verifyTestPostAbsentFromList', 'fail', { reason: 'CAUGHT_FAILURE' });  throw new Error('BLOG_TEST_DELETE_LIST_UNCONFIRMED'); }
 
     });
   }
