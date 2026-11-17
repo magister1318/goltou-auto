@@ -56,8 +56,10 @@ export function blogFixture(mode = '') {
   });
   const table=document.querySelector('[data-name=table]');if(table)table.onmousedown=e=>{
     e.preventDefault();tableUndo=main.innerHTML;const at=component();const t=document.createElement('div');t.className='se-component se-table';t.id='fixture-table-'+(window.tableCount=(window.tableCount||0)+1);
-    t.innerHTML='<button class="se-component-edge-button-bottom">다음 문단</button><div class="se-table-control se-is-on"><button class="se-cell-select-all-button">전체 셀</button></div><div class="se-cell-context-menu"><button class="se-cell-context-menu-button se-context-menu-button-delete">셀 삭제</button></div><table>'+Array.from({length:mode.startsWith('table-')?3:2},()=>'<tr>'+Array.from({length:mode.startsWith('table-')||mode==='bad-table'?3:2},()=>'<td><p class="se-text-paragraph"><br></p></td>').join('')+'</tr>').join('')+'</table>';
+    t.innerHTML='<button class="se-component-edge-button-bottom">다음 문단</button><div class="se-table-control se-is-on"><button class="se-cell-select-all-button">전체 셀</button></div><div class="se-cell-context-menu"><button class="se-cell-context-menu-button se-context-menu-button-delete">셀 삭제</button></div><table>'+Array.from({length:mode.startsWith('table-')?3:2},()=>'<tr>'+Array.from({length:mode.startsWith('table-')||mode.startsWith('bad-table')?3:2},()=>'<td><p class="se-text-paragraph"><br></p></td>').join('')+'</tr>').join('')+'</table>';
     const next=empty();if(at)at.after(t,next);else main.append(t,next);focus(t.querySelector('p'));
+    if(mode==='table-moving'){t.style.transform='translateY(80px)';let moved=false;t.addEventListener('mousemove',()=>{if(!moved){moved=true;t.style.transform='';window.tableMovedOnHover=true}})}
+    if(mode==='bad-table-remove-anchor'&&at?.classList.contains('se-text')&&!at.textContent)at.remove();
     t.querySelector('.se-component-edge-button-bottom').onclick=()=>focus(next.querySelector('p'));
     let selected='all';
     t.querySelector('.se-cell-select-all-button').onclick=()=>{selected='all'};
@@ -65,10 +67,10 @@ export function blogFixture(mode = '') {
       if(mode==='table-cleanup-failed')return;
       if(selected==='column')for(const row of t.querySelectorAll('tr'))row.lastElementChild.remove();
       else if(selected==='row')t.querySelector('tr:last-child').remove();
-      else {t.remove();focus(next.querySelector('p'))}
+      else {t.remove();if(mode==='bad-table-remove-anchor')next.remove();else focus(next.querySelector('p'))}
     };
     const refresh=()=>{
-      if(mode==='bad-table')return;
+      if(mode.startsWith('bad-table'))return;
       const control=t.querySelector('.se-table-control');control.querySelectorAll('ul').forEach(e=>e.remove());
       for(const axis of ['column','row']){
         const bar=document.createElement('ul');bar.className='se-cell-controlbar-'+axis;bar.style.cssText='display:flex;list-style:none;margin:0;padding:0';
@@ -87,6 +89,7 @@ export function blogFixture(mode = '') {
     if(mode==='table-cell-drop')main.addEventListener('input',()=>{const p=getSelection()?.anchorNode?.parentElement?.closest('p');if(p&&t.contains(p)&&p.textContent)p.textContent='변경'});
     const deleteCell=t.querySelector('.se-context-menu-button-delete'),remove=deleteCell.onclick;deleteCell.onclick=()=>{remove();if(t.isConnected)refresh()};
   };
+  if(mode==='bad-table-remove-anchor')main.addEventListener('mousedown',e=>{if(e.target===main&&main.lastElementChild?.classList.contains('se-image')){e.preventDefault();const p=empty();main.append(p);focus(p.querySelector('p'))}});
   const tags=document.querySelector('input[placeholder]');if(tags)tags.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const t=document.createElement('span');t.className='tag';t.textContent=tags.value;document.querySelector('.tag_list').append(t);tags.value=''}};
   let metadataTags=[];
   const tagPanel=()=>{

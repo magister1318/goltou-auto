@@ -10,7 +10,7 @@ import { finalPublishSelector, guardedPublishClick, inspectPrivateRequest, inspe
 import { parsePublishIdentity, resolvePublishEvidence, type ResponseIdentity, type PublishedPage, type PublishIdentitySource } from './publish-identity';
 import { containsServiceLink, tokenText, ReadbackMismatch, type ReadbackIssue } from '../readback-checks';
 import { settledReadback, type ReadbackClass } from '../settled-readback';
-import { BlogRichTextWriter } from './rich-text';
+import { BlogRichTextWriter, blogBodyAtEnd } from './rich-text';
 import { insertBlogTable, tableRowRuns, exactBlogTable, type BlogTableToken } from './table';
 import { BlogFormattingError, blogRunReader, normalizeBlogRuns, splitBlogRuns, type BlogRun, type FormattingStage } from './formatting';
 import { closeDraftEntries, draftEntries, draftItem, draftSaveReceipt, identifySavedDraft, openDraftEntries, type DraftEntry } from './draft-identity';
@@ -397,10 +397,24 @@ export class BlogExecution {
 
     });
   }
-  private async endOfBody() {
+  private async endOfBody(appendAfterComponent = false) {
     return traceStep('sites.naver-blog.plan.BlogExecution.endOfBody', async () => {
     const s = this.surface!;
     const selector = '.se-component.se-text:last-child .se-text-paragraph:last-child';
+    if (appendAfterComponent) {
+      // Removing a table can also consume its empty append paragraph, leaving
+      // a photo as the final component. Create only a new empty native anchor.
+      for(let n=0;n<16;n++) {
+        if(await read<boolean>(s, `return docs.some(({d})=>d.querySelector(${JSON.stringify(selector)}));`)) break;
+        const gap=await read<{x:number;y:number}|null>(s, `for(const {d,x,y}of docs){const all=Array.from(d.querySelectorAll('.se-component')).filter(e=>!e.classList.contains('se-documentTitle'));const t=all[all.length-1];if(!t||!['se-image','se-table'].some(c=>t.classList.contains(c)))continue;const b=t.getBoundingClientRect(),px=x+b.left+b.width/2,py=y+b.bottom+12;const top=y+Math.max(0,...Array.from(d.querySelectorAll('.se-document-toolbar,.se-property-toolbar')).filter(visible).map(e=>e.getBoundingClientRect().bottom));if(px>0&&py>top&&px<innerWidth&&py<innerHeight)return{x:px,y:py};}return null;`);
+        if(gap) {
+          await s.click(gap.x,gap.y,async()=>{if(s.readClickTarget&&!await s.readClickTarget(gap.x,gap.y,'.se-content,.se-components-wrap,.se-main-container'))throw Error('CURSOR_POSITION_UNCONFIRMED');});
+          await s.pressKey({key:'ArrowDown'}); break;
+        }
+        await this.guard(); await s.pressKey({key:'PageDown'}); await sleep(100);
+      }
+    }
+
     let last = await point(s, selector);
     if (!last) {
       // SmartEditor scrolls its own canvas, rather than the outer document.
@@ -424,7 +438,7 @@ export class BlogExecution {
       while(e&&!e.classList?.contains('se-component'))e=e.parentElement;
       const components=Array.from((d?.querySelector('.se-main-container')||d?.querySelector('.se-content'))?.querySelectorAll('.se-component')||[]).filter(e=>!e.classList.contains('se-documentTitle'));
       return !!e&&e===components[components.length-1]&&e.classList.contains('se-text');`);
-    if (!atEnd) throw new Error('CURSOR_POSITION_UNCONFIRMED');
+    if (!atEnd && !await blogBodyAtEnd(s)) throw new Error('CURSOR_POSITION_UNCONFIRMED');
 
     });
   }
@@ -572,7 +586,7 @@ export class BlogExecution {
     return traceStep('sites.naver-blog.plan.BlogExecution.table', async () => {
       const start = this.characters;
       const mode = await insertBlogTable(this.surface!, step, {
-        check: () => this.guard(), snapshot: () => readBlogDocument(this.surface!), restoreEnd: () => this.endOfBody(),
+        check: () => this.guard(), snapshot: () => readBlogDocument(this.surface!), restoreEnd: () => this.endOfBody(true),
         acknowledge: added => { this.characters += added; this.report(); },
       });
       this.tableModes.push(mode); this.report();

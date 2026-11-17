@@ -18,6 +18,8 @@ describe('permanent local job logs', () => {
   it('logs table counts and fixed reasons only, and retains the history fallback notice after restart', () => {
     const f=fixture(), job=f.store.begin('blog_draft','naver');
     f.store.run(job,()=>f.store.associate('synthetic-record'));
+    job.line('table_fallback','fail',{reason:'CURSOR_POSITION_UNCONFIRMED'});
+    expect(f.store.list()[0]?.tableFallback).toBeUndefined();
     job.line('table_insert_started','start');
     job.line('table_size','ok',{counts:{rows:3,columns:2,cellText:'NEVER_STORE'} as never});
     job.line('cells_filled','ok',{counts:{cells:6}});

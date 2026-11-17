@@ -1,6 +1,6 @@
 // Reference: ../refs/DAF/daf3/packages/engine-naver-editor/src/insert/info-table.ts (toolbar/control selectors only; live observations and input-only implementation).
 import type { Surface } from '@goltou/surface';
-import { trace, type ReasonCode } from '@goltou/surface/telemetry';
+import { trace, reasonCode, type ReasonCode } from '@goltou/surface/telemetry';
 import { point, read, sleep, waitFor } from '../dom';
 import { normalizeBlogRuns, type BlogRun } from './formatting';
 import { BlogRichTextWriter } from './rich-text';
@@ -28,14 +28,27 @@ export async function insertBlogTable(surface: Surface, table: BlogTable, hooks:
   const shape = () => read<number[]>(s, `const t=docs.map(({d})=>d.querySelector(${JSON.stringify(scope())})).find(Boolean);return Array.from(t?.querySelectorAll('tr')||[]).map(r=>r.querySelectorAll('td,th').length);`);
   const press = async (selector: string, edge?: 'row' | 'column' | 'all') => {
     await hooks.check();
-    const p = await waitFor(async () => {
+    await waitFor(async () => {
+      await hooks.check();
       const at = await read<{x:number;y:number;height:number}|null>(s, `for(const {d,x,y} of docs){const e=d.querySelector(${JSON.stringify(selector)});if(!e||!visible(e))continue;const r=e.getBoundingClientRect();return {x:x+r.left+${edge === 'row' || edge === 'all' ? '1' : 'r.width/2'},y:y+r.top+${edge === 'column' || edge === 'all' ? '1' : 'r.height/2'},height:innerHeight};}return null;`);
       if (!at) return null;
       if (at.y <= 0 || at.y >= at.height) { await s.pressKey({key:at.y<=0?'PageUp':'PageDown'}); return null; }
-      return at.x>0 ? {x:at.x,y:at.y} : null;
+      if (at.x <= 0 || s.readClickTarget && !await s.readClickTarget(at.x,at.y,selector)) return null;
+      let confirmed = false;
+      try {
+        await s.click(at.x,at.y,async()=>{
+          if(s.readClickTarget&&!await s.readClickTarget(at.x,at.y,selector)) throw Error('TABLE_CONTROL_MISSING');
+          confirmed = true;
+        });
+      } catch(error) {
+        // Only hover happened when this check refused the press. The editor
+        // can scroll/reposition a newly inserted table between these reads.
+        if(!confirmed&&error instanceof Error&&error.message==='TABLE_CONTROL_MISSING') return null;
+        throw error;
+      }
+      return true;
     }, 5000);
-    const hit = async () => { if (s.readClickTarget && !await s.readClickTarget(p.x, p.y, selector)) throw Error('TABLE_CONTROL_MISSING'); };
-    await s.click(p.x, p.y, hit); await sleep(150);
+    await sleep(150);
   };
   const activate = () => press(`${scope()} tr:first-child td:first-child .se-text-paragraph`);
   trace('table_insert_started', 'start');
@@ -100,6 +113,7 @@ export async function insertBlogTable(surface: Surface, table: BlogTable, hooks:
     return 'native';
   } catch {
     await hooks.check();
+    try {
     // A missing/ambiguous creation cannot authorize deleting any prior component.
     const added = (await ids()).filter(id => !before.includes(id));
     if (!owned && added.length === 1) owned = added[0]!;
@@ -114,6 +128,7 @@ export async function insertBlogTable(surface: Surface, table: BlogTable, hooks:
     } catch { throw Error('TABLE_CLEANUP_UNCONFIRMED'); }
     if (JSON.stringify(await hooks.snapshot()) !== original) throw Error('TABLE_CLEANUP_UNCONFIRMED');
     await hooks.restoreEnd();
+    } catch(error) { trace('table_fallback','fail',{reason:reasonCode(error)}); throw error; }
     trace('table_fallback', 'ok', { reason });
     return 'text-list';
   }

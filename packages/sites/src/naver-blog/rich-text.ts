@@ -28,7 +28,7 @@ export const blogRichEditor = {
 };
 interface Cursor {
   text: string; anchor: number; focus: number; focused: boolean; last: boolean;
-  runs: NormalizedBlogRun[]; bold: boolean | null;
+  runs: NormalizedBlogRun[]; bold: boolean | null; lastComponent: boolean;
 }
 export async function readBlogCursor(surface: Surface, selector: string = blogRichEditor.paragraph): Promise<Cursor | null> {
     return traceStep('sites.naver-blog.rich-text.readBlogCursor', async () => {
@@ -89,13 +89,21 @@ export async function readBlogCursor(surface: Surface, selector: string = blogRi
       // SmartEditor renders non-contenteditable paragraphs and receives human keys
       // in its own focused, offscreen input-buffer iframe. Its sentinel is not
       // body text; the endpoint evidence above must identify the rendered nodes.
+      const components=Array.from(d.querySelectorAll('.se-component')).filter(e=>!e.classList.contains('se-documentTitle'));
+      let component=p;while(component&&!component.classList.contains('se-component'))component=component.parentElement;
       return {text:paragraphRuns(p).map(r=>r.text).join(''),runs:paragraphRuns(p),anchor:offset(s.anchorNode,s.anchorOffset),focus:offset(s.focusNode,s.focusOffset),
         focused:!!buffered||!!active&&(active===p||active.contains(p)||p.contains(active))&&active.isContentEditable,
-        last:paragraphs[paragraphs.length-1]===p,bold};
+        last:paragraphs[paragraphs.length-1]===p,lastComponent:components[components.length-1]===component,bold};
     }return null;`);
 
     });
   }
+/** A stale native Selection after component removal is not the editor caret. */
+export async function blogBodyAtEnd(surface: Surface) {
+  const cursor = await readBlogCursor(surface);
+  return !!cursor && cursor.focused && cursor.last && cursor.lastComponent && cursor.anchor === cursor.focus && cursor.focus === cursor.text.length;
+}
+
 const equal = (a: readonly BlogRun[], b: readonly BlogRun[]) => JSON.stringify(normalizeBlogRuns(a)) === JSON.stringify(normalizeBlogRuns(b));
 
 /** A resumable, acknowledged prefix. Formatting is read back after each input.

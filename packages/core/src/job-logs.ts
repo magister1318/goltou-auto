@@ -119,7 +119,7 @@ export class JobLogStore implements TraceProvider {
       if (terminal) return;
       if (!traceSteps.includes(step) || !events.includes(event)) throw new Error('INVALID_LOG_EVENT');
       const data = sanitizeDetail(detail);
-      if (step === 'table_fallback') row.tableFallback = true;
+      if (step === 'table_fallback' && event === 'ok') row.tableFallback = true;
       if (event === 'blocked_expected' && detail?.network?.decision === 'blocked') row.blockedExpected = (row.blockedExpected ?? 0) + 1;
       if (step.endsWith('.publish') && event === 'start' || detail?.reason === 'ARMED' || detail?.reason === 'CREATE_ALLOWED') submissionMayHaveStarted = true;
       if (event === 'fail' && !detail?.reason) data.reason = 'UNEXPECTED_FAILURE';
@@ -170,7 +170,7 @@ export class JobLogStore implements TraceProvider {
         const failure = lines.filter(line => line.event === 'fail' && line.step !== 'terminal').at(-1);
         const row: StoredRow = { at: first.timestamp, jobId: first.jobId, kind: first.kind, site: first.site, file: `${date}/${file}`,
           ...(lines.some(line => line.event === 'blocked_expected' && line.network?.decision === 'blocked') ? { blockedExpected: lines.filter(line => line.event === 'blocked_expected' && line.network?.decision === 'blocked').length } : {}),
-          ...(lines.some(line=>line.step==='table_fallback') ? {tableFallback:true} : {}),
+          ...(lines.some(line=>line.step==='table_fallback'&&line.event==='ok') ? {tableFallback:true} : {}),
           result: last?.step === 'terminal' && ['succeeded', 'failed', 'stopped', 'uncertain'].includes(last.result) ? last.result : 'stopped',
           ...(failure && traceSteps.includes(failure.step) ? { failedStep: failedStep(failure.step, failure.counts) } : {}) };
         const correlations = lines.filter(line => /^[a-f0-9]{12}$/.test(line.recordHash ?? '')); if (correlations.length) { row.recordHashes = [...new Set<string>(correlations.map(line => line.recordHash))]; row.recordHash = row.recordHashes[0]!; }
