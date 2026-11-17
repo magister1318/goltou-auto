@@ -21,4 +21,4 @@
 
 지시서는 시작할 때 이 폴더에 추가합니다. 보고서는 `docs/reports/WPn.md`.
 
-WP30: [영구 배포 서명·데이터 보존 준비](WP30-release-signing.md). [보고서](../reports/WP30.md).
+WP30: [영구 배포 서명·데이터 보존 준비](WP30-release-signing.md). 서명/게이트 검증 완료·휴대폰 미변경·자동 등록 배포 보류. [보고서](../reports/WP30.md).
