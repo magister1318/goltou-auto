@@ -140,6 +140,8 @@ describe.runIf(Boolean(executablePath))('publish, verified against synthetic loo
     expect(f.execution.publishedVerified).toBe(true);
     expect(f.execution.publishedIdentitySources).toEqual(['result-url', 'title']);
     const post: Post = { postNo: 1, productNo: 1, productTitle: '일반 합성 상품', channel: 'blog', mode: 'publish', status: 'published', postUrl, targetName: '', step: 7, failReason: '', userName: '', startedAt: 'synthetic', finishedAt: 'synthetic', productChanged: false };
+    const create = f.host.create.bind(f.host);
+    f.host.create = async session => { const surface = await create(session); surface.show = async () => { throw new Error('ONLY_LOGIN_SURFACE_VISIBLE'); }; return surface; };
     await removeRecordedBlogPost(f.host, post);
     expect(f.counts()).toEqual({ published: 1, deleted: true, outside: 0, submissions: 1 });
     await expect(f.execution.publish()).rejects.toThrow('BLOG_PUBLISH_ALREADY_ATTEMPTED');

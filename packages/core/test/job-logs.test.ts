@@ -15,6 +15,21 @@ function fixture(limits?: { days: number; bytes: number }, now?: () => number) {
   return { dir, store, files, lines };
 }
 describe('permanent local job logs', () => {
+  it('retains the published readback failure code instead of an unexplained terminal failure', () => {
+    const f = fixture(), job = f.store.begin('blog_publish', 'naver');
+    job.end('failed', 'BLOG_PUBLISHED_READBACK_MISMATCH');
+    expect(f.lines().at(-1)).toMatchObject({ step: 'terminal', result: 'failed', reason: 'BLOG_PUBLISHED_READBACK_MISMATCH' });
+  });
+  it('preserves blog publish and delete request shapes without any values', () => {
+    const f = fixture(), job = f.store.begin('blog_delete', 'naver');
+    job.line('barrier', 'ok', { reason: 'BLOG_POST_DELETE_REQUEST_ALLOWED', network: { method: 'POST', host: 'blog.naver.com', path: '/PostDelete.naver', contentType: 'application/x-www-form-urlencoded', queryFields: [], bodyFields: ['blogId', 'logNo', 'cpage', 'categoryNo', 'parentCategoryNo', 'viewDate', 'sourceCode', 'currentPage'], decision: 'allowed' } });
+    job.line('barrier', 'fail', { reason: 'BLOG_PUBLISH_REQUEST_NOT_AUTHORIZED', network: { method: 'POST', host: 'blog.naver.com', path: '/RabbitWrite.naver', contentType: 'application/x-www-form-urlencoded', queryFields: [], bodyFields: ['blogId', 'documentModel', 'mediaResources', 'populationParams', 'productApiVersion', 'tokenId'], decision: 'blocked' } });
+    job.end('succeeded');
+    expect(f.lines().filter(l => l.network).map(l => l.network)).toEqual([
+      expect.objectContaining({ path: '/PostDelete.naver', decision: 'allowed', bodyFields: ['blogId', 'logNo', 'cpage', 'categoryNo', 'parentCategoryNo', 'viewDate', 'sourceCode', 'currentPage'] }),
+      expect.objectContaining({ path: '/RabbitWrite.naver', decision: 'blocked', bodyFields: ['blogId', 'documentModel', 'mediaResources', 'populationParams', 'productApiVersion', 'tokenId'] }),
+    ]);
+  });
   it('separates expected telemetry blocks, keeps request counts after restart, and retains real failures', () => {
     const f = fixture(), job = f.store.begin('band_post', 'band');
     expect(expectedTelemetryRequest({ method: 'POST', url: 'https://nlog.band.us/event' })).toBe(true);

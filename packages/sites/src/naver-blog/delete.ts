@@ -1,22 +1,45 @@
 import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
-import type { Surface, SurfaceDialog } from '@goltou/surface';
+import type { GuardedRequest, Surface, SurfaceDialog } from '@goltou/surface';
 import { point, read, sleep, waitFor } from '../dom';
 import { postIdentity, type PublishedPost } from './publish-safety';
 
 export interface DeletePage { url: string; titles: string[]; privateLabels: number; publicLabels: number; photos: number; edits?: number; deletes?: number }
 export const deleteSelector = '.area_btn_postedit a._deletePost';
+/** Observed PC deletePostFrm: a POST after the native confirmation. */
+export const blogDeleteFields = ['blogId', 'cpage', 'categoryNo', 'parentCategoryNo', 'viewDate', 'sourceCode', 'logNo', 'currentPage'] as const;
+export function inspectBlogDeleteRequest(request: GuardedRequest, targetUrl: string): boolean {
+  const target = postIdentity(targetUrl);
+  if (!target || request.method !== 'POST' || !request.postDataComplete || request.contentType?.split(';')[0]?.trimStart().trimEnd().toLowerCase() !== 'application/x-www-form-urlencoded') return false;
+  try {
+    const url = new URL(request.url), fields = new URLSearchParams(request.postData);
+    return url.protocol === 'https:' && url.hostname === 'blog.naver.com' && url.pathname === '/PostDelete.naver' && !url.search &&
+      JSON.stringify([...fields.keys()].sort()) === JSON.stringify([...blogDeleteFields].sort()) &&
+      fields.get('blogId') === new URL(target.url).pathname.split('/')[1] && fields.get('logNo') === target.postId;
+  } catch { return false; }
+}
+/** Install on the fresh surface for a confirmed registration-history deletion. */
+export async function guardRecordedBlogDelete(surface: Surface, targetUrl: string) {
+  if (!surface.guardRequests) throw new Error('BLOG_REQUEST_BARRIER_UNAVAILABLE');
+  let available = true;
+  await surface.guardRequests([{ hostname: 'blog.naver.com', pathname: '/PostDelete.naver' }], request => {
+    const allowed = available && inspectBlogDeleteRequest(request, targetUrl);
+    available = false;
+    trace('barrier', allowed ? 'ok' : 'fail', { reason: allowed ? 'BLOG_POST_DELETE_REQUEST_ALLOWED' : 'BLOG_POST_DELETE_REQUEST_NOT_AUTHORIZED' });
+    return allowed;
+  }, () => {}, () => false);
+}
 export const deletePageSource = `return docs.map(({d})=>({url:d.location.href,
-  titles:Array.from(d.querySelectorAll('.se-documentTitle .se-text-paragraph')).map(e=>(e.textContent||'').trim()),
-  privateLabels:Array.from(d.querySelectorAll('span,div,p')).filter(e=>!e.children.length&&visible(e)&&(e.textContent||'').trim()==='비공개').length,
-  publicLabels:Array.from(d.querySelectorAll('span,div,p')).filter(e=>!e.children.length&&visible(e)&&(e.textContent||'').trim()==='전체공개').length,
+  titles:Array.from(d.querySelectorAll('.se-documentTitle .se-text-paragraph')).map(e=>(e.textContent||'').trimStart().trimEnd()),
+  privateLabels:Array.from(d.querySelectorAll('span,div,p')).filter(e=>!e.children.length&&visible(e)&&(e.textContent||'').trimStart().trimEnd()==='비공개').length,
+  publicLabels:Array.from(d.querySelectorAll('span,div,p')).filter(e=>!e.children.length&&visible(e)&&(e.textContent||'').trimStart().trimEnd()==='전체공개').length,
   photos:d.querySelectorAll('.se-component.se-image .se-image-resource').length,
-  edits:Array.from(d.querySelectorAll('.area_btn_postedit a')).filter(e=>visible(e)&&(e.textContent||'').trim()==='수정').length,
-  deletes:Array.from(d.querySelectorAll('${deleteSelector}')).filter(e=>visible(e)&&(e.textContent||'').trim()==='삭제').length}));`;
+  edits:Array.from(d.querySelectorAll('.area_btn_postedit a')).filter(e=>visible(e)&&(e.textContent||'').trimStart().trimEnd()==='수정').length,
+  deletes:Array.from(d.querySelectorAll('${deleteSelector}')).filter(e=>visible(e)&&(e.textContent||'').trimStart().trimEnd()==='삭제').length}));`;
 // Avoid matches/closest: the Android PC page rejects those under throwOnSideEffect.
 export const deleteFocusSource = `let a=document.activeElement;while(a?.tagName==='IFRAME'&&a.contentDocument)a=a.contentDocument.activeElement;return !!a&&!a.isContentEditable&&!['INPUT','TEXTAREA'].includes(a.tagName);`;
 export const deleteMessage = '삭제된 글은 복구할 수 없습니다. 삭제하시겠습니까?';
 export function requireDeleteConfirmation(dialog: SurfaceDialog | null | undefined, receipt: PublishedPost) {
-  if (!dialog || dialog.kind !== 'confirm' || postIdentity(dialog.url ?? '')?.url !== receipt.url || dialog.message.trim().replace(/\s+/g, ' ') !== deleteMessage) throw new Error('BLOG_POST_DELETE_CONFIRM_UNCONFIRMED');
+  if (!dialog || dialog.kind !== 'confirm' || postIdentity(dialog.url ?? '')?.url !== receipt.url || dialog.message.trimStart().trimEnd().replace(/\s+/g, ' ') !== deleteMessage) throw new Error('BLOG_POST_DELETE_CONFIRM_UNCONFIRMED');
 }
 /** Values contain numbers only. Item numbers are documented in the WP14 report. */
 export interface DeleteDiagnostic { item: number; pass: number; actual?: number; expected?: number; x?: number; y?: number; width?: number; height?: number; elapsedMs?: number; run?: number }
@@ -36,7 +59,7 @@ export function deleteIdentity(pages: DeletePage[], target: DeleteTarget): Delet
     ...(p ? target.extraIdentity?.(p) ?? [] : []),
   ];
 }
-const geometrySource = `return docs.flatMap(({d,x,y})=>Array.from(d.querySelectorAll('${deleteSelector}')).filter(e=>visible(e)&&(e.textContent||'').trim()==='삭제'&&d.querySelector('.se-documentTitle')).map(e=>{const r=e.getBoundingClientRect();return {x:x+r.left+r.width/2,y:y+r.top+r.height/2,width:r.width,height:r.height};}));`;
+const geometrySource = `return docs.flatMap(({d,x,y})=>Array.from(d.querySelectorAll('${deleteSelector}')).filter(e=>visible(e)&&(e.textContent||'').trimStart().trimEnd()==='삭제'&&d.querySelector('.se-documentTitle')).map(e=>{const r=e.getBoundingClientRect();return {x:x+r.left+r.width/2,y:y+r.top+r.height/2,width:r.width,height:r.height};}));`;
 type Rect = { x: number; y: number; width: number; height: number };
 const same = (a: Rect | undefined, b: Rect | undefined) => !!a && !!b && ['x', 'y', 'width', 'height'].every(k => a[k as keyof Rect] === b[k as keyof Rect]);
 const noop: DeleteLog = async () => {};
@@ -53,7 +76,7 @@ export async function preparePostDelete(surface: Surface, target: DeleteTarget, 
   const identity = async () => check(deleteIdentity(await safeRead(1, () => read<DeletePage[]>(surface, deletePageSource)), target));
   const focus = async () => check([{ item: 8, pass: Number(await safeRead(8, async () => await surface.readAppFocus?.() !== false && await read<boolean>(surface, deleteFocusSource))) }]);
   const noDialog = async () => check([{ item: 9, pass: Number(!await safeRead(9, async () => surface.readDialog?.())) }]);
-  await noDialog(); await identity(); await surface.show(); await focus();
+  await noDialog(); await identity(); await focus();
   let at = await point(surface, deleteSelector, '삭제');
   for (let i = 0; !at && i < 100; i++) {
     await noDialog(); await identity(); await focus();
@@ -109,7 +132,7 @@ export async function openPostDeletionRead(surface: Surface, url: string): Promi
     if (dialog) {
       // Exact fixed messages only. Unknown alerts stay unanswered.
       const missing = ['게시물이 삭제되었거나 다른 페이지로 변경되었습니다.'];
-      if (dialog.kind !== 'alert' || postIdentity(dialog.url ?? '')?.url !== expected.url || !missing.includes(dialog.message.trim().replace(/\s+/g, ' '))) throw new Error('BLOG_POST_DELETE_READ_ALERT_UNCONFIRMED');
+      if (dialog.kind !== 'alert' || postIdentity(dialog.url ?? '')?.url !== expected.url || !missing.includes(dialog.message.trimStart().trimEnd().replace(/\s+/g, ' '))) throw new Error('BLOG_POST_DELETE_READ_ALERT_UNCONFIRMED');
       if (!surface.respondDialog || await surface.readAppFocus?.() === false) throw new Error('BLOG_POST_DELETE_READ_ALERT_UNCONFIRMED');
       // Reject the read-only missing-post alert; only the deletion confirm is accepted.
       await surface.respondDialog(dialog.id, false);

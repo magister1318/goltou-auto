@@ -63,26 +63,47 @@ export async function selectVisibility(surface: Surface, desired: BlogVisibility
     });
   }
 
-/** Only the observed private shape passes, with independent labelled UI proof.
+/** Only the observed transport shape passes, with independent labelled UI proof.
  * Walk every field (including JSON-valued form fields), preserving duplicates. */
 export function inspectPrivateRequest(request: GuardedRequest, proof: VisibilityProof): boolean {
+  return inspectVisibilityRequest(request, proof, 'private').allowed;
+}
+export function inspectPublicRequest(request: GuardedRequest, proof: VisibilityProof): boolean {
+  return inspectPublicRequestDecision(request, proof).allowed;
+}
+export function inspectPublicRequestDecision(request: GuardedRequest, proof: VisibilityProof) {
+  return inspectVisibilityRequest(request, proof, 'public');
+}
+type PublishInspection = { allowed: boolean; reason: import('@goltou/surface/telemetry').ReasonCode };
+function inspectVisibilityRequest(request: GuardedRequest, proof: VisibilityProof, visibility: BlogVisibility): PublishInspection {
+  const reject = (reason: PublishInspection['reason']): PublishInspection => ({ allowed: false, reason });
   const observed = OBSERVED_BLOG_VISIBILITY_2026_11_14;
-  if (proof.selected !== 'private' || !proof.wire || proof.wire.name !== observed.radio.name || proof.wire.privateValue !== observed.radio.privateValue || proof.wire.publicValue !== observed.radio.publicValue || request.method !== 'POST' || request.postDataComplete !== true || request.contentType?.split(';')[0]?.trim().toLowerCase() !== observed.request.contentType) return false;
+  const expectedValue = visibility === 'public' ? observed.request.publicValue : observed.request.privateValue;
+  if (proof.selected !== visibility || !proof.wire || proof.wire.name !== observed.radio.name || proof.wire.privateValue !== observed.radio.privateValue || proof.wire.publicValue !== observed.radio.publicValue) return reject('BLOG_PUBLISH_UI_PROOF_UNCONFIRMED');
+  if (request.method !== 'POST') return reject('BLOG_PUBLISH_REQUEST_METHOD_UNCONFIRMED');
+  if (request.postDataComplete !== true) return reject('BLOG_PUBLISH_REQUEST_BODY_INCOMPLETE');
+  if (request.contentType?.split(';')[0]?.trim().toLowerCase() !== observed.request.contentType) return reject('BLOG_PUBLISH_REQUEST_ENCODING_UNCONFIRMED');
   try {
     const { fields } = requestFields(request);
-    if (JSON.stringify(fields.map(([key]) => key).sort()) !== JSON.stringify([...observed.request.fields].sort())) return false;
-    for (const key of observed.request.jsonFields) if (!jsonNode(String(fields.find(([name]) => name === key)![1].value)).entries) return false;
-    const paths = new Set<string>(); let matches = 0, conflict = false;
+    if (JSON.stringify(fields.map(([key]) => key).sort()) !== JSON.stringify([...observed.request.fields].sort())) return reject('BLOG_PUBLISH_REQUEST_FIELDS_UNCONFIRMED');
+    for (const key of observed.request.jsonFields) if (!jsonNode(String(fields.find(([name]) => name === key)![1].value)).entries) return reject('BLOG_PUBLISH_REQUEST_JSON_UNCONFIRMED');
+    const paths = new Set<string>(); let matches = 0, conflict = false, duplicate = false;
+    // Rich document nodes can exceed the generic walker's eight levels. Retain
+    // duplicate/conflicting-scope checks throughout the bounded parsed document.
     walkFields(fields, ({ path, key, node }) => {
       const identity = JSON.stringify(path);
-      if (paths.has(identity)) throw new Error('DUPLICATE_REQUEST_FIELD');
+      if (paths.has(identity)) duplicate = true;
       paths.add(identity);
       if (!/open|visib|public|private|secret|scope/i.test(key)) return;
-      if (identity !== JSON.stringify(observed.request.path) || node.value !== observed.request.privateValue) conflict = true;
+      if (identity !== JSON.stringify(observed.request.path) || node.value !== expectedValue) conflict = true;
       else matches++;
-    });
-    return matches === 1 && !conflict;
-  } catch { return false; }
+    }, 32);
+    if (duplicate) return reject('BLOG_PUBLISH_REQUEST_DUPLICATE_FIELD');
+    if (matches !== 1 || conflict) return reject('BLOG_PUBLISH_REQUEST_VISIBILITY_UNCONFIRMED');
+    return { allowed: true, reason: 'BLOG_PUBLISH_REQUEST_ALLOWED' };
+  } catch (error) {
+    return reject(error instanceof Error && ['REQUEST_DEPTH_LIMIT', 'REQUEST_TOO_DEEP'].includes(error.message) ? 'BLOG_PUBLISH_REQUEST_DEPTH_LIMIT' : 'BLOG_PUBLISH_REQUEST_JSON_UNCONFIRMED');
+  }
 }
 
 export interface PublishedPost { postId: string; url: string }

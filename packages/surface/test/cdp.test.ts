@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { CdpConnection, CdpSurface, type SurfaceLifecycle } from '../src/cdp';
+import { configureTrace, type TraceDetail, type TraceJob } from '../src/telemetry';
 
 interface Command { id: number; method: string; params: Record<string, unknown> }
 const cleanup: (() => Promise<void>)[] = [];
@@ -43,6 +44,38 @@ async function fixture(handler?: (command: Command, socket: WebSocket) => boolea
 }
 
 describe('CDP Surface', () => {
+  it.each(['guard-first', 'block-first'])('retains the delete inspector when static write blocks are composed %s', async order => {
+    const f = await fixture(), inspect = vi.fn(() => false), response = vi.fn();
+    const guard = () => f.surface.guardRequests([{ hostname: 'blog.naver.com', pathname: '/PostDelete.naver' }], inspect, response);
+    const block = () => f.surface.blockRequests([{ hostname: 'blog.naver.com', pathname: '/RabbitWrite.naver' }]);
+    if (order === 'guard-first') { await guard(); await block(); } else { await block(); await guard(); }
+    const patterns = f.commands.filter(c => c.method === 'Fetch.enable').at(-1)!.params.patterns;
+    expect(patterns).toEqual(expect.arrayContaining([
+      { urlPattern: '*://blog.naver.com/PostDelete.naver*', requestStage: 'Request' },
+      { urlPattern: '*://blog.naver.com/PostDelete.naver*', requestStage: 'Response' },
+      { urlPattern: '*://blog.naver.com/RabbitWrite.naver*', requestStage: 'Request' },
+    ]));
+    for (const path of ['/PostDelete.naver', '/RabbitWrite.naver']) f.event('Fetch.requestPaused', { requestId: path, request: { url: 'https://blog.naver.com' + path, method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, postData: 'blogId=synthetic&logNo=9001' } });
+    await vi.waitFor(() => expect(f.commands.filter(c => c.method === 'Fetch.failRequest')).toHaveLength(2));
+    expect(inspect).toHaveBeenCalledTimes(1);
+    expect(inspect).toHaveBeenCalledWith(expect.objectContaining({ url: 'https://blog.naver.com/PostDelete.naver', postDataComplete: true }));
+    expect(response).not.toHaveBeenCalled();
+  });
+  it('explains static and inspector-error blocks with field names and no body values', async () => {
+    const lines: TraceDetail[] = [];
+    const job: TraceJob = { id: 'synthetic', decisionReason: undefined, line: (_step, _event, detail) => { if (detail) lines.push(detail); }, end() {} };
+    configureTrace({ begin: () => job, current: () => job, run: (_job, work) => work(), bind: work => work });
+    try {
+      const f = await fixture();
+      await f.surface.blockRequests([{hostname:'blog.naver.com',pathname:'/RabbitUpdate.naver'}]);
+      await f.surface.guardRequests([{hostname:'blog.naver.com',pathname:'/RabbitWrite.naver'}], () => { throw Error('PRIVATE_ERROR'); }, () => {});
+      for (const path of ['/RabbitUpdate.naver','/RabbitWrite.naver']) f.event('Fetch.requestPaused', { requestId: path, request: {url:'https://blog.naver.com'+path,method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},postData:'blogId=PRIVATE_ACCOUNT&documentModel=PRIVATE_BODY'} });
+      await vi.waitFor(() => expect(f.commands.filter(c => c.method === 'Fetch.failRequest')).toHaveLength(2));
+      expect(lines).toContainEqual(expect.objectContaining({reason:'STATIC_BLOCK',network:expect.objectContaining({path:'/RabbitUpdate.naver',bodyFields:['blogId','documentModel'],decision:'blocked'})}));
+      expect(lines).toContainEqual(expect.objectContaining({reason:'INSPECTOR_ERROR',network:expect.objectContaining({path:'/RabbitWrite.naver',bodyFields:['blogId','documentModel'],decision:'blocked'})}));
+      expect(JSON.stringify(lines)).not.toMatch(/PRIVATE_/);
+    } finally { configureTrace(undefined); }
+  });
   it('rechecks keyboard authorization immediately before keydown and sends no key after refusal', async () => {
     const f = await fixture();
     await expect(f.surface.pressKey({ key: 'Enter' }, async () => { throw Error('CHANGED'); })).rejects.toThrow('CHANGED');

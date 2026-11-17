@@ -6,7 +6,7 @@ import { click, compact, point, read, sleep, waitFor } from '../dom';
 import { confirmBlogPhotos, prepareBlogEditor } from './index';
 import { ControlNotFoundError } from '../control-failure';
 import { closeTagLayer, protectBlogInputs, requireTagFocus, requireTagLayerClosed, tagInputSelector, tagPanelToggle } from './draft-safety';
-import { finalPublishSelector, guardedPublishClick, inspectPrivateRequest, postIdentity, readVisibility, requireVisibility, selectVisibility, type BlogVisibility, type PublishedPost, type VisibilityProof } from './publish-safety';
+import { finalPublishSelector, guardedPublishClick, inspectPrivateRequest, inspectPublicRequestDecision, postIdentity, readVisibility, requireVisibility, selectVisibility, type BlogVisibility, type PublishedPost, type VisibilityProof } from './publish-safety';
 import { parsePublishIdentity, resolvePublishEvidence, type ResponseIdentity, type PublishedPage, type PublishIdentitySource } from './publish-identity';
 import { containsServiceLink, tokenText } from '../readback-checks';
 import { BlogRichTextWriter } from './rich-text';
@@ -57,7 +57,9 @@ export async function readBlogDocument(surface: Surface, documentUrls?: readonly
     for(const e of main?.querySelectorAll('.se-component')||[]) {
       if(e.classList.contains('se-documentTitle')) continue;
       if(e.classList.contains('se-text')) {
-        for(const p of e.querySelectorAll('.se-text-paragraph')) {const runs=paragraphRuns(p),t=runs.map(r=>r.text).join('');if(t.length) tokens.push({kind:'text',text:t,runs});}
+        // The published viewer fills otherwise empty paragraphs with U+200B.
+        // Ignore only that standalone filler; preserve every character in real text.
+        for(const p of e.querySelectorAll('.se-text-paragraph')) {const runs=paragraphRuns(p),t=runs.map(r=>r.text).join('');if(t.length&&t!=='\u200b') tokens.push({kind:'text',text:t,runs});}
       } else if(e.classList.contains('se-image')) {
         for(const img of e.querySelectorAll('.se-image-resource')) {
           const raw=[img.getAttribute('src'),img.getAttribute('data-file-name'),img.getAttribute('alt')].join(' ');
@@ -70,8 +72,9 @@ export async function readBlogDocument(surface: Surface, documentUrls?: readonly
         const a=e.querySelector('a[href]'); tokens.push({kind:'text',text:a?.getAttribute('href')||'',runs:[{text:a?.getAttribute('href')||'',bold:false,href:null}]});
       } else { tokens.push({kind:'text',text:'UNSUPPORTED_EDITOR_COMPONENT'}); }
     }
-    return {title:text(d.querySelector(${JSON.stringify(titleSelector)})).trim(),tokens,
-      tags:Array.from(d.querySelectorAll('.wrap_tag a.itemTagfont, .tag_list .tag, .se-tag-list .se-tag, .post_tag .item, [data-goltou-tag], [class^="tag_textarea__"] span[class*="tag__"][aria-label]')).map(e=>(e.textContent||'').replace(/^#/,'').trim())};`);
+    // The real post page wraps trim; its invocation fails throwOnSideEffect.
+    return {title:text(d.querySelector(${JSON.stringify(titleSelector)})).trimStart().trimEnd(),tokens,
+      tags:Array.from(d.querySelectorAll('.wrap_tag a.itemTagfont, .tag_list .tag, .se-tag-list .se-tag, .post_tag .item, [data-goltou-tag], [class^="tag_textarea__"] span[class*="tag__"][aria-label]')).map(e=>(e.textContent||'').replace(/^#/,'').trimStart().trimEnd())};`);
 
     });
   }
@@ -287,6 +290,10 @@ export class BlogExecution {
         }
         if (this.visibility === 'private' && (!this.requestProof || !inspectPrivateRequest(request, this.requestProof))) {
           this.publishFailure = 'BLOG_PRIVATE_REQUEST_UNCONFIRMED'; return decision(false, 'BLOG_PRIVATE_REQUEST_UNCONFIRMED');
+        }
+        if (this.visibility === 'public') {
+          const inspection = this.requestProof ? inspectPublicRequestDecision(request, this.requestProof) : { allowed: false, reason: 'BLOG_PUBLISH_UI_PROOF_UNCONFIRMED' as const };
+          if (!inspection.allowed) { this.publishFailure = inspection.reason; return decision(false, inspection.reason); }
         }
         this.publishRequestAccepted = true;
         return decision(true, 'BLOG_PUBLISH_REQUEST_ALLOWED');
@@ -695,7 +702,7 @@ export class BlogExecution {
         await this.responseEvidence;
         if (this.publishFailure) throw new Error(this.publishFailure);
         const state = await s.readState();
-        const pages = await read<PublishedPage[]>(s, `return docs.map(({d})=>({url:d.location.href,titles:Array.from(d.querySelectorAll('.se-documentTitle .se-text-paragraph')).map(e=>(e.textContent||'').trim())}));`).catch(() => []);
+        const pages = await read<PublishedPage[]>(s, `return docs.map(({d})=>({url:d.location.href,titles:Array.from(d.querySelectorAll('.se-documentTitle .se-text-paragraph')).map(e=>(e.textContent||'').trimStart().trimEnd())}));`).catch(() => []);
         const evidence = resolvePublishEvidence(this.responsePost, [state.url], pages, this.title.text);
         const identity = evidence.post;
         if (!identity || !pages.some(p => postIdentity(p.url)?.url === identity.url && p.titles.length === 1 && p.titles[0] === this.title.text)) return false;
@@ -737,7 +744,7 @@ export class BlogExecution {
     const identities = await read<string[]>(s, `return docs.map(({d})=>d.location.href);`);
     if (!identities.some(url => postIdentity(url)?.url === this.publishedPost!.url)) throw new Error('BLOG_PUBLISH_ID_UNCONFIRMED');
     if (this.visibility === 'private') {
-      const privateMarked = await read<boolean>(s, `return docs.some(({d})=>${JSON.stringify(await ownUrls())}.includes(d.location.href)&&Array.from(d.querySelectorAll('.post_visibility, .blog2_visibility, .post_author, [data-post-visibility], .se-documentTitle .blog2_container .writer .desc .txt')).some(e=>visible(e)&&(e.textContent||'').trim()==='비공개'));`);
+      const privateMarked = await read<boolean>(s, `return docs.some(({d})=>${JSON.stringify(await ownUrls())}.includes(d.location.href)&&Array.from(d.querySelectorAll('.post_visibility, .blog2_visibility, .post_author, [data-post-visibility], .se-documentTitle .blog2_container .writer .desc .txt')).some(e=>visible(e)&&(e.textContent||'').trimStart().trimEnd()==='비공개'));`);
       if (!privateMarked) throw new Error('BLOG_PUBLISHED_PRIVATE_UNCONFIRMED');
     }
     this.verifyDocument(value, 'PUBLISHED');

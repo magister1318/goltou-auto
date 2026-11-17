@@ -22,6 +22,26 @@ describe('WP18 exact normalized document runs', () => {
       expect(compareBlogFormatting(plan, actual)).toEqual([]);
     } finally { dom.window.close(); }
   });
+  it('ignores the observed published-viewer empty paragraph filler without shifting text or photo order', async () => {
+    // Sanitized real viewer shape: 58 empty paragraphs acquired one U+200B each.
+    const filler = '<p class="se-text-paragraph se-text-paragraph-align- "><span class="se-fs- se-ff-   " style="">\u200b</span></p>';
+    const dom = new JSDOM(`<div class="se-documentTitle"><p class="se-text-paragraph">synthetic</p></div><div class="se-main-container">
+      <div class="se-component se-text"><p class="se-text-paragraph"><b>first</b></p>${filler.repeat(58)}</div>
+      <div class="se-component se-image"><img class="se-image-resource" src="https://example.invalid/goltou-0123456789abcdef-1.jpg"></div>
+      <div class="se-component se-text"><p class="se-text-paragraph"><a href="https://example.invalid/a%2Fb">second</a></p>
+      <p class="se-text-paragraph">x\u200by</p><p class="se-text-paragraph"> </p><p class="se-text-paragraph">\u200d</p></div></div>`, { runScripts: 'outside-only' });
+    try {
+      const actual = await readBlogDocument({ evaluateReadOnly: async (source: string) => dom.window.eval(source) } as Surface);
+      expect(actual.tokens).toEqual([
+        { kind: 'text', text: 'first', runs: [{ text: 'first', bold: true, href: null }] },
+        { kind: 'photo', identity: 'goltou-0123456789abcdef-1.jpg' },
+        { kind: 'text', text: 'second', runs: [{ text: 'second', bold: false, href: 'https://example.invalid/a%2Fb' }] },
+        { kind: 'text', text: 'x\u200by', runs: [{ text: 'x\u200by', bold: false, href: null }] },
+        { kind: 'text', text: ' ', runs: [{ text: ' ', bold: false, href: null }] },
+        { kind: 'text', text: '\u200d', runs: [{ text: '\u200d', bold: false, href: null }] },
+      ]);
+    } finally { dom.window.close(); }
+  });
   it.each(['bold', 'href', 'text'] as const)('reports %s loss at the correct paragraph even when old compact comparison would match', field => {
     const observed = normalizeBlogRuns(runs);
     if (field === 'bold') observed[1]!.bold = false;

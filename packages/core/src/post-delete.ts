@@ -1,7 +1,7 @@
 import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import { ApiError, type Post, type Product } from '@goltou/api-client';
 import { createHash } from 'node:crypto';
-import { compact, bandText, deleteMobileRecordedBandPost, deleteBlogPost, openPostDeletionRead, verifyPostAbsentFromList, deletePageSource, read, verifyPostGone, type DeletePage, type DeleteLog, type BandDeleteLog, type BandDeleteReview } from '@goltou/sites';
+import { compact, bandText, deleteMobileRecordedBandPost, deleteBlogPost, guardRecordedBlogDelete, openPostDeletionRead, verifyPostAbsentFromList, deletePageSource, read, verifyPostGone, type DeletePage, type DeleteLog, type BandDeleteLog, type BandDeleteReview } from '@goltou/sites';
 import type { SurfaceHost } from '@goltou/surface';
 import { makePreview } from './preparation';
 
@@ -32,10 +32,12 @@ export async function removeRecordedBlogPost(host: SurfaceHost, post: Post, log:
   requireDeletablePost(post);
   const surface = await host.create('naver');
   try {
+    await guardRecordedBlogDelete(surface, post.postUrl);
     await surface.blockRequests?.(['/RabbitWrite.naver', '/RabbitUpdate.naver', '/RabbitTempPostWrite.naver', '/RabbitTempPostUpdate.naver'].map(pathname => ({ hostname: 'blog.naver.com', pathname })));
     await log({ item: 80, pass: 1 });
     if (await openPostDeletionRead(surface, post.postUrl)) { await log({ item: 81, pass: 1 }); await verifyPostAbsentFromList(surface, post.postUrl, post.productTitle); return; }
-    await surface.show();
+    // Service automation stays hidden, just like editor input. Native visibility
+    // is reserved for guarded manual login; app focus is checked before deletion.
     const pages = await read<DeletePage[]>(surface, deletePageSource);
     if (!pages.some(p => p.titles.length)) {
       await verifyPostGone(surface, { url: post.postUrl, title: post.productTitle });

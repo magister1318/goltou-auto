@@ -2,12 +2,45 @@
 /// <reference lib="dom" />
 import { describe, expect, it } from 'vitest';
 import type { Surface } from '@goltou/surface';
-import { inspectPrivateRequest, postIdentity, readVisibility, requireTestPost, requireVisibility, type VisibilityProof } from '../src/naver-blog/publish-safety';
+import { inspectPrivateRequest, inspectPublicRequest, inspectPublicRequestDecision, postIdentity, readVisibility, requireTestPost, requireVisibility, type VisibilityProof } from '../src/naver-blog/publish-safety';
 
 const proof: VisibilityProof = { selected: 'private', wire: { name: 'open_type', privateValue: '0', publicValue: '2' }, target: null };
 // Same field SHAPE as the blocked 2026-11-14 probes; all content is synthetic.
 const shape = (population = '{"configuration":{"openType":0}}', documentModel = '{"title":"synthetic","components":[]}') => new URLSearchParams({ blogId: 'synthetic', documentModel, mediaResources: '{}', populationParams: population, productApiVersion: 'v1', tokenId: 'synthetic' }).toString();
 const request = (postData: string) => ({ url: 'https://blog.naver.com/RabbitWrite.naver', method: 'POST', postData, contentType: 'application/x-www-form-urlencoded; charset=UTF-8', postDataComplete: true });
+
+describe('public publish transport gate', () => {
+  const publicProof: VisibilityProof = { ...proof, selected: 'public' };
+  const richDocument = (leaf: object) => JSON.stringify({ document: { components: [{ nodes: [{ style: { font: { attributes: leaf } } }] }] } });
+  it('accepts bounded rich document depth while checking nested conflicts and duplicates', () => {
+    const body = shape('{"configuration":{"openType":2}}', richDocument({size:15}));
+    expect(inspectPublicRequestDecision(request(body), publicProof)).toEqual({allowed:true,reason:'BLOG_PUBLISH_REQUEST_ALLOWED'});
+    expect(inspectPrivateRequest(request(shape(undefined, richDocument({size:15}))), proof)).toBe(true);
+    expect(inspectPublicRequestDecision(request(shape('{"configuration":{"openType":2}}', richDocument({scope:2}))), publicProof).reason).toBe('BLOG_PUBLISH_REQUEST_VISIBILITY_UNCONFIRMED');
+    const duplicate = richDocument({size:15}).replace('"size":15', '"size":15,"size":16');
+    expect(inspectPublicRequestDecision(request(shape('{"configuration":{"openType":2}}', duplicate)), publicProof).reason).toBe('BLOG_PUBLISH_REQUEST_DUPLICATE_FIELD');
+    const tooDeep = JSON.stringify(Array.from({length:34}).reduce<object>(node=>({child:node}),{size:15}));
+    expect(inspectPublicRequestDecision(request(shape('{"configuration":{"openType":2}}', tooDeep)), publicProof).reason).toBe('BLOG_PUBLISH_REQUEST_DEPTH_LIMIT');
+  });
+  it('explains each transport refusal with a fixed code', () => {
+    const r = request(shape('{"configuration":{"openType":2}}'));
+    const cases = [
+      [{...r,method:'GET'}, publicProof, 'BLOG_PUBLISH_REQUEST_METHOD_UNCONFIRMED'],
+      [{...r,postDataComplete:false}, publicProof, 'BLOG_PUBLISH_REQUEST_BODY_INCOMPLETE'],
+      [{...r,contentType:'application/json'}, publicProof, 'BLOG_PUBLISH_REQUEST_ENCODING_UNCONFIRMED'],
+      [{...r,postData:r.postData+'&unknown=synthetic'}, publicProof, 'BLOG_PUBLISH_REQUEST_FIELDS_UNCONFIRMED'],
+      [{...r,postData:shape('broken')}, publicProof, 'BLOG_PUBLISH_REQUEST_JSON_UNCONFIRMED'],
+      [r, {...publicProof,wire:null}, 'BLOG_PUBLISH_UI_PROOF_UNCONFIRMED'],
+    ] as const;
+    for (const [candidate, ui, reason] of cases) expect(inspectPublicRequestDecision(candidate,ui)).toEqual({allowed:false,reason});
+  });
+  it('requires the independently labelled public radio and numeric openType 2', () => {
+    expect(inspectPublicRequest(request(shape('{"configuration":{"openType":2}}')), publicProof)).toBe(true);
+    for (const population of ['{"configuration":{"openType":0}}', '{"configuration":{"openType":"2"}}', '{"configuration":{"openType":2,"openType":0}}', '{"configuration":{"openType":2},"scope":2}']) expect(inspectPublicRequest(request(shape(population)), publicProof)).toBe(false);
+    expect(inspectPublicRequest(request(shape('{"configuration":{"openType":2}}')), proof)).toBe(false);
+    expect(inspectPublicRequest(request(shape('{"configuration":{"openType":2}}')), { ...publicProof, wire: null })).toBe(false);
+  });
+});
 describe('private publish transport gate', () => {
   it.each([shape(), shape('{"configuration":{"openType":0},"other":true}')])('accepts the exact observed private shape with synthetic content (%#)', body => {
     expect(inspectPrivateRequest(request(body), proof)).toBe(true);
