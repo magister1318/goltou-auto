@@ -3,13 +3,31 @@ import { chromium, type Browser } from 'playwright-core';
 import type { Surface } from '@goltou/surface';
 import type { SurfaceHost, GuardedRequest, GuardedResponse } from '@goltou/surface';
 import { BandDirectory } from '../src/band/plan';
-import { createdBandPosts, normalizedBandBody, readFullBandPost, verifyFullBandPost } from '../src/band/posted';
+import { createdBandPosts, normalizedBandBody, readFullBandPost, verifyFullBandPost, settleFullBandPost } from '../src/band/posted';
 
 let browser: Browser | undefined;
 afterEach(async () => { await browser?.close(); });
 const title = '합성 시험 제목';
 const post = (extra = {}) => ({ content: title + '\n본문\n<band:hashtag>#합성</band:hashtag>', band: { band_no: 111 }, post_no: 9001, web_url: 'https://band.us/band/111/post/9001', created_at: 1700000000000, author: { me: true }, photo_count: 10, ...extra });
 describe('immediate publication proof from the posting context', () => {
+  it('settles live delayed Band text, tags, links and loaded photos before exact comparison',async()=>{
+    browser=await chromium.launch({executablePath:process.env.CHROMIUM||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+    const context=await browser.newContext();
+    await context.route('**/*',async route=>{await new Promise(r=>setTimeout(r,1000));return route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=','base64')});});
+    const page=await context.newPage();
+    const text='합성 제목\n본문 #합성 https://example.invalid/guide',photo='https://photos.invalid/one.png';
+    await page.setContent(`<div class="postsDetailArea"><div class="_contentListRegion"><p class="txtBody" style="white-space:pre-wrap"></p></div></div><script>
+      const root=document.querySelector('._contentListRegion'),p=root.querySelector('p');
+      setTimeout(()=>p.textContent=${JSON.stringify(text)},200);
+      setTimeout(()=>root.insertAdjacentHTML('beforeend','<img class="mediaImg" src="${photo}">'),900);
+      setTimeout(()=>p.innerHTML=p.innerHTML.replace('#합성','<button class="hashTag">#합성</button>').replace('https://example.invalid/guide','<a href="https://example.invalid/guide">https://example.invalid/guide</a>'),1600);
+    </script>`);
+    const cdp=await context.newCDPSession(page);
+    const surface={evaluateReadOnly:async<T>(expression:string)=>{const r=await cdp.send('Runtime.evaluate',{expression,returnByValue:true,throwOnSideEffect:true});if(r.exceptionDetails)throw Error('READ_FAILED');return r.result.value as T;},pressKey:async()=>{await page.keyboard.press('PageDown');}} as unknown as Surface;
+    const value=await settleFullBandPost(surface,text,[photo],()=>{},6000);
+    expect(value).toMatchObject({body:text,hashtags:1,links:1,photosLoaded:1});
+    expect(value.photos).toEqual([photo]);
+  },10000);
   it.each([
     ['참고 (https://example.invalid/guide)', 'https://example.invalid/guide'],
     ['참고 (https://example.invalid/guide_(part))', 'https://example.invalid/guide_(part)'],

@@ -25,7 +25,7 @@ export function sanitizeDetail(detail: TraceDetail = {}) {
     for (const key of countKeys) { const n = detail.counts[key]; if (typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= Number.MAX_SAFE_INTEGER) counts[key] = n; }
     out.counts = counts;
   }
-  if (['title', 'paragraphs', 'prices', 'departures', 'golf_courses', 'text', 'photos', 'photo_order', 'photo_ratio', 'links', 'hashtags', 'line_breaks', 'identity', 'focus', 'record', 'alert_kind', 'delete_notice', 'same_post', 'missing_read', 'feed_location'].includes(detail.check ?? '')) out.check = detail.check;
+  if (['title', 'paragraphs', 'prices', 'departures', 'golf_courses', 'text', 'photos', 'photo_order', 'photo_ratio', 'links', 'hashtags', 'line_breaks', 'identity', 'focus', 'record', 'alert_kind', 'delete_notice', 'same_post', 'missing_read', 'feed_location', 'bold', 'visibility', 'stability'].includes(detail.check ?? '')) out.check = detail.check;
   if (['alert', 'confirm'].includes(detail.dialog ?? '')) out.dialog = detail.dialog;
   if (traceSelectors.includes(detail.selector as typeof traceSelectors[number])) out.selector = detail.selector;
   if (traceOperations.includes(detail.operation as typeof traceOperations[number])) out.operation = detail.operation;

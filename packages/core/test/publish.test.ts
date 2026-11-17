@@ -65,7 +65,7 @@ async function fixture(failure = '', visibility: 'public' | 'private' = 'private
   await context.route('**/*', route => {
     const target = new URL(route.request().url());
     if (target.hostname === '127.0.0.1') return route.continue();
-    if (target.hostname === 'blog.naver.com' && target.pathname.startsWith('/photos/')) return route.fulfill({ body: '' });
+    if (target.hostname === 'blog.naver.com' && target.pathname.startsWith('/photos/')) return route.fulfill({ contentType: 'image/png', body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=', 'base64') });
     if (target.href === 'https://blog.naver.com/synthetic-shell') return route.fulfill({ contentType: 'text/html', body: `<div class="se-documentTitle"><p class="se-text-paragraph">${stored.title}</p></div><div class="se-viewer">stale editor content</div><iframe src="${url}"></iframe>` });
     if (target.hostname === 'blog.naver.com' && target.pathname === '/PostList.naver') return route.fulfill({ contentType: 'text/html', body: '<main data-post-list><a href="/synthetic_fixture/9002">other synthetic post</a></main>' });
     if (target.href === 'https://blog.naver.com/delete-fixture') { deleted = true; return route.fulfill({ body: '{}' }); }
@@ -97,7 +97,7 @@ async function fixture(failure = '', visibility: 'public' | 'private' = 'private
   ], discarded: [], notices: [] };
   if (failure.startsWith('tags-')) plan.steps.push({ kind: 'text', role: 'hashtags', text: '#one #two' });
   const probed: string[] = [];
-  const execution = createBlogExecution(plan, files, { host, editorUrl, localPublish: true,
+  const execution = createBlogExecution(plan, files, { host, editorUrl, localPublish: true, publishedSettleMs: 3500,
     ...(probe ? { publishProbe: { visibility, record: async (request: import('@goltou/surface').GuardedRequest) => { probed.push(new URL(request.url).pathname); if (failure === 'evidence') throw new Error('DISK_FAILED'); } } } : {}),
   }, { mode: 'publish', visibility, beforeSave() {}, check() {}, progress() {} });
   return { execution, host, url, files, probed, counts: () => ({ published, deleted, outside, submissions }) };
@@ -227,7 +227,7 @@ describe('WP18 saved and published runs on a synthetic loopback service', () => 
     const f = await fixture(loss ? 'formatting' : '', 'private', false, false, true, product);
     await f.execution.write(); await f.execution.saveAndVerify();
     if (loss) {
-      await expect(f.execution.publish()).rejects.toMatchObject({ message: 'BLOG_FORMATTING_PUBLISHED:1', issues: [{ paragraph: 1, fields: ['bold', 'href'] }] });
+      await expect(f.execution.publish()).rejects.toMatchObject({ message: 'BLOG_READBACK_MISMATCH:bold,links', issues: [{ paragraph: 1, field: 'bold' }, { paragraph: 1, field: 'links' }] });
       expect(f.execution.publishedVerified).toBe(false);
       await expect(f.execution.publish()).rejects.toThrow();
     } else {

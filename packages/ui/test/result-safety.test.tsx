@@ -59,6 +59,13 @@ describe('terminal result actions',()=>{
     expect(jobMessage(job({readbackIssues:[{field:'title'}]}))[0]).toBe('제목이 계획과 다릅니다.');
     expect(jobMessage(job({readbackIssues:[{field:'bold',paragraph:2}]}))[0]).toBe('2번 문단의 문단 굵기가 계획과 다릅니다.');
   });
+  it('shows a neutral published Blog review with visibility and loading details and no retry',()=>{
+    const value=job({creationState:'published',targets:[{channel:'blog',key:'synthetic',name:'합성'}],postUrl:'https://blog.naver.com/synthetic/9001',readbackIssues:[{field:'visibility'},{field:'stability'}]});
+    expect(serviceReviewHeading(value)).toBe('발행됨, 확인할 점 있음');
+    expect(buttons(value)).toEqual(['닫기','등록 기록에서 보기']);
+    expect(jobMessage(value)[0]).toContain('공개 범위');
+    expect(jobMessage(value)[0]).toContain('화면 로딩 상태');
+  });
   it.each(['band','blog'] as const)('retains open/delete eligibility for a created %s post with failed readback',channel=>{
     const post={channel,status:'failed',mode:'publish',failReason:channel==='band'?'BAND_PUBLISHED_READBACK_MISMATCH':'BLOG_PUBLISHED_READBACK_MISMATCH',postUrl:channel==='band'?'https://band.us/band/111/post/9001':'https://blog.naver.com/synthetic/9001'} as Post;
     expect(canRetryHistory(post)).toBe(false);

@@ -5,7 +5,7 @@ export type ResultAction = 'history' | 'close' | 'home' | 'stop' | 'login' | 'ca
 export const needsServiceReview = (job: Job) => !['running','draft_saved','published'].includes(job.status) && !!existingServiceResult(job);
 export function serviceReviewHeading(job: Job) {
   const state = existingServiceResult(job);
-  return state === 'published' ? job.targets.every(t=>t.channel==='band') ? '게시는 됐지만 확인할 점이 있습니다' : '발행은 됐지만 확인할 점이 있습니다'
+  return state === 'published' ? job.targets.every(t=>t.channel==='band') ? '게시는 됐지만 확인할 점이 있습니다' : '발행됨, 확인할 점 있음'
     : state === 'draft_saved' ? '임시저장은 됐지만 확인할 점이 있습니다' : '저장 또는 게시 여부를 확인해 주세요';
 }
 export function JobResultActions({job,busy,act}:{job:Job;busy:boolean;act(action:ResultAction):void}) {

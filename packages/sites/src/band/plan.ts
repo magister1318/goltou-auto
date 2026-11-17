@@ -1,5 +1,5 @@
 // Reference: ../refs/golfliat/programs/golfliat-workbench/electron/renderer.js, fillBandComposerInWebview (readback and file input selectors only).
-import { createdBandPosts, readFullBandPost, verifyFullBandPost, normalizedBandBody, type CreatedBandPost } from './posted';
+import { createdBandPosts, readFullBandPost, settleFullBandPost, normalizedBandBody, type CreatedBandPost } from './posted';
 import { traceStep, trace, reasonCode, expectedTelemetryRequest } from '@goltou/surface/telemetry';
 import type { Surface, SurfaceDialog, SurfaceHost } from '@goltou/surface';
 import { click, compact, point, read, waitFor } from '../dom';
@@ -10,6 +10,7 @@ import type { BandBarrierCode } from './barrier-codes';
 import { bandReadBatchTarget } from './read-batch';
 import { readCreatedBandPost, bandPhotoPath } from './record-read';
 import { bandCreateIdentity } from './publish-confirmation';
+import { ReadbackMismatch } from '../readback-checks';
 
 export const bandMobileUA = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
 export const bandEditor = 'textarea._postTextArea, .cke_editable[contenteditable="true"], [contenteditable="true"][role="textbox"]';
@@ -500,19 +501,17 @@ export class BandExecution {
     try {
       await this.surface!.open({ url: url.replace('https://band.us/', 'https://www.band.us/'), session: 'band', width: 1280, height: 900,
         userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36' });
-      const full = await waitFor(async () => {
+      await settleFullBandPost(this.surface!, bandText(this.plan), uploaded, this.env.check, this.env.submitTimeoutMs ?? 90000, async () => {
         this.env.check();
         if (await this.dialog()) throw Error('USER_DIALOG_REQUIRED');
         const state = await this.surface!.readState();
         if (!directory.sameOrigin(new URL(state.url)) || new URL(state.url).pathname.replace(/\/$/, '') !== new URL(url!).pathname) return null;
-        const value = await readFullBandPost(this.surface!);
-        return value && value.photos.length >= uploaded.length ? value : null;
-      }, timeout);
-      verifyFullBandPost(bandText(this.plan), uploaded, full);
+        return readFullBandPost(this.surface!);
+      });
     } catch (error) {
       this.env.check();
       trace('band.confirm.detail', 'fail', { reason: reasonCode(error) });
-      if (error instanceof Error && error.message === 'BAND_PUBLISHED_READBACK_MISMATCH') throw error;
+      if (error instanceof ReadbackMismatch || error instanceof Error && error.message === 'BAND_PUBLISHED_READBACK_MISMATCH') throw error;
       throw Error('BAND_PUBLISHED_READBACK_UNAVAILABLE');
     }
     this.verifiedPublished = url; trace('band.confirm.detail', 'ok'); return url;
