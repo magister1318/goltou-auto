@@ -17,6 +17,7 @@ import android.webkit.WebViewClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceResponse
 import android.os.Message
+import android.util.Log
 import java.io.ByteArrayInputStream
 import android.widget.Button
 import android.widget.FrameLayout
@@ -37,6 +38,9 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
     private val entries = java.util.concurrent.ConcurrentHashMap<String, Entry>()
     private val sessions = setOf("naver", "band", "ai")
     private val clearing = mutableSetOf<String>()
+    private fun diagnostic(entry: Entry, step: ConnectionDiagnostics.Step, url: String? = null, code: Int? = null) {
+        Log.i("GOLTOU-CONNECT", ConnectionDiagnostics.line(entry.session, step, url, code))
+    }
 
     fun view(id: String): WebView = entries[id]?.view ?: error("NO_SURFACE")
 
@@ -149,12 +153,15 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
                     if (entry.frame.parent === visible) { setVisible(id, false); onNavigationHidden(id) }
                     return false
                 }
-                return !policy.allows(url)
+                val blocked = !policy.allows(url)
+                if (blocked && request.isForMainFrame) diagnostic(entry, ConnectionDiagnostics.Step.BLOCKED, url)
+                return blocked
             }
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
                 val policy = entries[id]?.policy ?: return null
                 // Also covers main-frame POSTs, which shouldOverrideUrlLoading omits.
                 if (request.isForMainFrame && !policy.allows(request.url.toString()) && !policy.isLanding(request.url.toString())) {
+                    entries[id]?.let { diagnostic(it, ConnectionDiagnostics.Step.BLOCKED, request.url.toString()) }
                     view.post { entries[id]?.let { if (it.frame.parent === visible) setVisible(id, false); it.view.loadUrl(policy.fallbackUrl) } }
                     return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
                 }
@@ -167,20 +174,26 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
                 if (url == entry.bootstrapUrl && entry.frame.parent !== visible) return
                 entry.loadedUrl = null; entry.loadFailed = false
                 val policy = entry.policy ?: return
+                diagnostic(entry, ConnectionDiagnostics.Step.STARTED, url)
                 if (policy.isLanding(url)) { if (entry.frame.parent === visible) { setVisible(id, false); onNavigationHidden(id) } }
                 else if (!policy.allows(url)) {
+                    diagnostic(entry, ConnectionDiagnostics.Step.BLOCKED, url)
                     if (entry.frame.parent === visible) setVisible(id, false)
                     view.stopLoading(); view.loadUrl(policy.fallbackUrl)
                 }
             }
-            override fun onPageFinished(view: WebView, url: String) { entries[id]?.let { if (!it.loadFailed) it.loadedUrl = url } }
+            override fun onPageFinished(view: WebView, url: String) { entries[id]?.let {
+                if (!it.loadFailed) it.loadedUrl = url
+                if (it.policy != null) diagnostic(it, ConnectionDiagnostics.Step.FINISHED, url)
+            } }
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
-                if (request.isForMainFrame) entries[id]?.let { it.loadFailed = true; it.loadedUrl = null; if (it.frame.parent === visible) setVisible(id, false) }
+                if (request.isForMainFrame) entries[id]?.let { diagnostic(it, ConnectionDiagnostics.Step.NET_ERROR, request.url.toString(), error.errorCode); it.loadFailed = true; it.loadedUrl = null; if (it.frame.parent === visible) setVisible(id, false) }
             }
             override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
-                if (request.isForMainFrame) entries[id]?.let { it.loadFailed = true; it.loadedUrl = null; if (it.frame.parent === visible) setVisible(id, false) }
+                if (request.isForMainFrame) entries[id]?.let { diagnostic(it, ConnectionDiagnostics.Step.HTTP_ERROR, request.url.toString(), response.statusCode); it.loadFailed = true; it.loadedUrl = null; if (it.frame.parent === visible) setVisible(id, false) }
             }
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                entries[id]?.let { diagnostic(it, ConnectionDiagnostics.Step.RENDERER_GONE) }
                 destroy(id)
                 return true
             }
@@ -206,6 +219,7 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
         val bootstrapUrl = "about:blank#${Uri.encode(msg.getString("marker"))}"
         val entry = Entry(view, session, view, bootstrapUrl)
         entries[id] = entry
+        diagnostic(entry, ConnectionDiagnostics.Step.CREATED)
         hidden.addView(view, FrameLayout.LayoutParams(1280, 900))
         view.loadUrl(bootstrapUrl)
     }
@@ -215,6 +229,7 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
         if (show) check(entry.policy != null) { "ONLY_LOGIN_SURFACE_VISIBLE" }
         if (show && entry.policy != null) check(!entry.loadFailed && entry.loadedUrl == entry.view.url &&
             entry.loadedUrl?.let { entry.policy!!.allows(it) } == true) { "LOGIN_PAGE_NOT_READY" }
+        diagnostic(entry, if (show) ConnectionDiagnostics.Step.SHOWN else ConnectionDiagnostics.Step.HIDDEN)
         val readOnlyReview = entry.session == "band" && entry.policy?.landing?.isEmpty() == true &&
             entry.policy!!.allowed.all { it.hostname in setOf("band.us", "www.band.us") &&
                 !it.prefix && Regex("^/band/[0-9]+/post$").matches(it.pathname) }

@@ -13,12 +13,14 @@ describe('WP15 authentication routes', () => {
     ['band', serviceLoginUrls.band, 'auth'], ['band', 'https://auth.band.us/email_login', 'auth'],
     ['band', 'https://auth.band.us/phone_login', 'auth'], ['band', 'https://auth.band.us/verify/otp', 'auth'],
     ['band', 'https://auth.band.us/consent', 'auth'], ['band', serviceLoginUrls.naver, 'auth'], ['band', 'https://band.us/', 'landing'],
+    ['band', 'https://www.band.us/about/kr/intro', 'landing'],
   ] as const)('%s %s is %s', (service, url, location) => { expect(loginLocation(service, url)).toBe(location); });
   it.each(['about:blank', 'javascript:alert(1)', 'intent://band.us/', 'market://details', 'https://play.google.com/store',
     'http://auth.band.us/login', 'https://auth.band.us:8443/login', 'https://user@auth.band.us/login',
     'https://auth.band.us.evil.test/login', 'https://nid.naver.com.evil.test/nidlogin.login',
     'https://blog.naver.com/GoBlogWrite.naver', 'https://m.blog.naver.com/PostWriteForm.naver',
     'https://band.us/band/111/post', 'https://band.us/feed', 'https://auth.band.us/logout',
+    'https://www.band.us/about/kr/intro/other', 'https://www.band.us/about/other',
     'https://nid.naver.com/nidlogin.logout', 'https://auth.band.us/email_login_evil', 'https://example.com/',
   ])('blocks %s for both login surfaces', url => { expect(loginLocation('naver', url)).toBe('blocked'); expect(loginLocation('band', url)).toBe('blocked'); });
 });

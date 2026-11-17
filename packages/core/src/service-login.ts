@@ -84,7 +84,10 @@ export class ServiceLoginController {
     do {
       if (this.disposed) throw new Error('LOGIN_DISPOSED');
       const state = await serviceLoginState(surface);
-      if (state !== 'unknown') return state;
+      if (state !== 'unknown') {
+        trace('core.service-login.ServiceLoginController.signal', 'ok', state === 'expired' ? { reason: 'LOGIN_REQUIRED' } : undefined);
+        return state;
+      }
       await new Promise(resolve => setTimeout(resolve, this.timing.pollMs));
     } while (Date.now() < deadline);
     return 'unknown' as const;
@@ -92,6 +95,7 @@ export class ServiceLoginController {
     });
   }
   check(service: LoginService): Promise<LoginState> {
+    let failure = reasonCode('LOGIN_UNCONFIRMED');
     return traceJob('login_check', service === 'naver' ? 'naver' : 'band', async () => {
       if (this.visible) throw new ApiError('conflict', '로그인 화면을 먼저 닫아 주세요.');
       return this.run(async () => {
@@ -99,9 +103,9 @@ export class ServiceLoginController {
       try {
         const state = await this.signal(await this.load(service, serviceCheckUrls[service]));
         this.emit(service, state, state === 'unknown' ? '연결 상태를 확인하지 못했습니다. 다시 확인을 눌러 주세요.' : undefined); return state;
-      } catch { trace('core.service-login.ServiceLoginController.load', 'fail', { reason: 'LOGIN_UNCONFIRMED' }); this.emit(service, 'unknown', '연결 상태를 확인하지 못했습니다. 인터넷 연결을 확인한 뒤 다시 확인을 눌러 주세요.'); return 'unknown'; }
+      } catch (error) { failure = reasonCode(error); trace('core.service-login.ServiceLoginController.load', 'fail', { reason: failure }); this.emit(service, 'unknown', '연결 상태를 확인하지 못했습니다. 다시 확인을 눌러 주세요.'); return 'unknown'; }
     });
-    }, value => value === 'confirmed' ? { result: 'succeeded' } : { result: 'failed', reason: 'LOGIN_UNCONFIRMED' });
+    }, value => value !== 'unknown' ? { result: 'succeeded' } : { result: 'failed', reason: failure });
   }
   show(service: LoginService): Promise<void> {
     return traceJob('login_check', service === 'naver' ? 'naver' : 'band', async () => {
@@ -118,7 +122,8 @@ export class ServiceLoginController {
         if (loginLocation(service, (await surface.readState()).url) !== 'auth') throw new Error('LOGIN_PAGE_NOT_READY');
         await surface.show(); this.visible = service; this.generation++;
         this.emit(service, state); this.schedulePoll();
-      } catch {
+      } catch (error) {
+        trace('core.service-login.ServiceLoginController.load', 'fail', { reason: reasonCode(error) });
         await this.drop(service); this.visible = null; this.emit(service, 'unknown', loadError);
         throw new ApiError('server', loadError);
       }

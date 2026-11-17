@@ -24,7 +24,10 @@ export function serviceNavigationPolicy(service: LoginService): NavigationPolicy
     ],
     landing: service === 'naver' ? [{ hostname: 'nid.naver.com', pathname: '/user2/help/myInfo' }, { hostname: 'nid.naver.com', pathname: '/user2/help/myInfoV2' },
       { hostname: 'm.blog.naver.com', pathname: '/' }, { hostname: 'm.blog.naver.com', pathname: '/Recommendation.naver' }]
-      : [{ hostname: 'band.us', pathname: '/' }, { hostname: 'www.band.us', pathname: '/' }],
+      : [{ hostname: 'band.us', pathname: '/' }, { hostname: 'www.band.us', pathname: '/' },
+        // A fresh (signed-release) profile redirects here before offering login.
+        // Hidden landing only: do not expose the public site in the login surface.
+        { hostname: 'www.band.us', pathname: '/about/kr/intro' }],
   };
 }
 export function loginLocation(service: LoginService, url: string): 'auth' | 'landing' | 'blocked' {

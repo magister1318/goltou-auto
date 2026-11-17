@@ -47,6 +47,19 @@ function fixture() {
 }
 
 describe('WP15 on-demand login lifecycle', () => {
+  it('keeps the connection failure reason in the exported terminal, and treats logged out as a completed check', async () => {
+    const f = fixture(), directory = mkdtempSync(path.join(os.tmpdir(), 'goltou-login-reason-'));
+    const logs = new JobLogStore(directory); configureTrace(logs);
+    const create = f.host.create;
+    try {
+      f.host.create = vi.fn(async () => { throw Error('DEVTOOLS_LIST_TIMEOUT'); });
+      expect(await f.controller.check('band')).toBe('unknown');
+      expect(logs.list()[0]).toMatchObject({ result: 'failed', reason: 'DEVTOOLS_LIST_TIMEOUT' });
+      f.host.create = create;
+      expect(await f.controller.check('band')).toBe('expired');
+      expect(logs.list()[0]).toMatchObject({ result: 'succeeded' });
+    } finally { f.controller.dispose(); configureTrace(undefined); rmSync(directory, { recursive: true, force: true }); }
+  });
   it('gives follow-up login polls and cancellation their own durable terminal after show has ended', async () => {
     const f = fixture(), directory = mkdtempSync(path.join(os.tmpdir(), 'goltou-login-poll-'));
     const logs = new JobLogStore(directory); configureTrace(logs);

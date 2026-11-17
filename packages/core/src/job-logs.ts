@@ -10,11 +10,12 @@ const kinds: readonly JobKind[] = ['blog_draft', 'blog_publish', 'blog_delete', 
 const sites: readonly LogSite[] = ['naver', 'band', 'app'];
 const events: readonly TraceEvent[] = ['start', 'ok', 'fail', 'retry', 'skip', 'wait', 'blocked_expected'];
 const countKeys = ['rows', 'columns', 'cells', 'step', 'paragraphIndex', 'paragraphTotal', 'photoIndex', 'photoTotal', 'bytes', 'runs', 'attempt', 'expected', 'observed', 'status', 'lineBreaks', 'hashtags', 'links'] as const;
-const hosts = ['band.us', 'www.band.us', 'api.band.us', 'api-kr.band.us', 'bapi-kr.band.us', 'up.band.us', 'blog.naver.com', 'm.blog.naver.com', 'nid.naver.com', '127.0.0.1'];
+const hosts = ['band.us', 'www.band.us', 'auth.band.us', 'api.band.us', 'api-kr.band.us', 'bapi-kr.band.us', 'up.band.us', 'blog.naver.com', 'm.blog.naver.com', 'nid.naver.com', '127.0.0.1'];
 const fieldNames = ['version', 'ts', 'band_no', 'post_no', 'band_key', 'post_key', 'body', 'content', 'contents', 'text', 'photos', 'photo_list', 'file', 'fileList', 'attachment', 'attachments', 'data', 'requests', 'url', 'method', 'params', 'access_token', 'token', 'signature', 'key', 'blogId', 'logNo', 'title', 'tags', 'is_public', 'schedule', 'device_type', 'set_band_notice', 'set_major_band_notice', 'set_linked_band_notice', 'copiable_state', 'should_disable_comment', 'band_notice_unset_at', 'photo', 'purpose', 'format', 'locale', 'app_id', 'documentJson', 'documentModel', 'mediaResources', 'populationParams', 'productApiVersion', 'tokenId', 'cpage', 'categoryNo', 'parentCategoryNo', 'viewDate', 'sourceCode', 'currentPage'];
 const fixedPaths = ['/RabbitAutoSaveWrite.naver', '/PostDelete.naver', '/v1.5.0/delete_post', '/v2.0.0/batch', '/v2.3.0/get_band_list', '/v2.0.2/create_post', '/v3/upload_photo', '/RabbitWrite.naver', '/RabbitUpdate.naver', '/RabbitTempPostWrite.naver', '/RabbitTempPostUpdate.naver', '/PostWriteForm.naver', '/PostView.naver', '/PostList.naver', '/', '/my/home', '/my', '/login'];
 const safeHost = (value: string) => hosts.includes(value) ? value : '[other]';
-const safePath = (value: string) => fixedPaths.includes(value) ? value : /^\/band\/\d+\/post\/\d+\/?$/.test(value) ? '/band/[id]/post/[id]' : /^\/band\/\d+(?:\/post)?\/?$/.test(value) ? '/band/[id]/post' : '[other]';
+const loginPaths = ['/about/kr/intro', '/nidlogin.login', '/user2/help/myInfo', '/user2/help/myInfoV2', '/email_login', '/phone_login'];
+const safePath = (value: string) => fixedPaths.includes(value) || loginPaths.includes(value) ? value : /^\/band\/\d+\/post\/\d+\/?$/.test(value) ? '/band/[id]/post/[id]' : /^\/band\/\d+(?:\/post)?\/?$/.test(value) ? '/band/[id]/post' : '[other]';
 const safeFields = (value: readonly string[]) => Array.isArray(value) ? value.slice(0, 80).map(name => fieldNames.includes(name) ? name : '[other]') : [];
 /** Reconstruct every field. Neither spread nor JSON.stringify of caller objects is permitted. */
 export function sanitizeDetail(detail: TraceDetail = {}) {
