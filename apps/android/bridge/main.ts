@@ -27,7 +27,7 @@ function argument(name: string): string {
 }
 
 const native = new NativeBridge();
-const host = new AndroidSurfaceHost(native, argument('devtools'), __GOLTOU_DEBUG__);
+const host = new AndroidSurfaceHost(native, argument('devtools'));
 const ai = new AiModeClient(host);
 const logs = new JobLogStore(path.join(path.dirname(argument('data')), 'logs'));
 configureTrace(logs);

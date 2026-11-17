@@ -1460,7 +1460,6 @@ export function App() {
             <main className="pad settings-content">
               <h1 className="title">설정</h1>
               <p>골투오토 {__GOLTOU_VERSION__} ({__GOLTOU_VERSION_CODE__})</p>
-              {!__GOLTOU_DEBUG__ && <p role="alert">이 배포본은 자동 등록을 사용할 수 없습니다. 기존 앱을 유지해 주세요.</p>}
               <div className="choice-row"><span>작업 로그<small>단계별 진행과 결과 확인</small></span><button className="green" onClick={() => go('logs')}>보기</button></div>
               <div className="choice-row"><span>앱 데이터 옮기기<small>글 옵션·기록의 공개 범위·표 표시만 옮깁니다. 로그인은 포함하지 않습니다.</small></span>
                 <div>

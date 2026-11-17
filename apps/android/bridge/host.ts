@@ -28,11 +28,10 @@ function listTargets(socketPath: string): Promise<Target[]> {
 
 export class AndroidSurfaceHost implements SurfaceHost {
   private readonly surfaces = new Map<Surface, string>();
-  constructor(private readonly native: NativeBridge, private readonly socketPath: string, private readonly automationEnabled = true) {}
+  constructor(private readonly native: NativeBridge, private readonly socketPath: string) {}
 
   async create(session: SurfaceSession): Promise<Surface> {
     return traceStep('android.bridge.host.AndroidSurfaceHost.create', async () => {
-    if (!this.automationEnabled) throw new Error('RELEASE_AUTOMATION_UNAVAILABLE');
     const id = randomUUID();
     const marker = `goltou-${id}`;
     await this.native.call('surface.create', { surface: id, session, marker });

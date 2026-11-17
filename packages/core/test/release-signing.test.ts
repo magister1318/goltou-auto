@@ -1,12 +1,10 @@
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { signingSecretViolations } from '../../../scripts/check-signing-secrets.mjs';
-import { AndroidSurfaceHost } from '../../../apps/android/bridge/host';
-import { NativeBridge } from '../src/native';
 const run = promisify(execFile);
 const directories: string[] = [];
 afterEach(async () => { for (const directory of directories.splice(0)) await rm(directory, { recursive: true, force: true }); });
@@ -32,17 +30,28 @@ it('scans staged Git contents and never prints credential values', async () => {
 it('accepts the actual repository Git index', async () => {
   expect((await run(process.execPath, ['scripts/check-signing-secrets.mjs'])).stdout).toContain('SIGNING_SECRETS_CHECK_PASSED');
 });
-it('does not create a WebView or contact CDP when release debugging is off', async () => {
-  const native = new NativeBridge(); const call = vi.spyOn(native, 'call');
-  const host = new AndroidSurfaceHost(native, 'unused', false);
-  await expect(host.create('naver')).rejects.toThrow('RELEASE_AUTOMATION_UNAVAILABLE');
-  await expect(host.create('band')).rejects.toThrow('RELEASE_AUTOMATION_UNAVAILABLE');
-  expect(call).not.toHaveBeenCalled();
-});
-it('requires the native WebView debugging flag to match the build variant', async () => {
+it('enables the release control channel independently of diagnostics and preserves private relay access', async () => {
   const activity = await readFile('apps/android/app/src/main/java/kr/goltou/auto/MainActivity.kt', 'utf8');
-  expect(activity).toContain('WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)');
-  expect(activity).not.toContain('setWebContentsDebuggingEnabled(true)');
+  const gradle = await readFile('apps/android/app/build.gradle.kts', 'utf8');
+  expect(gradle).toContain('buildConfigField("boolean", "WEBVIEW_CONTROL_ENABLED", "true")');
+  expect(gradle).toContain('isDebuggable = false');
+  expect(gradle).toContain('isJniDebuggable = false');
+  expect(activity).toContain('WebView.setWebContentsDebuggingEnabled(BuildConfig.WEBVIEW_CONTROL_ENABLED)');
+  expect(activity.indexOf('WebView.setWebContentsDebuggingEnabled')).toBeLessThan(activity.indexOf('NodeRuntime.ensureStarted'));
+  expect(activity).not.toContain('getIntent(');
+  expect(activity).not.toContain('onNewIntent');
+  const relay = await readFile('apps/android/app/src/main/java/kr/goltou/auto/DevtoolsRelay.kt', 'utf8');
+  expect(relay).toContain('File(filesDir, "devtools.sock")');
+  expect(relay).toContain('LocalSocketAddress.Namespace.FILESYSTEM');
+  expect(relay).toContain('LocalSocketAddress.Namespace.ABSTRACT');
+  expect(relay).toContain('webview_devtools_remote_${Process.myPid()}');
+  expect(relay).not.toContain('java.net.ServerSocket');
+  const manifest = await readFile('apps/android/app/src/main/AndroidManifest.xml', 'utf8');
+  expect(manifest.match(/android:exported="true"/g)).toHaveLength(1); // launcher only
+  expect(manifest).not.toMatch(/<service|<receiver|android.intent.action.VIEW/);
+  const bridge = await readFile('apps/android/bridge/main.ts', 'utf8');
+  expect(bridge).toContain("new AndroidSurfaceHost(native, argument('devtools'))");
+  expect(bridge).not.toContain("argument('devtools'), __GOLTOU_DEBUG__");
 });
 it.each([1, 2])('fails closed for an absent or multiple signer digest (%s)', async count => {
   const result = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',

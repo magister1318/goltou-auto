@@ -3,8 +3,8 @@
 패키지 kr.goltou.auto, 이름 골투오토. Android 11 이상 ARM64/ARMv7용이다.
 버전은 apps/android/version.properties에서 관리하고 설정에 표시한다.
 
-**WP30 1.0.0 (2)는 서명된 준비본이다. 원격 디버깅을 끄면 현재 CDP 드라이버로 자동 등록을
-할 수 없어 직원 배포와 기존 앱 전환을 보류한다.**
+**WP30 Part 2의 1.0.0 (3)는 소유자 결정으로 release 제어 채널을 켠 사내 전환용 준비본이다.
+실제 release 휴대폰 동작과 Blog 임시저장 왕복은 전환 후 확인한다.**
 
 ## 서명
 
@@ -45,7 +45,7 @@ R8/리소스 축소는 JNI와 내장 Node 검증 전까지 끈다.
 
 ```powershell
 . ./scripts/apk-signature.ps1
-Compare-InstalledCertificate ../release-out/goltou-auto-1.0.0-2-release.apk
+Compare-InstalledCertificate ../release-out/goltou-auto-1.0.0-3-release.apk
 ```
 
 DIFFERENT이면 설치 금지다. 앱 삭제·초기화·오류 우회를 하지 않는다.
@@ -53,17 +53,18 @@ SAME인 검증된 향후 배포본만 `install-device.ps1 -Variant release`로 �
 게이트는 인증서와 화면 켜짐·잠금 해제·앱 전면, APK 해시를 대조하고 `adb install -r`만 쓴다.
 실패하면 다른 플래그나 삭제로 재시도하지 않는다. 파일 설치는 [INSTALL](INSTALL.md)을 따른다.
 
-## 원격 디버깅과 자동 등록 제한
+## 제어 채널과 접근 범위
 
-release는 debuggable/JNI debug false이며 WebView 원격 디버깅은 BuildConfig.DEBUG와 같다.
-WP12의 ‘release에서도 CDP를 위해 원격 디버깅 활성화’ 예외는 WP30에서 제거했다.
+release는 debuggable/JNI debug false이며 WEBVIEW_CONTROL_ENABLED=true는 별도로 유지한다.
+소유자는 사내 비공개 배포에서 기존 CDP 드라이버를 쓰기로 결정했다.
 현재 AndroidSurfaceHost.create는 사설 릴레이의 /json/list와 CDP에 의존한다.
 요청 allowlist도 CdpSurface.guardRequests의 Fetch.enable과 POST 본문·응답 관찰을 쓴다.
-사설 릴레이는 원격 디버깅이 꺼진 WebView에 CDP 서버를 만들어 주지 않는다.
-release는 surface 생성 전 RELEASE_AUTOMATION_UNAVAILABLE로 거부하며 차단기를 생략하지 않는다.
+릴레이는 앱 private 파일 소켓에서 WebView abstract 소켓으로 연결하며 CDP TCP 포트는 열지 않는다.
+일반 다른 앱/인터넷에 직접 열려 있지 않지만 승인된 USB/무선 adb와 root는 페이지를 읽고 조작할 수 있다.
+직원 휴대폰의 USB/무선 디버깅은 꺼 둔다. 외부 Intent로 자동 작업을 지시하는 경로는 없다.
 
-자동 등록을 유지하려면 요청 본문·응답 통제를 포함하는 별도 드라이버와 실기기 검증이 필요하다.
-DOM 쓰기나 단순 URL 차단으로 대체하지 않았다. 데이터 백업과 WP20 로그 내보내기는
+앱 UI의 작업별 발행 확인과 Fetch 본문/응답 차단기를 유지하며 debug 허용 파일은 release에 넣지 않는다.
+데이터 백업과 WP20 로그 내보내기는
 네이티브 로컬 경로라 CDP/adb가 필요 없지만 실제 release 기기의 문서 선택·공유 UI는 미검증이다.
 
 근거: [WebView API](https://developer.android.com/reference/android/webkit/WebView#setWebContentsDebuggingEnabled(boolean)),

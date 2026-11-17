@@ -23,7 +23,7 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); document.body.inn
 it('restores settings navigation when Android hides the keyboard while the field retains focus', async () => {
   vi.stubGlobal('__GOLTOU_DEBUG__', false);
   vi.stubGlobal('__GOLTOU_VERSION__', '1.0.0');
-  vi.stubGlobal('__GOLTOU_VERSION_CODE__', 2);
+  vi.stubGlobal('__GOLTOU_VERSION_CODE__', 3);
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callback(0); return 0; });
   vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
   HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -34,8 +34,8 @@ it('restores settings navigation when Android hides the keyboard while the field
     await act(async () => { root.render(createElement(App)); });
     const settings = [...container.querySelectorAll<HTMLButtonElement>('.bottom-nav button')].find(e => e.textContent === '설정')!;
     await act(async () => { settings.click(); });
-    expect(container.textContent).toContain('골투오토 1.0.0 (2)');
-    expect(container.textContent).toContain('이 배포본은 자동 등록을 사용할 수 없습니다.');
+    expect(container.textContent).toContain('골투오토 1.0.0 (3)');
+    expect(container.textContent).not.toContain('이 배포본은 자동 등록을 사용할 수 없습니다.');
     expect(container.textContent).toContain('데이터 내보내기');
     const input = container.querySelector<HTMLInputElement>('input[type=number]')!;
     await act(async () => {

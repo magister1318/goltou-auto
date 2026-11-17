@@ -44,9 +44,9 @@ class MainActivity : ComponentActivity() {
             session.creations++
             return
         }
-        // Release must not expose DevTools. The current CDP driver is unavailable
-        // there; do not silently enable it or bypass request barriers (see WP30).
-        WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
+        // WP30 owner decision: keep the existing CDP driver AND Fetch request barriers.
+        // Process-wide: stopping DevTools disconnects retained targets and their guards.
+        WebView.setWebContentsDebuggingEnabled(BuildConfig.WEBVIEW_CONTROL_ENABLED)
         val root = FrameLayout(session.context)
         root.setOnApplyWindowInsetsListener { view, insets ->
             val bars = insets.getInsets(WindowInsets.Type.systemBars() or WindowInsets.Type.ime())

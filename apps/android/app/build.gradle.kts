@@ -34,6 +34,9 @@ android {
         targetSdk = 36
         versionCode = appVersion.getProperty("versionCode").toInt()
         versionName = appVersion.getProperty("versionName")
+        // Owner decision (WP30 part 2): CDP is the in-app input/request-control channel.
+        // Independent of DEBUG: release still excludes diagnostics and test allowances.
+        buildConfigField("boolean", "WEBVIEW_CONTROL_ENABLED", "true")
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
         externalNativeBuild { cmake { cppFlags += "-std=c++17"; arguments += "-DANDROID_STL=c++_shared" } }
     }
