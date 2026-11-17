@@ -15,10 +15,25 @@ describe('immediate publication proof from the posting context', () => {
     ['참고 (https://example.invalid/guide_(part))', 'https://example.invalid/guide_(part)'],
     ['https://example.invalid/guide_%28part%29', 'https://example.invalid/guide_%28part%29'],
   ])('verifies an autolink while retaining surrounding punctuation in the full text: %s', (body, url) => {
-    const actual = { body, photos: [], lineBreaks: 0, hashtags: 0, links: 1, tagTexts: [], linkUrls: [url] };
+    const actual = { body, photos: [], lineBreaks: 0, hashtags: 0, links: 1, tagTexts: [], linkUrls: [url], tagTokens: [], linkTokens: [{text:url,href:url,start:body.replace(/\s/g,'').indexOf(url)}] };
     expect(() => verifyFullBandPost(body, [], actual)).not.toThrow();
     expect(() => verifyFullBandPost(body, [], { ...actual, linkUrls: ['https://example.invalid/changed'] })).toThrow('BAND_PUBLISHED_READBACK_MISMATCH');
     expect(() => verifyFullBandPost(body, [], { ...actual, body: body + ' changed' })).toThrow('BAND_PUBLISHED_READBACK_MISMATCH');
+  });
+  it.each(['#태그',' #태그 '])('reads service token positions and separates hashtag navigation from destinations (%s)', async label => {
+    browser = await chromium.launch({executablePath:process.env.CHROMIUM || 'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+    const context=await browser.newContext();await context.route('**/*',route=>route.abort());
+    const page=await context.newPage();
+    await page.setContent(`<div class="postsDetailArea"><div class="_contentListRegion"><p class="txtBody" style="white-space:pre-wrap">참고 (<a href="https://example.invalid/guide">https://example.invalid/guide</a>)에서\n<a class="hashTag" href="https://example.invalid/tag">${label}</a>,다음</p></div></div>`);
+    const cdp=await context.newCDPSession(page);
+    const surface={evaluateReadOnly:async(expression:string)=>{
+      const reply=await cdp.send('Runtime.evaluate',{expression,returnByValue:true,throwOnSideEffect:true});
+      if(reply.exceptionDetails)throw Error('READ_FAILED');return reply.result.value;
+    }} as Surface;
+    const actual=await readFullBandPost(surface);
+    expect(actual).toMatchObject({links:1,hashtags:1,linkTokens:[{text:'https://example.invalid/guide',start:3}],tagTokens:[{text:'#태그',start:35}]});
+    expect(()=>verifyFullBandPost(`참고 (https://example.invalid/guide)에서\n${label},다음`,[],actual!)).not.toThrow();
+    await context.close();
   });
   it('handles a successful response without an ID and binds only one recent owned feed identity', async () => {
     let inspect!: (request: GuardedRequest) => boolean | Promise<boolean>;

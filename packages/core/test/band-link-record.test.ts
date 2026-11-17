@@ -5,7 +5,7 @@ import type { AppRequest, Job } from '../src/protocol';
 import type { RegistrationRunner } from '../src/runner';
 import { fixtureProduct } from './fixtures/catalog';
 
-it.each([false, true])('persists a Band receipt through the real app checkpoint before verification, including later mismatch=%s', async mismatch => {
+it.each([['band',false],['band',true],['blog',false],['blog',true]] as const)('persists a %s receipt through the real app checkpoint before verification, including later mismatch=%s', async (channel,mismatch) => {
   const token = 'synthetic', fake = createFakeApi({ token, user: fakeAccounts.manager! }), updates: PostUpdate[] = [];
   const api: ApiClient = { request: async <P extends keyof ApiRoutes>(route: P, input: ApiRoutes[P]['input'], bearer?: string): Promise<ApiRoutes[P]['output']> => {
     if (route === '/auto/products/get') return fixtureProduct('<p>합성 본문</p>', 0) as ApiRoutes[P]['output'];
@@ -15,7 +15,7 @@ it.each([false, true])('persists a Band receipt through the real app checkpoint 
   } };
   const tokens = new MemoryTokenStore(); await tokens.write(token);
   let finish!: () => Promise<void>;
-  const url = 'https://band.us/band/111/post/9001';
+  const url = channel==='band'?'https://band.us/band/111/post/9001':'https://blog.naver.com/synthetic/9001';
   const app = new AppCore(api, tokens, checkpoint => {
     let current: Job | null = null;
     const runner: RegistrationRunner = { get job() { return current; }, stop: async () => {}, resume: async () => {}, dispose() {},
@@ -26,7 +26,7 @@ it.each([false, true])('persists a Band receipt through the real app checkpoint 
         finish = async () => {
           job.publicationUncertain = false; job.status = mismatch ? 'failed' : 'published';
           job.targetResults![0]!.status = mismatch ? 'failed' : 'published';
-          if (mismatch) { job.failureCode = 'BAND_PUBLISHED_READBACK_MISMATCH'; job.targetResults![0]!.reason = job.failureCode; }
+          if (mismatch) { job.failureCode = channel==='band'?'BAND_PUBLISHED_READBACK_MISMATCH':'BLOG_PUBLISHED_READBACK_MISMATCH'; job.targetResults![0]!.reason = job.failureCode; }
           await checkpoint(job);
         };
       },
@@ -34,9 +34,9 @@ it.each([false, true])('persists a Band receipt through the real app checkpoint 
   });
   try {
     await app.restoreSession();
-    await app.handle({ id: 1, type: 'app', command: 'job.start', input: { productNo: 4, mode: 'publish', publishConfirmed: true, targets: [{ channel: 'band', key: '111', name: '합성' }], options: { polish: false, closing: false, linkCard: false } } } as AppRequest);
+    await app.handle({ id: 1, type: 'app', command: 'job.start', input: { productNo: 4, mode: 'publish', publishConfirmed: true, targets: [{ channel, key: '111', name: '합성' }], options: { polish: false, closing: false, linkCard: false } } } as AppRequest);
     expect(updates.at(-1)).toMatchObject({ postNo: 91, status: 'running', postUrl: url });
     await finish();
-    expect(updates.at(-1)).toMatchObject({ postNo: 91, status: mismatch ? 'failed' : 'published', postUrl: url, failReason: mismatch ? 'BAND_PUBLISHED_READBACK_MISMATCH' : '' });
+    expect(updates.at(-1)).toMatchObject({ postNo: 91, status: mismatch ? 'failed' : 'published', postUrl: url, failReason: mismatch ? channel==='band'?'BAND_PUBLISHED_READBACK_MISMATCH':'BLOG_PUBLISHED_READBACK_MISMATCH' : '' });
   } finally { app.dispose(); }
 });

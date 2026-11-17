@@ -15,7 +15,10 @@ export function updateInputProgress(job: Job, value: BlogProgress): void {
   }
   if (value.ownRecoveryDiscarded) job.ownRecoveryDiscarded = true;
   if (value.activity) {
-    if (value.activity.stage === 'submit' && value.activity.submission === 'publish') job.publicationUncertain = true;
+    if (value.activity.stage === 'submit' && value.activity.phase === 'start') {
+      job.creationState = 'uncertain';
+      if (value.activity.submission === 'publish') job.publicationUncertain = true;
+    }
     const activity = { ...value.activity, at: Date.now() };
     job.activity = activity;
     job.activityLog ??= [];

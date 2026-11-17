@@ -11,6 +11,8 @@ export interface JobInput {
   blogVisibility?: import('@goltou/sites').BlogVisibility;
 }
 export interface Job {
+  creationState?: 'none' | 'draft_saved' | 'published' | 'uncertain';
+  readbackIssues?: import('@goltou/sites').ReadbackIssue[];
   startedAt?: number;
   pausedAt?: number;
   pausedMilliseconds?: number;

@@ -36,3 +36,12 @@ export function expectedBlogTags(plan: BlogPlan): string[] {
 export function sameBlogTags(expected: readonly string[], actual: readonly string[]): boolean {
   return expected.length === actual.length && JSON.stringify([...expected].sort()) === JSON.stringify([...actual].sort());
 }
+
+/** Post-save metadata: explicit chips stay exact; automatic chips are owned by
+ * the service. Their wording must occur after # in the unchanged planned body. */
+export function sameServiceBlogTags(plan: BlogPlan, actual: readonly string[]): boolean {
+  const explicit = plannedBlogTags(plan);
+  const body = plan.steps.flatMap(step => step.kind === 'table' ? step.rows.flat() : step.kind === 'text' && !['title','hashtags'].includes(step.role) ? [step.text] : []).join('\n');
+  return new Set(actual).size === actual.length && explicit.every(tag=>actual.includes(tag)) &&
+    actual.every(tag=>!!tag && (explicit.includes(tag) || body.includes('#'+tag) || tag.startsWith('.') && body.includes('.#'+tag.slice(1))));
+}

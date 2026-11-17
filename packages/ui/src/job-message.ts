@@ -1,15 +1,25 @@
+import { existingServiceResult } from '@goltou/core/job-safety';
 import type { Job } from '@goltou/core/protocol';
 import { formattingMessage } from './formatting-message';
 import { bandPostBlocked } from '@goltou/sites';
 /** Never show engine codes, page messages, identifiers or transport errors. */
 export function jobMessage(job: Job): [string, string] {
   const code = job.failureCode ?? '';
+  if (job.readbackIssues?.length) {
+    const names = {title:'제목',text:'본문 글자',line_breaks:'줄바꿈 수',photos:'사진 수 또는 순서',order:'본문과 사진 순서',hashtags:'태그',links:'링크 주소',bold:'문단 굵기'};
+    const details = [...new Set(job.readbackIssues.map(issue=>`${issue.paragraph ? `${issue.paragraph}번 문단의 ` : ''}${names[issue.field]}${issue.index ? ` ${issue.index}번째가` : issue.field==='title'?'이':'가'} 계획과 다릅니다.`))].join(' ');
+    return [details, existingServiceResult(job) ? '등록 기록에서 저장 또는 게시된 글을 확인해 주세요. 같은 글을 다시 올리지 마세요.' : '저장 또는 게시 전에 멈췄습니다. 내용을 확인해 주세요.'];
+  }
+  if (/^BLOG_(SAVED|PUBLISHED)_READBACK_/.test(code)) return [
+    code.endsWith('MISMATCH') ? '저장 또는 발행된 글에서 계획과 다른 내용이 있습니다.' : '저장 또는 발행된 글을 끝까지 다시 읽지 못했습니다.',
+    '등록 기록에서 해당 글을 확인해 주세요. 같은 글을 다시 올리지 마세요.',
+  ];
   if (code.startsWith('BAND_POST_UNCONFIRMED:')) return [
     code.endsWith('IDENTITY_READ_FAILED') ? '생성 응답에 글 주소가 없고 목록도 읽지 못했습니다.' : code.endsWith('IDENTITY_AMBIGUOUS') ? '이번 글과 일치하는 후보가 여러 개라 주소를 확정하지 못했습니다.' : '생성 응답과 목록에서 이번 글을 하나로 확인하지 못했습니다.',
     '등록 기록에서 확인해 주세요. 같은 글을 다시 올리지 마세요.',
   ];
   if (code.startsWith('BAND_PUBLISHED_READBACK_')) return [
-    code.endsWith('MISMATCH') ? '게시한 글의 내용이 계획과 달라 검증에 실패했습니다.' : '게시한 글의 상세 내용을 끝까지 읽지 못했습니다.',
+    code.endsWith('MISMATCH') ? '게시한 글에서 계획과 다른 내용이 있습니다.' : '게시한 글의 상세 내용을 끝까지 읽지 못했습니다.',
     '글 주소는 등록 기록에 저장했습니다. 해당 글을 확인해 주세요. 같은 글을 다시 올리지 마세요.',
   ];
   if (code === 'BAND_CREATE_REJECTED') return ['밴드가 게시 요청을 거절했습니다.', '등록 기록을 확인해 주세요. 자동으로 다시 게시하지 않습니다.'];
@@ -41,6 +51,10 @@ export function jobMessage(job: Job): [string, string] {
       '게시됐는지 확인하지 못했습니다.',
       '네이버 또는 밴드 앱에서 글을 확인한 뒤 담당자에게 알려 주세요. 같은 글을 다시 올리지 마세요.',
     ];
+  if (existingServiceResult(job)) return [
+    job.targetResults?.some(t=>t.status==='published') ? '이미 발행한 글이 있습니다. 해당 글에서 확인할 점이 있습니다.' : '저장 또는 게시된 글에서 확인할 점이 있습니다.',
+    '등록 기록에서 해당 글을 확인해 주세요. 같은 글을 다시 올리지 마세요.',
+  ];
   const publicState = job.targetResults?.some((t) => t.status === 'published')
     ? '이미 발행한 글이 있습니다.'
     : job.targetResults?.some((t) => t.status === 'draft_saved')

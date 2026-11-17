@@ -1,7 +1,9 @@
+import { existingServiceResult } from './job-safety';
+import { retainBlogOutcome, blogOutcomeFailure } from './blog-outcome';
 import { registrationLog, registrationAttempt } from './registration-log';
 import { inTrace, trace, reasonCode, traceJob, type TraceJob } from '@goltou/surface/telemetry';
 import { ApiError } from '@goltou/api-client';
-import { safeFailureCode, bandPostBlocked, BandDirectory, type BandExecution, type BlogExecution, type BandProgress } from '@goltou/sites';
+import { safeFailureCode, ReadbackMismatch, bandPostBlocked, BandDirectory, type BandExecution, type BlogExecution, type BandProgress } from '@goltou/sites';
 import { ServiceLoginController } from './service-login';
 import type { Job, JobInput, Service } from './protocol';
 import type { Checkpoint, RegistrationRunner } from './runner';
@@ -66,7 +68,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     if (blogs.length && !this.services.blog?.localPublish && !this.services.blog?.publishEnabled && (input.mode !== 'draft' || !title.startsWith('[골투오토 실험]'))) throw new ApiError('invalid', '실제 네이버 발행 설정을 확인해 주세요.');
     this.work = work; this.abort = new AbortController(); this.band = undefined; this.bandIndex = 0; this.discardPending = false; this.blogSkipped = false; this.saves = 0;
     await this.blog?.close(); this.blog = undefined;
-    this.job = { startedAt: Date.now(), id: ++this.serial, productNo: input.productNo, title, mode: input.mode, blogVisibility: input.blogVisibility ?? 'public', targets: structuredClone(input.targets), targetResults: input.targets.map(t => ({ ...t, status: 'running' })), status: 'running', step: 1, current: 0, total: photos, completedSteps: [], service: null, message: '' };
+    this.job = { creationState: 'none', startedAt: Date.now(), id: ++this.serial, productNo: input.productNo, title, mode: input.mode, blogVisibility: input.blogVisibility ?? 'public', targets: structuredClone(input.targets), targetResults: input.targets.map(t => ({ ...t, status: 'running' })), status: 'running', step: 1, current: 0, total: photos, completedSteps: [], service: null, message: '' };
     if (this.services.blog?.publishProbe) { this.job.publishProbe = true; this.job.message = '발행 차단 프로브'; }
     try { await this.emit(); this.launch(); } catch (error) { this.log?.end('failed', reasonCode(error)); if (!(error instanceof RecordError)) throw error; }
     } catch (error) { this.log?.end('failed', reasonCode(error)); throw error; }
@@ -125,7 +127,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
             const result = bands[this.bandIndex]!; j.activeTargetKey = result.key;
             if (['published', 'stopped'].includes(result.status)) continue;
             this.band ??= createBandExecution(this.work!.preview!.band, this.work!.prepared!.files, this.directory, result.key, { check: this.check, progress: this.progress,
-              onIdentity: async url => { result.postUrl = url; await this.emit(); } });
+              onIdentity: async url => { j.creationState = 'published'; result.postUrl = url; await this.emit(); } });
             const existingPost = await this.band.detectPublished();
             if (existingPost) { result.status = 'published'; result.postUrl = existingPost; await this.emit(); continue; }
             await this.band.write();
@@ -168,6 +170,8 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
   private async fail(error: unknown) {
     if (error instanceof RecordError) return;
     const j = this.job!; const code = error instanceof Error ? error.message : 'BAND_FAILED';
+    if (j.step !== 6) retainBlogOutcome(j, this.blog, error);
+    if (error instanceof ReadbackMismatch) j.readbackIssues = error.issues;
     if (markBlogFormattingFailure(j, error)) { await this.emit(); return; }
     if (code === 'BLOG_DRAFT_SAVED_UNVERIFIED') {
       markDraftUnverified(j); await this.emit(); return;
@@ -175,9 +179,10 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     const isBand = j.step === 6;
     const blocked = isBand ? this.directory.blockedBeforeSend(j.activeTargetKey ?? '') : undefined;
     if (isBand) j.bandBarrierDecisions = this.directory.decisionCodes;
-    if (blocked) j.publicationUncertain = false;
+    if (blocked || code === 'BAND_CREATE_REJECTED') { j.publicationUncertain = false; j.creationState = 'none'; }
     if (isBand && /^(BAND_CREATE_REJECTED|BAND_PUBLISHED_READBACK_MISMATCH|BAND_PUBLISHED_READBACK_UNAVAILABLE)$/.test(code)) j.publicationUncertain = false;
     j.failureCode = blocked ?? (isBand && /^BAND_POST_UNCONFIRMED:/.test(code) ? code : j.publicationUncertain ? isBand ? 'BAND_POST_UNCONFIRMED' : 'BLOG_PUBLISH_UNCONFIRMED' : safeFailureCode(error, 'CHANNEL_FAILED'));
+    if (!isBand) j.failureCode = blogOutcomeFailure(j, j.failureCode);
     const execution = isBand ? this.band : this.blog;
     const dialog = blocked ? null : await execution?.dialog().catch(() => null);
     if (dialog) { j.status = 'dialog_paused'; j.dialog = dialog; j.service = isBand ? 'band' : 'naver'; j.message = '서비스 확인창에서 선택해 주세요.'; }
@@ -227,6 +232,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     });
   }
   async resume() {
+    if (this.job && existingServiceResult(this.job) && (this.job.status==='failed' || ['user_paused','login_paused'].includes(this.job.status) && !this.blogSkipped && !this.job.targetResults?.some(t=>t.status==='published'))) throw new ApiError('conflict', '저장 또는 게시 결과는 등록 기록에서 확인해 주세요. 같은 글을 다시 올리지 않습니다.');
     if (bandPostBlocked(this.job?.failureCode)) throw new ApiError('conflict', '같은 작업을 다시 게시하지 않습니다. 등록 기록에서 결과를 확인해 주세요.');
     if (this.job?.publicationUncertain || /^BAND_(POST_UNCONFIRMED|PUBLISHED_READBACK_|CREATE_REJECTED)/.test(this.job?.failureCode ?? '') || this.job?.failureCode?.startsWith('BLOG_PUBLISH_')) throw new ApiError('conflict', '게시됐는지 먼저 확인해 주세요. 같은 작업을 다시 게시하지 않습니다.');
     if (this.serviceLogin.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');

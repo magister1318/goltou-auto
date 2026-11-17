@@ -513,6 +513,22 @@ describe('WP18 mandatory rich-text editor fixture', () => {
     expect(f.beforeSave).toHaveBeenCalledTimes(1);
     expect(await f.counts()).toEqual({ saves: 1, publishes: 0 }); expect(f.external()).toBe(0);
   }, 30000);
+  it.each(['blog', 'channel'])('retains a saved draft after body mismatch in the %s runner without offering another save', async kind => {
+    const f = await fixture('body-change-after-save');
+    f.plan.steps = [{kind:'text',role:'title',text:'합성 제목'},{kind:'text',role:'body',text:'합성 본문'}];
+    const verification = compareDocuments(observePlan(f.plan), observePlan(f.plan));
+    const preview = {productNo:1,contentHash:'fixture',options:{},blog:f.plan,band:{...f.plan,channel:'band'},verification:{blog:verification,band:verification}} as PreparedPreview;
+    const work = {preview,prepared:{preview,files:[]},download:async()=>{},arrange:async()=>{},cleanup:async()=>{}};
+    const services = {host:f.host,editorUrl:f.editorUrl,localPublish:true};
+    const runner = kind==='blog'?new BlogRegistrationRunner(services,async()=>{},()=>{}):new ChannelRegistrationRunner({blog:services,band:{host:f.host}},async()=>{},()=>{});
+    cleanup.push(async()=>runner.dispose());
+    await runner.start({productNo:1,mode:'draft',targets:[{channel:'blog',name:'합성',key:'fixture'}],options:{polish:false,closing:false,linkCard:false}},'합성 제목',0,work);
+    await vi.waitFor(()=>expect(runner.job?.status).toBe('failed'),{timeout:20000});
+    expect(runner.job).toMatchObject({creationState:'draft_saved',failureCode:'BLOG_SAVED_READBACK_MISMATCH',readbackIssues:expect.arrayContaining([{field:'text'}])});
+    await expect(runner.resume()).rejects.toMatchObject({code:'conflict'});
+    expect(await f.counts([...f.pages.keys()].at(-1)!)).toEqual({saves:1,publishes:0});
+    expect(f.external()).toBe(0);
+  },30000);
   it.each(['blog', 'channel'])('records paragraph-only formatting loss as 확인 필요 in the %s runner', async kind => {
     const f = await fixture('format-drop-reopen'); richPlan(f);
     const verification = compareDocuments(observePlan(f.plan), observePlan(f.plan));

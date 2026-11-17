@@ -20,11 +20,12 @@ export function bandChoiceReason(input: {
   return input.selected ? '' : '올릴 밴드를 골라야 다음으로 갈 수 있습니다.';
 }
 export function uncertainReason(reason = '') {
-  return /BAND_POST_UNCONFIRMED|BAND_PUBLISHED_READBACK_(?:MISMATCH|UNAVAILABLE)|BLOG_PUBLISH_(?:UNCONFIRMED|RESPONSE_UNCONFIRMED|ID_UNCONFIRMED|ALREADY_ATTEMPTED|RESPONSE_EVIDENCE_FAILED|ID_AMBIGUOUS)|PUBLICATION_UNCERTAIN/.test(
+  return /DRAFT_SAVE_UNCONFIRMED|BLOG_SAVED_READBACK_|BLOG_PUBLISHED_READBACK_|BAND_POST_UNCONFIRMED|BAND_PUBLISHED_READBACK_(?:MISMATCH|UNAVAILABLE)|BLOG_PUBLISH_(?:UNCONFIRMED|RESPONSE_UNCONFIRMED|ID_UNCONFIRMED|ALREADY_ATTEMPTED|RESPONSE_EVIDENCE_FAILED|ID_AMBIGUOUS)|PUBLICATION_UNCERTAIN/.test(
     reason,
   );
 }
 export function targetStatus(job: Job, target: TargetResult): string {
+  if (target.postUrl && target.status==='failed') return '확인 필요';
   if (formattingMessage(target.reason)) return '확인 필요';
   if (target.status === 'published')
     return target.channel === 'band' ? '게시됨' : '발행됨';
@@ -80,6 +81,7 @@ export function resultKind(job: Job) {
   return 'failed';
 }
 export function historyStatus(post: Post) {
+  if (post.postUrl && post.status==='failed') return '확인 필요';
   if (formattingMessage(post.failReason)) return '확인 필요';
   if (post.channel === 'band' && bandPostBlocked(post.failReason)) return '게시 요청 차단 · 게시되지 않음';
   if (
@@ -106,4 +108,10 @@ export function historyLine(post: Post, date: string): string {
     destination,
     date,
   ].filter(Boolean).join(' · ');
+}
+
+/** History lacks the live creation latch, so unknown failures never invite replay. */
+export function canRetryHistory(post: Post) {
+  return post.status === 'failed' && !post.postUrl && !uncertainReason(post.failReason) && !formattingMessage(post.failReason) &&
+    (/^PHOTO_(DOWNLOAD|HOST)_/.test(post.failReason) || post.step < 5 && /^(CONTROL_NOT_FOUND:|BLOG_READBACK_MISMATCH:|BAND_READBACK_MISMATCH:|NETWORK_|CDP_TIMEOUT:)/.test(post.failReason));
 }
