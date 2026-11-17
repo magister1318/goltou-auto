@@ -2,7 +2,9 @@ import { execFileSync } from 'node:child_process';
 // Reference: ../refs/DAF/daf3/apps/mobile/scripts/build-core.mjs (Node 18 bundle + built-in UI only).
 import { build } from 'esbuild';
 import { apiOrigin } from './app-config.mjs';
-const commit = execFileSync('git', ['rev-parse', '--short=12', 'HEAD'], { windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' } }).toString().trim();
+import { checkFiles } from './check-embedded-compat.mjs';
+const sourceCommit = execFileSync('git', ['rev-parse', 'HEAD'], { windowsHide: true, env: { ...process.env, GIT_TERMINAL_PROMPT: '0', GCM_INTERACTIVE: 'never' } }).toString().trim();
+const commit = sourceCommit.slice(0, 12);
 const debugBuild = !process.argv.includes('--release');
 import { build as viteBuild } from 'vite';
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -32,6 +34,7 @@ await build({ ...config, entryPoints: [path.join(root, 'packages/core/src/index.
 await build({ ...config, entryPoints: [path.join(root, 'packages/surface/src/cdp/index.ts')], outfile: path.join(out, 'surface.cjs') });
 await build({ ...config, entryPoints: [path.join(root, 'apps/android/bridge/main.ts')], outfile: path.join(out, 'engine.cjs'), define: { __GOLTOU_API_ORIGIN__: JSON.stringify(apiOrigin), __GOLTOU_COMMIT__: JSON.stringify(commit), __GOLTOU_VERSION__: JSON.stringify(version.versionName), __GOLTOU_DEBUG__: JSON.stringify(debugBuild) } });
 writeFileSync(path.join(out, 'core.cjs'), `// Built-in embedded Node bootstrap. No downloaded code.\ntry { require('./engine.cjs'); } catch (error) { const code = ['ERR_UNKNOWN_BUILTIN_MODULE','MODULE_NOT_FOUND','ENOENT','EACCES','EINVAL','ENOSYS'].includes(error?.code) ? error.code : 'BOOT_ERROR'; const kind = ['TypeError','ReferenceError','SyntaxError','Error'].includes(error?.name) ? error.name : 'Error'; console.error('CORE_LOAD_FAILED', code, kind, /async_hooks|AsyncLocalStorage/.test(error?.message || '') ? 'ASYNC_CONTEXT' : 'BOOT'); setInterval(() => {}, 60000); }\n`);
+checkFiles(['core.cjs', 'engine.cjs'].map(file => path.join(out, file)), true);
 await viteBuild({ configFile: path.join(root, 'packages/ui/vite.config.ts'), logLevel: 'warn',
   define: { __GOLTOU_DEBUG__: JSON.stringify(debugBuild) }, build: { outDir: path.join(out, 'ui') } });
 if (debugBuild) cpSync(path.join(root, 'packages/sites/fixtures'), path.join(out, 'fixtures'), { recursive: true });
@@ -48,7 +51,7 @@ function digest(dir) {
 for (const file of ['core.cjs', 'engine.cjs']) hash.update(readFileSync(path.join(out, file)));
 digest(path.join(out, 'ui'));
 if (debugBuild) digest(path.join(out, 'fixtures'));
-writeFileSync(path.join(out, 'manifest.json'), JSON.stringify({ version: version.versionName, versionCode: Number(version.versionCode), debug: debugBuild, sha256: hash.digest('hex') }, null, 2));
+writeFileSync(path.join(out, 'manifest.json'), JSON.stringify({ version: version.versionName, versionCode: Number(version.versionCode), debug: debugBuild, sourceCommit, sha256: hash.digest('hex') }, null, 2));
 const android = outputIndex < 0 ? path.join(root, 'apps/android/app/src/main/assets/bundle') : path.join(out, 'android-assets/bundle');
 clearGenerated(android);
 mkdirSync(android, { recursive: true });
