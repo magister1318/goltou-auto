@@ -28,7 +28,10 @@ async function viewer(missing = '', mobileProof = false) {
   // Observed real shape: 99 meaningful paragraphs plus 58 standalone U+200B
   // viewer fillers. All 29 final URLs can exist before their images load.
   const fillers = Array.from({length:58},()=>'<div class="se-component se-text"><p class="se-text-paragraph"><span>\u200b</span></p></div>').join('');
-  const images = files.map((f,i)=>`<div class="se-component se-image"><img class="se-image-resource" width="90" height="50" loading="lazy" data-src="/photos/${f.path.split('/').pop()}" alt="${f.path.split('/').pop()}" style="display:block;margin-top:50px"></div>`).join('');
+  // The recorded viewer uses data-lazy-src, without native loading="lazy".
+  // Adding both mechanisms makes background test tabs depend on Chromium's
+  // unrelated native lazy-image activation heuristics.
+  const images = files.map(f=>`<div class="se-component se-image"><img class="se-image-resource" width="90" height="50" data-lazy-src="/photos/${f.path.split('/').pop()}" alt="${f.path.split('/').pop()}" style="display:block;margin-top:50px"></div>`).join('');
   const html = `<div class="se-documentTitle"><p tabindex="0" class="se-text-paragraph"></p></div><div class="se-viewer"></div><div class="tag_list"></div><div class="post_visibility"></div><script>
     const missing=${JSON.stringify(missing)};
     setTimeout(()=>{if(missing!=='title')document.querySelector('.se-documentTitle p').textContent='합성 판독 제목'},100);
@@ -37,7 +40,7 @@ async function viewer(missing = '', mobileProof = false) {
     setTimeout(()=>{if(missing!=='photos')document.querySelector('.se-viewer').insertAdjacentHTML('beforeend',${JSON.stringify(images)})},900);
     setTimeout(()=>{if(missing!=='tags')document.querySelector('.tag_list').innerHTML='<span class="tag">one</span><span class="tag">two</span>'},1500);
     setTimeout(()=>{if(missing!=='visibility')document.querySelector('.post_visibility').textContent='전체공개'},1200);
-    document.addEventListener('keydown',e=>{if(e.key==='PageDown')for(const img of document.querySelectorAll('img[data-src]')){const r=img.getBoundingClientRect();if(r.top<innerHeight&&r.bottom>0){img.src=img.dataset.src;img.removeAttribute('data-src')}}});
+    document.addEventListener('keydown',e=>{if(e.key==='PageDown')for(const img of document.querySelectorAll('img[data-lazy-src]')){const r=img.getBoundingClientRect();if(r.top<innerHeight&&r.bottom>0){img.src=img.getAttribute('data-lazy-src');img.removeAttribute('data-lazy-src')}}});
   </script>`;
   let imageRequests=0;
   await context.route('**/*',async route=>{
