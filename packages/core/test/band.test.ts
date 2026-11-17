@@ -89,6 +89,20 @@ function workFor(plan: InputPlan, files: { url: string; path: string }[]) {
 const input: JobInput = { productNo: 1, mode: 'draft', targets: [{ channel: 'band', name: '밴드 A', key: '111' }], options: { polish: false, closing: false, linkCard: false } };
 
 describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pages', () => {
+  it('release owner publishing does not consume a debug allowance and still enforces the request barrier', async () => {
+    const f = await fixture();
+    await f.execution.write();
+    f.execution.env.submitTimeoutMs = 300;
+    const consume = vi.fn(async () => { throw Error('DEBUG_ALLOWANCE_MUST_NOT_BE_USED'); });
+    Object.defineProperty(f.directory, 'localPublish', { value: false });
+    Object.defineProperty(f.directory, 'publishEnabled', { value: true });
+    Object.defineProperty(f.directory, 'publishAllowance', { value: { available: async () => false, consume } });
+    await expect(f.execution.publish()).rejects.toThrow('BAND_POST_BLOCKED:ORIGIN_BLOCKED');
+    expect(consume).not.toHaveBeenCalled();
+    expect(await f.page().evaluate('Number(localStorage.getItem("postPresses"))')).toBe(1);
+    expect((await f.counts()).posts).toBe(0);
+    expect(f.external()).toBe(0);
+  }, 20000);
   it('uses the mobile composer header submit, never the feed write button, and never submits twice', async () => {
     const f = await fixture('mobile-service');
     await f.execution.write();

@@ -34,6 +34,8 @@ it('builds isolated release assets, strips debug tools and starts the bundled co
   expect(engine).toContain('BLOG_POST_DELETED');
   expect(engine).not.toContain('blog.checkTestPostDeleted');
   expect(engine).not.toContain('.read-dialog');
+  for (const marker of ['one-band-post.allow', 'blog-only-test', 'band-only-test']) expect(engine.includes(marker), marker).toBe(false);
+  expect(engine).toContain('RELEASE_AUTOMATION_UNAVAILABLE');
   expect(engine).not.toContain('uncertain-band-cleanup.json');
   expect(engine).not.toContain('linkUncertainBandForDeletion');
   for (const marker of ['record-delete-context.json', 'record-delete-shape.jsonl', 'blog.inspectRecordedPost', 'recoverPrivatePublish', 'verifyInterruptedPrivatePublish', 'private-publish-context.json', 'blog.verifyPrivatePublish', 'recoverTestPostCleanup', 'cleanup-context.json', 'publishResponseShape', 'publish-response-shape.json', 'WP14 private-once']) expect(engine.includes(marker), marker).toBe(false);
@@ -42,6 +44,9 @@ it('builds isolated release assets, strips debug tools and starts the bundled co
   const ui = (await Promise.all(uiFiles.filter(file => file.endsWith('.js')).map(file => readFile(path.join(assets, 'ui/assets', file), 'utf8')))).join('\n');
   expect(ui).toContain('블로그 글을 삭제할까요?');
   expect(ui).toContain('되돌릴 수 없습니다.');
+  expect(ui).toContain('로그 내보내기');
+  expect(ui).toContain('데이터 내보내기');
+  expect(ui).toContain('자동 등록을 사용할 수 없습니다.');
   expect(ui).not.toContain('삭제 결과만 확인');
   for (const marker of ['이번 비공개 실험 글 삭제', '비공개 차단 프로브 설정', '전체공개 차단 프로브 설정', 'blog.publishProbe', '변환 점검', 'conversion.check', '실험 화면 열기', 'WP1 숨김 브라우저', '가짜 실행 설정', '실험 글 삭제', 'blog.deleteTestPost']) expect(ui.includes(marker), marker).toBe(false);
   expect(uiFiles.some(file => file.startsWith('Experiments-'))).toBe(false);

@@ -20,3 +20,5 @@
 | WP15 | [서비스 로그인 실제 동작](WP15-service-login.md) | 구현·루트 580개·Android 4개 시험·빌드 완료. 실기기 자동 상태 확인과 두 서비스 안내 자동 복귀 확인. 초안 PR 검토 대기. [보고서](../reports/WP15-service-login.md) |
 
 지시서는 시작할 때 이 폴더에 추가합니다. 보고서는 `docs/reports/WPn.md`.
+
+WP30: [영구 배포 서명·데이터 보존 준비](WP30-release-signing.md). [보고서](../reports/WP30.md).

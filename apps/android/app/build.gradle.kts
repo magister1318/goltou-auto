@@ -39,6 +39,9 @@ android {
     }
     signingConfigs {
         create("release") {
+            enableV1Signing = false
+            enableV2Signing = true
+            enableV3Signing = true
             signingResult.getOrNull()?.let { values ->
                 storeFile = file(values.getProperty("storeFile"))
                 storePassword = values.getProperty("storePassword")

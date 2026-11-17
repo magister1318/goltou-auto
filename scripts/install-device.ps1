@@ -1,4 +1,5 @@
-param([string]$Device, [switch]$VerifyOnly)
+param([string]$Device, [switch]$VerifyOnly,
+      [ValidateSet('debug','release')][string]$Variant = 'debug', [string]$ArtifactDirectory)
 $ErrorActionPreference = 'Stop'
 $env:GIT_TERMINAL_PROMPT = '0'
 $env:GCM_INTERACTIVE = 'never'
@@ -23,6 +24,7 @@ function Get-ApkHash([string]$Path) {
 try {
     $script:checkedCommit = & git rev-parse HEAD
     Assert-Source
+    Invoke-Checked 'node' @('scripts/check-signing-secrets.mjs')
     Invoke-Checked 'pnpm.cmd' @('install', '--frozen-lockfile')
     Assert-Source
     Invoke-Checked 'pnpm.cmd' @('typecheck')
@@ -37,18 +39,27 @@ try {
     Invoke-Checked 'pnpm.cmd' @('build')
     Assert-Source
     Push-Location (Join-Path $root 'apps/android')
-    try { Invoke-Checked '.\gradlew.bat' @('assembleDebug', '--console=plain') } finally { Pop-Location }
+    try {
+        $task = if ($Variant -eq 'release') { 'assembleRelease' } else { 'assembleDebug' }
+        Invoke-Checked '.\gradlew.bat' @($task, '--console=plain')
+    } finally { Pop-Location }
     Assert-Source
     # Inspect and install the same immutable snapshot, not a rebuildable output.
     $snapshot = Join-Path ([IO.Path]::GetTempPath()) ('goltou-verified-' + [Guid]::NewGuid().ToString('N') + '.apk')
     try {
-        Copy-Item -LiteralPath 'apps/android/app/build/outputs/apk/debug/app-debug.apk' -Destination $snapshot
-        & (Join-Path $PSScriptRoot 'check-apk-compat.ps1') -Apk $snapshot -ExpectedCommit $script:checkedCommit
+        Copy-Item -LiteralPath ("apps/android/app/build/outputs/apk/$Variant/app-$Variant.apk") -Destination $snapshot
+        & (Join-Path $PSScriptRoot 'check-apk-compat.ps1') -Apk $snapshot -ExpectedCommit $script:checkedCommit -Variant $Variant
         $apkHash = Get-ApkHash $snapshot
         Assert-Source
         if (!$VerifyOnly) {
             $adbArguments = @()
             if ($Device) { $adbArguments += @('-s', $Device) }
+            if ($Variant -eq 'release') {
+                . (Join-Path $PSScriptRoot 'apk-signature.ps1')
+                $comparison = Compare-InstalledCertificate $snapshot $adbArguments
+                Write-Output ('INSTALLED_CERT_VS_RELEASE=' + $comparison)
+                if ($comparison -cne 'SAME') { throw 'SIGNATURE_DIFFERENT_INSTALL_FORBIDDEN_DATA_MUST_BE_PRESERVED' }
+            }
             $power = & adb @adbArguments shell dumpsys power
             if ($LASTEXITCODE -ne 0 -or ($power -join "`n") -notmatch 'mWakefulness=Awake') { throw 'DEVICE_ASLEEP_OR_UNAVAILABLE' }
             $policy = & adb @adbArguments shell dumpsys window policy
@@ -58,6 +69,18 @@ try {
             Assert-Source
             if ((Get-ApkHash $snapshot) -cne $apkHash) { throw 'INSTALL_GATE_APK_CHANGED' }
             Invoke-Checked 'adb' ($adbArguments + @('install', '-r', $snapshot))
+        }
+        if ($ArtifactDirectory) {
+            $destination = [IO.Path]::GetFullPath($ArtifactDirectory)
+            if ($destination.Equals($root, [StringComparison]::OrdinalIgnoreCase) -or $destination.StartsWith($root + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw 'ARTIFACT_DIRECTORY_MUST_BE_EXTERNAL' }
+            New-Item -ItemType Directory -Path $destination -Force | Out-Null
+            $version = ConvertFrom-StringData (Get-Content 'apps/android/version.properties' -Raw)
+            $name = 'goltou-auto-' + $version.versionName + '-' + $version.versionCode + '-' + $Variant + '.apk'
+            $artifact = Join-Path $destination $name
+            Copy-Item -LiteralPath $snapshot -Destination $artifact -Force
+            if ((Get-ApkHash $artifact) -cne $apkHash) { throw 'ARTIFACT_COPY_HASH_MISMATCH' }
+            [IO.File]::WriteAllText(($artifact + '.sha256'), ($apkHash.ToLowerInvariant() + '  ' + $name + "`n"), [Text.Encoding]::ASCII)
+            Write-Output ('VERIFIED_ARTIFACT=' + $artifact)
         }
         Write-Output ('INSTALL_GATE_PASSED COMMIT=' + $script:checkedCommit + ' APK_SHA256=' + $apkHash + ' INSTALLED=' + (!$VerifyOnly))
     } finally { if ($snapshot -and (Test-Path -LiteralPath $snapshot)) { Remove-Item -LiteralPath $snapshot } }
