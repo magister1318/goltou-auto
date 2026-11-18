@@ -80,7 +80,7 @@ function verifyBlogContent(plan: InputPlan, files: readonly MediaFile[], actual:
   const issues: ReadbackIssue[] = [];
   const title = compareReadbackText([expected.title], [actual.title]);
   traceReadbackText(title);
-  if (title.missing.length) issues.push({ field: 'text' });
+  if (title.missing.length) issues.push({ field: 'title' });
   if (!sameReadbackNumbers(expected.title, actual.title)) issues.push({ field: 'number' });
   const photos = actual.tokens.filter(token => token.kind === 'photo');
   if (photos.length !== expected.photos.length || expected.photos.some((url, i) => {
@@ -88,9 +88,9 @@ function verifyBlogContent(plan: InputPlan, files: readonly MediaFile[], actual:
     return !identity || photoIdentity(photos[i]?.identity ?? '') !== identity;
   })) issues.push({ field: 'photo' });
   if (!(saved ? sameServiceBlogTags(plan, actual.tags) : sameBlogTags(expectedBlogTags(plan), actual.tags))) issues.push({ field: 'hashtags' });
-  const reasons = { text: 'READBACK_TEXT', number: 'READBACK_NUMBER', photo: 'READBACK_PHOTO', hashtags: 'READBACK_TAGS' } as const;
+  const reasons = { title: 'READBACK_TITLE', number: 'READBACK_NUMBER', photo: 'READBACK_PHOTO', hashtags: 'READBACK_TAGS' } as const;
   for (const { field } of issues) {
-    if (field === 'photo' || field === 'number' || field === 'text' || field === 'hashtags') trace('verification', 'fail', { check: field, reason: reasons[field] });
+    if (field === 'photo' || field === 'number' || field === 'title' || field === 'hashtags') trace('verification', 'fail', { check: field, reason: reasons[field] });
   }
   return issues;
 }
