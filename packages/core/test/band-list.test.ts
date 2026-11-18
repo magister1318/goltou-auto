@@ -165,6 +165,19 @@ describe('Band membership observation and scoped request barrier', () => {
   it('reconstructs list diagnostics from fixed fields even for a hostile caller', () => {
     expect(sanitizeDetail({ bandList: { legacy: true, home: 'PRIVATE_NAME', source: 'PRIVATE_NAME', method: 'PRIVATE_NAME', tileCount: -1, apiRows: 2, band_no: '987654321', names: ['PRIVATE_NAME'] } } as never)).toEqual({ bandList: { legacy: true, method: 'other', apiRows: 2 } });
   });
+  it('keeps each rejection code with its own request when requests arrive concurrently', async () => {
+    const f = fixture(legacy);
+    f.setOpen(async () => {
+      expect(await Promise.all([
+        f.inspect({ method: 'POST', url: 'https://api-kr.band.us/v2.0.0/delete_post' }),
+        f.inspect({ method: 'DELETE', url: endpoint }),
+      ])).toEqual([false, false]);
+    });
+    await f.runner.listBands();
+    expect(f.readLines().filter(l => l.step === 'band.list.request').map(l => [l.bandList.method, l.reason])).toEqual([
+      ['POST', 'ROUTE_BLOCKED'], ['DELETE', 'METHOD_BLOCKED'],
+    ]);
+  });
 });
 
 describe('ephemeral membership payload parsing', () => {

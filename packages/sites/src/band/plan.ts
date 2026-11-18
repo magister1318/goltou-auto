@@ -95,17 +95,21 @@ export class BandDirectory {
     const surface = await this.host.create('band');
     if (!surface.guardRequests) { await surface.close(); throw new Error('BAND_BARRIER_UNAVAILABLE'); }
     await surface.guardRequests([{ hostname: '*', pathname: '/', prefix: true }], async request => {
+      let rejection: BandBarrierCode = 'SURFACE_REQUEST_INVALID';
+      const deny = (code: BandBarrierCode, endsApproval = false, expected = false) => {
+        rejection = code; return this.reject(code, endsApproval, expected);
+      };
       const inspect = async () => {
       const u = new URL(request.url);
-      if (this.listPhase && this.isCreateCandidate(u)) return this.reject('NOT_ARMED', true);
+      if (this.listPhase && this.isCreateCandidate(u)) return deny('NOT_ARMED', true);
       if (request.method === 'OPTIONS') { this.record('PREFLIGHT_ALLOWED'); return true; }
       if (['GET', 'HEAD'].includes(request.method) && !this.isCreate(u)) return true;
       const trusted = this.localPublish ? u.origin === new URL(this.baseUrl).origin : u.protocol === 'https:' && (u.hostname === 'band.us' || u.hostname.endsWith('.band.us'));
-      if (!trusted) return this.reject('ORIGIN_BLOCKED', this.isCreateCandidate(u), expectedTelemetryRequest(request));
-      if (request.method !== 'POST') return this.reject('METHOD_BLOCKED', this.isCreateCandidate(u));
+      if (!trusted) return deny('ORIGIN_BLOCKED', this.isCreateCandidate(u), expectedTelemetryRequest(request));
+      if (request.method !== 'POST') return deny('METHOD_BLOCKED', this.isCreateCandidate(u));
       // This wider permission exists only during a membership read, never a composer/submit.
       if (this.listPhase && !this.submit?.armed && !this.isCreateCandidate(u) &&
-          (isBandListEndpoint(u) || /^(?:get_|check_|is_|read_|sync_)[a-z0-9_]+$|^batch$/.test(u.pathname.split('/').at(-1) ?? '')) &&
+          (isBandListEndpoint(u) || /^(?:get_|check_|is_|read_|sync_)|^batch$/.test(u.pathname.split('/').at(-1) ?? '')) &&
           !(await readBandDocument(surface)).composer) {
         this.record('LIST_READ_ALLOWED'); return true;
       }
@@ -114,9 +118,9 @@ export class BandDirectory {
       if (u.hostname === 'api-kr.band.us' && u.pathname === '/v2.3.0/get_band_list') { this.record('MEMBERSHIP_ALLOWED'); return true; }
       if (u.origin === 'https://bapi-kr.band.us' && u.pathname === '/v2.0.0/batch') {
         const target = bandReadBatchTarget(request);
-        if (!target || !this.choices.some(b => b.key === target.band)) return this.reject('ROUTE_BLOCKED');
+        if (!target || !this.choices.some(b => b.key === target.band)) return deny('ROUTE_BLOCKED');
         const current = new URL((await surface.readState()).url);
-        if (!this.sameOrigin(current) || !new RegExp(`^/band/${target.band}/post(?:/${target.post})?/?$`).test(current.pathname)) return this.reject('TARGET_MISMATCH');
+        if (!this.sameOrigin(current) || !new RegExp(`^/band/${target.band}/post(?:/${target.post})?/?$`).test(current.pathname)) return deny('TARGET_MISMATCH');
         this.record('READ_BATCH_ALLOWED'); return true;
       }
       // Observed mobile photo upload; this host/path cannot create a post.
@@ -125,29 +129,29 @@ export class BandDirectory {
       if (/\/(?:photo|file)\/upload(?:\/[a-z0-9_-]+)?$/i.test(u.pathname)) { this.record('UPLOAD_ALLOWED'); return true; }
       const isCreate = this.isCreate(u);
       const submit = this.submit;
-      if (!isCreate) return this.reject('ROUTE_BLOCKED', this.isCreateCandidate(u), expectedTelemetryRequest(request));
-      if (submit?.sent) return this.reject('ALREADY_SENT');
-      if (!submit?.armed) return this.reject('NOT_ARMED');
-      if (!request.postDataComplete) return this.reject(request.postDataFailure ? `BODY_${request.postDataFailure}` : 'BODY_INCOMPLETE', true);
+      if (!isCreate) return deny('ROUTE_BLOCKED', this.isCreateCandidate(u), expectedTelemetryRequest(request));
+      if (submit?.sent) return deny('ALREADY_SENT');
+      if (!submit?.armed) return deny('NOT_ARMED');
+      if (!request.postDataComplete) return deny(request.postDataFailure ? `BODY_${request.postDataFailure}` : 'BODY_INCOMPLETE', true);
       try {
         const parsed = requestFields(request);
         const targets = parsed.fields.filter(([key]) => key === 'band_key' || key === 'band_no');
-        if (!targets.length) return this.reject('TARGET_MISSING', true);
-        if (targets.length !== 1) return this.reject('TARGET_DUPLICATE', true);
+        if (!targets.length) return deny('TARGET_MISSING', true);
+        if (targets.length !== 1) return deny('TARGET_DUPLICATE', true);
         // Observed mobile create form uses band_no. Accept that alias only on
         // this exact route/encoding; both aliases together remain ambiguous.
         if (targets[0]![0] === 'band_no' && !(u.origin === 'https://api-kr.band.us' &&
-          u.pathname === '/v2.0.2/create_post' && parsed.encoding === 'form')) return this.reject('TARGET_MISSING', true);
+          u.pathname === '/v2.0.2/create_post' && parsed.encoding === 'form')) return deny('TARGET_MISSING', true);
         const value = targets[0]![1].value;
-        if (typeof value !== 'string' && typeof value !== 'number') return this.reject('TARGET_TYPE', true);
-        if (String(value) !== submit.key) return this.reject('TARGET_MISMATCH', true);
+        if (typeof value !== 'string' && typeof value !== 'number') return deny('TARGET_TYPE', true);
+        if (String(value) !== submit.key) return deny('TARGET_MISMATCH', true);
       } catch (error) { trace('sites.band.plan.BandDirectory.getSurface', 'fail', { reason: reasonCode(error) });
-        return this.reject(error instanceof Error && error.message === 'REQUEST_ENCODING_UNKNOWN' ? 'BODY_ENCODING' : 'BODY_PARSE', true);
+        return deny(error instanceof Error && error.message === 'REQUEST_ENCODING_UNKNOWN' ? 'BODY_ENCODING' : 'BODY_PARSE', true);
       }
       submit.armed = false; submit.sent = true; this.record('CREATE_ALLOWED'); return true;
       };
       const allowed = await inspect();
-      if (!allowed) this.listRejected(request, this.codes.at(-1) ?? 'SURFACE_REQUEST_INVALID');
+      if (!allowed) this.listRejected(request, rejection);
       return allowed;
     }, response => {
       if (this.listPhase && ['GET', 'POST'].includes(response.method ?? '') && response.url && isBandListEndpoint(new URL(response.url))) {
