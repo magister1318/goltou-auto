@@ -2,13 +2,14 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { appendFileSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, truncateSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import type { JobKind, JobResult, LogSite, ReasonCode, TraceDetail, TraceEvent, TraceJob, TraceProvider, TraceStep } from '@goltou/surface/telemetry';
+import type { LogJobKind as JobKind, JobResult, LogSite, ReasonCode, TraceDetail, TraceEvent, TraceJob, TraceProvider, TraceStep } from '@goltou/surface/telemetry';
 import { reasonCode, traceOperations } from '@goltou/surface/telemetry';
 import { traceSteps, traceSelectors } from '../../surface/src/telemetry-catalog';
 import { sanitizeBandList } from '../../surface/src/band-list-diagnostics';
 import { sanitizeConnection } from '../../surface/src/connection-diagnostics';
+import { sanitizeUpdate } from '../../surface/src/update-diagnostics';
 
-const kinds: readonly JobKind[] = ['blog_draft', 'blog_publish', 'blog_delete', 'unfinished_cleanup', 'band_post', 'band_delete', 'login_check', 'band_list'];
+const kinds: readonly JobKind[] = ['blog_draft', 'blog_publish', 'blog_delete', 'unfinished_cleanup', 'band_post', 'band_delete', 'login_check', 'band_list', 'app_update'];
 const sites: readonly LogSite[] = ['naver', 'band', 'app'];
 const events: readonly TraceEvent[] = ['start', 'ok', 'fail', 'retry', 'skip', 'wait', 'blocked_expected'];
 const countKeys = ['rows', 'columns', 'cells', 'step', 'paragraphIndex', 'paragraphTotal', 'photoIndex', 'photoTotal', 'bytes', 'runs', 'attempt', 'expected', 'observed', 'status', 'lineBreaks', 'hashtags', 'links'] as const;
@@ -22,6 +23,7 @@ const safeFields = (value: readonly string[]) => Array.isArray(value) ? value.sl
 /** Reconstruct every field. Neither spread nor JSON.stringify of caller objects is permitted. */
 export function sanitizeDetail(detail: TraceDetail = {}) {
   const out: Record<string, unknown> = {};
+  if (detail.update) out.update = sanitizeUpdate(detail.update);
   if (detail.reason !== undefined) out.reason = reasonCode(detail.reason);
   if (detail.counts) {
     const counts: Record<string, number> = {};

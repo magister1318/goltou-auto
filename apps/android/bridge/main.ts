@@ -9,6 +9,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { AppCore, ChannelRegistrationRunner, goltouPhotoUrl, NativeBridge, startCore, fileMediaStorage, filePolishStrengthStore, type CoreOptions } from '../../../packages/core/src/index';
 import { createApiClient } from '../../../packages/api-client/src/index';
 import { apiOrigin } from './config';
+import { androidUpdater } from './app-update';
 declare const __GOLTOU_DEBUG__: boolean;
 import { AndroidTokenStore } from './session';
 import { AiModeClient } from '../../../packages/sites/src/ai-mode';
@@ -66,7 +67,10 @@ async function start() {
     for (const status of event.resultCodes ?? []) trace('delete', 'ok', { reason: reasonCode(event.code), counts: { status } });
   };
   runtime.deleteLog = async value => trace('delete', value.pass ? 'ok' : 'fail', { ...(value.pass ? {} : { reason: 'VERIFICATION_MISMATCH' as const }), counts: { step: value.item, expected: value.expected ?? 0, observed: value.actual ?? 0 } });
-  const app = new AppCore(createApiClient(apiOrigin, fetch), new AndroidTokenStore(native),
+  const api = createApiClient(apiOrigin, fetch);
+  const tokens = new AndroidTokenStore(native);
+  runtime.updater = androidUpdater(native, api, tokens, logs, path.join(path.dirname(argument('data')), 'app-update.json'), apiOrigin);
+  const app = new AppCore(api, tokens,
     (checkpoint, notify) => new ChannelRegistrationRunner({ band: options.band!, blog: options.blog! }, checkpoint, notify), options.preparation,
     runtime);
   options.app = app;

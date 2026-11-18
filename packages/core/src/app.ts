@@ -7,6 +7,7 @@ import type { AppRequest, AppSnapshot, Job, JobInput, TokenStore } from './proto
 import { makePreview, preparePreview, preparationWork, type PreparationServices, type PreparedPreview } from './preparation';
 import { RecordError } from './record-checkpoint';
 import { MemoryPolishStrengthStore, type PolishStrengthStore } from './polish/setting';
+import { updateJobBusy } from './app-update';
 import { MemoryPreferencesStore, validPreferences, type PreferencesStore } from './preferences';
 import { MemoryPostMetadata, type PostMetadataStore } from './post-metadata';
 export class MemoryTokenStore implements TokenStore {
@@ -40,7 +41,7 @@ export class AppCore {
   private readonly polishSetting: PolishStrengthStore;
   private readonly preferences: PreferencesStore;
   private readonly postMetadata: PostMetadataStore;
-  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { localData?: import('./local-data-transfer').LocalDataTransfer; transferLocalData?: (mode: 'export' | 'import', text?: string) => Promise<string | null>; logs?: import('./job-logs').JobLogStore; exportLogs?: () => Promise<void>; serviceChecks?: readonly ('naver' | 'band')[]; device: () => Promise<import('@goltou/api-client').LoginInput['device']>; deleteHost?: import('@goltou/surface').SurfaceHost; deleteLog?: import('@goltou/sites').DeleteLog; bandDeleteLog?: import('@goltou/sites').BandDeleteLog; bandDeleteReview?: import('@goltou/sites').BandDeleteReview; experimentTitle?: boolean; experimentTitleLabel?: string; polishStrength?: PolishStrengthStore; preferences?: PreferencesStore; postMetadata?: PostMetadataStore; openExternal?: (url: string) => Promise<void> }) {
+  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { localData?: import('./local-data-transfer').LocalDataTransfer; transferLocalData?: (mode: 'export' | 'import', text?: string) => Promise<string | null>; logs?: import('./job-logs').JobLogStore; exportLogs?: () => Promise<void>; serviceChecks?: readonly ('naver' | 'band')[]; device: () => Promise<import('@goltou/api-client').LoginInput['device']>; deleteHost?: import('@goltou/surface').SurfaceHost; deleteLog?: import('@goltou/sites').DeleteLog; bandDeleteLog?: import('@goltou/sites').BandDeleteLog; bandDeleteReview?: import('@goltou/sites').BandDeleteReview; experimentTitle?: boolean; experimentTitleLabel?: string; polishStrength?: PolishStrengthStore; preferences?: PreferencesStore; postMetadata?: PostMetadataStore; openExternal?: (url: string) => Promise<void>; updater?: import('./app-update').AppUpdater }) {
     this.polishSetting = runtime?.polishStrength ?? new MemoryPolishStrengthStore();
     this.postMetadata = runtime?.postMetadata ?? new MemoryPostMetadata();
     this.preferences = runtime?.preferences ?? new MemoryPreferencesStore();
@@ -50,6 +51,7 @@ export class AppCore {
     if (this.runner.checkLogin) { this.state.realBlog = true; this.state.services.naver = 'unknown'; }
     if (this.runner.listBands) { this.state.realBand = true; this.state.services.band = 'unknown'; }
     this.bindServiceLogin();
+    runtime?.updater?.subscribe(() => this.emit());
   }
   private bindServiceLogin() {
     this.serviceUnsubscribe?.();
@@ -98,8 +100,11 @@ export class AppCore {
     this.state.user = user; this.state.settings = settings; this.emit();
     this.scheduleServiceChecks();
   }
-  private emit() { for (const listener of this.listeners) listener(this.snapshot()); }
-  dispose() { this.disposed = true; this.deleteConfirmation?.log?.end('stopped', 'USER_STOPPED'); this.deleteConfirmation = undefined; clearTimeout(this.serviceTimer); this.serviceUnsubscribe?.(); this.runner.dispose(); this.listeners.clear(); }
+  private emit() {
+    this.runtime?.updater?.setBlocked(!this.state.user || this.starting || this.preparing || this.deleting || updateJobBusy(this.state.job));
+    if (this.runtime?.updater) this.state.update = this.runtime.updater.snapshot();
+    for (const listener of this.listeners) listener(this.snapshot()); }
+  dispose() { this.disposed = true; this.runtime?.updater?.dispose(); this.deleteConfirmation?.log?.end('stopped', 'USER_STOPPED'); this.deleteConfirmation = undefined; clearTimeout(this.serviceTimer); this.serviceUnsubscribe?.(); this.runner.dispose(); this.listeners.clear(); }
   /** Debug entry supplies the deletion capability; release exposes no command. */
   async cleanupTestPost(remove: (execution: import('@goltou/sites').BlogExecution) => Promise<void>) {
     const job = this.runner.job, execution = this.runner.blogExecution?.();
@@ -136,6 +141,28 @@ export class AppCore {
     finally { this.preparing = false; }
   }
   async handle(request: AppRequest): Promise<unknown> {
+    try { return await this.handleRequest(request); }
+    finally { if (this.runtime?.updater && !this.disposed) this.emit(); }
+  }
+  private async handleRequest(request: AppRequest): Promise<unknown> {
+    if (request.command === 'update.home' || request.command === 'update.check' || request.command === 'update.action') {
+      const updater = this.runtime?.updater;
+      if (!updater || !this.state.user) return {};
+      updater.setBlocked(this.starting || this.preparing || this.deleting || updateJobBusy(this.state.job));
+      if (request.command === 'update.home') void updater.check('auto');
+      else if (request.command === 'update.check') await updater.check('manual');
+      else if (!updateJobBusy(this.state.job) && !this.starting && !this.preparing && !this.deleting) {
+        const action = request.input.action;
+        if (action === 'open') updater.open();
+        else if (action === 'later' || action === 'close') await updater.later();
+        else if (action === 'download') void updater.download();
+        else if (action === 'cancel') await updater.cancel();
+        else if (action === 'settings') await updater.settings();
+      }
+      return {};
+    }
+    if (this.runtime?.updater?.busy && ['job.start', 'preview.prepare', 'posts.delete.prepare', 'posts.delete.confirm', 'localData.import', 'logout'].includes(request.command))
+      throw new ApiError('conflict', '업데이트 확인 또는 설치를 먼저 마쳐 주세요.');
     if (this.transferringLocalData) throw new ApiError('conflict', '데이터 옮기기를 먼저 마쳐 주세요.');
     if (request.command === 'localData.export' || request.command === 'localData.import') {
       this.requireServiceIdle();

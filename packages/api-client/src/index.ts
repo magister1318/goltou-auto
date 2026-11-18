@@ -38,6 +38,7 @@ export interface Post extends PostUpdate {
 }
 export interface PostQuery { scope: 'mine' | 'all'; page?: number; pageSize?: number }
 export interface ApiRoutes {
+  '/auto/app/latest': { input: Record<string, never>; output: AppRelease };
   '/auto/login': { input: LoginInput; output: { token: string; user: User } };
   '/auto/logout': { input: Record<string, never>; output: Record<string, never> };
   '/auto/me': { input: Record<string, never>; output: { user: User; settings: Settings } };
@@ -84,3 +85,24 @@ export function createApiClient(baseUrl: string, fetcher: FetchLike, timeoutMs =
   } };
 }
 export { createFakeApi, fakeAccounts } from './fake';
+
+export type AppRelease = { ready: false } | {
+  ready: true; version: string; code: number; date: string; size: number; sha256: string; url: string; expiresIn: number;
+};
+/** Older servers are deliberately silent. Only fixed codes, never response text/URLs, reach logs. */
+export async function latest(api: ApiClient, token: string, logError?: (code: string) => void): Promise<AppRelease> {
+  try {
+    const data = await api.request('/auto/app/latest', {}, token);
+    if (data?.ready === false) return { ready: false };
+    if (data?.ready !== true || !/^\d+\.\d+\.\d+(?:\s*\(\d+\))?$/.test(data.version) ||
+      !Number.isSafeInteger(data.code) || data.code < 1 || !/^\d{4}-\d{2}-\d{2}$/.test(data.date) ||
+      !Number.isSafeInteger(data.size) || data.size < 1 || !/^[a-f0-9]{64}$/i.test(data.sha256) ||
+      !/^auto_app\/get\/[A-Za-z0-9_-]+$/.test(data.url) || !Number.isSafeInteger(data.expiresIn) || data.expiresIn < 1)
+      throw new ApiError('invalid', 'UPDATE_METADATA_INVALID');
+    return { ready: true, version: data.version, code: data.code, date: data.date, size: data.size,
+      sha256: data.sha256.toLowerCase(), url: data.url, expiresIn: data.expiresIn };
+  } catch (error) {
+    logError?.(error instanceof ApiError ? `UPDATE_CHECK_${error.code.toUpperCase()}` : 'UPDATE_CHECK_SERVER');
+    return { ready: false };
+  }
+}

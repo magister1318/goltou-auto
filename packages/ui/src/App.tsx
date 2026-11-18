@@ -26,6 +26,7 @@ import { PolishStrengthChoice } from './PolishStrengthChoice';
 import { PolishComparison } from './PolishComparison';
 import { PostDeleteAction } from './PostDeleteAction';
 import { Sheet } from './Sheet';
+import { UpdateNotice, UpdateSettings, UpdateSheet } from './AppUpdate';
 import { LiveProgress } from './LiveProgress';
 import { jobMessage } from './job-message';
 import { bandListFailureHint } from './band-list-failure';
@@ -262,6 +263,9 @@ export function App() {
       setProducts({ items: [], total: 0 });
     }
   }, [app?.user?.userNo]);
+  useEffect(() => {
+    if (app?.user && screen === 'home') void request('update.home', {}).catch(ignore);
+  }, [app?.user?.userNo, screen]);
   useEffect(() => {
     if (app?.settings) setSettings(app.settings);
   }, [JSON.stringify(app?.settings)]);
@@ -845,6 +849,7 @@ export function App() {
               {connection('band')}
             </div>
             <main className="pad">
+              {!active && <UpdateNotice value={app?.update} />}
               <label className="search">
                 <input
                   aria-label="상품 검색"
@@ -1475,7 +1480,7 @@ export function App() {
           <>
             <main className="pad settings-content">
               <h1 className="title">설정</h1>
-              <p>골투오토 {__GOLTOU_VERSION__} ({__GOLTOU_VERSION_CODE__})</p>
+              <UpdateSettings value={app?.update} current={`${__GOLTOU_VERSION__} (${__GOLTOU_VERSION_CODE__})`} disabled={busy || active} />
               <div className="choice-row"><span>작업 로그<small>단계별 진행과 결과 확인</small></span><button className="green" onClick={() => go('logs')}>보기</button></div>
               <div className="choice-row"><span>앱 데이터 옮기기<small>글 옵션·기록의 공개 범위·표 표시만 옮깁니다. 로그인은 포함하지 않습니다.</small></span>
                 <div>
@@ -1710,6 +1715,7 @@ export function App() {
           </Suspense>
         )}
       </div>
+      {!!app?.user && !active && !sheet && !app.visibleService && <UpdateSheet value={app.update} />}
       {screen === 'progress' && job?.status === 'recovery_paused' && (
         <Sheet
           title={

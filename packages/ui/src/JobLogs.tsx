@@ -3,10 +3,12 @@ import type { JobLogRow } from '@goltou/core/job-logs';
 import { request } from './store';
 
 export const jobKindLabel: Record<JobLogRow['kind'], string> = {
+  app_update: '앱 업데이트',
   blog_draft: '블로그 임시저장', blog_publish: '블로그 발행', blog_delete: '블로그 글 삭제',
   unfinished_cleanup: '작성 중인 글 정리', band_post: '밴드 게시', band_delete: '밴드 글 삭제', login_check: '로그인 확인', band_list: '밴드 목록 읽기',
 };
 export function failedStepLabel(step = '') {
+  if (step === 'update') return '앱 업데이트';
   if (/table|cells_filled/.test(step)) return '표 입력과 확인';
   if (/^band\.confirm\./.test(step)) return '게시한 글 확인과 주소 기록';
   if (/download/i.test(step)) return '사진 내려받기';
@@ -26,6 +28,9 @@ export function failedStepLabel(step = '') {
   return '작업 진행';
 }
 export function logReasonLabel(reason = '') {
+  if (/^UPDATE_CHECK_/.test(reason)) return '업데이트 정보를 읽지 못했습니다. 구형 서버이거나 연결을 확인해야 합니다.';
+  if (reason === 'UPDATE_CANCELLED') return '업데이트 다운로드를 취소했습니다.';
+  if (/^UPDATE_/.test(reason)) return '업데이트 파일을 확인하지 못했습니다. 잠시 뒤 다시 해 주세요.';
   if (reason === 'TABLE_CLEANUP_UNCONFIRMED') return '작성 중인 표를 안전하게 지웠는지 확인할 수 없어 저장 전에 멈췄습니다.';
   if (/^TABLE_/.test(reason)) return '표 입력을 확인하지 못했습니다.';
   if (reason === 'BAND_POST_UNCONFIRMED:IDENTITY_READ_FAILED') return '생성 응답에서 주소를 얻지 못했고 게시 목록도 읽지 못했습니다.';

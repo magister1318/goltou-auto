@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "exports": { "./job-logs": "./src/job-logs.ts",
+    "./app-update": "./src/app-update.ts",
     ".": "./src/index.ts",
     "./post-delete-policy": "./src/post-delete-policy.ts",
     "./job-safety": "./src/job-safety.ts",

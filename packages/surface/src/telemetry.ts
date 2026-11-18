@@ -1,6 +1,8 @@
 import { traceSteps, traceReasons, traceSelectors } from './telemetry-catalog';
 
 export type JobKind = 'blog_draft' | 'blog_publish' | 'blog_delete' | 'unfinished_cleanup' | 'band_post' | 'band_delete' | 'login_check' | 'band_list';
+/** Maintenance logs do not add a registration operation to existing exhaustive policies. */
+export type LogJobKind = JobKind | 'app_update';
 export type LogSite = 'naver' | 'band' | 'app';
 export type TraceStep = typeof traceSteps[number];
 export type ReasonCode = typeof traceReasons[number];
@@ -23,6 +25,7 @@ export interface TraceCounts {
   lineBreaks?: number; hashtags?: number; links?: number;
 }
 export interface TraceDetail {
+  update?: import('./update-diagnostics').UpdateDiagnostic;
   reason?: ReasonCode; counts?: TraceCounts;
   check?: 'table' | 'title' | 'paragraphs' | 'prices' | 'departures' | 'golf_courses' | 'text' | 'photos' | 'photo_order' | 'photo_ratio' | 'links' | 'hashtags' | 'line_breaks' | 'identity' | 'focus' | 'record' | 'alert_kind' | 'delete_notice' | 'same_post' | 'missing_read' | 'feed_location' | 'bold' | 'visibility' | 'stability';
   dialog?: 'alert' | 'confirm';
@@ -56,7 +59,7 @@ export interface TraceJob {
   end(result: JobResult, reason?: ReasonCode): void;
 }
 export interface TraceProvider {
-  begin(kind: JobKind, site: LogSite): TraceJob;
+  begin(kind: LogJobKind, site: LogSite): TraceJob;
   current(): TraceJob | undefined;
   run<T>(job: TraceJob, work: () => T): T;
   bind<T extends (...args: never[]) => unknown>(work: T): T;
@@ -64,7 +67,7 @@ export interface TraceProvider {
 let provider: TraceProvider | undefined;
 export function configureTrace(value: TraceProvider | undefined) { provider = value; }
 export function currentTrace() { return provider?.current(); }
-export function beginTrace(kind: JobKind, site: LogSite) { return provider?.begin(kind, site); }
+export function beginTrace(kind: LogJobKind, site: LogSite) { return provider?.begin(kind, site); }
 export function inTrace<T>(job: TraceJob | undefined, work: () => T): T { return job && provider ? provider.run(job, work) : work(); }
 export function bindTrace<T extends (...args: never[]) => unknown>(work: T): T { return provider?.bind(work) ?? work; }
 export function reasonCode(value: unknown): ReasonCode {
@@ -86,7 +89,7 @@ export async function traceStep<T>(step: TraceStep, work: () => Promise<T>): Pro
   try { const result = await work(); trace(step, 'ok', undefined, Date.now() - started); return result; }
   catch (error) { const control = error && typeof error === 'object' && 'control' in error ? error.control : undefined; const selector = traceSelectors.find(value => value === control); trace(step, 'fail', { reason: reasonCode(error), ...(selector ? { selector } : {}) }, Date.now() - started); throw error; }
 }
-export async function traceJob<T>(kind: JobKind, site: LogSite, work: () => Promise<T>, result?: (value: T) => { result: JobResult; reason?: ReasonCode }): Promise<T> {
+export async function traceJob<T>(kind: LogJobKind, site: LogSite, work: () => Promise<T>, result?: (value: T) => { result: JobResult; reason?: ReasonCode }): Promise<T> {
   const job = beginTrace(kind, site);
   return inTrace(job, async () => {
     try { const value = await work(); const end = result?.(value); job?.end(end?.result ?? 'succeeded', end?.reason); return value; }

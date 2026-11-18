@@ -33,6 +33,24 @@
 
 `data`: `{ "user": {...위와 같음}, "settings": { "closingText": "", "defaultHashtags": ["골투"], "bandDailyLimit": 3 } }`
 
+## 앱 업데이트 (WP36)
+
+### `POST /auto/app/latest`
+
+입력 `{}`. `/auto/me`와 같은 인증이며 로그인 가능한 모든 회원(`user_type >= 3`)에게 제공합니다.
+성공 봉투의 `data`가 `{ "ready": false }`이면 업데이트 정보가 없습니다. 준비된 경우:
+
+```json
+{ "ready": true, "version": "1.0.5 (9)", "code": 9, "date": "2026-11-20",
+  "size": 56124432, "sha256": "<64 hex>", "url": "auto_app/get/<token>", "expiresIn": 900 }
+```
+
+`url`은 API 기본 주소 기준 상대 경로이며 같은 HTTPS 호스트에서 15분 동안 GET으로 APK를 받습니다.
+응답 Content-Type은 `application/vnd.android.package-archive`입니다. 다운로드에는 /auto 인증 헤더나 쿠키를 보내지 않습니다.
+404·미등록 경로·구형 서버 오류·그 외 모든 확인 오류는 앱에서 조용히 정보 없음으로 처리하고 고정 오류 코드만 작업 로그에 기록합니다.
+다운로드 4xx이면 이 API에서 링크를 다시 받아 딱 한 번 재시도합니다. URL·토큰은 로그에 남기지 않습니다.
+앱은 설치된 versionCode보다 큰 code만 안내하며, 실제 파일의 해시·패키지·버전·현재 서명 인증서 집합을 모두 확인한 뒤 설치 화면을 엽니다.
+
 ## 상품
 
 ### `POST /auto/products/list`

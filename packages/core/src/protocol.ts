@@ -43,10 +43,13 @@ export interface Job {
   bandPhotoVerification?: { order: 'matched'; ratio: 'matched' | 'unavailable'; counts: number[]; sources: { width: number; height: number }[]; thumbnails: { width: number; height: number }[] };
 }
 export interface Simulation { tickMs: number; loginAt: number | null; failAt: number | null }
-export interface AppSnapshot { bandList?: import('./band-list-cache').BandListResult; serviceError?: string; postDeletion?: { outcome?: 'deleted' | 'not_started' | 'uncertain'; postNo: number; verifiedGone: boolean; recorded: boolean; at?: string }; user: User | null; settings: Settings | null; services: Record<Service, LoginState>; visibleService: Service | null; job: Job | null; simulation: Simulation; realBlog?: boolean; realBand?: boolean }
+export interface AppSnapshot { update?: import('./app-update').UpdateSnapshot; bandList?: import('./band-list-cache').BandListResult; serviceError?: string; postDeletion?: { outcome?: 'deleted' | 'not_started' | 'uncertain'; postNo: number; verifiedGone: boolean; recorded: boolean; at?: string }; user: User | null; settings: Settings | null; services: Record<Service, LoginState>; visibleService: Service | null; job: Job | null; simulation: Simulation; realBlog?: boolean; realBand?: boolean }
 /** Platform-neutral contract; Android implements it with a Keystore-encrypted native channel. */
 export interface TokenStore { read(): Promise<string | null>; write(token: string | null): Promise<void> }
 export interface Commands {
+  'update.home': { input: Record<string, never>; output: Record<string, never> };
+  'update.check': { input: Record<string, never>; output: Record<string, never> };
+  'update.action': { input: { action: 'open' | 'later' | 'download' | 'cancel' | 'settings' | 'close' }; output: Record<string, never> };
   'localData.export': { input: Record<string, never>; output: { cancelled: boolean } };
   'localData.import': { input: Record<string, never>; output: { cancelled: boolean; preferences?: import('./preferences').Preferences; polishStrength?: import('@goltou/api-client').PolishStrength } };
   'logs.list': { input: Record<string, never>; output: import('./job-logs').JobLogRow[] };

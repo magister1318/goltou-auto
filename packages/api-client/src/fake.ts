@@ -89,6 +89,7 @@ export function createFakeApi(fixtureSession?: { token: string; user: User; prod
           if (!Number.isInteger(value.bandDailyLimit) || value.bandDailyLimit < 1 || value.bandDailyLimit > 100) throw new ApiError('invalid', '밴드 하루 한도는 1~100으로 입력해 주세요.');
           settings = copy(value); output = {}; break;
         }
+        case '/auto/app/latest': output = { ready: false }; break;
         default: throw new ApiError('not_found', '지원하지 않는 요청입니다.');
       }
     }
