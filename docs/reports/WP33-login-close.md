@@ -17,11 +17,33 @@
   팝업 열기·닫기, 랜딩·차단 숨김, 확인 결과, 재시도 한도를 구분한다.
 - 버전은 소유자 결정대로 1.0.1 (5)다. 골투 로그인 등급과 등록·발행 동작은 변경하지 않았다.
 
-현재 확인: 로그인 관련 TypeScript 5파일 97시험 통과, pnpm typecheck 통과.
-Android :buildSrc:test 10시험, debug/release JVM 각 10시험, assembleDebug 통과.
-처음 Android 명령은 외부 서명 설정 환경 변수 누락으로 실패했고 경로 지정 후 통과했다.
-기존 좁은 경로를 전제로 한 시험 기대값도 새 정책에 맞게 고쳤다.
-깨끗한 커밋에서 release VerifyOnly 게이트와 이전 APK 인증서 대조 결과는 후속 기록한다.
+확인 결과:
+
+| 명령·검사 | 결과 |
+| --- | --- |
+| `pnpm install --frozen-lockfile`, `pnpm typecheck` | 통과, lockfile 변경 없음 |
+| `pnpm test` + JSON 증거 검사 | 97파일·1,184시험 통과, 실패·건너뜀·TODO 0, 955.40초. 런타임 시험 6개 포함 |
+| 로그인 관련 개별 회귀 | 5파일·97시험 통과. 차단 후 확인·재시도 한도·별도 확인·진행 중 취소 포함 |
+| `:buildSrc:test testDebugUnitTest testReleaseUnitTest assembleDebug` | buildSrc 10개, Android debug/release 각 10개 통과. debug 빌드 통과 |
+| `pnpm check:secrets`, 소스 내장 엔진 검사 | 통과, 소스 97파일 |
+| `pnpm build`, `assembleRelease` | 통과 |
+| `scripts/install-device.ps1 -Variant release -VerifyOnly -ArtifactDirectory ../release-out` | 통과, INSTALLED=False. APK 내부 두 번들·커밋·release 변형·v2/v3 서명 검사 통과 |
+
+게이트는 깨끗한 소스 커밋 `5c35cd8549d78c93447de646e3b07756fee7c535`에서 실행했다.
+이후 커밋은 이 보고서의 결과 기록만 추가한다. 처음 Android 명령은 외부 서명 설정 환경 변수
+누락으로 실패했고 경로 지정 후 통과했다. 초기 새 시험의 타입·기대값 오류도 고친 뒤 통과했다.
+팝업의 Kotlin 조립·수명 코드는 debug/release 컴파일과 코드 검토로 확인했고 실제 WebView 왕복은 미확인이다.
+
+배포 파일: `../release-out/goltou-auto-1.0.1-5-release.apk`와 `.apk.sha256` (56,101,968 bytes).
+APK SHA-256: `f59308ce2535af4355ed22a1168aa94307110ed38ffd63c8fb912240e19aaf41`.
+외부 영구 키 설정만 사용했다. 키·비밀번호는 출력·복사·커밋하지 않았다.
+aapt의 패키지는 이전·새 APK 모두 `kr.goltou.auto`, 버전은 `1.0.0 (4)` → `1.0.1 (5)`다.
+apksigner 인증서 SHA-256 직접 대조 결과는 **SAME**이다.
+
+- 이전 1.0.0-4: `B8EA4A8C931A8C711B2D4538ED8618045ABC202A3CF58B35639CCDACE5950665`
+- 새 1.0.1-5: `B8EA4A8C931A8C711B2D4538ED8618045ABC202A3CF58B35639CCDACE5950665`
+
+외부 증거: `../runs/blog-shots/wp33-install-gate.log`, `wp33-apk-verification.txt`, `wp33-summary.txt`.
 
 실기기 미확인: 실제 NAVER 로그인 후 자동 닫힘, BAND NAVER ID 팝업의 opener/postMessage 왕복,
 휴대폰 WebView의 추가 인증·캡차, 실제 업데이트 설치와 로그인·데이터 보존, 로그 내보내기 UI.
