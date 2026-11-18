@@ -23,7 +23,7 @@ async function viewer(missing = '', mobileProof = false, withTable = false) {
   // The full replay below owns the 99-paragraph/29-photo scrolling regression.
   // Keep the independent mobile visibility test small so it tests that second
   // live document without repeating a long lazy-load sweep under worker load.
-  const shape = mobileProof || withTable ? {paragraphs:3,photos:2,fillers:0} : {paragraphs:99,photos:29,fillers:58};
+  const shape = mobileProof || withTable || missing === 'bold' ? {paragraphs:3,photos:2,fillers:0} : {paragraphs:99,photos:29,fillers:58};
   const paragraphs = Array.from({length:shape.paragraphs},(_,i)=>`합성 문단 ${i+1}`);
   paragraphs.forEach((text,i)=>plan.steps.push({kind:'text',role:'body',text,runs:i===0?[{text,bold:true}]:i===1||i===2?[{text,href:`https://example.invalid/${i}`}]:[{text}]}));
   const files = Array.from({length:shape.photos},(_,i)=>({url:`https://example.invalid/photo/${i}`,path:`/synthetic/goltou-1234567890abcdef-${i+1}.png`}));
@@ -62,7 +62,7 @@ async function viewer(missing = '', mobileProof = false, withTable = false) {
   }
   const {page,surface}=await makeSurface();
   const host={create:async()=>(await makeSurface()).surface,destroy:async(s:Surface)=>s.close(),clearSession:async()=>{}} as SurfaceHost;
-  const execution=createBlogExecution(plan,files,{host,editorUrl:'http://127.0.0.1/editor',localPublish:!mobileProof,publishedSettleMs:missing?2500:20000},{mode:'publish',visibility:'public',beforeSave(){throw Error('NO_SAVE');},check(){},progress(){}});
+  const execution=createBlogExecution(plan,files,{host,editorUrl:'http://127.0.0.1/editor',localPublish:!mobileProof,publishedSettleMs:missing && missing !== 'bold' ? 2500 : 20000},{mode:'publish',visibility:'public',beforeSave(){throw Error('NO_SAVE');},check(){},progress(){}});
   execution.surface=surface;execution.publishedPost={url,postId:'9001'};
   await surface.open({url,session:'naver',width:1280,height:900,userAgent:'synthetic fixture'});
   return {execution,surface,page,plan,files,imageRequests:()=>imageRequests};

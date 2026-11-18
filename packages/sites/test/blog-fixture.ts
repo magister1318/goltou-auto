@@ -163,6 +163,7 @@ export function blogFixture(mode = '') {
       if(e.inputType!=='insertText'||(mode==='auto-list'&&e.data!==' '))return;
       const anchor=getSelection()?.anchorNode;
       const p=(anchor?.nodeType===1?anchor:anchor?.parentElement)?.closest('.se-text-paragraph');
+      if(mode==='auto-list' && !/^(?:[0-9]+[.)]|[-*+>])$/.test(p?.textContent??''))return;
       if(!p?.closest('.se-main-container')||!/^(?:[0-9]+[.)]|[-*+>])\\s/.test(p.textContent+e.data))return;
       e.preventDefault();
       const list=document.createElement('ol'),item=document.createElement('li');
