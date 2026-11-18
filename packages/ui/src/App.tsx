@@ -28,6 +28,7 @@ import { PostDeleteAction } from './PostDeleteAction';
 import { Sheet } from './Sheet';
 import { LiveProgress } from './LiveProgress';
 import { jobMessage } from './job-message';
+import { bandListFailureHint } from './band-list-failure';
 import { BandChooser } from './BandChooser';
 import {
   bandChoiceReason,
@@ -134,7 +135,8 @@ export function App() {
   const [bands, setBands] = useState<Band[]>([]),
     [bandKey, setBandKey] = useState(''),
     [loadingBands, setLoadingBands] = useState(false),
-    [bandsFailed, setBandsFailed] = useState(false);
+    [bandsFailed, setBandsFailed] = useState(false),
+    [bandsFailureReason, setBandsFailureReason] = useState('');
   const [service, setService] = useState<LoginService>('naver'),
     [loginOpened, setLoginOpened] = useState(false),
     [returnScreen, setReturnScreen] = useState<Screen>('connect'),
@@ -433,6 +435,7 @@ export function App() {
   async function loadBands() {
     setLoadingBands(true);
     setBandsFailed(false);
+    setBandsFailureReason('');
     try {
       const rows = await request('bands.list', {});
       setBands(rows);
@@ -445,8 +448,9 @@ export function App() {
               ? rows[0]!.key
               : '',
       );
-    } catch {
+    } catch (error) {
       clearError();
+      setBandsFailureReason(error instanceof Error ? error.message : '');
       setBandsFailed(true);
     } finally {
       setLoadingBands(false);
@@ -1995,6 +1999,7 @@ export function App() {
                             ? '밴드 목록을 읽지 못했습니다.'
                             : '글을 쓸 수 있는 밴드가 없습니다. 밴드 앱에서 가입한 밴드와 글쓰기 권한을 확인해 주세요.'}
                         </p>
+                        {bandsFailed && <p>{bandListFailureHint(bandsFailureReason)}</p>}
                         <button
                           className="green"
                           onClick={() => void loadBands()}

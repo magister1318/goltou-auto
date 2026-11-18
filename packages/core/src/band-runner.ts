@@ -41,14 +41,8 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
   async listBands() {
     return traceJob('band_list', 'band', async () => {
     if (this.active || this.band && !['stopped', 'published'].includes(this.result()?.status ?? '')) throw new ApiError('conflict', '작성 중인 밴드부터 확인하거나 버려 주세요.');
-    try { return await this.directory.list(); }
-    catch (error) {
-      if (error instanceof Error && /BAND_LOGIN_(LOST|UNCONFIRMED)/.test(error.message)) {
-        throw new ApiError('auth', '밴드 목록을 확인하지 못했습니다.');
-      }
-      throw error;
-    }
-    });
+    return this.directory.list();
+    }, () => ({ result: 'succeeded', ...(this.directory.listReason ? { reason: this.directory.listReason } : {}) }));
   }
   async start(input: JobInput, title: string, photos: number, work?: PreparationWork) {
     this.log = registrationLog(input);

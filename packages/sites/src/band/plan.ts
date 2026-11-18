@@ -1,8 +1,10 @@
 // Reference: ../refs/golfliat/programs/golfliat-workbench/electron/renderer.js, fillBandComposerInWebview (readback and file input selectors only).
 import { createdBandPosts, readFullBandPost, settleFullBandPost, normalizedBandBody, type CreatedBandPost } from './posted';
-import { traceStep, trace, reasonCode, expectedTelemetryRequest } from '@goltou/surface/telemetry';
-import type { Surface, SurfaceDialog, SurfaceHost } from '@goltou/surface';
-import { click, compact, point, read, waitFor } from '../dom';
+import { currentTrace, traceStep, trace, reasonCode, expectedTelemetryRequest, type ReasonCode, type TraceJob } from '@goltou/surface/telemetry';
+import { bandListLocation, type BandListDiagnostic } from '../../../surface/src/band-list-diagnostics';
+import type { GuardedRequest, Surface, SurfaceDialog, SurfaceHost } from '@goltou/surface';
+import { click, compact, point, read, sleep, waitFor } from '../dom';
+import { bandListMarkers, isBandListEndpoint, parseBandList, type BandListRow } from './directory-list';
 import { closeComposer, confirmBandPhotos, listBands } from './index';
 import { PhotoOrder, type PhotoProof, type PhotoSize, type PhotoSlot } from './photos';
 import { requestFields } from '../naver-blog/request-fields';
@@ -78,6 +80,8 @@ export class BandDirectory {
   private feedPosts: CreatedBandPost[] = [];
   private feedRevision = 0;
   private feedBand = '';
+  private listPhase: { job?: TraceJob | undefined; api?: BandListRow[] } | undefined;
+  listReason: ReasonCode | undefined;
   get revision() { return this.feedRevision; }
   freshFeed(key: string, before: number) { return this.feedBand === key && this.feedRevision > before; }
   constructor(private readonly host: SurfaceHost, readonly baseUrl = 'https://band.us', readonly localPublish = false, readonly publishEnabled = false, readonly publishAllowance?: { available(): Promise<boolean>; consume(): Promise<boolean> }, private readonly recordBarrierDecision?: (code: BandBarrierCode, expected?: boolean) => void) {
@@ -91,12 +95,20 @@ export class BandDirectory {
     const surface = await this.host.create('band');
     if (!surface.guardRequests) { await surface.close(); throw new Error('BAND_BARRIER_UNAVAILABLE'); }
     await surface.guardRequests([{ hostname: '*', pathname: '/', prefix: true }], async request => {
+      const inspect = async () => {
       const u = new URL(request.url);
+      if (this.listPhase && this.isCreateCandidate(u)) return this.reject('NOT_ARMED', true);
       if (request.method === 'OPTIONS') { this.record('PREFLIGHT_ALLOWED'); return true; }
       if (['GET', 'HEAD'].includes(request.method) && !this.isCreate(u)) return true;
       const trusted = this.localPublish ? u.origin === new URL(this.baseUrl).origin : u.protocol === 'https:' && (u.hostname === 'band.us' || u.hostname.endsWith('.band.us'));
       if (!trusted) return this.reject('ORIGIN_BLOCKED', this.isCreateCandidate(u), expectedTelemetryRequest(request));
       if (request.method !== 'POST') return this.reject('METHOD_BLOCKED', this.isCreateCandidate(u));
+      // This wider permission exists only during a membership read, never a composer/submit.
+      if (this.listPhase && !this.submit?.armed && !this.isCreateCandidate(u) &&
+          (isBandListEndpoint(u) || /^(?:get_|check_|is_|read_|sync_)[a-z0-9_]+$|^batch$/.test(u.pathname.split('/').at(-1) ?? '')) &&
+          !(await readBandDocument(surface)).composer) {
+        this.record('LIST_READ_ALLOWED'); return true;
+      }
       // Observed on-device: membership is read by this exact POST endpoint.
       // All other writes, including post/create, still fail closed.
       if (u.hostname === 'api-kr.band.us' && u.pathname === '/v2.3.0/get_band_list') { this.record('MEMBERSHIP_ALLOWED'); return true; }
@@ -133,7 +145,17 @@ export class BandDirectory {
         return this.reject(error instanceof Error && error.message === 'REQUEST_ENCODING_UNKNOWN' ? 'BODY_ENCODING' : 'BODY_PARSE', true);
       }
       submit.armed = false; submit.sent = true; this.record('CREATE_ALLOWED'); return true;
+      };
+      const allowed = await inspect();
+      if (!allowed) this.listRejected(request, this.codes.at(-1) ?? 'SURFACE_REQUEST_INVALID');
+      return allowed;
     }, response => {
+      if (this.listPhase && ['GET', 'POST'].includes(response.method ?? '') && response.url && isBandListEndpoint(new URL(response.url))) {
+        const rows = response.status >= 200 && response.status < 300 ? parseBandList(response.body ?? '') : undefined;
+        if (rows) this.listPhase.api = rows;
+        this.listPhase.job?.line('band.list.api', 'ok', { reason: rows ? 'BAND_LIST_API_CAPTURED' : 'BAND_LIST_API_INVALID', bandList: { apiCaptured: !!rows, apiRows: rows?.length ?? 0 } });
+        return;
+      }
       if (response.method === 'GET' && response.url && new URL(response.url).hostname === 'api-kr.band.us' && new URL(response.url).pathname === '/v2.0.0/get_posts_and_announcements') {
         const band = new URL(response.url).searchParams.get('band_no');
         if (band) { this.feedPosts = createdBandPosts(response.body, band); this.feedBand = band; this.feedRevision++; }
@@ -151,13 +173,16 @@ export class BandDirectory {
         }
         trace('band.confirm.response', this.submit.post ? 'ok' : 'wait', { reason: this.submit.post ? 'BAND_RESPONSE_IDENTITY' : 'BAND_RESPONSE_NO_IDENTITY', counts: { expected: 1, observed: this.submit.post ? 1 : 0 } });
       } catch { trace('sites.band.plan.BandDirectory.getSurface', 'fail', { reason: 'CAUGHT_FAILURE' });  this.submit.succeeded = false; }
-    }, request => request.method === 'POST' && this.isCreate(new URL(request.url)) || request.method === 'GET' && new URL(request.url).hostname === 'api-kr.band.us' && new URL(request.url).pathname === '/v2.0.0/get_posts_and_announcements', (request, reason) => {
-      if (request && ['GET', 'HEAD', 'OPTIONS'].includes(request.method) && !this.isCreate(new URL(request.url))) return;
-      if (reason !== 'INSPECTOR_DENIED') this.reject(reason === 'STATIC_BLOCK' ? 'SURFACE_STATIC_BLOCK' : reason === 'INSPECTOR_ERROR' ? 'SURFACE_INSPECTOR_ERROR' : 'SURFACE_REQUEST_INVALID', !request || this.isCreateCandidate(new URL(request.url)));
+    }, request => !!this.listPhase && ['GET', 'POST'].includes(request.method) && isBandListEndpoint(new URL(request.url)) || request.method === 'POST' && this.isCreate(new URL(request.url)) || request.method === 'GET' && new URL(request.url).hostname === 'api-kr.band.us' && new URL(request.url).pathname === '/v2.0.0/get_posts_and_announcements', (request, reason) => {
+      if (reason !== 'INSPECTOR_DENIED') {
+        const code = reason === 'STATIC_BLOCK' ? 'SURFACE_STATIC_BLOCK' : reason === 'INSPECTOR_ERROR' ? 'SURFACE_INSPECTOR_ERROR' : 'SURFACE_REQUEST_INVALID';
+        this.listRejected(request, code);
+        if (request && ['GET', 'HEAD', 'OPTIONS'].includes(request.method) && !this.isCreate(new URL(request.url))) return;
+        this.reject(code, !request || this.isCreateCandidate(new URL(request.url)));
+      }
       if (this.submit?.blocked && !this.submit.sent) { this.submit.blockConfirmed = true; this.record('BLOCK_CONFIRMED'); }
     });
-    // Membership reads and uploads need no response-body proof. Only an armed
-    // publication consumes its response; failure there must still fail closed.
+    // Membership responses are optional read evidence; publication still requires proof.
     this.surface = surface; return surface;
 
     });
@@ -174,6 +199,10 @@ export class BandDirectory {
   private record(code: BandBarrierCode, expected = false) {
     this.codes.push(code); if (this.codes.length > 128) this.codes.shift();
     try { this.recordBarrierDecision?.(code, expected); } catch { /* Diagnostics cannot authorize or retry a request. */ }
+  }
+  private listRejected(request: GuardedRequest | undefined, code: BandBarrierCode) {
+    this.listPhase?.job?.line('band.list.request', 'ok', { reason: code, connection: bandListLocation(request?.url ?? ''),
+      bandList: { method: (request?.method ?? 'other') as NonNullable<BandListDiagnostic['method']> } });
   }
   private reject(code: BandBarrierCode, endsApproval = false, expected = false): false {
     this.record(code, expected);
@@ -202,24 +231,64 @@ export class BandDirectory {
   }
   async list(retryRead = true): Promise<BandChoice[]> {
     return traceStep('sites.band.plan.BandDirectory.list', async () => {
-    const s = await this.getSurface();
-    if ((await readBandDocument(s)).composer) throw new Error('BAND_COMPOSER_ACTIVE');
-    try {
-    await s.open({ url: `${this.baseUrl}/`, session: 'band', width: 1280, height: 900, userAgent: bandMobileUA });
-    await this.guard(false);
-    const previous = this.choices;
-    this.choices = (await listBands(s)).map(b => ({ ...b, photoLimit: previous.find(p => p.key === b.key)?.photoLimit ?? null, observedAt: previous.find(p => p.key === b.key)?.observedAt ?? null }));
-    return structuredClone(this.choices);
-    } catch (error) { trace('sites.band.plan.BandDirectory.list', 'fail', { reason: reasonCode(error) });
-      // A failed read surface must not permanently poison the retry button.
-      this.surface = undefined; this.choices = [];
-      await this.host.destroy(s).catch(() => {});
-      // Only this read-only operation may retry a damaged interception context.
-      // Composers are rejected above, and publication never uses this retry.
-      if (retryRead && error instanceof Error && /^(?:SURFACE_DRAFT_BARRIER_FAILED(?::[A-Z_]+)?|SURFACE_NAVIGATION_TIMEOUT|OBSERVATION_TIMEOUT|BAND_LIST_INCOMPLETE)$/.test(error.message)) { trace('sites.band.plan.BandDirectory.list', 'retry', { counts: { attempt: 2 } }); return this.list(false); }
-      throw error;
-    }
-
+      if (this.listPhase) throw new Error('BAND_LIST_IN_PROGRESS');
+      this.listReason = undefined;
+      const phase: NonNullable<BandDirectory['listPhase']> = { job: currentTrace() };
+      let s: Surface | undefined;
+      let source: NonNullable<BandListDiagnostic['source']> = 'none';
+      const diagnose = async (reason: ReasonCode) => {
+        this.listReason = reason;
+        const markers = s ? await bandListMarkers(s).catch(() => undefined) : undefined;
+        const url = s ? await s.readState().then(v => v.url).catch(() => '') : '';
+        phase.job?.line('band.list.result', 'ok', { reason, connection: bandListLocation(url), bandList: {
+          legacy: markers?.legacy ?? false, home: markers?.home ?? false, my: markers?.my ?? false,
+          loginForm: markers?.loginForm ?? false, tileCount: markers?.tileCount ?? 0,
+          apiCaptured: phase.api !== undefined, apiRows: phase.api?.length ?? 0, source,
+        } });
+      };
+      try {
+        s = await this.getSurface();
+        if (this.submit?.armed || (await readBandDocument(s)).composer) throw new Error('BAND_COMPOSER_ACTIVE');
+        this.listPhase = phase;
+        await s.open({ url: `${this.baseUrl}/`, session: 'band', width: 1280, height: 900, userAgent: bandMobileUA });
+        await this.guard(false);
+        const deadline = Date.now() + 15000;
+        let rows: BandListRow[];
+        try {
+          rows = await listBands(s, Math.max(1, deadline - Date.now()));
+          source = 'DOM';
+        } catch (error) {
+          if (reasonCode(error) !== 'OBSERVATION_TIMEOUT' && (!(error instanceof Error) || !/^(?:BAND_LIST_INCOMPLETE|CONTROL_NOT_FOUND(?::.*)?)$/.test(error.message))) throw error;
+          // The response arrives in parallel with DOM observation. Share its deadline;
+          // do not race an uncancelled DOM traversal against the fallback.
+          while (phase.api === undefined && Date.now() < deadline) { await this.guard(false); await sleep(250); }
+          await this.guard(false);
+          if (phase.api !== undefined) { rows = phase.api.filter(row => row.writable !== false); source = 'API'; }
+          else {
+            const markers = await bandListMarkers(s);
+            throw new Error(!markers.legacy && !markers.home && !markers.my ? 'BAND_HOME_UNRECOGNIZED'
+              : !markers.tileCount ? 'BAND_LIST_EMPTY' : 'BAND_LIST_INCOMPLETE');
+          }
+        }
+        await this.guard(false);
+        const previous = this.choices;
+        this.choices = rows.map(b => ({ key: b.key, name: b.name, photoLimit: previous.find(p => p.key === b.key)?.photoLimit ?? null, observedAt: previous.find(p => p.key === b.key)?.observedAt ?? null }));
+        await diagnose(!rows.length ? 'BAND_LIST_EMPTY' : source === 'DOM' ? 'BAND_LIST_DOM' : 'BAND_LIST_API_ONLY');
+        return structuredClone(this.choices);
+      } catch (error) {
+        await diagnose(reasonCode(error));
+        trace('sites.band.plan.BandDirectory.list', 'fail', { reason: reasonCode(error) });
+        // Preserve a composer and its surface; only damaged read surfaces can retry.
+        if (s && !(error instanceof Error && error.message === 'BAND_COMPOSER_ACTIVE')) {
+          this.surface = undefined; this.choices = [];
+          this.listPhase = undefined;
+          await this.host.destroy(s).catch(() => {});
+          if (retryRead && error instanceof Error && /^(?:SURFACE_DRAFT_BARRIER_FAILED(?::[A-Z_]+)?|SURFACE_NAVIGATION_TIMEOUT)$/.test(error.message)) {
+            trace('sites.band.plan.BandDirectory.list', 'retry', { counts: { attempt: 2 } }); return this.list(false);
+          }
+        }
+        throw error;
+      } finally { if (this.listPhase === phase) this.listPhase = undefined; }
     });
   }
   async guard(requireComposer: boolean) {
@@ -232,7 +301,7 @@ export class BandDirectory {
     if (url.hostname === 'auth.band.us' || login) throw new Error('BAND_LOGIN_LOST');
     if (!this.sameOrigin(url)) throw new Error('BAND_LOCATION_UNCONFIRMED');
     if (requireComposer && !(await readBandDocument(s)).composer) throw new Error('BAND_COMPOSER_LOST');
-    if (!requireComposer) {
+    if (!requireComposer && !this.listPhase) {
       try { await waitFor(() => read<boolean>(s, `return docs.some(({d})=>d.querySelector('._myBandListWrap, .globalMyBandWrap, .myBandGroupList, ._btnPostWrite, ._btnOpenWriteLayer, ${bandEditor}'))||docs.some(({d})=>Array.from(d.querySelectorAll('a,button')).some(n=>/로그아웃|log\\s*out/i.test(n.textContent||'')));`)); }
       catch { trace('sites.band.plan.BandDirectory.guard', 'fail', { reason: 'CAUGHT_FAILURE' });  throw new Error('BAND_LOGIN_UNCONFIRMED'); }
     }

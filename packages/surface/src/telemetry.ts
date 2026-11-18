@@ -32,6 +32,7 @@ export interface TraceDetail {
     contentType: string; queryFields: readonly string[]; bodyFields: readonly string[]; decision: 'allowed' | 'blocked' };
   navigation?: { host: string; path: string };
   connection?: import('./connection-diagnostics').ConnectionDiagnostic;
+  bandList?: import('./band-list-diagnostics').BandListDiagnostic;
 }
 export const traceOperations = ['surface.create', 'surface.destroy', 'surface.dialog', 'surface.dialog.answer', 'surface.visible', 'surface.navigation', 'profile.clear', 'app.inputState', 'app.jobState', 'logs.export', 'logs.environment', 'session.read', 'session.write', 'session.device', 'Page.navigate', 'Page.enable', 'Runtime.evaluate', 'Input.dispatchMouseEvent', 'Input.dispatchKeyEvent', 'Input.insertText', 'DOM.setFileInputFiles', 'Fetch.continueRequest', 'Fetch.failRequest', 'Fetch.getResponseBody', 'Network.getRequestPostData', 'other'] as const;
 /** Ephemeral request metadata goes through a bounded name-only projection first. */
