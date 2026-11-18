@@ -99,6 +99,24 @@ describe('app update policy', () => {
   });
 });
 describe('persistent update logs', () => {
+  it('keeps cancellation logs open until native cleanup reports its final bytes and duration', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'goltou-update-cancel-')); directories.push(dir);
+    const logs = new JobLogStore(dir); const f = fixture({}, logs);
+    await f.updater.check('manual');
+    let stop!: () => void;
+    f.port.download.mockImplementation(() => new Promise<void>((_resolve, reject) => { stop = () => reject(Error('UPDATE_CANCELLED')); }));
+    f.port.cancel.mockImplementation(async () => {
+      f.updater.diagnostic({ event: 'download_end', code: 'UPDATE_CANCELLED', bytes: 12345, duration: 678 });
+      stop();
+    });
+    const download = f.updater.download(); await vi.waitFor(() => expect(f.port.download).toHaveBeenCalled());
+    await f.updater.cancel(); await download;
+    const day = (await readdir(dir)).find(d => /^\d{8}$/.test(d))!;
+    const content = (await Promise.all((await readdir(path.join(dir, day))).map(file => readFile(path.join(dir, day, file), 'utf8')))).join('');
+    expect(content).toContain('"event":"cancel"');
+    expect(content).toContain('"event":"download_end","code":"UPDATE_CANCELLED","bytes":12345,"duration":678');
+    expect(logs.list()[0]).toMatchObject({ kind: 'app_update', result: 'stopped', reason: 'UPDATE_CANCELLED' });
+  });
   it('projects event fields, removes token injection, survives reopening, and records update_done once', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'goltou-update-')); directories.push(dir);
     const logs = new JobLogStore(path.join(dir, 'logs'));

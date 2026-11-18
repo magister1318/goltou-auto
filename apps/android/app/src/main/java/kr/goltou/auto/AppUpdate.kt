@@ -33,6 +33,7 @@ class AppUpdate(private val session: AppSession) {
         .callTimeout(30, TimeUnit.MINUTES).build()
     @Volatile private var call: Call? = null
     @Volatile private var working = false
+    @Volatile private var downloadThread: Thread? = null
     private var cancelled = AtomicBoolean(false)
     @Volatile private var verified: File? = null
     @Volatile private var expectedHash: String? = null
@@ -48,7 +49,14 @@ class AppUpdate(private val session: AppSession) {
     fun handle(op: String, msg: JSONObject, reply: (JSONObject?, String?) -> Unit) {
         when (op) {
             "update.download" -> download(msg, reply)
-            "update.cancel" -> { cancel(); reply(JSONObject(), null) }
+            "update.cancel" -> {
+                cancel()
+                val active = downloadThread
+                // Acknowledge after the final byte/duration log and partial-file cleanup.
+                // Joining on a separate thread keeps the Activity and cancel control responsive.
+                if (active?.isAlive == true) Thread { active.join(); reply(JSONObject(), null) }.start()
+                else reply(JSONObject(), null)
+            }
             "update.install" -> {
                 try {
                     val allowed = context.packageManager.canRequestPackageInstalls()
@@ -79,7 +87,7 @@ class AppUpdate(private val session: AppSession) {
         working = true
         val stop = AtomicBoolean(false); cancelled = stop
         val file = File(directory, "update-${UUID.randomUUID()}.apk")
-        Thread {
+        val worker = Thread {
             var bytes = 0L
             val start = android.os.SystemClock.elapsedRealtime()
             var keep = false
@@ -129,7 +137,9 @@ class AppUpdate(private val session: AppSession) {
                 working = false
             }
             reply(if (failure == null) JSONObject() else null, failure)
-        }.start()
+        }
+        downloadThread = worker
+        worker.start()
     }
 
     @Suppress("DEPRECATION")

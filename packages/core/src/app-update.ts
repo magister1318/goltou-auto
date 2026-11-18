@@ -198,7 +198,9 @@ export class AppUpdater {
   }
   async cancel() {
     ++this.generation;
-    this.diagnostic({ event: 'cancel' }); this.log?.end('stopped', 'UPDATE_CANCELLED'); this.log = undefined;
-    await this.options.port.cancel(); this.sheet = false; this.phase = this.release ? 'available' : 'idle'; this.emit();
+    this.diagnostic({ event: 'cancel' });
+    await this.options.port.cancel();
+    this.log?.end('stopped', 'UPDATE_CANCELLED'); this.log = undefined;
+    this.sheet = false; this.phase = this.release ? 'available' : 'idle'; this.emit();
   }
 }
