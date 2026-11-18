@@ -13,11 +13,16 @@ import type {
   ProductSummary,
   Settings,
 } from '@goltou/api-client';
+import { defaultMyText } from '@goltou/api-client';
 import type { Commands, JobInput, Service } from '@goltou/core/protocol';
 import type { PreparedPreview } from '@goltou/core';
+import { fillMyText, productTags } from '@goltou/core/post-extras';
 import { deletedPost } from '@goltou/core/post-delete-policy';
 import { clearError, experiment, request, useStore } from './store';
-import { ProductPhoto } from './ProductPhoto';
+import { PostingTags, PreviousPublication, ProductListItem, ProductMeta, ProductPostHistory } from './ProductPosting';
+import { MyTextSettings, TextSwitch, UnbrokenPhone } from './MyTextSettings';
+import { TodayStatus } from './TodayStatus';
+import { PublishResult, isPublishResult } from './PostingTargets';
 import { BrandMark } from './BrandMark';
 import { ConversionPreview, sourcePhotoRatios } from './ConversionPreview';
 import { LoginStatus, type LoginService } from './ServiceLogin';
@@ -33,7 +38,6 @@ import { bandListFailureHint } from './band-list-failure';
 import { BandChooser } from './BandChooser';
 import { BandListStatus } from './BandListStatus';
 import {
-  bandChoiceReason,
   targetStatus,
   targetName,
   resultKind,
@@ -62,15 +66,14 @@ type Screen =
 type SheetName =
   | 'draft'
   | 'publish'
-  | 'bands'
   | 'confirm'
   | 'stop'
   | 'dialog'
   | 'leave'
+  | 'exit'
   | null;
 type Band = import('@goltou/sites').BandChoice;
 const ignore = () => {};
-const money = (value: number) => `${value.toLocaleString('ko-KR')}원`;
 const recordTime = (value: string) => {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return '시간 확인 필요';
@@ -126,20 +129,24 @@ export function App() {
     [preview, setPreview] = useState<'blog' | 'band'>('blog');
   const [options, setOptions] = useState(initialPreviewOptions),
     [previewRefresh, setPreviewRefresh] = useState(0);
+  const previewQueue = useRef(Promise.resolve());
   const [preferencesReady, setPreferencesReady] = useState(false);
   const settingsReturn = useRef<Screen>('home');
   const preferencesWrites = useRef(Promise.resolve());
   const [mode, setMode] = useState<Mode>('draft'),
     [blog, setBlog] = useState(true),
-    [band, setBand] = useState(false),
     [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [bands, setBands] = useState<Band[]>([]),
     [bandKeys, setBandKeys] = useState<string[]>([]),
+    [lastBandKeys, setLastBandKeys] = useState<string[]>([]),
+    [preselectedBands, setPreselectedBands] = useState(false),
     [loadingBands, setLoadingBands] = useState(false),
     [bandsFailed, setBandsFailed] = useState(false),
     [bandsFailureReason, setBandsFailureReason] = useState('');
-  const bandKey = bandKeys[0] ?? '';
+  const bandSelectionTouched = useRef(false);
   const chosenBands = bandKeys.flatMap(key => bands.filter(band => band.key === key));
+  const band = app?.services.band === 'confirmed' && chosenBands.length > 0;
+  const [dailyUsage, setDailyUsage] = useState<Commands['bands.dailyUsage']['output']>();
   const [bandsSavedAt, setBandsSavedAt] = useState<number | null>(null);
   const [refreshingBands, setRefreshingBands] = useState(false);
   const bandsRevision = useRef(0);
@@ -156,8 +163,13 @@ export function App() {
     defaultHashtags: [],
     bandDailyLimit: 3,
   });
+  const [tagWordsInput, setTagWordsInput] = useState('');
   const [loginSubmitted, setLoginSubmitted] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [editingMyText, setEditingMyText] = useState(false);
+  const [exitHint, setExitHint] = useState(false);
+  const exitDeadline = useRef(0);
+  const exitTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [pendingNavigation, setPendingNavigation] = useState<Screen>('home');
   const [settingsAttempted, setSettingsAttempted] = useState(false);
   const dirtySettings =
@@ -170,9 +182,13 @@ export function App() {
   const job = app?.job;
   const active =
     !!job &&
-    !['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(
-      job.status,
-    );
+    (job.status === 'record_failed' || !job.completedSteps.includes(7) &&
+      !['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(job.status));
+  function clearExitHint() {
+    clearTimeout(exitTimer.current);
+    exitDeadline.current = 0;
+    setExitHint(false);
+  }
   function go(next: Screen, replace = false, discard = false) {
     if (
       screen === 'settings' &&
@@ -186,6 +202,7 @@ export function App() {
     }
     if (next === 'settings')
       settingsReturn.current = screen === 'preview' ? 'preview' : 'home';
+    clearExitHint();
     clearError();
     setNotice('');
     setSheet(null);
@@ -216,6 +233,20 @@ export function App() {
       event.preventDefault();
       if (document.querySelector('.sheet')) {
         window.dispatchEvent(new Event('goltou:close-sheet'));
+        return;
+      }
+      if (screen === 'home') {
+        if (Date.now() < exitDeadline.current) {
+          clearExitHint();
+          setSheet('exit');
+          void request('app.exit', { event: 'confirm' }, true).catch(ignore);
+        } else {
+          clearExitHint();
+          exitDeadline.current = Date.now() + 2000;
+          setExitHint(true);
+          exitTimer.current = setTimeout(clearExitHint, 2000);
+          void request('app.exit', { event: 'hint' }, true).catch(ignore);
+        }
         return;
       }
       if (active && screen !== 'service') {
@@ -252,6 +283,7 @@ export function App() {
     !!product,
     dirtySettings,
   ]);
+  useEffect(() => () => clearTimeout(exitTimer.current), []);
   useEffect(() => {
     if (app?.user && screen === 'login') go(active ? 'progress' : 'home', true);
     if (app && !app.user) {
@@ -268,7 +300,10 @@ export function App() {
     if (app?.user && screen === 'home') void request('update.home', {}).catch(ignore);
   }, [app?.user?.userNo, screen]);
   useEffect(() => {
-    if (app?.settings) setSettings(app.settings);
+    if (app?.settings) {
+      setSettings(app.settings);
+      setTagWordsInput(app.settings.defaultHashtags.join(', '));
+    }
   }, [JSON.stringify(app?.settings)]);
   useEffect(() => {
     const scrollField = () => {
@@ -293,6 +328,7 @@ export function App() {
           (field instanceof HTMLInputElement ||
             field instanceof HTMLTextAreaElement),
       );
+      setEditingMyText(screen === 'settings' && !!field?.closest('.my-text-settings') && field instanceof HTMLTextAreaElement);
       setTimeout(scrollField, 80);
       setTimeout(scrollField, 300);
     };
@@ -305,6 +341,7 @@ export function App() {
         const field = document.activeElement;
         setEditing(visible && screen === 'settings' &&
           (field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement));
+        setEditingMyText(visible && screen === 'settings' && !!field?.closest('.my-text-settings') && field instanceof HTMLTextAreaElement);
         if (!visible) return;
       }
       resize();
@@ -329,7 +366,11 @@ export function App() {
     if (connected)
       void request('preferences.get', {})
         .then((value) => {
-          setBandKeys(value.lastBandKeys);
+          setLastBandKeys(value.lastBandKeys);
+          if (!bandSelectionTouched.current) {
+            setBandKeys(value.lastBandKeys);
+            setPreselectedBands(value.lastBandKeys.length > 0);
+          }
           setOptions((old) => ({
             ...old,
             polish: value.polish,
@@ -345,7 +386,7 @@ export function App() {
       polish: options.polish,
       closing: false,
       linkCard: options.linkCard,
-      lastBandKeys: bandKeys,
+      lastBandKeys,
     };
     preferencesWrites.current = preferencesWrites.current
       .catch(ignore)
@@ -357,7 +398,7 @@ export function App() {
     preferencesReady,
     options.polish,
     options.linkCard,
-    bandKeys,
+    lastBandKeys,
   ]);
   useEffect(() => {
     if (connected)
@@ -398,22 +439,27 @@ export function App() {
       clearTimeout(timer);
     };
   }, [screen, app?.user?.userNo, q, unposted, page, refresh]);
+  const choosingPublish = sheet === 'publish' || sheet === 'confirm';
+  const needsPreview = screen === 'preview' || choosingPublish;
   useEffect(() => {
-    if (!product || screen !== 'preview') return;
+    if (!product || !needsPreview || active) return;
     let live = true;
     setPreparing(true);
-    void request('preview.prepare', { productNo: product.productNo, options })
-      .then((data) => {
+    previewQueue.current = previewQueue.current.then(async () => {
+      if (!live) return;
+      try {
+        const data = await request('preview.prepare', { productNo: product.productNo, options });
         if (live) setConverted(data);
-      })
-      .catch(ignore)
-      .finally(() => {
+      } catch {
+        if (live) setConverted(null);
+      } finally {
         if (live) setPreparing(false);
-      });
+      }
+    });
     return () => {
       live = false;
     };
-  }, [screen, product?.productNo, options, previewRefresh]);
+  }, [needsPreview, product, options, previewRefresh, active, app?.myText?.prefix, app?.myText?.closing]);
   useEffect(() => {
     if (screen === 'progress' && job && !converted)
       void request('job.preview', {}).then(setConverted).catch(ignore);
@@ -454,10 +500,14 @@ export function App() {
       setBandsFailed(!!result.failure);
       setBandsFailureReason(result.failure ?? '');
     }
-    if (Array.isArray(result) || !result.failure && !result.refreshing && (result.source === 'band' || result.savedAt !== null)) setBandKeys(old => {
-      const keys = old.filter(key => rows.some(band => band.key === key));
-      return keys.length === old.length ? old : keys;
-    });
+    if (Array.isArray(result) || !result.failure && !result.refreshing && (result.source === 'band' || result.savedAt !== null)) {
+      const keepAvailable = (old: string[]) => {
+        const keys = old.filter(key => rows.some(band => band.key === key));
+        return keys.length === old.length ? old : keys;
+      };
+      setBandKeys(keepAvailable);
+      setLastBandKeys(keepAvailable);
+    }
   }
   useEffect(() => { if (app?.bandList) receiveBands(app.bandList); }, [app?.bandList]);
   async function loadBands(refresh = false) {
@@ -477,11 +527,19 @@ export function App() {
   useEffect(() => {
     if (job?.status === 'dialog_paused' && job.dialog) setSheet('dialog');
   }, [job?.dialog?.id]);
-  const choosingPublish = sheet === 'publish' || sheet === 'bands';
   const needsBands = choosingPublish || (screen === 'preview' && preview === 'band');
   useEffect(() => {
     if (needsBands && app?.services.band === 'confirmed') void loadBands();
   }, [needsBands, app?.services.band]);
+  useEffect(() => {
+    if (!choosingPublish || app?.services.band !== 'confirmed') return;
+    let live = true;
+    setDailyUsage(undefined);
+    void request('bands.dailyUsage', {}, true).then(value => {
+      if (live) setDailyUsage(value ?? null);
+    }).catch(() => { if (live) setDailyUsage(null); });
+    return () => { live = false; };
+  }, [choosingPublish, app?.services.band]);
   useEffect(() => {
     if (
       screen === 'service' &&
@@ -498,17 +556,30 @@ export function App() {
         });
     }
   }, [screen, loginOpened, app?.services[service], app?.visibleService]);
-  async function choose(no: number) {
+  function openPublish() {
+    setOptions(old => ({ ...old, closing: app?.myText?.closingOn ?? true }));
+    setMode('publish');
+    setBlog(true);
+    setVisibility('public');
+    setDailyUsage(undefined);
+    bandSelectionTouched.current = false;
+    setBandKeys(lastBandKeys);
+    setPreselectedBands(lastBandKeys.length > 0);
+    setSheet('publish');
+  }
+  async function choose(no: number, publish = false) {
     await act(async () => {
       const data = await request('products.get', { productNo: no });
       setProduct(data);
       setConverted(null);
       setPreview('blog');
       setBlog(true);
-      setBand(false);
       setVisibility('public');
       setMode('draft');
-      go('preview');
+      if (publish) {
+        clearExitHint();
+        openPublish();
+      } else go('preview');
     });
   }
   function login(service: LoginService, to = screen, toSheet = sheet) {
@@ -538,7 +609,7 @@ export function App() {
     }
     if (!product || !converted) return;
     if ((mode === 'draft' || blog) && app?.services.naver !== 'confirmed') {
-      login('naver', 'preview', sheet);
+      login('naver', screen, sheet);
       return;
     }
     await act(async () => {
@@ -553,10 +624,13 @@ export function App() {
           previewHash: converted.contentHash,
         });
       } catch (failure) {
-        if (failure instanceof Error && /바뀌|변경|수정/.test(failure.message))
+        if (failure instanceof Error && /바뀌|변경|수정/.test(failure.message)) {
+          if (screen === 'home') setScreen('preview');
           setSheet(null);
+        }
         throw failure;
       }
+      if (mode === 'publish' && band) setLastBandKeys(chosenBands.map(item => item.key));
       go('progress');
     });
   }
@@ -598,7 +672,7 @@ export function App() {
           <BrandMark />
           골투오토
         </span>
-        {home && <span>{app?.user?.name} 님</span>}
+        {home && <span>{app?.user?.nickname || app?.user?.name} 님</span>}
       </div>
       <h1>{title}</h1>
     </header>
@@ -692,24 +766,32 @@ export function App() {
       ))}
     </div>
   );
-  const sheetClose = () =>
-    setSheet(sheet === 'confirm' || sheet === 'bands' ? 'publish' : null);
-  const bandReason =
-    mode === 'draft'
-      ? ''
-      : bandChoiceReason({
-          blog,
-          band,
-          loading: loadingBands && !bands.length,
-          failed: bandsFailed && !bands.length,
-          selected:
-            app?.services.band === 'confirmed' &&
-            bands.some((b) => b.key === bandKey),
-        });
+  function closeExit() {
+    setSheet(null);
+    void request('app.exit', { event: 'cancel' }, true).catch(ignore);
+  }
+  const sheetClose = () => {
+    if (sheet === 'exit') closeExit();
+    else if (sheet === 'confirm') setSheet('publish');
+    else {
+      if (sheet === 'publish') setOptions(old => ({ ...old, closing: app?.myText?.closingOn ?? true }));
+      setSheet(null);
+    }
+  };
+  const bandLimit = dailyUsage?.limit ?? app?.settings?.bandDailyLimit;
+  const bandsUsed = dailyUsage?.used ?? 0;
+  const limitWarning = band && bandLimit && chosenBands.length + bandsUsed > bandLimit
+    ? dailyUsage
+      ? `밴드 하루 한도 ${bandLimit}건 중 오늘 ${bandsUsed}건을 썼습니다. ${chosenBands.length}곳을 고르면 한도를 넘습니다.`
+      : `밴드 하루 한도는 ${bandLimit}건입니다. ${chosenBands.length}곳을 고르면 한도를 넘습니다.`
+    : '';
   const startReason =
-    bandReason ||
-    (!converted || preparing
-      ? '미리보기를 준비하고 있습니다.'
+    (active ? '진행 중인 작업을 먼저 마쳐 주세요.'
+      : mode === 'publish' && !targets().length ? '올릴 곳을 선택해 주세요.'
+      : mode === 'publish' && limitWarning ? limitWarning
+      : mode === 'publish' && band && dailyUsage === undefined ? '밴드 하루 한도를 확인하고 있습니다.'
+      : preparing ? '미리보기를 준비하고 있습니다.'
+      : !converted ? '미리보기를 불러오지 못했습니다.'
       : !targets().every((t) => converted.verification[t.channel].matches)
         ? '원문과 다른 내용이 있어 옮길 수 없습니다.'
         : busy
@@ -832,14 +914,7 @@ export function App() {
         )}
         {screen === 'home' && (
           <>
-            {header(
-              <>
-                옮길 상품을
-                <br />
-                고르세요
-              </>,
-              true,
-            )}
+            {header('옮길 상품을 고르세요', true)}
             <div className="connections">
               {connection('naver')}
               {connection('band')}
@@ -849,7 +924,7 @@ export function App() {
               <label className="search">
                 <input
                   aria-label="상품 검색"
-                  placeholder="상품 이름, 골프장, 지역으로 찾기"
+                  placeholder="상품 이름, 국가, 골프장으로 찾기"
                   value={q}
                   onChange={(e) => {
                     setQ(e.target.value);
@@ -866,7 +941,7 @@ export function App() {
                     setPage(1);
                   }}
                 >
-                  전체 {!unposted ? products.total : ''}
+                  전체 상품
                 </button>
                 <button
                   role="tab"
@@ -896,39 +971,9 @@ export function App() {
               )}
               <div
                 hidden={loadFailed && page === 1}
-                className={loading && page === 1 ? 'stale' : ''}
-                inert={loading && page === 1 ? true : undefined}
               >
-                {products.items.map((p) => (
-                  <button
-                    className="product-row"
-                    key={p.productNo}
-                    disabled={busy || active || !preferencesReady || loading}
-                    onClick={() => void choose(p.productNo)}
-                  >
-                    <span className="product-copy">
-                      <strong>{p.title}</strong>
-                      <small>
-                        {p.country} {p.region} · {money(p.priceFrom)}부터 ·
-                        출발일 {p.departureCount}개
-                      </small>
-                      <span
-                        className={`tag ${p.myPosts.blog || p.myPosts.band ? 'green' : 'muted'}`}
-                      >
-                        {p.myPosts.blog || p.myPosts.band
-                          ? (['blog', 'band'] as const)
-                              .filter((c) => p.myPosts[c])
-                              .map(
-                                (c) =>
-                                  `${c === 'blog' ? '블로그' : '밴드'} ${p.myPosts[c]!.at.slice(5, 10).replace('-', '.')} ${p.myPosts[c]!.status === 'published' ? '발행' : p.myPosts[c]!.status === 'draft_saved' ? '임시저장' : '기록 있음'}`,
-                              )
-                              .join(' · ')
-                          : '아직 올리지 않음'}
-                      </span>
-                    </span>
-                    <ProductPhoto url={p.thumbUrl} />
-                  </button>
-                ))}
+                {products.items.map(p => <ProductListItem key={p.productNo} product={p}
+                  detail={() => void choose(p.productNo)} publish={() => void choose(p.productNo, true)} />)}
               </div>
               {loading && page > 1 && (
                 <p className="list-state" role="status">
@@ -990,6 +1035,7 @@ export function App() {
               )}
             </main>
             {nav('home')}
+            {exitHint && <div className="exit-snackbar" role="status">한 번 더 누르면 앱을 끝낼지 묻습니다</div>}
           </>
         )}
         {screen === 'preview' && product && (
@@ -997,13 +1043,9 @@ export function App() {
             {back()}
             <main className="pad preview-content">
               <h1 className="title">{product.title}</h1>
-              <p className="meta">
-                {product.country} {product.region} ·{' '}
-                {product.departures.length
-                  ? `${money(Math.min(...product.departures.map((d) => d.price)))}부터 · `
-                  : ''}
-                사진 {product.images.length}장
-              </p>
+              <p className="meta product-meta"><ProductMeta {...product} /></p>
+              <ProductPostHistory posts={product.posts} open={url => void act(async () => { await request('post.open', { url }); })} />
+              <PostingTags tags={converted?.tags ?? productTags(product, app?.settings?.defaultHashtags ?? [])} />
               <div className="preview-sticky">
                 <div className="seg" role="tablist" aria-label="미리보기 채널">
                   {(['blog', 'band'] as const).map((c) => (
@@ -1014,8 +1056,8 @@ export function App() {
                       onClick={() => setPreview(c)}
                     >
                       {c === 'blog'
-                        ? '블로그에 올라갈 모습'
-                        : '밴드에 올라갈 모습'}
+                        ? '블로그 모습'
+                        : '밴드 모습'}
                     </button>
                   ))}
                 </div>
@@ -1035,6 +1077,7 @@ export function App() {
                 <ConversionPreview
                   plan={converted[preview]}
                   bandName={chosenBands.map(b => b.name).join(', ')}
+                  phone={app?.user?.phone}
                   ratios={sourcePhotoRatios(product.contentsHtml)}
                   expanded
                   droppedStruckCharacters={converted.droppedStruckCharacters}
@@ -1068,6 +1111,7 @@ export function App() {
                 className="btn secondary"
                 disabled={!converted || preparing}
                 onClick={() => {
+                  setOptions(old => ({ ...old, closing: app?.myText?.closingOn ?? true }));
                   setMode('draft');
                   setSheet('draft');
                 }}
@@ -1077,14 +1121,9 @@ export function App() {
               <button
                 className="btn primary"
                 disabled={!converted || preparing}
-                onClick={() => {
-                  setOptions(old => ({ ...old, closing: app?.myText?.closingOn ?? true }));
-                  setMode('publish');
-                  setVisibility('public');
-                  setSheet('publish');
-                }}
+                onClick={openPublish}
               >
-                발행<small>바로 공개됨</small>
+                발행하기
               </button>
             </div>
           </>
@@ -1156,7 +1195,9 @@ export function App() {
         )}
         {screen === 'progress' && job && (
           <>
-            {needsServiceReview(job) ? (
+            {isPublishResult(job) && job.status !== 'record_failed' ? (
+              <PublishResult job={job} open={url => void act(async () => { await request('post.open', { url }); })} />
+            ) : needsServiceReview(job) ? (
               <main className="center">
                 <span className="mark question">!</span>
                 <h1>{serviceReviewHeading(job)}</h1>
@@ -1325,6 +1366,7 @@ export function App() {
           <>
             <main className="pad">
               <h1 className="title">등록 기록</h1>
+              {app?.user?.role === 'admin' && <TodayStatus key={app.user.userNo} refresh={postRefresh} />}
               <div className="tabs" role="tablist" aria-label="기록 범위">
                 <button
                   role="tab"
@@ -1476,8 +1518,53 @@ export function App() {
         {screen === 'logs' && <JobLogs back={() => go('settings')} />}
         {screen === 'settings' && (
           <>
+            {header('설정', true)}
             <main className="pad settings-content">
-              <h1 className="title">설정</h1>
+              {app?.user && <MyTextSettings key={app.user.userNo} user={app.user} saved={app.myText}
+                editing={editingMyText} disabled={busy || active}
+                save={async value => { await request('myText.save', value, true); }} />}
+              <h3>공통 설정 <span className="subheading-note">· 관리자만 바꿈</span></h3>
+              {app?.user?.role !== 'admin' ? (
+                <>
+                  <div className="setting-value">
+                    <span>태그로 붙일 정해 둔 글자</span>
+                    <small>{settings.defaultHashtags.join(' ') || '없음'}</small>
+                  </div>
+                  <div className="setting-value">
+                    <span>밴드 하루 한도</span>
+                    <small>밴드 한 곳에 1건씩 셉니다 · {settings.bandDailyLimit}건</small>
+                  </div>
+                </>
+              ) : (
+                <form noValidate onSubmit={event => {
+                  event.preventDefault();
+                  void act(async () => { await saveSettings(); });
+                }}>
+                  <label>
+                    <span>태그로 붙일 정해 둔 글자</span>
+                    <textarea rows={2} value={tagWordsInput}
+                      aria-describedby="tag-words-hint"
+                      onChange={event => {
+                        const text = event.target.value;
+                        setTagWordsInput(text);
+                        setSettings(old => ({ ...old, defaultHashtags: text.split(/[,\s]+/).filter(Boolean) }));
+                      }} />
+                    <small id="tag-words-hint">쉼표 또는 띄어쓰기로 구분합니다.</small>
+                  </label>
+                  <label>
+                    밴드 하루 한도
+                    <input type="number" min="1" max="10" inputMode="numeric"
+                      aria-invalid={settingsAttempted && invalidLimit}
+                      aria-describedby="band-limit-hint"
+                      value={settings.bandDailyLimit}
+                      onChange={event => setSettings(old => ({ ...old, bandDailyLimit: Number(event.target.value) }))} />
+                    <small id="band-limit-hint">1부터 10 사이 숫자입니다.</small>
+                    {settingsAttempted && invalidLimit && <small className="field-error" role="alert">1부터 10 사이의 정수를 입력해 주세요.</small>}
+                  </label>
+                  {error && <p className="field-error" role="alert">{error}</p>}
+                  <button className="green" disabled={busy} type="submit">공통 설정 저장</button>
+                </form>
+              )}
               <p className="meta">골투오토 {__GOLTOU_VERSION__} ({__GOLTOU_VERSION_CODE__})</p>
               <UpdateSettings value={app?.update} current={`${__GOLTOU_VERSION__} (${__GOLTOU_VERSION_CODE__})`} disabled={busy || active} />
               <div className="choice-row"><span>작업 로그<small>단계별 진행과 결과 확인</small></span><button className="green" onClick={() => go('logs')}>보기</button></div>
@@ -1493,7 +1580,7 @@ export function App() {
                     const result = await request('localData.import', {});
                     if (!result.cancelled && result.preferences && result.polishStrength) {
                       const value = result.preferences;
-                      setBandKeys(value.lastBandKeys);
+                      setLastBandKeys(value.lastBandKeys);
                       setOptions({ polish: value.polish, closing: app?.myText?.closingOn ?? true, linkCard: value.linkCard, polishStrength: result.polishStrength });
                       setNotice('앱 데이터를 가져왔습니다. 등록 내역과 공통 설정은 같은 골투 계정으로 로그인하면 다시 읽습니다.');
                     }
@@ -1564,7 +1651,6 @@ export function App() {
                       ? '어색한 문장도 다듬습니다. 숫자·날짜·가격은 바꾸지 않습니다'
                       : '맞춤법과 띄어쓰기만 고칩니다',
                   ],
-                  ['closing', '글 끝 문구 넣기', '예약 문의 안내 등'],
                   ['linkCard', '골투 링크 카드', '상품 주소를 함께 넣습니다'],
                 ] as const
               ).map(([key, label, help]) => (
@@ -1577,11 +1663,7 @@ export function App() {
                     label={label}
                     value={options[key]}
                     disabled={busy || active || !preferencesReady || loading}
-                    change={(value) =>
-                      key === 'closing' && app?.myText
-                        ? void act(async () => { await request('myText.save', { ...app.myText!, closingOn: value }); })
-                        : setOptions((old) => ({ ...old, [key]: value }))
-                    }
+                    change={value => setOptions(old => ({ ...old, [key]: value }))}
                   />
                 </div>
               ))}
@@ -1600,98 +1682,13 @@ export function App() {
                   }
                 />
               )}
-              <h3>
-                공통 설정
-                <small>관리자만 바꿀 수 있고, 저장을 눌러야 적용됩니다</small>
-              </h3>
-              {app?.user?.role !== 'admin' && (
-                <div className="setting-value">
-                  <span>기본 해시태그</span>
-                  <small>{settings.defaultHashtags.join(' ') || '없음'}</small>
-                </div>
-              )}
-              {app?.user?.role === 'admin' && (
-                <form
-                  noValidate
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void act(async () => {
-                      await saveSettings();
-                    });
-                  }}
-                >
-                  <label>
-                    글 끝 문구
-                    <textarea
-                      value={settings.closingText}
-                      onChange={(e) =>
-                        setSettings((old) => ({
-                          ...old,
-                          closingText: e.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    <span id="default-hashtags-label">
-                      기본 해시태그 (쉼표 또는 띄어쓰기로 구분)
-                    </span>
-                    <textarea
-                      aria-labelledby="default-hashtags-label"
-                      rows={2}
-                      value={settings.defaultHashtags.join(', ')}
-                      onChange={(e) =>
-                        setSettings((old) => ({
-                          ...old,
-                          defaultHashtags: e.target.value
-                            .split(/[,\s]+/)
-                            .map((v) => v.trim()),
-                        }))
-                      }
-                    />
-                  </label>
-                  <label>
-                    밴드 하루 한도
-                    <input
-                      type="number"
-                      min="1"
-                      max="10"
-                      aria-invalid={settingsAttempted && invalidLimit}
-                      aria-describedby="band-limit-hint"
-                      value={settings.bandDailyLimit}
-                      onChange={(e) =>
-                        setSettings((old) => ({
-                          ...old,
-                          bandDailyLimit: Number(e.target.value),
-                        }))
-                      }
-                    />
-                    <small id="band-limit-hint">
-                      1부터 10 사이 숫자입니다.
-                    </small>
-                    {settingsAttempted && invalidLimit && (
-                      <small className="field-error" role="alert">
-                        1부터 10 사이의 정수를 입력해 주세요.
-                      </small>
-                    )}
-                  </label>
-                  {error && (
-                    <p className="field-error" role="alert">
-                      {error}
-                    </p>
-                  )}
-                  <button className="green" disabled={busy} type="submit">
-                    공통 설정 저장
-                  </button>
-                </form>
-              )}
               {product && (
                 <button className="more green" onClick={() => go('preview')}>
                   미리보기로 돌아가기
                 </button>
               )}
             </main>
-            {dirtySettings && (
+            {dirtySettings && !editingMyText && (
               <div className="savebar">
                 <span>저장하지 않은 변경이 있습니다</span>
                 <button
@@ -1790,9 +1787,19 @@ export function App() {
       {sheet && (
         <Sheet
           key={sheet}
+          centered={sheet === 'exit'}
+          footer={sheet === 'publish' ? <>
+            {limitWarning && <div className="warnline" role="status">{limitWarning}</div>}
+            <div className="acts">
+              <button className="btn quiet" onClick={sheetClose}>취소</button>
+              <button className="btn primary" disabled={!canStart} onClick={() => setSheet('confirm')}>
+                {targets().length}곳에 발행
+              </button>
+            </div>
+          </> : undefined}
           title={
-            sheet === 'bands'
-              ? '올릴 밴드 고르기'
+            sheet === 'exit'
+              ? '골투오토를 끝낼까요?'
               : sheet === 'dialog'
                 ? `${job?.service === 'band' ? '밴드' : '네이버'}에서 확인을 요청했습니다`
                 : sheet === 'leave'
@@ -1800,25 +1807,23 @@ export function App() {
                   : sheet === 'draft'
                     ? '임시저장'
                     : sheet === 'publish'
-                      ? '발행'
+                      ? '어디에 발행할까요?'
                       : sheet === 'confirm'
                         ? '이대로 발행할까요?'
                         : '옮기기를 중단할까요?'
           }
           close={sheetClose}
         >
-          {sheet === 'bands' && (
+          {sheet === 'exit' && (
             <>
-            <BandListStatus savedAt={bandsSavedAt} loading={loadingBands || refreshingBands} refresh={() => void loadBands(true)} />
-            {bandsFailed && <p>{bandListFailureHint(bandsFailureReason)}</p>}
-            <BandChooser
-              bands={bands}
-              value={bandKeys}
-              back={() => setSheet('publish')}
-              choose={(key) => {
-                setBandKeys(keys => keys.includes(key) ? keys.filter(value => value !== key) : [...keys, key]);
-              }}
-            />
+              <p>{job?.status === 'running' ? '올리는 중인 작업이 멈춥니다.' : '다음에 열면 상품 목록부터 시작합니다.'}</p>
+              <div className="acts">
+                <button className="btn quiet" disabled={busy} onClick={closeExit}>취소</button>
+                <button className="btn primary" disabled={busy} onClick={() => void act(async () => {
+                  await request('app.exit', { event: 'finish' });
+                  setSheet(null);
+                })}>끝내기</button>
+              </div>
             </>
           )}
           {sheet === 'dialog' && job?.dialog && (
@@ -1876,7 +1881,10 @@ export function App() {
                 <button
                   className="btn quiet"
                   onClick={() => {
-                    if (app?.settings) setSettings(app.settings);
+                    if (app?.settings) {
+                      setSettings(app.settings);
+                      setTagWordsInput(app.settings.defaultHashtags.join(', '));
+                    }
                     go(pendingNavigation, false, true);
                   }}
                 >
@@ -1954,7 +1962,8 @@ export function App() {
           )}
           {sheet === 'publish' && (
             <>
-              <p>고른 곳에 바로 올립니다.</p>
+              <p>블로그는 한 곳, 밴드는 여러 곳에 올릴 수 있습니다.</p>
+              <PreviousPublication product={products.items.find(item => item.productNo === product?.productNo)} />
               <button
                 className={`pick ${blog ? 'on' : ''}`}
                 role="checkbox"
@@ -1989,60 +1998,34 @@ export function App() {
               {app?.services.naver !== 'confirmed' && blog && (
                 <button
                   className="green"
-                  onClick={() => login('naver', 'preview', 'publish')}
+                  onClick={() => login('naver', screen, 'publish')}
                 >
                   네이버 로그인
                 </button>
               )}
-              {app?.services.band === 'confirmed' || band ? (
-                <>
-                  <button
-                    className={`pick ${band ? 'on' : ''}`}
-                    role="checkbox"
-                    aria-checked={band}
-                    onClick={() => setBand(!band)}
-                  >
-                    <span className="check-box">{band ? '✓' : ''}</span>
-                    <span>
-                      <strong>네이버 밴드</strong>
-                      <small>바로 게시됩니다</small>
-                    </span>
-                  </button>
-                  {band && <BandListStatus savedAt={bandsSavedAt} loading={loadingBands || refreshingBands} refresh={() => void loadBands(true)} />}
-                  {band && bandsFailed && bands.length > 0 && <p>{bandListFailureHint(bandsFailureReason)}</p>}
-                  {band &&
-                    (loadingBands && !bands.length ? null : !bands.length ? (
-                      <div className="band-sub">
-                        <p>
-                          {bandsFailed
-                            ? '밴드 목록을 읽지 못했습니다.'
-                            : '글을 쓸 수 있는 밴드가 없습니다. 밴드 앱에서 가입한 밴드와 글쓰기 권한을 확인해 주세요.'}
-                        </p>
-                        {bandsFailed && <p>{bandListFailureHint(bandsFailureReason)}</p>}
-                        <button
-                          className="green"
-                          disabled={loadingBands || refreshingBands}
-                          onClick={() => void loadBands(true)}
-                        >
-                          다시 읽기
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        className="band-sub"
-                        onClick={() => setSheet('bands')}
-                      >
-                        <span>
-                          <small>올릴 밴드</small>
-                          {chosenBands.map(b => b.name).join(', ') ||
-                            '올릴 밴드를 골라 주세요'}
-                        </span>
-                        <span className="green">
-                          {bandKey ? '바꾸기' : '고르기'}
-                        </span>
-                      </button>
-                    ))}
-                </>
+              {app?.services.band === 'confirmed' ? (
+                <section className="publish-bands">
+                  <BandListStatus title={`밴드 · ${chosenBands.length}곳 고름`} savedAt={bandsSavedAt}
+                    loading={loadingBands || refreshingBands} refresh={() => void loadBands(true)} />
+                  {bandsFailed && <p className="band-list-error" role="alert">
+                    {!bands.length && '밴드 목록을 읽지 못했습니다. '}{bandListFailureHint(bandsFailureReason)}
+                  </p>}
+                  {!bandsFailed && !loadingBands && !refreshingBands && !bands.length &&
+                    <p className="meta">글을 쓸 수 있는 밴드가 없습니다. 밴드 앱에서 가입한 밴드와 글쓰기 권한을 확인해 주세요.</p>}
+                  <BandChooser bands={bands} value={bandKeys} posts={product?.posts} choose={key => {
+                    bandSelectionTouched.current = true;
+                    setPreselectedBands(false);
+                    setBandKeys(keys => keys.includes(key) ? keys.filter(value => value !== key) : [...keys, key]);
+                  }} />
+                  {!!chosenBands.length && <div className="band-selection">
+                    <span>{preselectedBands && '지난번에 고른 밴드를 그대로 체크해 두었습니다.'}</span>
+                    <button className="green" onClick={() => {
+                      bandSelectionTouched.current = true;
+                      setBandKeys([]);
+                      setPreselectedBands(false);
+                    }}>모두 해제</button>
+                  </div>}
+                </section>
               ) : (
                 <div className="pick disabled">
                   <span className="check-box" />
@@ -2064,7 +2047,7 @@ export function App() {
                         ? void act(async () => {
                             await request('service.check', { service: 'band' });
                           })
-                        : login('band', 'preview', 'publish')
+                        : login('band', screen, 'publish')
                     }
                   >
                     {app?.services.band === 'checking'
@@ -2075,27 +2058,15 @@ export function App() {
                   </button>
                 </div>
               )}
-              <div className="choice-row">
-                <span>글 끝 문구 넣기</span>
-                <Toggle label="글 끝 문구 넣기" value={options.closing} disabled={busy} change={closing => setOptions(old => ({ ...old, closing }))} />
-              </div>
-              {startReason && (
+              <TextSwitch label="글 끝 문구 넣기" checked={options.closing} disabled={busy}
+                detail={<UnbrokenPhone text={fillMyText(app?.myText?.closing ?? defaultMyText().closing, app?.user ?? { name: '' })} phone={app?.user?.phone} />}
+                change={closing => setOptions(old => ({ ...old, closing }))} />
+              {startReason && startReason !== limitWarning && (
                 <p className="why-disabled" role="status">
                   {startReason}
+                  {!active && !preparing && !converted && <button onClick={() => setPreviewRefresh(n => n + 1)}>다시 불러오기</button>}
                 </p>
               )}
-              <div className="acts">
-                <button className="btn quiet" onClick={sheetClose}>
-                  취소
-                </button>
-                <button
-                  className="btn primary"
-                  disabled={!canStart}
-                  onClick={() => setSheet('confirm')}
-                >
-                  다음
-                </button>
-              </div>
             </>
           )}
           {sheet === 'confirm' && (
@@ -2110,14 +2081,12 @@ export function App() {
                     </strong>
                   </div>
                 )}
-                {band && (
-                  <div>
+                {band && chosenBands.map(chosen => (
+                  <div key={chosen.key}>
                     <span>네이버 밴드</span>
-                    <strong>
-                      {chosenBands.map(b => b.name).join(', ')}
-                    </strong>
+                    <strong>{chosen.name}</strong>
                   </div>
-                )}
+                ))}
               </div>
               <div className="warnline">
                 발행하면{' '}
@@ -2138,7 +2107,7 @@ export function App() {
                   disabled={!canStart}
                   onClick={() => void start()}
                 >
-                  발행하기
+                  {targets().length}곳에 발행
                 </button>
               </div>
             </>

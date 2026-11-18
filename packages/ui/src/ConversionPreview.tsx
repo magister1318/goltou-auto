@@ -1,6 +1,7 @@
 import type { InputPlan } from '@goltou/core';
 import { bandText, expectedBlogTags, photoUrls } from '@goltou/sites';
 import { ProductPhoto } from './ProductPhoto';
+import { UnbrokenPhone } from './MyTextSettings';
 const safeLink = (href: string) => {
   try {
     return ['https:', 'http:', 'tel:', 'mailto:'].includes(
@@ -16,7 +17,24 @@ const safeLink = (href: string) => {
 export function BandText({ text }: { text: string }) {
   return <>{text.split(/(https?:\/\/[^\s<>]+|#[\p{L}\p{N}_]+)/gu).map((part, i) => /^https?:\/\//.test(part) && safeLink(part)
     ? <a key={i} href={safeLink(part)} onClick={e => e.preventDefault()}>{part}</a>
-    : /^#[\p{L}\p{N}_]+$/u.test(part) ? <button key={i} type="button" className="band-hashtag">{part}</button> : <span key={i}>{part}</span>)}</>;
+    : <span key={i} className={/^#[\p{L}\p{N}_]+$/u.test(part) ? 'band-hashtag' : undefined}>{part}</span>)}</>;
+}
+function PreviewPhrase({ role, text, phone }: { role: 'prefix' | 'closing'; text: string; phone?: string | undefined }) {
+  return <span className={`preview-phrase ${role}`}>
+    <small>{role === 'prefix' ? '글 앞 문구' : '글 끝 문구'}</small>
+    <UnbrokenPhone text={text} phone={phone} />
+  </span>;
+}
+
+function FullBandText({ plan, phone }: { plan: InputPlan; phone?: string | undefined }) {
+  const steps = plan.steps.filter(step => step.kind === 'text' || step.kind === 'table');
+  return <>{steps.map((step, index) => {
+    const text = bandText({ ...plan, steps: [step] });
+    return <span key={index}>{index > 0 && '\n\n'}{step.role === 'prefix' || step.role === 'closing'
+      ? <PreviewPhrase role={step.role} text={text} phone={phone} />
+      : step.role === 'hashtags' ? <span className="band-tag-line"><BandText text={text} /></span>
+        : <BandText text={text} />}</span>;
+  })}</>;
 }
 export function sourcePhotoRatios(html: string): Record<string, number> {
   if (typeof DOMParser === 'undefined') return {};
@@ -40,12 +58,14 @@ export function ConversionPreview({
   droppedStruckCharacters,
   ratios = {},
   bandName,
+  phone,
 }: {
   plan: InputPlan;
   expanded: boolean;
   droppedStruckCharacters: number;
   ratios?: Record<string, number>;
   bandName?: string | undefined;
+  phone?: string | undefined;
 }) {
   const visible = expanded ? plan.steps : plan.steps.slice(0, 8);
   const photos = photoUrls(plan);
@@ -60,7 +80,7 @@ export function ConversionPreview({
         {plan.channel === 'band' ? (
           <>
             <section className="band-feed-sample" aria-label="목록 모양"><h3>목록에서는 이렇게 보입니다</h3><div className="band-text"><BandText text={Array.from(bandText(plan)).slice(0, 115).join('')} />{Array.from(bandText(plan)).length > 115 && <span className="band-more">… 더보기</span>}</div><div className="band-feed-collage">{photos.slice(0, 3).map((url, i) => <span className="band-feed-tile" key={i}><ProductPhoto url={url} preview ratio={1} />{i === 2 && photos.length > 3 && <span className="band-remaining">+{photos.length - 3}</span>}</span>)}</div></section>
-            <div className="band-text band-full-text"><BandText text={bandText(plan)} /></div>
+            <div className="band-text band-full-text"><FullBandText plan={plan} phone={phone} /></div>
             <div className="band-photo-stack">
               {photos.map((url, i) => (
                 <ProductPhoto
@@ -112,6 +132,8 @@ export function ConversionPreview({
                     </div>
                   );
                 if (step.role === 'hashtags') return null;
+                if (step.role === 'prefix' || step.role === 'closing')
+                  return <PreviewPhrase key={i} role={step.role} text={step.text} phone={phone} />;
                 if (step.role === 'title')
                   return (
                     <h2 className="post-title" key={i}>

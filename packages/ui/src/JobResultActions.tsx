@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Job } from '@goltou/core/protocol';
 import { canRetryJob, existingServiceResult } from '@goltou/core/job-safety';
+import { isPublishResult, retryableTargets } from './PostingTargets';
 export type ResultAction = 'history' | 'close' | 'home' | 'stop' | 'login' | 'cancel' | 'record' | 'band' | 'resume' | 'retryFailed';
 export const needsServiceReview = (job: Job) => !['running','draft_saved','published'].includes(job.status) && !!existingServiceResult(job);
 export function serviceReviewHeading(job: Job) {
@@ -11,8 +12,8 @@ export function serviceReviewHeading(job: Job) {
 export function JobResultActions({job,busy,act}:{job:Job;busy:boolean;act(action:ResultAction):void}) {
   const button = (label:string,action:ResultAction,primary=false,disabled=busy) => <button className={`btn ${primary?'primary':action==='close'||action==='history'?'secondary':'quiet'}`} disabled={disabled} onClick={()=>act(action)}>{label}</button>;
   if (job.status === 'record_failed' && job.targets.length > 1 && job.completedSteps.includes(7)) return <>{button('등록 기록', 'history', false, false)}{button('기록 다시 시도', 'record', true)}</>;
-  const failed = job.completedSteps.includes(7) && job.targetResults?.filter(target => target.outcome === 'failed').length;
-  if (job.mode === 'publish' && failed) return <>{button('등록 기록', 'history', false, false)}{button(`실패한 ${failed}곳 다시 시도`, 'retryFailed', true)}</>;
+  const failed = retryableTargets(job).length;
+  if (isPublishResult(job) && job.status !== 'record_failed') return <>{button('목록으로', 'home', false, false)}{failed > 0 && button(`실패한 ${failed}곳 다시 시도`, 'retryFailed', true)}</>;
   if (needsServiceReview(job)) return <>{button('닫기','close',false,false)}{button('등록 기록에서 보기','history',true,false)}</>;
   if (job.status==='running') return button('중단','stop',false,job.activity?.stage==='submit');
   if (job.status==='login_paused') return <>{button('나중에 하기','home',false,false)}{button('다시 로그인','login',true)}</>;

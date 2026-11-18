@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Job } from '@goltou/core/protocol';
 import type { PreparedPreview } from '@goltou/core';
 import { ProductPhoto } from './ProductPhoto';
+import { PostingTargets } from './PostingTargets';
 import {
   activeNow,
   animatedFraction as interpolate,
@@ -38,7 +39,10 @@ export function LiveProgress({
     const timer = setInterval(() => setNow(Date.now()), reduced ? 1000 : 80);
     return () => clearInterval(timer);
   }, [reduced]);
-  const channel = job.activity?.channel ?? (job.step === 6 ? 'band' : 'blog');
+  const channel = job.activeTargetKey ? 'band' : job.activity?.channel ?? (job.step === 6 ? 'band' : 'blog');
+  const multiple = job.targets.length > 1;
+  const bands = job.targets.filter(target => target.channel === 'band');
+  const bandIndex = bands.findIndex(target => target.key === job.activeTargetKey);
   const plan = preview?.[channel];
   const log = job.activityLog?.filter((a) => a.channel === channel) ?? [];
   const a = job.activity;
@@ -138,6 +142,7 @@ export function LiveProgress({
     headline = '선택을 기다리는 중';
     subtitle = '아래 안내에서 선택하면 이어갑니다.';
   }
+  const targetHeading = multiple && bandIndex >= 0 ? `밴드 ${bands.length}곳 중 ${bandIndex + 1}번째에 올리는 중` : '';
   useEffect(() => {
     if (paper.current) paper.current.scrollTop = paper.current.scrollHeight;
   }, [job.activityLog?.length, a?.at]);
@@ -164,7 +169,8 @@ export function LiveProgress({
     );
   }
   return (
-    <div className="live-progress">
+    <>
+    <div className={`live-progress${multiple ? ' multi-progress' : ''}`}>
       <div className="dest">
         {job.targets.some((t) => t.channel === 'blog') && (
           <span className={channel === 'blog' ? 'now' : 'ok'}>
@@ -173,14 +179,14 @@ export function LiveProgress({
         )}
         {job.targets.some((t) => t.channel === 'band') && (
           <>
-            <em>→</em>
+            {job.targets.some(t => t.channel === 'blog') && <em>→</em>}
             <span className={channel === 'band' ? 'now' : ''}>밴드 게시</span>
           </>
         )}
       </div>
-      <h1 className="progress-headline">{headline}</h1>
+      <h1 className="progress-headline">{job.bandPause ? '다음 밴드까지 잠시 쉬는 중' : !waiting && targetHeading ? targetHeading : headline}</h1>
       <p className="meta" aria-live="polite">
-        {subtitle}
+        {job.bandPause ? bands[bandIndex]?.name : !waiting && targetHeading ? `${headline} · ${subtitle}` : subtitle}
       </p>
       {job.ownRecoveryDiscarded && (
         <p className="meta recovery-note" role="status">
@@ -209,7 +215,7 @@ export function LiveProgress({
             const text = textOf(step),
               done = doneFor(index),
               chars = Array.from(text);
-            const key = `${job.id}:${channel}:${index}`;
+            const key = `${job.id}:${channel}:${job.activeTargetKey ?? ''}:${index}`;
             const proposed = done
               ? chars.length
               : Math.floor(
@@ -319,11 +325,13 @@ export function LiveProgress({
         <span>
           {waiting
             ? '선택 후 이어갑니다'
-            : job.step >= 5
+            : job.bandPause ? '다음 밴드 준비 중' : job.step >= 5
               ? '저장 결과 확인 중'
               : `약 ${seconds(remaining)} 남음`}
         </span>
       </div>
     </div>
+    {multiple && <div className="progress-targets"><PostingTargets job={job} detail={headline} /></div>}
+    </>
   );
 }

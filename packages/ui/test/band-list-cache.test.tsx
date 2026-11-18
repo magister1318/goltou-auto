@@ -32,6 +32,7 @@ it('shows stale rows immediately, applies background snapshots, keeps selection 
     if (command === 'preferences.save') return input;
     if (command === 'preview.prepare') return makePreview(product, { closing: false, linkCard: false, hashtags: [] });
     if (command === 'bands.list') return { rows, savedAt, source: 'cache', stale: true, refreshing: true };
+    if (command === 'bands.dailyUsage') return { limit: 3, used: 0 };
     if (command === 'products.list') return api.request('/auto/products/list', input, login.token);
     if (command === 'products.get') return product;
     throw Error('UNEXPECTED_UI_COMMAND:' + command);
@@ -41,11 +42,9 @@ it('shows stale rows immediately, applies background snapshots, keeps selection 
   const render = async () => { await act(async () => root!.render(createElement(App))); };
   await render(); await flush(200);
   await click('', '.product-row'); await flush(); await click('발행', '.bar button');
-  await click('네이버 밴드', 'button.pick');
   expect(document.body.textContent).toContain('선택한 합성 밴드');
   expect(document.body.textContent).toContain('밴드 목록을 읽는 중입니다');
   expect([...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === '새로고침')!.disabled).toBe(true);
-  await click('바꾸기', '.sheet button');
   expect(document.querySelector('.band-row[role="checkbox"][aria-checked="true"]')?.textContent).toContain('선택한 합성 밴드');
   const updated = { revision: 2, rows: [{ ...rows[1]!, name: '갱신된 선택 밴드' }, { ...rows[0]!, key: '333' }], savedAt: Date.now(), source: 'band' as const, stale: false, refreshing: false };
   mock.state = { ...mock.state, snapshot: { ...mock.state.snapshot, bandList: updated } }; await render();
@@ -58,11 +57,10 @@ it('shows stale rows immediately, applies background snapshots, keeps selection 
   expect(mock.request).toHaveBeenCalledWith('bands.list', { refresh: true });
   expect(document.body.textContent).toContain('잠시 뒤 다시 읽기');
   expect(document.querySelector('.band-row[role="checkbox"][aria-checked="true"]')?.textContent).toContain('갱신된 선택 밴드');
-  await click('발행 창으로');
-  const next = [...document.querySelectorAll<HTMLButtonElement>('.sheet button')].find(b => b.textContent?.includes('다음'));
+  const next = [...document.querySelectorAll<HTMLButtonElement>('.sheet button')].find(b => b.textContent === '2곳에 발행');
   expect(next?.disabled).toBe(false);
   mock.state = { ...mock.state, snapshot: { ...mock.state.snapshot, bandList: { ...updated, rows: [updated.rows[1]!] } } }; await render();
-  expect(document.body.textContent).toContain('올릴 밴드를 골라 주세요');
+  expect(document.body.textContent).toContain('밴드 · 0곳 고름');
 });
 it('formats today/yesterday using calendar boundaries', () => {
   const now = new Date(2026, 10, 18, 0, 5);
