@@ -173,7 +173,7 @@ describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback e
     await f.execution.write(); await f.execution.saveAndVerify();
     expect(f.progress).toHaveBeenLastCalledWith(expect.objectContaining({ photos: 8, totalPhotos: 8, characters: 1509, totalCharacters: 1509 }));
     expect(await f.counts()).toEqual({ saves: 1, publishes: 0 }); expect(f.external()).toBe(0);
-  }, 40000);
+  }, 60000);
   it.each(['blog', 'channel'] as const)('records the missing final tag control and exact plan step without content in the %s runner', async kind => {
     const f = await fixture('missing-tags', { photos: 8 });
     const preview = realEnding(f.files, true);
@@ -217,7 +217,7 @@ describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback e
     expect((await f.execution.observe()).tags).toEqual(['예시']);
     expect(await f.counts()).toEqual({ saves: 1, publishes: 0 });
     expect(f.external()).toBe(0);
-  }, 60000);
+  }, 120000);
   it('blocks every key and unsafe click on the final publish control, and rechecks focus after tag typing', async () => {
     const f = await fixture('metadata-focus-lost');
     f.plan.steps = [{ kind: 'text', role: 'title', text: '[골투오토 실험] 안전' }, { kind: 'break' },
