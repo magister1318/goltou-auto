@@ -413,27 +413,24 @@ export function App() {
     let live = true;
     setLoading(true);
     setLoadFailed(false);
-    const timer = setTimeout(() => {
-      void request('products.list', {
-        q,
-        onlyUnposted: unposted,
-        page,
-        pageSize: 10,
-      })
-        .then((data) => {
-          if (live)
-            setProducts((old) => ({
-              ...data,
-              items: page === 1 ? data.items : [...old.items, ...data.items],
-            }));
-        })
-        .catch(() => {
-          if (live) setLoadFailed(true);
-        })
-        .finally(() => {
-          if (live) setLoading(false);
-        });
-    }, 150);
+    let timer: ReturnType<typeof setTimeout>;
+    const load = async (retry: boolean) => {
+      try {
+        const data = await request('products.list', { q, onlyUnposted: unposted, page, pageSize: 10 });
+        if (!live) return;
+        setProducts(old => ({ ...data, items: page === 1 ? data.items : [...old.items, ...data.items] }));
+        setLoading(false);
+      } catch {
+        if (!live) return;
+        if (!retry && page === 1) {
+          timer = setTimeout(() => void load(true), 350);
+          return;
+        }
+        setLoadFailed(true);
+        setLoading(false);
+      }
+    };
+    timer = setTimeout(() => void load(false), 150);
     return () => {
       live = false;
       clearTimeout(timer);
@@ -1402,6 +1399,8 @@ export function App() {
                   </p>
                   <TableNotice fallback={post.tableFallback || post.jobLog?.tableFallback} />
                   {!deletedPost(post) && (post.status === 'failed' || uncertainReason(post.failReason) || !!formattingMessage(post.failReason) || post.jobLog && ['failed', 'uncertain'].includes(post.jobLog.result)) && <JobLogFailure log={post.jobLog} reason={post.failReason} step={post.step} />}
+                  {post.status === 'published' && post.failReason === 'PUBLISHED_READBACK_INCOMPLETE' && <p className="meta">게시 후 일부 항목을 확인하지 못했습니다.</p>}
+                  {post.status === 'published' && post.failReason === 'PUBLISHED_CONTENT_MISSING' && <p className="meta">게시된 글에서 원문 누락을 확인했습니다.</p>}
                   {!deletedPost(post) && formattingMessage(post.failReason) && <p className="meta">{formattingMessage(post.failReason)}</p>}
                   {!deletedPost(post) && post.status === 'failed' && !formattingMessage(post.failReason) && (
                     <p className="meta">

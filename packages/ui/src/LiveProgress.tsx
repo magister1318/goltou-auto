@@ -59,6 +59,8 @@ export function LiveProgress({
       )
       .map((e) => e.photoIndex!),
   );
+  const totalPhotos = photos.length || job.total;
+  const donePhotos = Math.min(totalPhotos, Math.max(completedPhotos.size, job.step >= 4 ? job.current : 0));
   const lastFor = (index: number) =>
     log
       .filter(
@@ -120,7 +122,7 @@ export function LiveProgress({
         .filter((v) => v.s.kind === 'text' && v.s.role === 'body') ?? [];
     subtitle =
       a.blockKind === 'photos'
-        ? `${photos.length}장 중 ${(a.photoIndex ?? 0) + 1}번째 · ${Math.floor(animatedFraction(a) * 100)}%`
+        ? `${totalPhotos}장 중 ${(a.photoIndex ?? 0) + 1}번째 · ${Math.floor(animatedFraction(a) * 100)}%`
         : a.blockKind === 'paragraph'
           ? `${paragraphs.length}문단 중 ${Math.max(1, paragraphs.findIndex((v) => v.i === a.blockIndex) + 1)}번째 문단`
           : `상품 원문을 순서대로 옮깁니다`;
@@ -260,7 +262,7 @@ export function LiveProgress({
       <div className="row-label">
         <span>사진</span>
         <span>
-          {completedPhotos.size}/{photos.length}
+          {donePhotos}/{totalPhotos}
         </span>
       </div>
       <div className="photo-strip">

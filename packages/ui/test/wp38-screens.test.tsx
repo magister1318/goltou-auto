@@ -35,6 +35,7 @@ let detail: Product;
 let summaries: ProductSummary[];
 let stats: () => unknown;
 let save: (value: MyText) => void;
+let listProducts: () => {items: ProductSummary[]; total: number};
 const flush = async (ms = 0) => act(async () => { await new Promise(resolve => setTimeout(resolve, ms)); });
 const find = (selector: string, content: string) => [...document.querySelectorAll<HTMLElement>(selector)].find(node => node.textContent?.includes(content));
 async function click(selector: string, content: string) {
@@ -73,6 +74,7 @@ beforeEach(() => {
   detail = { ...product, posts: [{ ...post, at: new Date(Date.now() - 86400000).toISOString() },
     { ...post, postNo: 2, targetKey: '12', at: new Date(Date.now() - 4 * 86400000).toISOString(), postUrl: '' }] };
   summaries = [summary];
+  listProducts = () => ({items:summaries,total:summaries.length});
   stats = () => ({ date: '2026-11-18', rows: [{ userNo: 1, nickname: '김매니저', published: 3, drafts: 2, failed: 1, stopped: 0, lastAt: '2026-11-17T18:01:00Z' }] });
   save = value => { store.state.snapshot = { ...store.state.snapshot, myText: value }; };
   store.state = { connected: true, debug: false, error: '', snapshot: {
@@ -85,7 +87,7 @@ beforeEach(() => {
     switch (command) {
       case 'preferences.get': return { polish: false, closing: false, linkCard: false, lastBandKeys: ['11', '12'] };
       case 'polish.setting.get': return 'spelling';
-      case 'products.list': return { items: summaries, total: summaries.length };
+      case 'products.list': return listProducts();
       case 'products.get': return detail;
       case 'preview.prepare': return makePreview(detail, { closing: payload.options.closing, prefixText: '안녕하세요 김매니저입니다.',
         closingText: '연락은 010-1234-5678 로 주세요.', tagWords: ['골투'] });
@@ -300,4 +302,21 @@ it('loads admin statistics, renders Seoul time, handles empty and error states, 
   store.state.snapshot = { ...store.state.snapshot, user: { ...store.state.snapshot.user!, role: 'staff' } };
   await render(); await nav('등록 기록');
   expect(store.request.mock.calls.some(([command]) => command === 'stats.today')).toBe(false);
+});
+
+it.each([false,true])('automatically retries the failed initial product load exactly once (second failure: %s)', async secondFails => {
+  let requests = 0;
+  listProducts = () => {
+    requests++;
+    if (requests === 1 || secondFails) throw Error('synthetic network failure');
+    return {items:summaries,total:summaries.length};
+  };
+  await render(); await flush(180);
+  expect(requests).toBe(1);
+  expect(document.querySelector('.product-copy')).toBeNull();
+  expect(body()).not.toContain('다시 시도');
+  await flush(370);
+  expect(requests).toBe(2);
+  if (secondFails) expect(body()).toContain('다시 시도');
+  else expect(document.querySelector('.product-copy')?.textContent).toContain(product.title);
 });

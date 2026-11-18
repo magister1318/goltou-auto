@@ -26,6 +26,23 @@ function failedMessage(job: Job, result: TargetResult | undefined) {
     ...(result?.reason ? { failureCode: result.reason } : {}) })[0];
 }
 
+const noteLabels = {
+  title:'제목', text:'문단', number:'가격·출발일', href:'링크', links:'링크', photo:'사진', photos:'사진',
+  order:'사진 순서', table:'표', hashtags:'태그', visibility:'공개 범위', line_breaks:'줄바꿈', bold:'굵기',
+  cursor:'입력 위치', input:'입력 내용', stability:'상세 화면',
+} as const;
+
+function publishedNotes(result: TargetResult) {
+  const notes = result.readbackNotes ?? [];
+  return [...new Set(notes.map(note => {
+    const label = noteLabels[note.field];
+    if (note.field === 'photo' && note.expected !== undefined && note.observed !== undefined && note.observed !== note.expected) {
+      return `사진 ${note.expected}장 중 ${note.observed}${note.missing ? '장 게시 확인' : '장까지 확인'}`;
+    }
+    return `${label}${note.paragraph && note.field === 'text' ? ' ' + note.paragraph : ''} ${note.missing ? '누락·변경 확인' : '확인 필요'}`;
+  }))].join(' · ');
+}
+
 export function PostingTargets({ job, detail, open }: { job: Job; detail?: string; open?(url: string): void }) {
   const finished = isPublishResult(job);
   const current = !finished && job.status === 'running' && !job.bandPause
@@ -45,7 +62,7 @@ export function PostingTargets({ job, detail, open }: { job: Job; detail?: strin
         : '차례를 기다리는 중';
       return <li className={state} key={`${target.channel}:${target.key}`}>
         <i aria-hidden="true">{state === 'done' ? '✓' : state === 'failed' || state === 'unconfirmed' ? '!' : ''}</i>
-        <span><strong>{channelLabel(target.channel)}</strong> · {target.name}<small>{description}</small></span>
+        <span><strong>{channelLabel(target.channel)}</strong> · {target.name}<small>{description}</small>{state === 'done' && result?.readbackNotes?.length ? <small>{publishedNotes(result)}</small> : null}</span>
         {state === 'done' && result?.postUrl && open && <button className="green post-link" onClick={() => open(result.postUrl!)}>글 보기</button>}
       </li>;
     })}
