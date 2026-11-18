@@ -158,19 +158,20 @@ export async function verifyPostAbsentFromList(surface: Surface, url: string, ti
     read: async () => {
       if (await surface.readAppFocus?.() === false) throw Error('BLOG_POST_DELETE_CHECK_8');
       if (await surface.readDialog?.()) throw Error('BLOG_POST_DELETE_READ_ALERT_UNCONFIRMED');
-      const snapshot = await read<{ready:boolean;links:string[];titlePresent:boolean;login:boolean}>(surface, `
+      const snapshot = await read<{ready:boolean;empty:boolean;links:string[];titlePresent:boolean;login:boolean}>(surface, `
         const roots=docs.map(({d})=>d).filter(d=>d.querySelector('.blog2_post_function,.post-list,.list_post,.blog2_list,[data-post-list]'));
         return {ready:roots.length>0&&roots.every(d=>d.readyState==='complete'),
+          empty:roots.some(d=>Array.from(d.querySelectorAll('.no_post,.noPost,.no_result,[data-post-list-empty]')).some(e=>visible(e)&&/등록된 (?:글|게시글)이 없|게시글이 없|작성한 글이 없/.test(e.textContent||''))),
           links:roots.flatMap(d=>Array.from(d.querySelectorAll('a[href]')).map(e=>e.href)),
           titlePresent:${JSON.stringify(!!title)}&&docs.some(({d})=>(d.body?.innerText||'').includes(${JSON.stringify(title)})),
           login:docs.some(({d})=>!!d.querySelector('input[type="password"]'))};`);
       if(snapshot.login)throw Error('LOGIN_OR_EDITOR_LOST');
       const postUrls = [...new Set(snapshot.links.map(postIdentity).filter((p):p is PublishedPost=>!!p&&new URL(p.url).pathname.split('/')[1]===blog).map(p=>p.url))].sort();
-      return {ready:snapshot.ready,postUrls,titlePresent:snapshot.titlePresent,targetPresent:postUrls.includes(receipt.url)};
+      return {ready:snapshot.ready,empty:snapshot.empty,postUrls,titlePresent:snapshot.titlePresent,targetPresent:postUrls.includes(receipt.url)};
     },
     classes: value => [
       {check:'feed_location',reason:'READBACK_POST_LIST',expected:1,observed:value?.ready?1:0,present:!!value?.ready},
-      {check:'links',reason:'READBACK_POST_LIST_LINKS',expected:1,observed:value?.postUrls.length??0,present:!title||(value?.postUrls.length??0)>0},
+      {check:'links',reason:'READBACK_POST_LIST_LINKS',expected:1,observed:value?.postUrls.length??0,present:!!value?.empty||(value?.postUrls.length??0)>0},
       {check:'same_post',reason:'READBACK_POST_LIST_ABSENCE',expected:0,observed:value?.targetPresent||value?.titlePresent?1:0,present:!!value&&!value.targetPresent&&!value.titlePresent},
     ],
   });
