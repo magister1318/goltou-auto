@@ -17,6 +17,8 @@ import android.webkit.WebViewClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceResponse
 import android.os.Message
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import java.io.ByteArrayInputStream
 import android.widget.Button
@@ -30,16 +32,36 @@ import org.json.JSONObject
 import org.json.JSONArray
 
 class SurfaceHost(private val context: Context, private val hidden: FrameLayout, private val visible: FrameLayout,
-    private val onUserHidden: (String) -> Unit, private val onNavigationHidden: (String) -> Unit) {
+    private val onUserHidden: (String) -> Unit, private val onNavigationHidden: (String) -> Unit,
+    private val onDiagnostic: (JSONObject) -> Unit) {
     private data class PendingDialog(val id: String, val kind: String, val message: String, val url: String, val result: JsResult)
     private data class Entry(val view: WebView, val session: String, var frame: View, val bootstrapUrl: String, var dialog: PendingDialog? = null,
-        @Volatile var policy: NavigationPolicy? = null, var loadedUrl: String? = null, var loadFailed: Boolean = false)
+        @Volatile var policy: NavigationPolicy? = null, var loadedUrl: String? = null, var loadFailed: Boolean = false,
+        val parentId: String? = null, var content: FrameLayout? = null)
     private var dialogSerial = 0
+    private var popupSerial = 0
+    private val main = Handler(Looper.getMainLooper())
     private val entries = java.util.concurrent.ConcurrentHashMap<String, Entry>()
     private val sessions = setOf("naver", "band", "ai")
     private val clearing = mutableSetOf<String>()
     private fun diagnostic(entry: Entry, step: ConnectionDiagnostics.Step, url: String? = null, code: Int? = null) {
         Log.i("GOLTOU-CONNECT", ConnectionDiagnostics.line(entry.session, step, url, code))
+        val metadata = ConnectionDiagnostics.metadata(url)
+        onDiagnostic(JSONObject().put("session", entry.session).put("step", step.name)
+            .put("host", metadata.host).put("path", metadata.path).apply {
+                if (code != null && code in -999..599) put("code", code)
+            })
+    }
+    private fun rootId(id: String): String = entries[id]?.parentId?.let { rootId(it) } ?: id
+    private fun isVisible(id: String) = entries[rootId(id)]?.frame?.parent === visible
+    private fun navigationHidden(id: String, url: String, landing: Boolean) {
+        val root = rootId(id)
+        val entry = entries[root] ?: return
+        if (!isVisible(root)) return
+        diagnostic(entry, if (landing) ConnectionDiagnostics.Step.LANDING_HIDDEN else ConnectionDiagnostics.Step.BLOCKED_HIDDEN, url)
+        // Keep the current WebView callback alive until it returns; hiding destroys children.
+        setVisible(root, false)
+        onNavigationHidden(root)
     }
 
     fun view(id: String): WebView = entries[id]?.view ?: error("NO_SURFACE")
@@ -78,6 +100,7 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
                 check(parsed.allows(parsed.fallbackUrl)) { "INVALID_NAVIGATION_FALLBACK" }
                 entry.policy = parsed
                 entry.view.settings.setSupportMultipleWindows(true)
+                entry.view.settings.javaScriptCanOpenWindowsAutomatically = true
             }
             "surface.dialog" -> {
                 val pending = entries[msg.getString("surface")]?.dialog
@@ -127,6 +150,16 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
         require(!entries.containsKey(id)) { "SURFACE_ALREADY_EXISTS" }
         val session = session(msg)
         check(session !in clearing) { "SESSION_CLEAR_IN_PROGRESS" }
+        val bootstrapUrl = "about:blank#${Uri.encode(msg.getString("marker"))}"
+        val entry = newView(id, session, bootstrapUrl)
+        diagnostic(entry, ConnectionDiagnostics.Step.CREATED)
+        hidden.addView(entry.view, FrameLayout.LayoutParams(1280, 900))
+        entry.view.loadUrl(bootstrapUrl)
+    }
+
+    @SuppressLint("SetJavaScriptEnabled")
+    private fun newView(id: String, session: String, bootstrapUrl: String, policy: NavigationPolicy? = null,
+        parentId: String? = null, userAgent: String? = null): Entry {
         val view = WebView(context)
         // Never fall back to the default profile: all three sessions must remain separate.
         WebViewCompat.setProfile(view, "goltou-$session")
@@ -140,9 +173,12 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
             allowContentAccess = false
             useWideViewPort = true
             loadWithOverviewMode = true
-            setSupportMultipleWindows(false)
-            javaScriptCanOpenWindowsAutomatically = false
+            setSupportMultipleWindows(policy != null)
+            javaScriptCanOpenWindowsAutomatically = policy != null
+            if (userAgent != null) userAgentString = userAgent
         }
+        val entry = Entry(view, session, view, bootstrapUrl, policy = policy, parentId = parentId)
+        entries[id] = entry
         view.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 val entry = entries[id] ?: return true
@@ -150,11 +186,14 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
                 val url = request.url.toString()
                 if (policy.isLanding(url) && request.isForMainFrame) {
                     // Authentication may redirect home; its contents are checked hidden only.
-                    if (entry.frame.parent === visible) { setVisible(id, false); onNavigationHidden(id) }
+                    navigationHidden(id, url, true)
                     return false
                 }
                 val blocked = !policy.allows(url)
-                if (blocked && request.isForMainFrame) diagnostic(entry, ConnectionDiagnostics.Step.BLOCKED, url)
+                if (blocked && request.isForMainFrame) {
+                    diagnostic(entry, ConnectionDiagnostics.Step.BLOCKED, url)
+                    navigationHidden(id, url, false)
+                }
                 return blocked
             }
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
@@ -162,8 +201,11 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
                 // Also covers main-frame POSTs, which shouldOverrideUrlLoading omits.
                 if (request.isForMainFrame && !policy.allows(request.url.toString()) && !policy.isLanding(request.url.toString())) {
                     entries[id]?.let { diagnostic(it, ConnectionDiagnostics.Step.BLOCKED, request.url.toString()) }
-                    view.post { entries[id]?.let { if (it.frame.parent === visible) setVisible(id, false); it.view.loadUrl(policy.fallbackUrl) } }
+                    main.post { if (entries.containsKey(id)) navigationHidden(id, request.url.toString(), false) }
                     return WebResourceResponse("text/plain", "UTF-8", ByteArrayInputStream(ByteArray(0)))
+                }
+                if (request.isForMainFrame && policy.isLanding(request.url.toString())) {
+                    main.post { if (entries.containsKey(id)) navigationHidden(id, request.url.toString(), true) }
                 }
                 return null
             }
@@ -171,15 +213,14 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
                 val entry = entries[id] ?: return
                 // Target discovery can precede this callback on the first profile load.
                 // The initial hidden marker must not cancel the first real navigation.
-                if (url == entry.bootstrapUrl && entry.frame.parent !== visible) return
+                if (url == entry.bootstrapUrl && (entry.parentId != null || !isVisible(id))) return
                 entry.loadedUrl = null; entry.loadFailed = false
                 val policy = entry.policy ?: return
                 diagnostic(entry, ConnectionDiagnostics.Step.STARTED, url)
-                if (policy.isLanding(url)) { if (entry.frame.parent === visible) { setVisible(id, false); onNavigationHidden(id) } }
+                if (policy.isLanding(url)) { navigationHidden(id, url, true) }
                 else if (!policy.allows(url)) {
                     diagnostic(entry, ConnectionDiagnostics.Step.BLOCKED, url)
-                    if (entry.frame.parent === visible) setVisible(id, false)
-                    view.stopLoading(); view.loadUrl(policy.fallbackUrl)
+                    view.stopLoading(); navigationHidden(id, url, false)
                 }
             }
             override fun onPageFinished(view: WebView, url: String) { entries[id]?.let {
@@ -187,20 +228,41 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
                 if (it.policy != null) diagnostic(it, ConnectionDiagnostics.Step.FINISHED, url)
             } }
             override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
-                if (request.isForMainFrame) entries[id]?.let { diagnostic(it, ConnectionDiagnostics.Step.NET_ERROR, request.url.toString(), error.errorCode); it.loadFailed = true; it.loadedUrl = null; if (it.frame.parent === visible) setVisible(id, false) }
+                if (request.isForMainFrame) entries[id]?.let { diagnostic(it, ConnectionDiagnostics.Step.NET_ERROR, request.url.toString(), error.errorCode); it.loadFailed = true; it.loadedUrl = null; navigationHidden(id, request.url.toString(), false) }
             }
             override fun onReceivedHttpError(view: WebView, request: WebResourceRequest, response: WebResourceResponse) {
-                if (request.isForMainFrame) entries[id]?.let { diagnostic(it, ConnectionDiagnostics.Step.HTTP_ERROR, request.url.toString(), response.statusCode); it.loadFailed = true; it.loadedUrl = null; if (it.frame.parent === visible) setVisible(id, false) }
+                if (request.isForMainFrame) entries[id]?.let { diagnostic(it, ConnectionDiagnostics.Step.HTTP_ERROR, request.url.toString(), response.statusCode); it.loadFailed = true; it.loadedUrl = null; navigationHidden(id, request.url.toString(), false) }
             }
             override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
                 entries[id]?.let { diagnostic(it, ConnectionDiagnostics.Step.RENDERER_GONE) }
+                navigationHidden(id, "about:blank", false)
                 destroy(id)
                 return true
             }
         }
         // Page dialogs remain user-controlled when shown; no automatic confirmations.
         view.webChromeClient = object : WebChromeClient() {
-            override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean = false
+            override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
+                val parent = entries[id] ?: return false
+                val policy = parent.policy ?: return false
+                val root = entries[rootId(id)] ?: return false
+                val content = root.content ?: return false
+                if (!isVisible(id)) return false
+                val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
+                val childId = "popup-${++popupSerial}"
+                // A real renderer child preserves window.opener and postMessage. Never navigate the parent instead.
+                val child = newView(childId, parent.session, "about:blank", policy, id, view.settings.userAgentString)
+                child.view.isFocusable = true; child.view.isFocusableInTouchMode = true
+                content.addView(child.view, FrameLayout.LayoutParams(-1, -1)); child.view.requestFocus()
+                diagnostic(child, ConnectionDiagnostics.Step.POPUP_OPENED)
+                transport.webView = child.view
+                resultMsg.sendToTarget()
+                return true
+            }
+            override fun onCloseWindow(window: WebView) {
+                if (entries[id]?.parentId != null) destroy(id)
+                else navigationHidden(id, window.url ?: "about:blank", false)
+            }
             override fun onConsoleMessage(message: ConsoleMessage): Boolean =
                 !BuildConfig.DEBUG || super.onConsoleMessage(message)
             private fun forward(kind: String, url: String, message: String, result: JsResult): Boolean {
@@ -216,16 +278,15 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
         }
         view.isFocusable = false
         view.isFocusableInTouchMode = false
-        val bootstrapUrl = "about:blank#${Uri.encode(msg.getString("marker"))}"
-        val entry = Entry(view, session, view, bootstrapUrl)
-        entries[id] = entry
-        diagnostic(entry, ConnectionDiagnostics.Step.CREATED)
-        hidden.addView(view, FrameLayout.LayoutParams(1280, 900))
-        view.loadUrl(bootstrapUrl)
+        return entry
     }
 
     private fun setVisible(id: String, show: Boolean) {
         val entry = entries[id] ?: error("NO_SURFACE")
+        if (!show) {
+            entries.filterValues { it.parentId == id }.keys.toList().forEach { destroy(it) }
+            entry.content = null
+        }
         if (show) check(entry.policy != null) { "ONLY_LOGIN_SURFACE_VISIBLE" }
         if (show && entry.policy != null) check(!entry.loadFailed && entry.loadedUrl == entry.view.url &&
             entry.loadedUrl?.let { entry.policy!!.allows(it) } == true) { "LOGIN_PAGE_NOT_READY" }
@@ -252,7 +313,10 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
                 setPadding(18, 8, 18, 8)
                 setTextColor(Color.rgb(102, 115, 107))
             })
-            column.addView(entry.view, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+            val content = FrameLayout(context)
+            content.addView(entry.view, FrameLayout.LayoutParams(-1, -1))
+            entry.content = content
+            column.addView(content, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
             entry.frame = column
             visible.addView(column, FrameLayout.LayoutParams(-1, -1))
             visible.visibility = View.VISIBLE
@@ -272,11 +336,14 @@ class SurfaceHost(private val context: Context, private val hidden: FrameLayout,
         return true
     }
     private fun destroy(id: String) {
+        entries.filterValues { it.parentId == id }.keys.toList().forEach { destroy(it) }
         val entry = entries.remove(id) ?: return
+        if (entry.parentId != null) diagnostic(entry, ConnectionDiagnostics.Step.POPUP_CLOSED, entry.view.url)
         (entry.frame.parent as? ViewGroup)?.removeView(entry.frame)
         (entry.view.parent as? ViewGroup)?.removeView(entry.view)
-        entry.view.stopLoading()
-        entry.view.destroy()
+        entry.dialog?.result?.cancel()
+        // Defer renderer teardown out of WebViewClient/WebChromeClient callbacks.
+        main.post { entry.view.stopLoading(); entry.view.destroy() }
         if (visible.childCount == 0) visible.visibility = View.GONE
     }
     fun close() = entries.keys.toList().forEach { destroy(it) }

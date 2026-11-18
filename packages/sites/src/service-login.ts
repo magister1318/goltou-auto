@@ -8,26 +8,14 @@ export const serviceLoginUrls = {
 };
 // Small account/home pages only: never open an editor to check authentication.
 export const serviceCheckUrls = { naver: 'https://nid.naver.com/user2/help/myInfoV2?lang=ko_KR', band: 'https://band.us/' };
-const naverAuth = [
-  { hostname: 'nid.naver.com', pathname: '/nidlogin.login' },
-  { hostname: 'nid.naver.com', pathname: '/login/', prefix: true },
-  { hostname: 'nid.naver.com', pathname: '/oauth2.0/authorize' },
-  { hostname: 'nid.naver.com', pathname: '/oauth2.0/authorize.nhn' },
-];
+const hosts = (...names: string[]) => names.map(hostname => ({ hostname, pathname: '/', prefix: true }));
 export function serviceNavigationPolicy(service: LoginService): NavigationPolicy {
   return {
     fallbackUrl: serviceLoginUrls[service],
-    allowed: service === 'naver' ? naverAuth : [
-      ...naverAuth, // BAND's NAVER ID authentication option.
-      ...['/login', '/email_login', '/phone_login', '/verify', '/auth', '/oauth', '/consent', '/callback', '/two_step', '/two_factor', '/captcha']
-        .flatMap(pathname => [{ hostname: 'auth.band.us', pathname }, { hostname: 'auth.band.us', pathname: `${pathname}/`, prefix: true }]),
-    ],
-    landing: service === 'naver' ? [{ hostname: 'nid.naver.com', pathname: '/user2/help/myInfo' }, { hostname: 'nid.naver.com', pathname: '/user2/help/myInfoV2' },
-      { hostname: 'm.blog.naver.com', pathname: '/' }, { hostname: 'm.blog.naver.com', pathname: '/Recommendation.naver' }]
-      : [{ hostname: 'band.us', pathname: '/' }, { hostname: 'www.band.us', pathname: '/' },
-        // A fresh (signed-release) profile redirects here before offering login.
-        // Hidden landing only: do not expose the public site in the login surface.
-        { hostname: 'www.band.us', pathname: '/about/kr/intro' }],
+    allowed: service === 'naver' ? hosts('nid.naver.com') : hosts('auth.band.us', 'nid.naver.com'),
+    // These hosts may complete authentication, but their contents are never shown.
+    landing: service === 'naver' ? hosts('m.blog.naver.com', 'blog.naver.com', 'm.naver.com', 'www.naver.com', 'naver.com')
+      : hosts('band.us', 'www.band.us'),
   };
 }
 export function loginLocation(service: LoginService, url: string): 'auth' | 'landing' | 'blocked' {

@@ -1,5 +1,6 @@
 // Reference: ../refs/DAF/daf3/apps/mobile/src/core/cdp.ts (private socket target discovery).
-import { traceStep, trace, reasonCode } from '../../../packages/surface/src/telemetry';
+import { traceStep, trace, reasonCode, traceJob, type TraceStep } from '../../../packages/surface/src/telemetry';
+import { connectionSteps, sanitizeConnection } from '../../../packages/surface/src/connection-diagnostics';
 import http from 'node:http';
 import { randomUUID } from 'node:crypto';
 import type { Surface, SurfaceHost, SurfaceSession } from '../../../packages/surface/src/index';
@@ -28,7 +29,18 @@ function listTargets(socketPath: string): Promise<Target[]> {
 
 export class AndroidSurfaceHost implements SurfaceHost {
   private readonly surfaces = new Map<Surface, string>();
-  constructor(private readonly native: NativeBridge, private readonly socketPath: string) {}
+  constructor(private readonly native: NativeBridge, private readonly socketPath: string) {
+    // Subscribe before create: creation and early redirects must also survive log export.
+    native.onEvent('surface.connectionDiagnostic', data => {
+      if ((data.session !== 'naver' && data.session !== 'band') || !connectionSteps.some(step => step === data.step)) return;
+      const site = data.session;
+      const connection = sanitizeConnection({ host: typeof data.host === 'string' ? data.host : '', path: typeof data.path === 'string' ? data.path : '',
+        ...(typeof data.code === 'number' ? { code: data.code } : {}) });
+      void traceJob('login_check', site, async () => {
+        trace(`CONNECTION_${String(data.step)}` as TraceStep, 'ok', { connection });
+      }).catch(() => {});
+    });
+  }
 
   async create(session: SurfaceSession): Promise<Surface> {
     return traceStep('android.bridge.host.AndroidSurfaceHost.create', async () => {

@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { JobKind, JobResult, LogSite, ReasonCode, TraceDetail, TraceEvent, TraceJob, TraceProvider, TraceStep } from '@goltou/surface/telemetry';
 import { reasonCode, traceOperations } from '@goltou/surface/telemetry';
 import { traceSteps, traceSelectors } from '../../surface/src/telemetry-catalog';
+import { sanitizeConnection } from '../../surface/src/connection-diagnostics';
 
 const kinds: readonly JobKind[] = ['blog_draft', 'blog_publish', 'blog_delete', 'unfinished_cleanup', 'band_post', 'band_delete', 'login_check', 'band_list'];
 const sites: readonly LogSite[] = ['naver', 'band', 'app'];
@@ -31,6 +32,7 @@ export function sanitizeDetail(detail: TraceDetail = {}) {
   if (traceSelectors.includes(detail.selector as typeof traceSelectors[number])) out.selector = detail.selector;
   if (traceOperations.includes(detail.operation as typeof traceOperations[number])) out.operation = detail.operation;
   if (detail.navigation) out.navigation = { host: safeHost(detail.navigation.host), path: safePath(detail.navigation.path) };
+  if (detail.connection) out.connection = sanitizeConnection(detail.connection);
   if (detail.network) {
     const n = detail.network;
     out.network = { method: ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(n.method) ? n.method : 'other',

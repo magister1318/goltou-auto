@@ -93,7 +93,8 @@ class MainActivity : ComponentActivity() {
         root.addView(visible, FrameLayout.LayoutParams(-1, -1))
         surfaces = SurfaceHost(session.context, hidden, visible,
             { id -> retained.link.event("surface.hidden", org.json.JSONObject().put("surface", id)) },
-            { id -> retained.link.event("surface.navigationHidden", org.json.JSONObject().put("surface", id)) })
+            { id -> retained.link.event("surface.navigationHidden", org.json.JSONObject().put("surface", id)) },
+            { diagnostic -> retained.link.event("surface.connectionDiagnostic", diagnostic) })
         retained.surfaces = surfaces
         val secureSession = SecureSession(applicationContext)
         link = CoreLink { op, msg, reply ->

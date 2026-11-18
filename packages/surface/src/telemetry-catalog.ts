@@ -1,5 +1,9 @@
 /** Fixed source identifiers. Never expand these lists from runtime page data. */
 export const traceSteps = [
+  'CONNECTION_CREATED', 'CONNECTION_STARTED', 'CONNECTION_FINISHED', 'CONNECTION_BLOCKED', 'CONNECTION_NET_ERROR',
+  'CONNECTION_HTTP_ERROR', 'CONNECTION_SHOWN', 'CONNECTION_HIDDEN', 'CONNECTION_RENDERER_GONE',
+  'CONNECTION_POPUP_OPENED', 'CONNECTION_POPUP_CLOSED', 'CONNECTION_LANDING_HIDDEN', 'CONNECTION_BLOCKED_HIDDEN',
+  'CONNECTION_CHECK_CONFIRMED', 'CONNECTION_CHECK_NOT_CONFIRMED', 'CONNECTION_RETRY_LIMIT',
   "table_insert_started", "table_size", "cells_filled", "table_verified", "table_fallback",
   "band.confirm.response", "band.confirm.feed", "band.confirm.record", "band.confirm.detail",
   "photo.download",

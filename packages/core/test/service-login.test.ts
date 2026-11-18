@@ -124,6 +124,67 @@ describe('WP15 on-demand login lifecycle', () => {
     expect(s.open).toHaveBeenLastCalledWith(expect.objectContaining({ url: serviceCheckUrls.naver }));
     expect(s.show).toHaveBeenCalledOnce(); expect(f.updates.at(-1)).toMatchObject({ state: 'confirmed', visible: false });
   });
+  it('confirms a blocked main-frame navigation even when the visible URL never left the login page', async () => {
+    const f = fixture(); await f.controller.show('naver'); const s = f.surfaces[0]!;
+    f.signals.naver = 'confirmed';
+    f.navigationListeners[0]!(); await vi.advanceTimersByTimeAsync(0);
+    expect(s.open).toHaveBeenLastCalledWith(expect.objectContaining({ url: serviceCheckUrls.naver }));
+    expect(s.hide).toHaveBeenCalledOnce(); expect(s.show).toHaveBeenCalledOnce();
+    expect(f.updates.at(-1)).toMatchObject({ state: 'confirmed', visible: false }); expect(f.controller.active).toBe(false);
+  });
+  it('shows login again after an unconfirmed blocked navigation, and stops on the third occurrence', async () => {
+    const f = fixture(); await f.controller.show('naver'); const s = f.surfaces[0]!;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      f.navigationListeners[0]!(); await vi.advanceTimersByTimeAsync(0);
+      expect(s.hide).toHaveBeenCalledTimes(attempt);
+      expect(s.show).toHaveBeenCalledTimes(Math.min(attempt + 1, 3));
+      expect(f.updates.at(-1)?.visible).toBe(attempt < 3);
+      expect(s.open).toHaveBeenLastCalledWith(expect.objectContaining({ url: attempt < 3 ? serviceLoginUrls.naver : serviceCheckUrls.naver }));
+    }
+    expect(f.updates.at(-1)).toMatchObject({ state: 'unknown', visible: false, error: '로그인을 마치지 못했습니다. 다시 시도해 주세요.' });
+    expect(f.controller.active).toBe(false); const opens = vi.mocked(s.open).mock.calls.length;
+    await vi.advanceTimersByTimeAsync(15000); expect(s.open).toHaveBeenCalledTimes(opens); expect(vi.getTimerCount()).toBe(0);
+  });
+  it('confirms in a separate hidden surface sharing the profile while the visible URL stays on login', async () => {
+    const f = fixture(); await f.controller.show('naver'); const s = f.surfaces[0]!, create = f.host.create;
+    f.host.create = vi.fn(async session => { const check = await create(session); vi.mocked(check.evaluateReadOnly).mockResolvedValue('confirmed'); return check; });
+    await vi.advanceTimersByTimeAsync(3000);
+    const check = f.surfaces[1]!;
+    expect(check.session).toBe(s.session); expect(check.restrictNavigation).toHaveBeenCalledOnce();
+    expect(check.open).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ url: serviceCheckUrls.naver, session: 'naver' }));
+    expect(check.show).not.toHaveBeenCalled(); expect(check.close).toHaveBeenCalledOnce();
+    expect(s.open).toHaveBeenCalledTimes(2); expect((await s.readState()).url).toBe(serviceLoginUrls.naver);
+    expect(s.hide).toHaveBeenCalledOnce(); expect(f.updates.at(-1)).toMatchObject({ state: 'confirmed', visible: false });
+    expect(f.controller.active).toBe(false); expect(vi.getTimerCount()).toBe(0);
+  });
+  it.each(['open', 'signal'] as const)('keeps visible polling and cancels a background %s without a late result or leak', async phase => {
+    const f = fixture(); await f.controller.show('naver'); const s = f.surfaces[0]!, create = f.host.create;
+    let release!: () => void;
+    f.host.create = vi.fn(async session => {
+      const check = await create(session);
+      if (phase === 'open') vi.mocked(check.open).mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+      else vi.mocked(check.evaluateReadOnly).mockImplementationOnce(() => new Promise(resolve => { release = () => resolve('confirmed'); }));
+      return check;
+    });
+    await vi.advanceTimersByTimeAsync(3000); const check = f.surfaces[1]!;
+    const reads = vi.mocked(s.evaluateReadOnly).mock.calls.length;
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(s.evaluateReadOnly).toHaveBeenCalledTimes(reads + 2); expect(f.surfaces).toHaveLength(2);
+    await f.controller.cancel();
+    expect(check.close).toHaveBeenCalledOnce(); expect(check.show).not.toHaveBeenCalled();
+    expect(f.controller.active).toBe(false); expect(f.updates.at(-1)).toMatchObject({ state: 'expired', visible: false });
+    release(); await vi.advanceTimersByTimeAsync(15000);
+    expect(s.show).toHaveBeenCalledOnce(); expect(f.surfaces).toHaveLength(2); expect(vi.getTimerCount()).toBe(0);
+  });
+  it('destroys a late-created hidden check after cancellation', async () => {
+    const f = fixture(); await f.controller.show('naver'); const create = f.host.create;
+    let release!: (surface: Surface) => void;
+    f.host.create = vi.fn(() => new Promise<Surface>(resolve => { release = resolve; }));
+    await vi.advanceTimersByTimeAsync(3000); await f.controller.cancel();
+    const check = await create('naver'); release(check); await vi.advanceTimersByTimeAsync(0);
+    expect(check.close).toHaveBeenCalledOnce(); expect(check.open).not.toHaveBeenCalled();
+    expect(f.controller.active).toBe(false); expect(vi.getTimerCount()).toBe(0);
+  });
   it('cancels an in-flight poll before its final hidden recheck, with no late confirmation or re-show', async () => {
     const f = fixture(); await f.controller.show('naver'); const s = f.surfaces[0]!;
     let release!: (state: 'confirmed') => void;

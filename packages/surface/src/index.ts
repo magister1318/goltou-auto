@@ -56,7 +56,7 @@ export interface Surface {
   /** Shell-enforced, before first navigation; applies to redirects, frames and new windows. */
   restrictNavigation?(policy: NavigationPolicy): Promise<void>;
   onUserHidden?(listener: () => void): () => void;
-  /** Shell hid a permitted post-auth landing before displaying its content. */
+  /** Shell hid a landing or blocked main-frame navigation, including child windows. */
   onNavigationHidden?(listener: () => void): () => void;
   readClickTarget?(x: number, y: number, selector: string): Promise<boolean>;
   /** Re-read a safety condition immediately before mousePressed, after hover/delay. */
