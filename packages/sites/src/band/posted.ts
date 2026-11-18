@@ -81,7 +81,7 @@ export async function settleFullBandPost(surface: Surface, expected: string, upl
     reveal: async value => { if(value&&(value.photosLoaded??0)<uploaded.length)await surface.pressKey({key:'PageDown'}); },
   });
   if(!result.value)throw Error('BAND_PUBLISHED_READBACK_UNAVAILABLE');
-  if(!result.stable)throw new ReadbackMismatch('BAND_PUBLISHED_READBACK_UNAVAILABLE',[{field:'stability'},...result.classes.filter(c=>!c.present).map(c=>({field:c.check as ReadbackIssue['field']}))]);
+  if(!result.stable)throw new ReadbackMismatch('BAND_PUBLISHED_READBACK_UNAVAILABLE',[{field:'stability'},...result.classes.filter(c=>!c.present).map(c=>({field:c.check === 'links' ? 'href' : c.check === 'photos' ? 'photo' : c.check as ReadbackIssue['field']}))]);
   const issues: ReadbackIssue[] = [];
   if(result.value.photosLoaded!==uploaded.length)issues.push({field:'photo'});
   if((result.value.links??0)<expectedLinks)issues.push({field:'href'});

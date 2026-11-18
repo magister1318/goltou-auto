@@ -820,8 +820,11 @@ export class BlogExecution {
         },
       });
       const value = settled.value;
-      if (!value) throw new ReadbackMismatch('BLOG_PUBLISHED_READBACK_UNAVAILABLE', settled.classes.filter(c=>!c.present).map(c=>({field:c.check==='paragraphs'?'text':c.check as ReadbackIssue['field']})));
-      if (!settled.stable) throw new ReadbackMismatch('BLOG_PUBLISHED_READBACK_UNAVAILABLE', [{field:'stability'}, ...settled.classes.filter(c=>!c.present).map(c=>({field:c.check==='paragraphs'?'text' as const:c.check as ReadbackIssue['field']}))]);
+      const missing = settled.classes.filter(item => !item.present).map(({ check }): ReadbackIssue => ({
+        field: check === 'paragraphs' ? 'text' : check === 'links' ? 'href' : check === 'photos' ? 'photo' : check as ReadbackIssue['field'],
+      }));
+      if (!value) throw new ReadbackMismatch('BLOG_PUBLISHED_READBACK_UNAVAILABLE', missing);
+      if (!settled.stable) throw new ReadbackMismatch('BLOG_PUBLISHED_READBACK_UNAVAILABLE', [{ field: 'stability' }, ...missing]);
       const issues: ReadbackIssue[] = [];
       if (!blogTablesMatch(this.plan,value,this.tableModes)) issues.push({field:'table'});
       if (!settled.classes.find(c=>c.check==='photos')!.present) issues.push({field:'photo'});

@@ -23,7 +23,7 @@ async function viewer(missing = '', mobileProof = false, withTable = false) {
   // The full replay below owns the 99-paragraph/29-photo scrolling regression.
   // Keep the independent mobile visibility test small so it tests that second
   // live document without repeating a long lazy-load sweep under worker load.
-  const shape = mobileProof || withTable || missing === 'bold' ? {paragraphs:3,photos:2,fillers:0} : {paragraphs:99,photos:29,fillers:58};
+  const shape = mobileProof || withTable || missing ? {paragraphs:3,photos:2,fillers:0} : {paragraphs:99,photos:29,fillers:58};
   const paragraphs = Array.from({length:shape.paragraphs},(_,i)=>`합성 문단 ${i+1}`);
   paragraphs.forEach((text,i)=>plan.steps.push({kind:'text',role:'body',text,runs:i===0?[{text,bold:true}]:i===1||i===2?[{text,href:`https://example.invalid/${i}`}]:[{text}]}));
   const files = Array.from({length:shape.photos},(_,i)=>({url:`https://example.invalid/photo/${i}`,path:`/synthetic/goltou-1234567890abcdef-${i+1}.png`}));
