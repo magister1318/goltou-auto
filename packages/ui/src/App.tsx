@@ -416,7 +416,7 @@ export function App() {
     let timer: ReturnType<typeof setTimeout>;
     const load = async (retry: boolean) => {
       try {
-        const data = await request('products.list', { q, onlyUnposted: unposted, page, pageSize: 10 });
+        const data = await request('products.list', { q, onlyUnposted: unposted, page, pageSize: 10 }, true);
         if (!live) return;
         setProducts(old => ({ ...data, items: page === 1 ? data.items : [...old.items, ...data.items] }));
         setLoading(false);

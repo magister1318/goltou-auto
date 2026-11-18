@@ -129,7 +129,7 @@ it('renders plain marks, leaves the publish action enabled and keeps the filter 
   expect(document.querySelector('.product-status.posted .warn')?.textContent).toContain('올린 뒤 상품이 바뀜');
   expect(document.querySelector('.product-status-row button')?.textContent).toBe('올리기');
   await click('[role=tab]', '안 올린 상품'); await flush(170);
-  expect(store.request).toHaveBeenCalledWith('products.list', expect.objectContaining({ onlyUnposted: true }));
+  expect(store.request).toHaveBeenCalledWith('products.list', expect.objectContaining({ onlyUnposted: true }), true);
   await openPublish();
   expect(document.querySelector('.screen-home')).toBeTruthy();
   expect(document.querySelector('.sheet h2')?.textContent).toBe('어디에 발행할까요?');
@@ -317,6 +317,7 @@ it.each([false,true])('automatically retries the failed initial product load exa
   expect(body()).not.toContain('다시 시도');
   await flush(370);
   expect(requests).toBe(2);
+  expect(store.request.mock.calls.filter(([command]) => command === 'products.list').map(call => call[2])).toEqual([true, true]);
   if (secondFails) expect(body()).toContain('다시 시도');
   else expect(document.querySelector('.product-copy')?.textContent).toContain(product.title);
 });
