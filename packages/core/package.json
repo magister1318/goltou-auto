@@ -7,6 +7,7 @@
     "./app-update": "./src/app-update.ts",
     ".": "./src/index.ts",
     "./post-delete-policy": "./src/post-delete-policy.ts",
+    "./post-extras": "./src/convert/post-extras.ts",
     "./job-safety": "./src/job-safety.ts",
     "./protocol": "./src/protocol.ts",
     "./photo-url": "./src/photo-url.ts",

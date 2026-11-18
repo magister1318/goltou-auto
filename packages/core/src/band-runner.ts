@@ -204,21 +204,30 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
       if (result.outcome || ['published', 'stopped'].includes(result.status)) continue;
       const child = j.targets[0]?.channel === 'blog' || this.bandIndex > 0 ? registrationLog({ targets: [result], mode: j.mode }) : undefined;
       const proceed = await inTrace(child, async () => {
+        if (j.activeTargetKey && j.activeTargetKey !== result.key) {
+          delete j.activity;
+          j.activityLog = j.activityLog?.filter(event => event.channel !== 'band') ?? [];
+          j.current = 0;
+        }
         j.activeTargetKey = result.key;
         try {
+          if (j.mode === 'publish' && needsPause) j.bandPause = true;
           await this.emit();
-          if (j.mode === 'publish' && needsPause) {
+          if (j.bandPause) {
             const milliseconds = 20000 + Math.floor(Math.random() * 20001);
             trace('runner.band_pause', 'wait', { reason: 'BAND_TARGET_PAUSE', counts: { expected: milliseconds } });
             await (this.services.bandPause ?? ((ms, signal) => pause(ms, undefined, { signal })))(milliseconds, this.abort.signal);
             this.check();
             trace('runner.band_pause', 'ok', { reason: 'BAND_TARGET_PAUSE', counts: { observed: milliseconds } });
+            delete j.bandPause;
+            await this.emit();
           }
           if (!this.directory.choices.some(band => band.key === result.key)) throw Error('BAND_TARGET_INVALID');
           const finished = await this.runBand(result);
           child?.end(finished ? 'succeeded' : 'stopped', finished ? undefined : 'STOPPED_BEFORE_POST');
           return finished;
         } catch (error) {
+          delete j.bandPause;
           if (this.abort.signal.aborted || this.disposed || error instanceof RecordError) {
             child?.end(error instanceof RecordError ? 'failed' : 'stopped', error instanceof RecordError ? 'RECORD_FAILED' : 'USER_STOPPED');
             throw error;

@@ -46,6 +46,10 @@ export interface Post extends PostUpdate {
   userName: string; startedAt: string; finishedAt: string; productChanged: boolean;
 }
 export interface PostQuery { scope: 'mine' | 'all'; page?: number; pageSize?: number }
+export interface TodayStats {
+  date: string;
+  rows: { userNo: number; nickname: string; published: number; drafts: number; failed: number; stopped: number; lastAt: string }[];
+}
 export interface ApiRoutes {
   '/auto/app/latest': { input: Record<string, never>; output: AppRelease };
   '/auto/login': { input: LoginInput; output: { token: string; user: User } };
@@ -58,6 +62,7 @@ export interface ApiRoutes {
   '/auto/posts/log': { input: { postNo: number; log: string }; output: Record<string, never> };
   '/auto/posts/update': { input: PostUpdate; output: Record<string, never> };
   '/auto/posts/list': { input: PostQuery; output: Page<Post> };
+  '/auto/stats/today': { input: Record<string, never>; output: TodayStats };
   '/auto/settings/save': { input: Settings; output: Record<string, never> };
 }
 export interface ApiClient {
@@ -80,7 +85,7 @@ export function createApiClient(baseUrl: string, fetcher: FetchLike, timeoutMs =
       const result = async () => {
         const response = await fetcher(`${baseUrl.replace(/\/$/, '')}${path}`, { method: 'POST', headers, body, signal: controller.signal, redirect: 'error', credentials: 'omit' })
           .catch(() => { throw new ApiError('server', '연결하지 못했습니다. 잠시 뒤 다시 해 주세요.', true); });
-        if (path === '/auto/posts/log' && [404, 405].includes(response.status ?? 0)) throw new ApiError('not_found', '지원하지 않는 요청입니다.');
+        if ((path === '/auto/posts/log' || path === '/auto/stats/today') && [404, 405].includes(response.status ?? 0)) throw new ApiError('not_found', '지원하지 않는 요청입니다.');
         body = '';
         return { response, envelope: await response.json() as { ok?: unknown; data?: unknown; code?: unknown; message?: unknown } | null };
       };

@@ -39,6 +39,7 @@ export interface Job {
   failureCode?: string;
   recordFailure?: { status: JobStatus; message: string };
   targetResults?: TargetResult[]; activeTargetKey?: string;
+  bandPause?: boolean;
   bandPhotoLimit?: number | null; bandLimitObservedAt?: string | undefined;
   bandBarrierDecisions?: import('@goltou/sites').BandBarrierCode[];
   bandPhotoVerification?: { order: 'matched'; ratio: 'matched' | 'unavailable'; counts: number[]; sources: { width: number; height: number }[]; thumbnails: { width: number; height: number }[] };
@@ -48,6 +49,7 @@ export interface AppSnapshot { update?: import('./app-update').UpdateSnapshot; b
 /** Platform-neutral contract; Android implements it with a Keystore-encrypted native channel. */
 export interface TokenStore { read(): Promise<string | null>; write(token: string | null): Promise<void> }
 export interface Commands {
+  'app.exit': { input: { event: 'hint' | 'confirm' | 'cancel' | 'finish' }; output: Record<string, never> };
   'update.home': { input: Record<string, never>; output: Record<string, never> };
   'update.check': { input: Record<string, never>; output: Record<string, never> };
   'update.action': { input: { action: 'open' | 'later' | 'download' | 'cancel' | 'settings' | 'close' }; output: Record<string, never> };
@@ -71,6 +73,8 @@ export interface Commands {
   'posts.delete.confirm': { input: { confirmation: string }; output: AppSnapshot };
   'posts.delete.retryRecord': { input: Record<string, never>; output: AppSnapshot };
   'posts.list': { input: { scope: 'mine' | 'all'; page?: number; pageSize?: number }; output: Page<Post & { jobLog?: import('./job-logs').JobLogRow | undefined }> };
+  'stats.today': { input: Record<string, never>; output: import('@goltou/api-client').TodayStats | null };
+  'bands.dailyUsage': { input: Record<string, never>; output: { limit: number; used: number } | null };
   'post.open': { input: { url: string }; output: AppSnapshot };
   'job.cancel': { input: Record<string, never>; output: AppSnapshot };
   'job.preview': { input: Record<string, never>; output: import('./preparation').PreparedPreview | null };

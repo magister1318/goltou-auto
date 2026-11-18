@@ -46,7 +46,7 @@ export class AppCore {
   private readonly polishSetting: PolishStrengthStore;
   private readonly preferences: PreferencesStore;
   private readonly postMetadata: PostMetadataStore;
-  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { localData?: import('./local-data-transfer').LocalDataTransfer; transferLocalData?: (mode: 'export' | 'import', text?: string) => Promise<string | null>; logs?: import('./job-logs').JobLogStore; exportLogs?: () => Promise<void>; serviceChecks?: readonly ('naver' | 'band')[]; device: () => Promise<import('@goltou/api-client').LoginInput['device']>; deleteHost?: import('@goltou/surface').SurfaceHost; deleteLog?: import('@goltou/sites').DeleteLog; bandDeleteLog?: import('@goltou/sites').BandDeleteLog; bandDeleteReview?: import('@goltou/sites').BandDeleteReview; experimentTitle?: boolean; experimentTitleLabel?: string; polishStrength?: PolishStrengthStore; preferences?: PreferencesStore; postMetadata?: PostMetadataStore; openExternal?: (url: string) => Promise<void>; updater?: import('./app-update').AppUpdater }) {
+  constructor(private readonly api: ApiClient, private readonly tokens: TokenStore = new MemoryTokenStore(), factory?: (checkpoint: import('./runner').Checkpoint, notify: (job: Job) => void) => RegistrationRunner, private readonly preparation?: PreparationServices, private readonly runtime?: { localData?: import('./local-data-transfer').LocalDataTransfer; transferLocalData?: (mode: 'export' | 'import', text?: string) => Promise<string | null>; logs?: import('./job-logs').JobLogStore; exportLogs?: () => Promise<void>; serviceChecks?: readonly ('naver' | 'band')[]; device: () => Promise<import('@goltou/api-client').LoginInput['device']>; deleteHost?: import('@goltou/surface').SurfaceHost; deleteLog?: import('@goltou/sites').DeleteLog; bandDeleteLog?: import('@goltou/sites').BandDeleteLog; bandDeleteReview?: import('@goltou/sites').BandDeleteReview; experimentTitle?: boolean; experimentTitleLabel?: string; polishStrength?: PolishStrengthStore; preferences?: PreferencesStore; postMetadata?: PostMetadataStore; openExternal?: (url: string) => Promise<void>; exit?: (event: import('./protocol').Commands['app.exit']['input']['event']) => Promise<void>; updater?: import('./app-update').AppUpdater }) {
     this.polishSetting = runtime?.polishStrength ?? new MemoryPolishStrengthStore();
     this.postMetadata = runtime?.postMetadata ?? new MemoryPostMetadata();
     this.preferences = runtime?.preferences ?? new MemoryPreferencesStore();
@@ -235,6 +235,18 @@ export class AppCore {
         try { await this.call('/auto/logout', {}, token); } finally { await this.clearSession(); } break;
       case 'products.list': return this.call('/auto/products/list', request.input, token);
       case 'products.get': return this.call('/auto/products/get', request.input, token);
+      case 'app.exit': {
+        const { event } = request.input;
+        if (!['hint', 'confirm', 'cancel', 'finish'].includes(event)) throw new ApiError('invalid', '종료 요청을 확인해 주세요.');
+        if (event === 'finish' && this.state.job?.status === 'running') await this.runner.stop();
+        await this.runtime?.exit?.(event);
+        return {};
+      }
+      case 'stats.today':
+        if (this.state.user?.role !== 'admin') throw new ApiError('forbidden', '관리자만 오늘 현황을 볼 수 있습니다.');
+        try { return await this.api.request('/auto/stats/today', {}, token); }
+        catch (error) { if (error instanceof ApiError && error.code === 'not_found') return null; throw error; }
+      case 'bands.dailyUsage': return this.bandDailyUsage(token);
       case 'preview.prepare': {
         if (this.preparing || this.starting || this.state.job?.status === 'running') throw new ApiError('conflict', '진행 중인 작업을 먼저 마쳐 주세요.');
         this.preparing = true;
@@ -444,9 +456,9 @@ export class AppCore {
     const lastBandKeys = prefs.lastBandKeys.filter(key => bands.some(band => band.key === key));
     if (lastBandKeys.length !== prefs.lastBandKeys.length) await this.preferences.write({ ...prefs, lastBandKeys });
   }
-  private async checkBandLimit(selected: number, token: string) {
+  private async bandDailyUsage(token: string) {
     const limit = this.state.settings?.bandDailyLimit;
-    if (!selected || !limit) return;
+    if (!limit) return null;
     const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' });
     let used = 0;
     for (let page = 1; ; page++) {
@@ -459,7 +471,12 @@ export class AppCore {
       }
       if (data.items.length < 50 || page * 50 >= data.total) break;
     }
-    if (selected + used > limit) throw new ApiError('conflict', `밴드 하루 한도 ${limit}건 중 오늘 ${used}건을 썼습니다. ${selected}곳을 고르면 한도를 넘습니다.`);
+    return { limit, used };
+  }
+  private async checkBandLimit(selected: number, token: string) {
+    if (!selected) return;
+    const usage = await this.bandDailyUsage(token);
+    if (usage && selected + usage.used > usage.limit) throw new ApiError('conflict', `밴드 하루 한도 ${usage.limit}건 중 오늘 ${usage.used}건을 썼습니다. ${selected}곳을 고르면 한도를 넘습니다.`);
   }
   private async start(input: JobInput, token: string, retry = false) {
     input = { ...input, targets: [...input.targets].sort((a,b) => Number(a.channel === 'band') - Number(b.channel === 'band')),

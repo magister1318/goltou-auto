@@ -69,6 +69,7 @@ async function start() {
   runtime.deleteLog = async value => trace('delete', value.pass ? 'ok' : 'fail', { ...(value.pass ? {} : { reason: 'VERIFICATION_MISMATCH' as const }), counts: { step: value.item, expected: value.expected ?? 0, observed: value.actual ?? 0 } });
   const api = createApiClient(apiOrigin, fetch);
   const tokens = new AndroidTokenStore(native);
+  runtime.exit = async event => { await native.call('app.exit', { event }); };
   runtime.updater = androidUpdater(native, api, tokens, logs, path.join(path.dirname(argument('data')), 'app-update.json'), apiOrigin);
   const app = new AppCore(api, tokens,
     (checkpoint, notify) => new ChannelRegistrationRunner({ band: options.band!, blog: options.blog! }, checkpoint, notify), options.preparation,

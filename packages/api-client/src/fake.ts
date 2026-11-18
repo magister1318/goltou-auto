@@ -1,4 +1,4 @@
-import { defaultMyText, ApiError, type MyText, type ApiClient, type ApiRoutes, type Channel, type Post, type Product, type Settings, type User } from './index';
+import { defaultMyText, ApiError, type MyText, type ApiClient, type ApiRoutes, type Channel, type Post, type Product, type Settings, type TodayStats, type User } from './index';
 
 export const fakeAccounts: Record<string, User> = {
   manager: { userNo: 12, name: '김매니저', nickname: '골프매니저', phone: '', userType: 4, role: 'manager' },
@@ -64,7 +64,7 @@ export function createFakeApi(fixtureSession?: { token: string; user: User; prod
               at: p.finishedAt || p.startedAt, targetName: p.targetName, targetKey: p.channel === 'band' ? p.targetKey : '', postUrl: p.postUrl, changed: p.hash !== product.contentHash })) }; break;
         }
         case '/auto/products/list': {
-          let filtered = products.filter(p => (!data.q || `${p.title} ${p.golfCourses.join(' ')}`.includes(String(data.q))) && (!data.country || p.country === data.country) && (!data.region || p.region === data.region) && (!data.month || p.departures.some(d => d.date.startsWith(String(data.month)))) && (!data.onlyUnposted || !posts.some(post => post.owner === user.userNo && post.productNo === p.productNo && successful(post))));
+          let filtered = products.filter(p => (!data.q || `${p.title} ${p.country} ${p.region} ${p.golfCourses.join(' ')}`.includes(String(data.q))) && (!data.country || p.country === data.country) && (!data.region || p.region === data.region) && (!data.month || p.departures.some(d => d.date.startsWith(String(data.month)))) && (!data.onlyUnposted || !posts.some(post => post.owner === user.userNo && post.productNo === p.productNo && successful(post))));
           if (data.sort === 'departure') filtered = [...filtered].sort((a, b) => a.departures[0]!.date.localeCompare(b.departures[0]!.date));
           output = page(filtered.map(p => {
             const latest = (channel: Channel) => [...posts].reverse().find(post => post.owner === user.userNo && post.productNo === p.productNo && post.channel === channel && visibleMark(post));
@@ -76,6 +76,23 @@ export function createFakeApi(fixtureSession?: { token: string; user: User; prod
         case '/auto/posts/list':
           if (data.scope === 'all' && user.userType < 7) throw new ApiError('forbidden', '전체 기록은 내부직원과 관리자만 볼 수 있습니다.');
           output = page([...posts].sort((a, b) => b.startedAt.localeCompare(a.startedAt) || b.postNo - a.postNo).filter(p => data.scope === 'all' || p.owner === user.userNo).map(({ owner, targetKey, hash, ...post }) => ({ ...post, productChanged: hash !== products.find(p => p.productNo === post.productNo)?.contentHash }))); break;
+        case '/auto/stats/today': {
+          if (user.role !== 'admin') throw new ApiError('forbidden', '관리자만 오늘 현황을 볼 수 있습니다.');
+          const date = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' });
+          const rows = new Map<number, TodayStats['rows'][number]>();
+          for (const post of posts) {
+            if (new Date(post.startedAt).toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }) !== date) continue;
+            const owner = Object.values(fakeAccounts).find(account => account.userNo === post.owner);
+            const row = rows.get(post.owner) ?? { userNo: post.owner, nickname: owner?.nickname || post.userName, published: 0, drafts: 0, failed: 0, stopped: 0, lastAt: '' };
+            if (post.status === 'published') row.published++;
+            if (post.status === 'draft_saved') row.drafts++;
+            if (post.status === 'failed') row.failed++;
+            if (post.status === 'stopped') row.stopped++;
+            if (Date.parse(post.startedAt) > Date.parse(row.lastAt) || !row.lastAt) row.lastAt = post.startedAt;
+            rows.set(post.owner, row);
+          }
+          output = { date, rows: [...rows.values()] }; break;
+        }
         case '/auto/posts/start': {
           const value = input as ApiRoutes['/auto/posts/start']['input'];
           const product = products.find(p => p.productNo === value.productNo);
