@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chromium, type Browser } from 'playwright-core';
 import type { Surface } from '@goltou/surface';
 import type { SurfaceHost, GuardedRequest, GuardedResponse } from '@goltou/surface';
@@ -10,7 +10,7 @@ afterEach(async () => { await browser?.close(); });
 const title = '합성 시험 제목';
 const post = (extra = {}) => ({ content: title + '\n본문\n<band:hashtag>#합성</band:hashtag>', band: { band_no: 111 }, post_no: 9001, web_url: 'https://band.us/band/111/post/9001', created_at: 1700000000000, author: { me: true }, photo_count: 10, ...extra });
 describe('immediate publication proof from the posting context', () => {
-  it('settles live delayed Band text, tags, links and loaded photos before exact comparison',async()=>{
+  it('settles live delayed Band text, tags, links and photo slots before exact comparison',async()=>{
     browser=await chromium.launch({executablePath:process.env.CHROMIUM||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
     const context=await browser.newContext();
     await context.route('**/*',async route=>{await new Promise(r=>setTimeout(r,1000));return route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=','base64')});});
@@ -25,7 +25,7 @@ describe('immediate publication proof from the posting context', () => {
     const cdp=await context.newCDPSession(page);
     const surface={evaluateReadOnly:async<T>(expression:string)=>{const r=await cdp.send('Runtime.evaluate',{expression,returnByValue:true,throwOnSideEffect:true});if(r.exceptionDetails)throw Error('READ_FAILED');return r.result.value as T;},pressKey:async()=>{await page.keyboard.press('PageDown');}} as unknown as Surface;
     const value=await settleFullBandPost(surface,text,[photo],()=>{},6000);
-    expect(value).toMatchObject({body:text,hashtags:1,links:1,photosLoaded:1});
+    expect(value).toMatchObject({body:text,hashtags:1,links:1});
     expect(value.photos).toEqual([photo]);
   },10000);
   it.each([
@@ -99,3 +99,37 @@ describe('immediate publication proof from the posting context', () => {
     expect(normalizedBandBody(text + '\n')).toBe(text);
   });
 });
+
+it('replays a nested mobile post with 66 lazy photo slots and four tags, then reports a partial count', async () => {
+  browser = await chromium.launch({executablePath:process.env.CHROMIUM || 'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+  const context = await browser.newContext();
+  await context.route('**/*', route=>route.abort());
+  const page = await context.newPage();
+  const photos = Array.from({length:66}, (_, i)=>`https://photos.invalid/${i}.jpg`);
+  const paragraphs = Array.from({length:19}, (_, i)=>`합성 안내 ${i+1}`);
+  const tags = ['#지역','#나라','#코스','#골프'];
+  const expected = ['합성 제목', ...paragraphs, tags.join(' ')].join('\n\n');
+  const html = `<section class="postCard"><div class="postView"><div class="postTextView"><p class="postText" style="white-space:pre-wrap">${['합성 제목', ...paragraphs, tags.map(tag=>`<button class="hashTag">${tag}</button>`).join(' ')].join('\n\n')}</p></div>
+    <div class="postWriterInfo"><img class="mediaImg" src="https://profile.invalid/user.png"></div>
+    <div class="_photoListRegion">${photos.map((url,i)=>i%3===0 ? `<div data-photo-url="${url}" data-photo-key="${i}"><img class="mediaImg"></div>` :
+      i%3===1 ? `<img class="mediaImg" data-lazy-src="${url}" src="/placeholder.gif">` : `<div class="photoPlaceholder" data-original="${url}"></div>`).join('')}</div></div></section>`;
+  await page.setContent(html);
+  const cdp = await context.newCDPSession(page);
+  const pressKey = vi.fn(async () => { throw Error('CDP_KEY_FAILURE'); });
+  const s = { pressKey, evaluateReadOnly:async (expression:string) => {
+    const r = await cdp.send('Runtime.evaluate',{expression,returnByValue:true,throwOnSideEffect:true});
+    if (r.exceptionDetails) throw Error('READ_FAILED');
+    return r.result.value;
+  } } as unknown as Surface;
+  const full = await settleFullBandPost(s, expected, photos, ()=>{}, 2500);
+  expect(full.photos).toEqual(photos); expect(full.hashtags).toBe(4);
+  await page.locator('._photoListRegion').evaluate(root => Array.from(root.children).slice(43).forEach(node=>node.remove()));
+  await expect(settleFullBandPost(s,expected,photos,()=>{},1000)).rejects.toMatchObject({
+    issues:[{field:'photo',expected:66,observed:43}],
+  });
+  await page.locator('section.postCard').evaluate(root=>root.setAttribute('data-photo-count','43'));
+  await expect(settleFullBandPost(s,expected,photos,()=>{},1500)).rejects.toMatchObject({
+    issues:[{field:'photo',expected:66,observed:43,missing:true}],
+  });
+  expect(pressKey).not.toHaveBeenCalled();
+}, 15000);

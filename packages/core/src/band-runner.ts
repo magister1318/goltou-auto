@@ -1,6 +1,6 @@
 import { setTimeout as pause } from 'node:timers/promises';
 import { existingServiceResult } from './job-safety';
-import { retainBlogOutcome, blogOutcomeFailure } from './blog-outcome';
+import { retainBlogOutcome, blogOutcomeFailure, retainPublishedReadback } from './blog-outcome';
 import { registrationLog, registrationAttempt } from './registration-log';
 import { inTrace, trace, reasonCode, traceJob, type TraceJob } from '@goltou/surface/telemetry';
 import { ApiError } from '@goltou/api-client';
@@ -145,8 +145,10 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
           if (j.mode === 'publish') {
             try { result.postUrl = await this.blog.publish(); j.publicationUncertain = false; }
             catch (error) {
-              if (!j.publishProbe || !(error instanceof Error) || error.message !== 'BLOG_PUBLISH_PROBE_BLOCKED') throw error;
-              j.publicationUncertain = false; result.status = 'stopped'; result.reason = 'BLOG_PUBLISH_PROBE_BLOCKED';
+              if (j.publishProbe && error instanceof Error && error.message === 'BLOG_PUBLISH_PROBE_BLOCKED') {
+                result.status = 'stopped'; result.reason = 'BLOG_PUBLISH_PROBE_BLOCKED';
+              } else result.postUrl = retainPublishedReadback(result, this.blog.publishedPost?.url, error);
+              j.publicationUncertain = false;
             }
           }
           j.blogReadbackTimings = [...this.blog.readbackTimings];
@@ -277,8 +279,14 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
       j.status = 'stopped_before_post'; j.secondsLeft = 0; j.message = '게시 전 멈춤 · 밴드 화면에서 확인하고 게시하거나 버려 주세요.';
       await this.emit(); return false;
     }
-    result.postUrl = await this.band.publish(); j.bandBarrierDecisions = this.directory.decisionCodes;
-    j.publicationUncertain = false; result.status = 'published'; result.outcome = 'ok'; await this.emit();
+    result.postUrl = await this.band.publish().catch(error => {
+      if (error instanceof RecordError) throw error;
+      return retainPublishedReadback(result, this.band?.createdReceiptUrl, error);
+    });
+    j.bandBarrierDecisions = this.directory.decisionCodes;
+    j.creationState = 'published'; j.publicationUncertain = false; result.status = 'published'; result.outcome = 'ok';
+    await this.emit();
+    await this.directory.releaseSurface().catch(error => trace('runner.band_write', 'skip', { reason:reasonCode(error) }));
     return true;
   }
   private markBandFailure(result: TargetResult, error: unknown) {
@@ -315,7 +323,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     }
     const isBand = j.step === 6;
     if (isBand && code === 'BAND_LOGIN_LOST') await this.clearBandCache('BAND_LOGIN_LOST');
-    if (isBand && code === 'BAND_TARGET_INVALID') await this.clearBandCache('BAND_TARGET_INVALID');
+    if (isBand && ['BAND_TARGET_INVALID', 'BAND_WRITE_NOT_ALLOWED'].includes(code)) await this.clearBandCache('BAND_TARGET_INVALID');
     const blocked = isBand ? this.directory.blockedBeforeSend(j.activeTargetKey ?? '') : undefined;
     if (isBand) j.bandBarrierDecisions = this.directory.decisionCodes;
     if (blocked || code === 'BAND_CREATE_REJECTED') { j.publicationUncertain = false; j.creationState = 'none'; }
@@ -323,7 +331,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     j.failureCode = blocked ?? (isBand && /^BAND_POST_UNCONFIRMED:/.test(code) ? code : j.publicationUncertain ? isBand ? 'BAND_POST_UNCONFIRMED' : 'BLOG_PUBLISH_UNCONFIRMED' : safeFailureCode(error, 'CHANNEL_FAILED'));
     if (!isBand) j.failureCode = blogOutcomeFailure(j, j.failureCode);
     const execution = isBand ? this.band : this.blog;
-    const dialog = blocked || code === 'BAND_TARGET_INVALID' ? null : await execution?.dialog().catch(() => null);
+    const dialog = blocked || ['BAND_TARGET_INVALID', 'BAND_WRITE_NOT_ALLOWED'].includes(code) ? null : await execution?.dialog().catch(() => null);
     if (dialog) { j.status = 'dialog_paused'; j.dialog = dialog; j.service = isBand ? 'band' : 'naver'; j.message = '서비스 확인창에서 선택해 주세요.'; }
     else if (/^(BAND_LOGIN_LOST|BAND_LOGIN_UNCONFIRMED|LOGIN_OR_EDITOR_LOST)$/.test(code)) {
       j.status = 'login_paused'; j.service = isBand ? 'band' : 'naver'; j.message = '로그인 풀림으로 멈춤';
@@ -334,8 +342,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     } else {
       const result = isBand ? this.result() : j.targetResults!.find(t => t.channel === 'blog');
       if (result && !['draft_saved', 'published'].includes(result.status)) { result.status = 'failed'; result.reason = j.failureCode; }
-      // A successful create receipt identifies the one post even when full
-      // readback fails. Preserve the link for verified deletion, never success.
+      // Preserve any known receipt if an error occurred outside the viewer readback.
       if (isBand && result && this.band?.createdReceiptUrl) result.postUrl = this.band.createdReceiptUrl;
       if (result && result.status === 'failed') result.outcome = existingServiceResult({ ...j, targetResults: [result] }) ? 'unconfirmed' : 'failed';
       if ([2, 3].includes(j.step)) for (const target of j.targetResults!) if (target.status === 'running') { target.status = 'failed'; target.reason = j.failureCode; }
@@ -349,6 +356,10 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
       : '생성 응답과 목록에서 이번 글을 하나로 확인하지 못했습니다. 등록 기록에서 확인해 주세요. 다시 게시하지 않습니다.';
     if (code.startsWith('BAND_PUBLISHED_READBACK_MISMATCH')) j.message = '게시한 글 주소는 저장했습니다. 다시 읽은 본문·줄바꿈·사진·태그·링크가 계획과 달라 검증에 실패했습니다.';
     if (code === 'BAND_PUBLISHED_READBACK_UNAVAILABLE') j.message = '게시한 글 주소는 저장했습니다. 상세 내용을 끝까지 읽지 못해 검증을 마치지 못했습니다. 다시 게시하지 않습니다.';
+    if (code === 'BAND_WRITE_NOT_ALLOWED' || code === 'BAND_COMPOSER_UNAVAILABLE') {
+      j.publicationUncertain = false;
+      j.message = code === 'BAND_WRITE_NOT_ALLOWED' ? '이 밴드에서 글을 쓸 권한이 없습니다.' : '밴드 글쓰기 화면을 열지 못했습니다.';
+    }
     if (code === 'BAND_CREATE_REJECTED') j.message = '밴드가 게시 요청을 거절했습니다. 같은 작업을 자동으로 다시 게시하지 않습니다.';
     if (isBand && code === 'BAND_TARGET_INVALID') {
       j.publicationUncertain = false;
@@ -371,13 +382,15 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     return traceJob('unfinished_cleanup', this.job?.step === 6 ? 'band' : 'naver', async () => {
     if (!this.job || !['running', 'login_paused', 'user_paused', 'failed', 'channel_paused', 'recovery_paused'].includes(this.job.status) || this.job.publicationUncertain || this.job.activity?.stage === 'submit' || this.job.failureCode === 'BAND_POST_UNCONFIRMED') throw new ApiError('conflict', '저장 또는 게시 결과를 먼저 확인해 주세요.');
     await this.stop();
-    if (this.band && (this.job.failureCode !== 'BAND_TARGET_INVALID' || this.band.hasOwnedComposer)) await this.band.discard();
+    const noComposer = ['BAND_TARGET_INVALID','BAND_WRITE_NOT_ALLOWED','BAND_COMPOSER_UNAVAILABLE'].includes(this.job.failureCode ?? '');
+    if (this.band && (!noComposer || this.band.hasOwnedComposer && this.job.failureCode !== 'BAND_WRITE_NOT_ALLOWED')) await this.band.discard();
     await this.blog?.close(); await this.work?.cleanup();
     for (const target of this.job.targetResults ?? []) if (!['draft_saved', 'published'].includes(target.status)) target.status = 'stopped';
     this.job.status = 'stopped'; await this.emit();
     });
   }
   async resume() {
+    if (this.job?.failureCode === 'BAND_WRITE_NOT_ALLOWED') throw new ApiError('conflict', '이 밴드에서 글을 쓸 권한이 없습니다.');
     if (this.job?.failureCode === 'BAND_TARGET_INVALID') throw new ApiError('conflict', '밴드 목록이 바뀌었습니다. 새로고침 후 다시 골라 주세요.');
     const movingToNextBand = this.job?.step === 6 && !!this.result()?.outcome && this.job.targetResults?.some(target => target.channel === 'band' && target.status === 'running');
     if (!movingToNextBand && this.job && existingServiceResult(this.job) && (this.job.status==='failed' || ['user_paused','login_paused'].includes(this.job.status) && !this.blogSkipped && !this.job.targetResults?.some(t=>t.status==='published'))) throw new ApiError('conflict', '저장 또는 게시 결과는 등록 기록에서 확인해 주세요. 같은 글을 다시 올리지 않습니다.');

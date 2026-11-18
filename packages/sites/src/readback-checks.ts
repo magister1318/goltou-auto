@@ -1,7 +1,7 @@
 import { trace } from '@goltou/surface/telemetry';
 
 /** Diagnostics contain field names and positions only, never service content. */
-export interface ReadbackIssue { field: 'number' | 'cursor' | 'input' | 'href' | 'photo' | 'table' | 'title' | 'text' | 'line_breaks' | 'photos' | 'order' | 'hashtags' | 'links' | 'bold' | 'visibility' | 'stability'; index?: number; paragraph?: number }
+export interface ReadbackIssue { field: 'number' | 'cursor' | 'input' | 'href' | 'photo' | 'table' | 'title' | 'text' | 'line_breaks' | 'photos' | 'order' | 'hashtags' | 'links' | 'bold' | 'visibility' | 'stability'; index?: number; paragraph?: number; expected?: number; observed?: number; missing?: boolean }
 export class ReadbackMismatch extends Error {
   constructor(code: string, readonly issues: ReadbackIssue[]) { super(code); }
 }

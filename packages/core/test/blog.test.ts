@@ -656,3 +656,12 @@ describe.runIf(Boolean(executablePath))('WP29 real table input',()=>{
     expect(f.beforeSave).not.toHaveBeenCalled();expect(await f.counts()).toEqual({saves:0,publishes:0});
   },25000);
 });
+
+it('keeps the planned photo total while the blog editor opens before the files are downloaded', async () => {
+  const f = await fixture();
+  const execution = createBlogExecution(f.plan, [], {host:f.host,editorUrl:f.editorUrl}, {
+    check:f.check, progress:f.progress, beforeSave:f.beforeSave,
+  });
+  await execution.ensureReady();
+  expect(f.progress).toHaveBeenCalledWith(expect.objectContaining({photos:0,totalPhotos:8}));
+});

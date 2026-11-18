@@ -16,7 +16,6 @@ export async function settledReadback<T>(options: {
   read(): Promise<T | null>;
   classes(value: T | null): ReadbackClass[];
   check(): void;
-  reveal?(value: T | null): Promise<void>;
   timeoutMs: number;
   intervalMs?: number;
   now?: () => number;
@@ -39,7 +38,6 @@ export async function settledReadback<T>(options: {
     trace('verification',done?'ok':'wait',{check:'stability',reason:'READBACK_STABILITY',counts:{expected:2,observed:stable?2:1}},elapsed);
     if (done || elapsed >= options.timeoutMs) return { value, stable, classes };
     previous = signature;
-    await options.reveal?.(value);
     await pause(Math.min(options.intervalMs ?? 750, Math.max(0, options.timeoutMs - (now() - started))));
   }
 }

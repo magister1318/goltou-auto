@@ -38,7 +38,7 @@ export class CdpSurface implements Surface {
   private dialogSerial = 0;
   private barrierFailed = false;
   private barrierFailure = '';
-  private readonly blockedRequests = new Set<string>();
+  private readonly blockedRequests = new Map<string, boolean>();
   private requestGuard: { paths: Set<string>; rules: readonly RequestRule[]; inspect: (request: GuardedRequest) => boolean | Promise<boolean>; response: (response: GuardedResponse) => void; observeResponse?: (request: Pick<GuardedRequest, 'url' | 'method'>) => boolean; blocked?: (request: Pick<GuardedRequest, 'url' | 'method'> | undefined, reason: RequestBlockReason) => void } | undefined;
   private readonly acceptedRequests = new Map<string, GuardedRequest>();
 
@@ -105,7 +105,7 @@ export class CdpSurface implements Surface {
           reason = 'STATIC_BLOCK';
           const raw = p.request as GuardedRequest & { headers?: Record<string, unknown> };
           const contentType = Object.entries(raw.headers ?? {}).find(([key]) => key.toLowerCase() === 'content-type')?.[1];
-          trace('barrier', 'fail', { ...requestTrace({ url: raw.url, method: raw.method, contentType: String(contentType ?? ''), ...(typeof raw.postData === 'string' ? { postData: raw.postData, postDataComplete: true } : {}) }, false), reason });
+          trace('barrier', this.blockedRequests.get(path) ? 'blocked_expected' : 'fail', { ...requestTrace({ url: raw.url, method: raw.method, contentType: String(contentType ?? ''), ...(typeof raw.postData === 'string' ? { postData: raw.postData, postDataComplete: true } : {}) }, false), reason });
         }
         if (!blocked && this.requestGuard?.rules.some(r => (r.hostname === '*' || r.hostname === url.hostname) && (r.prefix ? url.pathname.startsWith(r.pathname) : r.pathname === url.pathname))) {
           const raw = p.request as GuardedRequest & { headers?: Record<string, unknown> };
@@ -168,12 +168,12 @@ export class CdpSurface implements Surface {
     });
   }
 
-  async blockRequests(rules: readonly { hostname: string; pathname: string }[]): Promise<void> {
+  async blockRequests(rules: readonly { hostname: string; pathname: string; expected?: boolean }[]): Promise<void> {
     return traceStep('surface.cdp.index.CdpSurface.blockRequests', async () => {
     this.jobTrace = currentTrace() ?? this.jobTrace;
     for (const rule of rules) {
       if (!/^[a-z0-9.-]+$/.test(rule.hostname) || !/^\/[a-zA-Z0-9/_.-]+$/.test(rule.pathname)) throw new Error('SURFACE_BAD_REQUEST_BARRIER');
-      this.blockedRequests.add(`${rule.hostname}${rule.pathname}`);
+      this.blockedRequests.set(`${rule.hostname}${rule.pathname}`, rule.expected === true);
     }
     await this.updateRequestPatterns();
 
@@ -183,7 +183,7 @@ export class CdpSurface implements Surface {
   /** Fetch.enable replaces its complete pattern set. Adding static blocks must
    * retain an installed inspector and its response observation in either order. */
   private async updateRequestPatterns() {
-    const paths = new Set([...(this.requestGuard?.paths ?? []), ...this.blockedRequests]);
+    const paths = new Set([...(this.requestGuard?.paths ?? []), ...this.blockedRequests.keys()]);
     const stages = this.requestGuard ? ['Request', 'Response'] : ['Request'];
     await this.cdp.send('Fetch.enable', { patterns: [...paths].flatMap(path =>
       stages.flatMap(requestStage => [path, ...(path.startsWith('127.0.0.1/') ? [path.replace('127.0.0.1/', '127.0.0.1:*/')] : [])]

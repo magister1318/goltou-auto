@@ -67,7 +67,7 @@ export interface Surface {
   pressKey(input: KeyInput, beforePress?: () => Promise<void>): Promise<void>;
   attachFiles(selector: string, absolutePaths: readonly string[]): Promise<void>;
   /** Shell-enforced request barrier, installed before navigation; persists until close. */
-  blockRequests?(rules: readonly { hostname: string; pathname: string }[]): Promise<void>;
+  blockRequests?(rules: readonly { hostname: string; pathname: string; expected?: boolean }[]): Promise<void>;
   guardRequests?(rules: readonly RequestRule[], inspect: (request: GuardedRequest) => boolean | Promise<boolean>,
     response: (response: GuardedResponse) => void,
     observeResponse?: (request: Pick<GuardedRequest, 'url' | 'method'>) => boolean,

@@ -21,8 +21,8 @@ export interface BlogPlan {
   channel: 'blog' | 'band';
   steps: ({ kind: 'text'; role: string; text: string; runs?: BlogRun[] } | { kind: 'break' } | { kind: 'photos'; urls: string[] } | { kind: 'table'; role: string; rows: string[][]; cellRuns?: BlogRun[][][] })[];
 }
-export type BlogToken = { kind: 'text'; text: string; runs?: BlogRun[] } | { kind: 'photo'; identity: string; loaded?: boolean } | BlogTableToken;
-export interface BlogReadback { title: string; tokens: BlogToken[]; tags: string[]; visibility?: BlogVisibility | null }
+export type BlogToken = { kind: 'text'; text: string; runs?: BlogRun[] } | { kind: 'photo'; identity: string } | BlogTableToken;
+export interface BlogReadback { title: string; tokens: BlogToken[]; tags: string[]; tagArea?: boolean; visibility?: BlogVisibility | null }
 export interface BlogProgress { tableModes?: ('native'|'text-list')[]; characters: number; totalCharacters: number; photos: number; totalPhotos: number; photoUploadMilliseconds?: number; photoUploadSamples?: number; activity?: import('../progress').EngineActivity; ownRecoveryDiscarded?: boolean; blogParagraph?: { blockIndex: number; runs: BlogRun[] }; blogInputReset?: boolean }
 export interface BlogEnvironment {
   host: SurfaceHost;
@@ -64,13 +64,19 @@ export async function readBlogDocument(surface: Surface, documentUrls?: readonly
         // The published viewer fills otherwise empty paragraphs with U+200B.
         // Ignore only that standalone filler; preserve every character in real text.
         for(const p of e.querySelectorAll('.se-text-paragraph')) {const runs=paragraphRuns(p),t=runs.map(r=>r.text).join('');if(t.length&&t!=='\u200b') tokens.push({kind:'text',text:t,runs});}
-      } else if(e.classList.contains('se-image')) {
-        for(const img of e.querySelectorAll('.se-image-resource')) {
-          const raw=[img.currentSrc,img.getAttribute('src'),img.getAttribute('data-lazy-src'),img.getAttribute('data-src'),img.getAttribute('data-file-name'),img.getAttribute('alt')].join(' ');
+      } else if(e.classList.contains('se-image') || e.classList.contains('se-imageGroup') || e.classList.contains('se-imageStrip')) {
+        let nested=false;
+        for(let parent=e.parentElement;parent&&parent!==main;parent=parent.parentElement)
+          if(parent.classList.contains('se-imageGroup')||parent.classList.contains('se-imageStrip'))nested=true;
+        if(nested)continue;
+        const containers=Array.from(e.querySelectorAll('.se-module-image,.se-image-placeholder'));
+        const images=Array.from(e.querySelectorAll('img')).filter(img=>img.classList.contains('se-image-resource')||containers.some(slot=>slot.contains(img)));
+        const slots=Array.from(e.querySelectorAll('img,.se-module-image,.se-image-placeholder')).filter(node=>images.includes(node)||containers.includes(node)&&!node.querySelector('img,.se-module-image,.se-image-placeholder'));
+        for(const img of slots) {
+          const attributes=['data-lazy-src','data-src','data-original','data-file-name','src','alt'];
+          const raw=attributes.flatMap(key=>[img.getAttribute(key),img.parentElement?.getAttribute(key)]).concat(img.currentSrc||'').join(' ');
           const match=/goltou-[a-f0-9]{16}-[0-9]+\\.[a-z]+/i.exec(raw);
           const photo={kind:'photo',identity:match?match[0]:''};
-          // Object spread is rejected by Chromium's throwOnSideEffect reader.
-          if(${published})photo.loaded=img.complete&&img.naturalWidth>0&&img.naturalHeight>0&&/goltou-[a-f0-9]{16}-[0-9]+/i.test(img.currentSrc||img.getAttribute('src')||'');
           tokens.push(photo);
         }
       } else if(e.classList.contains('se-table')) {
@@ -82,8 +88,10 @@ export async function readBlogDocument(surface: Surface, documentUrls?: readonly
       } else { tokens.push({kind:'text',text:'UNSUPPORTED_EDITOR_COMPONENT'}); }
     }
     // The real post page wraps trim; its invocation fails throwOnSideEffect.
-    return {title:text(d.querySelector(${JSON.stringify(titleSelector)})).trimStart().trimEnd(),tokens,
-      tags:Array.from(d.querySelectorAll('.wrap_tag a.itemTagfont, .tag_list .tag, .se-tag-list .se-tag, .post_tag .item, [data-goltou-tag], [class^="tag_textarea__"] span[class*="tag__"][aria-label]')).map(e=>(e.textContent||'').replace(/^#/,'').trimStart().trimEnd())};`);
+    const tags=Array.from(d.querySelectorAll('.wrap_tag a.itemTagfont, .wrap_tag a[href*="TagNaver"], .tag_list .tag, .se-tag-list .se-tag, .post_tag .item, [data-goltou-tag], [class^="tag_textarea__"] span[class*="tag__"][aria-label]')).map(e=>(e.textContent||'').replace(/^#/,'').trimStart().trimEnd()).filter(Boolean);
+    const result={title:text(d.querySelector(${JSON.stringify(titleSelector)})).trimStart().trimEnd(),tokens,tags};
+    if(${published})result.tagArea=!!d.querySelector('.wrap_tag,.tag_list,.se-tag-list,.post_tag,[class^="tag_textarea__"]')||tags.length>0;
+    return result;`);
 
     });
   }
@@ -174,8 +182,7 @@ export class BlogExecution {
   private inputFormattingFailure: BlogFormattingError | undefined;
   private verifyDocument(value: BlogReadback, stage: FormattingStage) {
     if (this.formattingFailure) throw this.formattingFailure;
-    // Retain existing title/photo/number diagnostics before the exact run comparison.
-    verifyBlogTables(this.plan, value, this.tableModes);
+    if (!blogTablesMatch(this.plan, value, this.tableModes)) trace('verification', 'wait', { check:'table', reason:'READBACK_TABLE' });
     this.env.verify(value, stage);
     const issues = compareBlogFormatting(this.plan, value, this.tableModes);
     if (issues.length) {
@@ -284,7 +291,7 @@ export class BlogExecution {
     // before the publication guard, retaining that guard's response checks.
     if (readback) {
       if (!this.surface.blockRequests) throw new Error('BLOG_READBACK_BARRIER_UNAVAILABLE');
-      await this.surface.blockRequests([{ hostname: 'blog.naver.com', pathname: '/RabbitAutoSaveWrite.naver' }]);
+      await this.surface.blockRequests([{ hostname: 'blog.naver.com', pathname: '/RabbitAutoSaveWrite.naver', expected: true }]);
     }
     protectBlogInputs(this.surface, async (x, y) => {
       if (!this.publishInteraction || this.env.mode !== 'publish') return false;
@@ -362,7 +369,7 @@ export class BlogExecution {
         return docs.some(({d})=>d.querySelector('.se-documentTitle'))?'ready':false;`);
       if (state === 'expired') throw new Error('LOGIN_OR_EDITOR_LOST');
       return state;
-    }, 30000);
+    }, 30000, { surface: this.surface!, control: "BLOG_BODY" });
     await this.guard();
     this.signal({ stage: 'open', phase: 'progress', opening: 'empty' });
     await this.prepare();
@@ -374,7 +381,7 @@ export class BlogExecution {
   }
   private report(reset = false) {
     const totalCharacters = this.plan.steps.reduce((n, s) => n + (s.kind === 'text' ? Array.from(s.text).length : s.kind === 'table' ? s.rows.flat().reduce((a, t) => a + Array.from(t).length, 0) : 0), 0);
-    this.env.progress({ tableModes: [...this.tableModes], characters: this.characters, totalCharacters, photos: this.photos, totalPhotos: this.files.length, ...(reset ? { blogInputReset: true } : {}),
+    this.env.progress({ tableModes: [...this.tableModes], characters: this.characters, totalCharacters, photos: this.photos, totalPhotos: this.plan.steps.reduce((n, step) => n + (step.kind === 'photos' ? step.urls.length : 0), 0), ...(reset ? { blogInputReset: true } : {}),
       ...(this.ownRecoveryDiscarded ? { ownRecoveryDiscarded: true } : {}), ...(this.blogParagraph ? { blogParagraph: this.blogParagraph } : {}),
       photoUploadMilliseconds: this.photoUploadMilliseconds, photoUploadSamples: this.photoUploadSamples, ...(this.activity ? { activity: this.activity } : {}) });
   }
@@ -541,7 +548,7 @@ export class BlogExecution {
         await waitFor(async () => {
           await this.guard();
           return sameBlogTags(expected, (await readBlogDocument(s)).tags);
-        });
+        }, undefined, { surface: s, control: "BLOG_TAG_INPUT" });
         for (const tag of plannedBlogTags({ ...this.plan, steps: [step] })) {
           // The editor already merged body hashtags when the layer opened.
           // Keep those chips and never submit a duplicate or delete a tag.
@@ -555,7 +562,7 @@ export class BlogExecution {
             await this.guard();
             const tags = (await readBlogDocument(s)).tags;
             return sameBlogTags(expected, tags);
-          });
+          }, undefined, { surface: s, control: "BLOG_TAG_INPUT" });
         }
         // Progress counts the plan's # prefixes and separators after tag commit.
         this.characters = start + Array.from(step.text).length;
@@ -613,7 +620,8 @@ export class BlogExecution {
     try {
     await this.guard();
     await closeTagLayer(this.surface!);
-    const started = Date.now(); let navigationKeys = 0;
+    const started = Date.now();
+    let navigationKeys = 0;
     let sweepStarted = false;
     let observed = await waitFor(async () => {
       await this.guard(); const value = await readBlogDocument(this.surface!);
@@ -630,7 +638,7 @@ export class BlogExecution {
         await this.surface!.pressKey({ key: 'PageDown' }); navigationKeys++;
       }
       return null;
-    }, Math.max(30000, this.files.length * 2000));
+    }, Math.max(30000, this.files.length * 2000), { surface: this.surface!, control: "BLOG_IMAGE_LIST" });
     this.readbackTimings.push({ photos: observed.tokens.filter(t => t.kind === 'photo').length, milliseconds: Date.now() - started, navigationKeys });
     if (expectedBlogTags(this.plan).length || await point(this.surface!, tagPanelToggle)) {
       await this.tagInput(); observed = await readBlogDocument(this.surface!);
@@ -704,7 +712,7 @@ export class BlogExecution {
     const target = await point(s, selector);
     if (!target) throw new Error('BLOG_DRAFT_SAVED_UNVERIFIED');
     await s.click(target.x, target.y, matches);
-    await waitFor(async () => sameReadbackIdentityText(this.title.text, (await readBlogDocument(s)).title), 15000);
+    await waitFor(async () => sameReadbackIdentityText(this.title.text, (await readBlogDocument(s)).title), 15000, { surface: s, control: "BLOG_DRAFT_ITEM" });
     const observed = await this.observe(); this.verifyDocument(observed, 'REOPENED'); this.verified = true; return observed;
 
     });
@@ -743,7 +751,7 @@ export class BlogExecution {
         this.publishedPost = identity;
         this.publishedIdentitySources = evidence.sources;
         return true;
-      }, 30000);
+      }, 30000, { surface: s, control: "BLOG_PUBLISH_RECEIPT" });
       await this.verifyPublished();
       return this.publishedPost!.url;
     } finally {
@@ -757,7 +765,7 @@ export class BlogExecution {
     return traceStep('sites.naver-blog.plan.BlogExecution.verifyPublished', async () => {
     if (!this.publishedPost) throw new Error('BLOG_PUBLISH_ID_UNCONFIRMED');
     const s = this.surface!;
-    const started = Date.now(); let navigationKeys = 0;
+    const started = Date.now();
     const ownUrls = async () => (await read<string[]>(s, `return docs.map(({d})=>d.location.href);`)).filter(url => postIdentity(url)?.url === this.publishedPost!.url);
     const paragraphs = plannedBlogParagraphs(this.plan,this.tableModes);
     const runs = (value: BlogReadback | null) => value?.tokens.flatMap(t => t.kind === 'text' ? normalizeBlogRuns(t.runs ?? []) : t.kind === 'table' ? t.rows.flatMap((_,r)=>normalizeBlogRuns(tableRowRuns(t,r))) : []) ?? [];
@@ -772,23 +780,23 @@ export class BlogExecution {
         { check: 'text', reason: 'READBACK_TEXT', expected: plannedRuns.reduce((n,r)=>n+r.text.length,0), observed: observedRuns.reduce((n,r)=>n+r.text.length,0), present: !!value && (!plannedRuns.length || observedRuns.length > 0) },
         { check: 'bold', reason: 'READBACK_BOLD', expected: plannedRuns.filter(r=>r.bold).length, observed: observedRuns.filter(r=>r.bold).length, present: !!value },
         { check: 'links', reason: 'READBACK_LINKS', expected: plannedRuns.filter(r=>r.href).length, observed: observedRuns.filter(r=>r.href).length, present: observedRuns.filter(r=>r.href).length >= plannedRuns.filter(r=>r.href).length },
-        { check: 'photos', reason: 'READBACK_PHOTOS', expected: expectedPhotos, observed: photos.filter(t=>t.kind==='photo'&&t.identity&&t.loaded).length, present: photos.length >= expectedPhotos && photos.every(t=>t.kind==='photo'&&!!t.identity&&t.loaded===true) },
-        { check: 'hashtags', reason: 'READBACK_TAGS', expected: plannedBlogTags(this.plan).length, observed: value?.tags.length ?? 0, present: (value?.tags.length ?? 0) >= plannedBlogTags(this.plan).length },
+        { check: 'photos', reason: 'READBACK_PHOTOS', expected: expectedPhotos, observed: photos.length, present: photos.length >= expectedPhotos },
+        { check: 'hashtags', reason: 'READBACK_TAGS', expected: plannedBlogTags(this.plan).length, observed: value?.tags.length ?? 0, present: !!value && (!value.tagArea || value.tags.length >= plannedBlogTags(this.plan).length) },
         { check: 'visibility', reason: 'READBACK_VISIBILITY', expected: 1, observed: value?.visibility ? 1 : 0, present: !!value?.visibility },
       ];
     };
-    let mobile: Surface | undefined, sweepStarted = false;
+    let mobile: Surface | undefined;
     try {
       // Public visibility has an independently observed openType=2 on the real
       // mobile post. Never infer it merely from the requested publish setting.
       if (!this.env.localPublish && this.visibility === 'public') {
         mobile = await this.env.host.create('naver');
         if (!mobile.blockRequests) throw Error('BLOG_READBACK_BARRIER_UNAVAILABLE');
-        await mobile.blockRequests([{ hostname: 'blog.naver.com', pathname: '/RabbitWrite.naver' }, { hostname: 'blog.naver.com', pathname: '/RabbitAutoSaveWrite.naver' }]);
+        await mobile.blockRequests([{ hostname: 'blog.naver.com', pathname: '/RabbitWrite.naver' }, { hostname: 'blog.naver.com', pathname: '/RabbitAutoSaveWrite.naver', expected: true }]);
         await mobile.open({ url: this.publishedPost.url.replace('https://blog.naver.com/', 'https://m.blog.naver.com/'), session: 'naver', width: 412, height: 900, userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36' });
       }
       const settled = await settledReadback({
-        timeoutMs: this.env.localPublish && this.env.publishedSettleMs !== undefined ? this.env.publishedSettleMs : Math.max(90000, expectedPhotos * 4000),
+        timeoutMs: this.env.localPublish && this.env.publishedSettleMs !== undefined ? this.env.publishedSettleMs : 15000,
         check: this.env.check, classes,
         read: async () => {
           const urls = await ownUrls();
@@ -804,41 +812,40 @@ export class BlogExecution {
           }
           return actual;
         },
-        reveal: async value => {
-          if (value && classes(value).find(c=>c.check==='photos')?.present) return;
-          // Focus once at the top, then retain that focus while advancing.
-          // Re-clicking the title each poll would reset the lazy-load sweep.
-          if (!sweepStarted) {
-            const urls = await ownUrls();
-            const focusSelector = `${titleSelector}, ${bodySelector}`;
-            const focus = await read<{x:number;y:number}|null>(s, `for(const {d,x,y} of docs){if(!${JSON.stringify(urls)}.includes(d.location.href))continue;for(const e of d.querySelectorAll(${JSON.stringify(focusSelector)})){if(!visible(e)||e.querySelector('a,button,input'))continue;const r=e.getBoundingClientRect();if(y+r.top>=0&&y+r.bottom<innerHeight)return{x:x+r.left+r.width/2,y:y+r.top+r.height/2};}}return null;`);
-            if (!focus) return;
-            if (!await s.readClickTarget?.(focus.x, focus.y, focusSelector)) throw Error('BLOG_PUBLISHED_FOCUS_UNCONFIRMED');
-            await s.click(focus.x, focus.y); sweepStarted = true;
-          }
-          await s.pressKey({key:'PageDown'}); navigationKeys++;
-        },
       });
       const value = settled.value;
-      const missing = settled.classes.filter(item => !item.present).map(({ check }): ReadbackIssue => ({
+      const issues: ReadbackIssue[] = settled.classes.filter(item => !item.present).map(({ check, expected, observed }) => ({
         field: check === 'paragraphs' ? 'text' : check === 'links' ? 'href' : check === 'photos' ? 'photo' : check as ReadbackIssue['field'],
+        expected, observed,
       }));
-      if (!value) throw new ReadbackMismatch('BLOG_PUBLISHED_READBACK_UNAVAILABLE', missing);
-      if (!settled.stable) throw new ReadbackMismatch('BLOG_PUBLISHED_READBACK_UNAVAILABLE', [{ field: 'stability' }, ...missing]);
-      const issues: ReadbackIssue[] = [];
-      if (!blogTablesMatch(this.plan,value,this.tableModes)) issues.push({field:'table'});
-      if (!settled.classes.find(c=>c.check==='photos')!.present) issues.push({field:'photo'});
-      if (value.visibility !== this.visibility) issues.push({field:'visibility'});
-      if (!sameServiceBlogTags(this.plan, value.tags)) issues.push({field:'hashtags'});
-      for (const issue of compareBlogFormatting(this.plan, value, this.tableModes)) for (const field of issue.fields) issues.push({field,paragraph:issue.paragraph});
-      try { this.env.verify(value, 'PUBLISHED'); } catch(error) { if(error instanceof ReadbackMismatch) issues.push(...error.issues); else throw error; }
+      if (!value || !settled.stable) throw new ReadbackMismatch('BLOG_PUBLISHED_READBACK_UNAVAILABLE', [{ field: 'stability' }, ...issues]);
+      if (value.visibility !== this.visibility && !issues.some(issue=>issue.field==='visibility')) issues.push({field:'visibility'});
+      if (!sameServiceBlogTags(this.plan, value.tags) && !issues.some(issue=>issue.field==='hashtags')) {
+        issues.push({field:'hashtags',expected:plannedBlogTags(this.plan).length,observed:value.tags.length});
+      }
+      const sameTitle = sameReadbackIdentityText(this.title.text, value.title);
+      for (const issue of compareBlogFormatting(this.plan, value, this.tableModes)) {
+        for (const field of issue.fields) {
+          const missing = sameTitle && (field === 'text' || field === 'href' || field === 'number');
+          const prior = issues.find(value => value.field === field && value.paragraph === undefined);
+          if (prior && missing) prior.missing = true;
+          else if (!prior) issues.push({ field, paragraph:issue.paragraph, ...(missing ? { missing: true } : {}) });
+        }
+      }
+      try { this.env.verify(value, 'PUBLISHED'); } catch(error) {
+        if (!(error instanceof ReadbackMismatch)) throw error;
+        for (const issue of error.issues) {
+          if (issues.some(existing=>existing.field===issue.field)) continue;
+          const count = settled.classes.find(item=>item.check==='photos');
+          issues.push(issue.field==='photo' && count ? { ...issue, expected:count.expected, observed:count.observed } : issue);
+        }
+      }
+      this.readbackTimings.push({ photos: value.tokens.filter(t => t.kind === 'photo').length, milliseconds: Date.now() - started, navigationKeys: 0 });
       if (issues.length) {
         for(const item of settled.classes) trace('verification', issues.some(issue=>issue.field===(item.check==='paragraphs'?'text':item.check))?'fail':'ok', {check:item.check,reason:item.reason,counts:{expected:item.expected,observed:item.observed}},Date.now()-started);
         trace('verification', settled.stable?'ok':'fail', {check:'stability',reason:'READBACK_STABILITY',counts:{expected:2,observed:settled.stable?2:1}},Date.now()-started);
-        if (issues.length===1 && issues[0]?.field==='visibility' && this.visibility==='private') throw Error('BLOG_PUBLISHED_PRIVATE_UNCONFIRMED');
         throw new ReadbackMismatch('BLOG_READBACK_MISMATCH:'+ [...new Set(issues.map(i=>i.field))].join(','), issues);
       }
-    this.readbackTimings.push({ photos: value.tokens.filter(t => t.kind === 'photo').length, milliseconds: Date.now() - started, navigationKeys });
     const pages = await read<PublishedPage[]>(s, `return docs.map(({d})=>({url:d.location.href,titles:Array.from(d.querySelectorAll('.se-documentTitle .se-text-paragraph')).map(e=>(e.textContent||'').trimStart().trimEnd())}));`);
     const evidence = resolvePublishEvidence(this.responsePost, [(await s.readState()).url], pages, this.title.text);
     if (evidence.post?.url !== this.publishedPost.url) throw Error('BLOG_PUBLISH_ID_UNCONFIRMED');

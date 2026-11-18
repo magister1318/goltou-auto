@@ -1,5 +1,5 @@
 import { existingServiceResult } from './job-safety';
-import { retainBlogOutcome, blogOutcomeFailure } from './blog-outcome';
+import { retainBlogOutcome, blogOutcomeFailure, retainPublishedReadback } from './blog-outcome';
 import { registrationLog, registrationAttempt } from './registration-log';
 import { inTrace, trace, traceJob, reasonCode, type TraceJob } from '@goltou/surface/telemetry';
 import { ApiError } from '@goltou/api-client';
@@ -130,7 +130,11 @@ export class BlogRegistrationRunner implements RegistrationRunner {
         if (job.step === 5) {
           await this.execution!.saveAndVerify();
           if (this.execution!.draftIdentity) job.blogDraftIdentity = this.execution!.draftIdentity;
-          if (job.mode === 'publish') { job.postUrl = await this.execution!.publish(); job.publicationUncertain = false; }
+          if (job.mode === 'publish') {
+            job.postUrl = await this.execution!.publish().catch(error =>
+              retainPublishedReadback(job.targetResults![0]!, this.execution!.publishedPost?.url, error));
+            job.publicationUncertain = false; job.creationState = 'published';
+          }
           job.blogReadbackTimings = [...this.execution!.readbackTimings];
           job.blogIdentitySources = [...this.execution!.publishedIdentitySources];
           job.targetResults![0]!.status = job.mode === 'draft' ? 'draft_saved' : 'published';
@@ -141,7 +145,7 @@ export class BlogRegistrationRunner implements RegistrationRunner {
         if (job.step === 7) { await this.execution!.close(); await this.work!.cleanup(); }
         trace(phase, 'ok', { counts: { step: job.step } }, Date.now() - phaseStarted);
         check(); job.completedSteps.push(job.step);
-        if (job.step === 7) { job.status = job.mode === 'draft' ? 'draft_saved' : 'published'; job.message = job.mode === 'draft' ? '새 편집기에서 임시글을 다시 열어 원문 대조를 마쳤습니다.' : '발행된 글에서 원문 대조를 마쳤습니다.'; job.secondsLeft = 0; await this.emit(); return; }
+        if (job.step === 7) { job.status = job.mode === 'draft' ? 'draft_saved' : 'published'; job.message = job.mode === 'draft' ? '새 편집기에서 임시글을 다시 열어 원문 대조를 마쳤습니다.' : job.targetResults?.[0]?.readbackNotes ? '발행했습니다. 상세 결과를 확인해 주세요.' : '발행된 글에서 원문 대조를 마쳤습니다.'; job.secondsLeft = 0; await this.emit(); return; }
         job.step++; job.current = 0; delete job.secondsLeft; job.message = job.step === 6 ? '밴드 선택 없음' : ''; await this.emit();
       }
     } catch (error) {

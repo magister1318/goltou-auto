@@ -1,5 +1,15 @@
 import { ReadbackMismatch, type BlogExecution } from '@goltou/sites';
-import type { Job } from './protocol';
+import type { Job, TargetResult } from './protocol';
+
+/** The known URL is the publication result. A viewer error only qualifies its readback. */
+export function retainPublishedReadback(result: TargetResult, url: string | undefined, error: unknown) {
+  if (!url) throw error;
+  result.postUrl = url;
+  result.readbackNotes = error instanceof ReadbackMismatch && error.issues.length
+    ? error.issues : [{ field: 'stability' }];
+  result.reason = result.readbackNotes.some(issue => issue.missing) ? 'PUBLISHED_CONTENT_MISSING' : 'PUBLISHED_READBACK_INCOMPLETE';
+  return url;
+}
 
 export function retainBlogOutcome(job: Job, execution: BlogExecution | undefined, error?: unknown) {
   if (!execution) return;

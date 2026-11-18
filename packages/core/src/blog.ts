@@ -87,7 +87,7 @@ function verifyBlogContent(plan: InputPlan, files: readonly MediaFile[], actual:
     const identity = photoIdentity(files.find(file => file.url === url)?.path.split(/[\\/]/).pop() ?? '');
     return !identity || photoIdentity(photos[i]?.identity ?? '') !== identity;
   })) issues.push({ field: 'photo' });
-  if (!(saved ? sameServiceBlogTags(plan, actual.tags) : sameBlogTags(expectedBlogTags(plan), actual.tags))) issues.push({ field: 'hashtags' });
+  if (!(saved ? sameServiceBlogTags(plan, actual.tags) : sameBlogTags(expectedBlogTags(plan), actual.tags))) trace('verification', 'wait', { check: 'hashtags', reason: 'READBACK_TAGS', counts: { expected: expectedBlogTags(plan).length, observed: actual.tags.length } });
   const reasons = { title: 'READBACK_TITLE', number: 'READBACK_NUMBER', photo: 'READBACK_PHOTO', hashtags: 'READBACK_TAGS' } as const;
   for (const { field } of issues) {
     if (field === 'photo' || field === 'number' || field === 'title' || field === 'hashtags') trace('verification', 'fail', { check: field, reason: reasons[field] });

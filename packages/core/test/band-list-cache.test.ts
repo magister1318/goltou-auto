@@ -3,8 +3,9 @@ import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { JSDOM } from 'jsdom';
+import { BandExecution } from '@goltou/sites';
 import type { Surface, SurfaceHost } from '@goltou/surface';
-import { configureTrace } from '@goltou/surface/telemetry';
+import { configureTrace, inTrace } from '@goltou/surface/telemetry';
 import { ChannelRegistrationRunner } from '../src/band-runner';
 import { bandListMaxAge, fileBandListStore, type BandListStore, type SavedBandList, type BandListResult } from '../src/band-list-cache';
 import { JobLogStore, sanitizeDetail } from '../src/job-logs';
@@ -47,7 +48,7 @@ describe('WP35 app-private Band list cache', () => {
     f.page.reconfigure({ url: 'https://band.us/band/987654321/post' });
     for (const state of ['', '<div class="uploadProgress">사진 업로드 중</div>']) {
       f.page.window.document.body.innerHTML = '<textarea class="_postTextArea"></textarea><button class="_btnPostWrite" disabled>게시</button>' + state;
-      await expect(f.runner.directory.guardCachedTarget('987654321')).resolves.toBeUndefined();
+      await expect(f.runner.directory.guardTarget('987654321')).resolves.toBeUndefined();
     }
     expect(await f.store.read()).not.toBeNull();
   });
@@ -190,9 +191,11 @@ describe('WP35 app-private Band list cache', () => {
     if (mode === 'dialog') vi.mocked(f.surface.readDialog!).mockResolvedValue({ id: 'denied', kind: 'alert', message: '글쓰기 권한이 없습니다.' });
     await f.runner.start({ ...input, targets: [input.targets[0]!] }, '합성 시험', 0, work());
     await until(() => f.runner.job?.status === 'failed');
-    const message = '밴드 목록이 바뀌었습니다. 새로고침 후 다시 골라 주세요.';
-    expect(f.runner.job).toMatchObject({ status: 'failed', failureCode: 'BAND_TARGET_INVALID', message, publicationUncertain: false });
-    expect(f.runner.job?.targetResults).toMatchObject([{ status: 'failed', reason: 'BAND_TARGET_INVALID' }]);
+    const denied = ['permission', 'disabled', 'dialog'].includes(mode);
+    const message = denied ? '이 밴드에서 글을 쓸 권한이 없습니다.' : '밴드 목록이 바뀌었습니다. 새로고침 후 다시 골라 주세요.';
+    const failureCode = denied ? 'BAND_WRITE_NOT_ALLOWED' : 'BAND_TARGET_INVALID';
+    expect(f.runner.job).toMatchObject({ status: 'failed', failureCode, message, publicationUncertain: false });
+    expect(f.runner.job?.targetResults).toMatchObject([{ status: 'failed', reason: failureCode }]);
     expect(await f.store.read()).toBeNull();
     expect(f.surface.open).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ url: 'https://band.us/band/987654321/post' }));
     for (const call of [f.surface.click, f.surface.typeText, f.surface.pressKey, f.surface.attachFiles]) expect(call).not.toHaveBeenCalled();
@@ -217,4 +220,46 @@ describe('WP35 app-private Band list cache', () => {
     expect(lines.some(l => l.bandList?.cacheSource === 'band')).toBe(true);
     expect(sanitizeDetail({ bandList: { cacheSource: 'PRIVATE_NAME', cacheAgeMinutes: -1, stale: 'PRIVATE_NAME', cacheCleared: true, names: raw } } as never)).toEqual({ bandList: { cacheCleared: true } });
   });
+});
+
+it.each(['alternate-composer','timeout','permission-after-click'])('names the fourth Band wait on a band with two spaces (%s)', async mode => {
+  const f = fixture();
+  const directory = f.runner.directory, band = { key:'987654321', name:'합성 밴드  이름' };
+  directory.seedChoices([band]);
+  vi.spyOn(directory,'freshFeed').mockReturnValue(true);
+  vi.mocked(f.surface.open).mockImplementation(async options=>{
+    f.page.reconfigure({ url:options.url + '?private=HIDDEN_QUERY' });
+    f.page.window.document.body.innerHTML = '<button class="_btnPostWrite" aria-label="글쓰기"><span>✎</span></button>';
+  });
+  vi.mocked(f.surface.click).mockImplementation(async (_x,_y,before)=>{
+    await before?.();
+    if (mode === 'alternate-composer') f.page.window.document.body.innerHTML = '<section class="postWriteSection"><textarea aria-label="본문"></textarea></section>';
+    if (mode === 'permission-after-click') f.page.window.document.body.innerHTML = '<div role="alertdialog">이 밴드에서 글쓰기 권한이 없습니다.</div>';
+  });
+  const folder = await mkdtemp(path.join(os.tmpdir(),'goltou-composer-'));
+  cleanups.push(()=>rm(folder,{recursive:true,force:true}));
+  const logs = new JobLogStore(folder); configureTrace(logs);
+  const record = logs.begin('band_post','band');
+  const execution = new BandExecution({channel:'band',steps:[]},[],{
+    directory,key:band.key,check(){},verify(){},progress(){},sourceDimensions:async()=>({width:1,height:1}),
+  });
+  vi.useFakeTimers();
+  try {
+    const pending = inTrace(record,()=>execution.ensureReady());
+    const expectation = mode === 'alternate-composer' ? expect(pending).resolves.toBeUndefined() :
+      expect(pending).rejects.toThrow(mode === 'timeout' ? 'BAND_COMPOSER_UNAVAILABLE' : 'BAND_WRITE_NOT_ALLOWED');
+    await vi.advanceTimersByTimeAsync(15500);
+    await expectation;
+  } finally { vi.useRealTimers(); record.end('stopped'); }
+  const uploaded = logs.uploadTail(record.id);
+  const waits = uploaded.trim().split('\n').map(line=>JSON.parse(line)).filter(line=>line.step==='sites.dom.waitFor');
+  expect(waits.filter(line=>line.event==='start').map(line=>line.selector)).toEqual([
+    'BAND_SESSION','BAND_FEED','BAND_WRITE_CONTROL','BAND_COMPOSER',
+  ]);
+  expect(waits.every(line=>line.counts.timeoutMs>0)).toBe(true);
+  if (mode === 'timeout') expect(waits.at(-1)).toMatchObject({ selector:'BAND_COMPOSER',reason:'OBSERVATION_TIMEOUT',
+    counts:{editables:0,writeButtons:1},navigation:{path:'/band/[id]/post'} });
+  expect(uploaded).not.toMatch(/HIDDEN_QUERY|합성 밴드|987654321/);
+  expect(f.surface.click).toHaveBeenCalledTimes(1);
+  expect(f.surface.typeText).not.toHaveBeenCalled();
 });

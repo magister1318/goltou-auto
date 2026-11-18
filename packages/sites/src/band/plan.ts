@@ -10,12 +10,13 @@ import { PhotoOrder, type PhotoProof, type PhotoSize, type PhotoSlot } from './p
 import { requestFields } from '../naver-blog/request-fields';
 import type { BandBarrierCode } from './barrier-codes';
 import { bandReadBatchTarget } from './read-batch';
-import { readCreatedBandPost, bandPhotoPath } from './record-read';
+import { readCreatedBandPost, bandPhotoPath, bandRecordReadAllowed } from './record-read';
 import { bandCreateIdentity } from './publish-confirmation';
 import { ReadbackMismatch } from '../readback-checks';
 
 export const bandMobileUA = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
-export const bandEditor = 'textarea._postTextArea, .cke_editable[contenteditable="true"], [contenteditable="true"][role="textbox"]';
+export const bandEditor = 'textarea._postTextArea, .postWriteSection textarea, .postWriteSection [contenteditable="true"], .cke_editable[contenteditable="true"], [contenteditable="true"][role="textbox"]';
+const bandWrite = 'button._btnPostWrite, button._btnOpenWriteLayer';
 const bandSubmit = 'button._btnPostSubmit, button._btnSubmitPost, .postWriteSection .topBarGnbActionButtons button._btnPostWrite';
 export interface BandPlan {
   channel: 'blog' | 'band';
@@ -82,37 +83,43 @@ export async function readBandDocument(surface: Surface): Promise<BandReadback> 
 export class BandDirectory {
   surface: Surface | undefined;
   choices: BandChoice[] = [];
-  private cachedKeys = new Set<string>();
   seedChoices(rows: readonly { key: string; name: string }[]) {
     const previous = this.choices;
     this.choices = rows.map(({ key, name }) => ({ key, name,
       photoLimit: previous.find(p => p.key === key)?.photoLimit ?? null,
       observedAt: previous.find(p => p.key === key)?.observedAt ?? null }));
-    this.cachedKeys = new Set(rows.map(r => r.key));
   }
   /** Only page/route evidence; no request, mutation or alternative target selection. */
-  async guardCachedTarget(key: string) {
-    if (!this.cachedKeys.has(key)) return;
+  async guardTarget(key: string) {
     const s = await this.getSurface();
-    // Native JS dialogs can block Runtime reads; inspect the cached dialog first.
     const dialog = await s.readDialog?.();
+    const noWrite = /(?:글쓰기|게시|쓰기) 권한이? 없|(?:글을|게시글을) (?:쓸 수 없|작성할 수 없|작성할 수 있는 권한이 없)|no (?:write|posting) permission/i;
     if (dialog) {
-      if (/가입하지|멤버가 아|존재하지|찾을 수 없|권한이? 없|not a member|not found|permission/i.test(dialog.message)) throw new Error('BAND_TARGET_INVALID');
-      throw new Error('USER_DIALOG_REQUIRED');
+      if (noWrite.test(dialog.message)) throw Error('BAND_WRITE_NOT_ALLOWED');
+      if (/가입하지|멤버가 아|존재하지|찾을 수 없|not a member|not found/i.test(dialog.message)) throw Error('BAND_TARGET_INVALID');
+      throw Error('USER_DIALOG_REQUIRED');
     }
     const state = await s.readState(), url = new URL(state.url);
-    if (url.hostname === 'auth.band.us') throw new Error('BAND_LOGIN_LOST');
-    if (!state.loading && (!this.sameOrigin(url) || url.pathname.replace(/\/$/, '') !== `/band/${key}/post`)) throw new Error('BAND_TARGET_INVALID');
-    const denied = await read<boolean>(s, `
-      const editor=docs.some(({d})=>d.querySelector(${JSON.stringify(bandEditor)}));
-      return docs.some(({d})=>{
-        const buttons=Array.from(d.querySelectorAll('button._btnPostWrite,button._btnOpenWriteLayer'));
-        if(!editor&&buttons.some(b=>visible(b)&&(b.disabled||b.getAttribute('aria-disabled')==='true')))return true;
-        const roots=Array.from(d.querySelectorAll('.errorPage,.errorWrap,.accessDenied,[role="alert"],[role="dialog"]'));
-        if(!editor&&!buttons.some(visible))roots.push(d.body);
-        return roots.some(n=>n&&visible(n)&&/가입하지 않은 밴드|가입한 멤버만|멤버만 (?:글|이용)|밴드(?:의)? 멤버가 아|탈퇴한 밴드|존재하지 않는 밴드|밴드[가를]? (?:없|찾을 수 없)|삭제된 밴드|(?:글쓰기|게시|접근|쓰기) 권한이? 없|(?:글을|게시글을) (?:쓸|작성할) 수 없|not a member|band not found|no (?:write|posting) permission/i.test(n.textContent||''));
-      });`);
-    if (denied) throw new Error('BAND_TARGET_INVALID');
+    if (url.hostname === 'auth.band.us') throw Error('BAND_LOGIN_LOST');
+    if (!state.loading && (!this.sameOrigin(url) || url.pathname.replace(/\/$/, '') !== `/band/${key}/post`)) throw Error('BAND_TARGET_INVALID');
+    const denied = await read<'permission' | 'membership' | null>(s, `
+      const editor=docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(bandEditor)})).some(visible));
+      for(const {d} of docs){
+        const buttons=Array.from(d.querySelectorAll(${JSON.stringify(bandWrite)})).filter(visible);
+        if(!editor&&buttons.length>0&&buttons.every(b=>b.disabled||b.getAttribute('aria-disabled')==='true'))return 'permission';
+        const roots=Array.from(d.querySelectorAll('.errorPage,.errorWrap,.accessDenied,[role="alert"],[role="alertdialog"]'));
+        if(!editor)roots.push(...d.querySelectorAll('[role="dialog"],.lyWrap'));
+        if(!editor&&!buttons.length&&!d.querySelector('section.postCard,.cPost,.postView'))roots.push(d.body);
+        for(const root of roots){
+          if(!root||!visible(root))continue;
+          const message=root.textContent||'';
+          if(new RegExp(${JSON.stringify(noWrite.source)},'i').test(message))return 'permission';
+          if(/가입하지 않은 밴드|가입한 멤버만|멤버만 (?:글|이용)|밴드(?:의)? 멤버가 아|탈퇴한 밴드|존재하지 않는 밴드|밴드[가를]? (?:없|찾을 수 없)|삭제된 밴드|not a member|band not found/i.test(message))return 'membership';
+        }
+      }
+      return null;`);
+    if (denied === 'permission') throw Error('BAND_WRITE_NOT_ALLOWED');
+    if (denied === 'membership') throw Error('BAND_TARGET_INVALID');
   }
   private opens = 0;
   private submit: { key: string; armed: boolean; sent: boolean; succeeded: boolean; received?: boolean; acknowledgedAt?: number; post?: string; onIdentity?: (url: string) => void; blocked?: BandBarrierCode; blockConfirmed: boolean } | undefined;
@@ -280,6 +287,23 @@ export class BandDirectory {
   sameOrigin(url: URL) {
     return url.origin === new URL(this.baseUrl).origin || (!this.localPublish && url.origin === 'https://www.band.us');
   }
+  async openPublishedView(url: string, mobile: boolean, readPost: (view: Surface) => Promise<void>) {
+    const identity = new URL(url);
+    if (!this.sameOrigin(identity) || !/^\/band\/\d+\/post\/\d+$/.test(identity.pathname)) throw Error('BAND_LOCATION_UNCONFIRMED');
+    const [, , band, , post] = identity.pathname.split('/');
+    const view = await this.host.create('band');
+    try {
+      if (!view.guardRequests) throw Error('BAND_BARRIER_UNAVAILABLE');
+      await view.guardRequests([{ hostname:'*', pathname:'/', prefix:true }], request => {
+        if (bandRecordReadAllowed(request)) return true;
+        const batch = bandReadBatchTarget(request);
+        return batch?.band === band && batch?.post === post;
+      }, () => {}, () => false);
+      await view.open({ url, session:'band', width:1280, height:900, userAgent:mobile ? bandMobileUA :
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36' });
+      await readPost(view);
+    } finally { await this.host.destroy(view); }
+  }
   async list(retryRead = true): Promise<BandChoice[]> {
     return traceStep('sites.band.plan.BandDirectory.list', async () => {
       if (this.listPhase) throw new Error('BAND_LIST_IN_PROGRESS');
@@ -323,7 +347,6 @@ export class BandDirectory {
         }
         await this.guard(false);
         const previous = this.choices;
-        this.cachedKeys.clear();
         this.choices = rows.map(b => ({ key: b.key, name: b.name, photoLimit: previous.find(p => p.key === b.key)?.photoLimit ?? null, observedAt: previous.find(p => p.key === b.key)?.observedAt ?? null }));
         await diagnose(!rows.length ? 'BAND_LIST_EMPTY' : source === 'DOM' ? 'BAND_LIST_DOM' : 'BAND_LIST_API_ONLY');
         return structuredClone(this.choices);
@@ -354,7 +377,7 @@ export class BandDirectory {
     if (!this.sameOrigin(url)) throw new Error('BAND_LOCATION_UNCONFIRMED');
     if (requireComposer && !(await readBandDocument(s)).composer) throw new Error('BAND_COMPOSER_LOST');
     if (!requireComposer && !this.listPhase) {
-      try { await waitFor(() => read<boolean>(s, `return docs.some(({d})=>d.querySelector('._myBandListWrap, .globalMyBandWrap, .myBandGroupList, ._btnPostWrite, ._btnOpenWriteLayer, ${bandEditor}'))||docs.some(({d})=>Array.from(d.querySelectorAll('a,button')).some(n=>/로그아웃|log\\s*out/i.test(n.textContent||'')));`)); }
+      try { await waitFor(() => read<boolean>(s, `return docs.some(({d})=>d.querySelector('._myBandListWrap, .globalMyBandWrap, .myBandGroupList, ._btnPostWrite, ._btnOpenWriteLayer, ${bandEditor}'))||docs.some(({d})=>Array.from(d.querySelectorAll('a,button')).some(n=>/로그아웃|log\\s*out/i.test(n.textContent||'')));`), undefined, { surface: s, control: "BAND_SESSION" }); }
       catch { trace('sites.band.plan.BandDirectory.guard', 'fail', { reason: 'CAUGHT_FAILURE' });  throw new Error('BAND_LOGIN_UNCONFIRMED'); }
     }
 
@@ -405,7 +428,7 @@ export class BandExecution {
   get createdReceiptUrl() { return this.createdIdentity ?? this.env.directory.createdReceipt(this.env.key); }
   private async guard() {
     return traceStep('sites.band.plan.BandExecution.guard', async () => {
-    this.env.check(); await this.env.directory.guardCachedTarget(this.env.key); await this.env.directory.guard(true);
+    this.env.check(); await this.env.directory.guardTarget(this.env.key); await this.env.directory.guard(true);
     if (!new RegExp(`^/band/${this.env.key}/post/?$`).test(new URL((await this.surface!.readState()).url).pathname)) throw new Error('BAND_TARGET_CHANGED');
 
     });
@@ -420,21 +443,45 @@ export class BandExecution {
     if (current.composer) throw new Error('BAND_EXISTING_COMPOSER');
     const beforeFeed = this.env.directory.revision;
     await s.open({ url: `${this.env.directory.baseUrl}/band/${this.env.key}/post`, session: 'band', width: 1280, height: 900, userAgent: bandMobileUA });
-    await this.env.directory.guardCachedTarget(this.env.key);
+    await this.env.directory.guardTarget(this.env.key);
     await this.env.directory.guard(false);
-    if (!this.env.directory.localPublish) await waitFor(async () => { await this.env.directory.guardCachedTarget(this.env.key); return this.env.directory.freshFeed(this.env.key, beforeFeed); }, 20000);
+    if (!this.env.directory.localPublish) await waitFor(async () => { await this.env.directory.guardTarget(this.env.key); return this.env.directory.freshFeed(this.env.key, beforeFeed); }, 20000, { surface: s, control: "BAND_FEED" });
     const already = await readBandDocument(s);
     if (already.composer) throw new Error('BAND_EXISTING_COMPOSER');
     const title = bandText(this.plan).split('\n')[0] ?? '';
     if (!this.env.directory.localPublish && !this.env.directory.publishEnabled && this.env.directory.existingTitle(title)) throw Error('BAND_EXISTING_TEST_POST');
     trace('verification', 'ok', { check: 'identity', counts: { expected: 0, observed: 0 } });
     this.env.check();
-    const mobile = await waitFor(async () => { await this.env.directory.guardCachedTarget(this.env.key); return await point(s, 'button.uFloatingButton._btnPostWrite[aria-label="글쓰기"]') ? true : await point(s, 'button._btnPostWrite, button._btnOpenWriteLayer', '글쓰기') ? 'desktop' : null; });
+    const mobileSelector = 'button._btnPostWrite[aria-label="글쓰기"], button._btnOpenWriteLayer[aria-label="글쓰기"]';
+    const control = await waitFor(async () => {
+      this.env.check();
+      await this.env.directory.guardTarget(this.env.key);
+      for (const [selector, label] of [[mobileSelector, undefined], [bandWrite, '글쓰기']] as const) {
+        const target = await point(s, selector, label);
+        if (target && (!s.readClickTarget || await s.readClickTarget(target.x, target.y, selector))) return { ...target, selector };
+      }
+      return null;
+    }, undefined, { surface: s, control: 'BAND_WRITE_CONTROL' }).catch(error => {
+      if (error instanceof Error && error.message === 'OBSERVATION_TIMEOUT') throw Error('BAND_COMPOSER_UNAVAILABLE');
+      throw error;
+    });
     this.env.directory.beforeOpen(this.env.key);
+    await s.click(control.x, control.y, async () => {
+      this.env.check();
+      await this.env.directory.guardTarget(this.env.key);
+      if (s.readClickTarget && !await s.readClickTarget(control.x, control.y, control.selector)) throw Error('BAND_COMPOSER_UNAVAILABLE');
+    });
+    try {
+      await waitFor(async () => {
+        this.env.check();
+        await this.env.directory.guardTarget(this.env.key);
+        return (await readBandDocument(s)).composer;
+      }, undefined, { surface: s, control: "BAND_COMPOSER" });
+    } catch (error) {
+      if (error instanceof Error && error.message === 'OBSERVATION_TIMEOUT') throw Error('BAND_COMPOSER_UNAVAILABLE');
+      throw error;
+    }
     this.owned = true;
-    if (mobile === true) await click(s, 'BAND_WRITE_MOBILE', 'button.uFloatingButton._btnPostWrite[aria-label="글쓰기"]');
-    else await click(s, 'BAND_WRITE_DESKTOP', 'button._btnPostWrite, button._btnOpenWriteLayer', '글쓰기');
-    await waitFor(async () => (await readBandDocument(s)).composer);
     const empty = await readBandDocument(s);
     if (compact(empty.body) || empty.photos.length) throw new Error('BAND_COMPOSER_NOT_EMPTY');
     this.checkpoint = empty;
@@ -534,7 +581,7 @@ export class BandExecution {
         const signature = JSON.stringify(actual.slots);
         if (signature !== previous || actual.uploading || actual.slots.some(p => !p.loaded)) { previous = signature; stableSince = Date.now(); }
         return actual.slots.length === count && !actual.uploading && actual.slots.every(p => p.loaded) && Date.now() - stableSince >= 500 ? actual.slots : null;
-      }, this.env.photoTimeoutMs ?? 60000);
+      }, this.env.photoTimeoutMs ?? 60000, { surface: s, control: "BAND_UPLOAD_SLOTS" });
       order.commit(slots);
       this.checkpoint = await readBandDocument(s);
     } catch (error) { trace('sites.band.plan.BandExecution.settlePhoto', 'fail', { reason: reasonCode(error) });
@@ -591,7 +638,7 @@ export class BandExecution {
         this.env.check();
         const blocked = directory.blockedBeforeSend(this.env.key); if (blocked) throw Error(blocked);
         return directory.responseResult(this.env.key)?.received;
-      }, timeout);
+      }, timeout, { surface: this.surface!, control: "BAND_CREATE_RECEIPT" });
     } catch (error) {
       if (!(error instanceof Error) || error.message !== 'OBSERVATION_TIMEOUT') throw error;
       trace('band.confirm.response', 'wait', { reason: 'BAND_RESPONSE_UNOBSERVED' });
@@ -624,20 +671,30 @@ export class BandExecution {
       await this.storeIdentity(url);
     }
     trace('band.confirm.detail', 'start');
-    try {
-      await this.surface!.open({ url: url.replace('https://band.us/', 'https://www.band.us/'), session: 'band', width: 1280, height: 900,
-        userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36' });
-      await settleFullBandPost(this.surface!, bandText(this.plan), uploaded, this.env.check, this.env.submitTimeoutMs ?? 90000, async () => {
+    const expectedUrl = url;
+    const inspect = (mobile: boolean) => directory.openPublishedView(expectedUrl, mobile, async view => {
+      await settleFullBandPost(view, bandText(this.plan), uploaded, this.env.check, this.env.submitTimeoutMs ?? 12000, async () => {
         this.env.check();
-        if (await this.dialog()) throw Error('USER_DIALOG_REQUIRED');
-        const state = await this.surface!.readState();
-        if (!directory.sameOrigin(new URL(state.url)) || new URL(state.url).pathname.replace(/\/$/, '') !== new URL(url!).pathname) return null;
-        return readFullBandPost(this.surface!);
+        if (await view.readDialog?.()) throw Error('USER_DIALOG_REQUIRED');
+        const state = new URL((await view.readState()).url);
+        if (!directory.sameOrigin(state) || state.pathname.replace(/\/$/, '') !== new URL(expectedUrl).pathname) return null;
+        return readFullBandPost(view);
       }, bandPlanLinks(this.plan));
+    });
+    try {
+      try { await inspect(false); }
+      catch (error) {
+        this.env.check();
+        // An unreadable desktop layout gets one independent mobile detail read.
+        // Retain concrete desktop observations without a second navigation.
+        if (error instanceof ReadbackMismatch && error.issues.some(issue=>issue.missing || (issue.observed ?? 0) > 0)) throw error;
+        trace('band.confirm.detail', 'retry', { reason:reasonCode(error) });
+        await inspect(true);
+      }
     } catch (error) {
       this.env.check();
       trace('band.confirm.detail', 'fail', { reason: reasonCode(error) });
-      if (error instanceof ReadbackMismatch || error instanceof Error && error.message.startsWith('BAND_PUBLISHED_READBACK_MISMATCH')) throw error;
+      if (error instanceof ReadbackMismatch) throw error;
       throw Error('BAND_PUBLISHED_READBACK_UNAVAILABLE');
     }
     this.verifiedPublished = url; trace('band.confirm.detail', 'ok'); return url;
@@ -714,7 +771,7 @@ export class BandExecution {
           ? await this.detectPublished()
           : null;
         return url && this.env.directory.matchesPost(url) ? url : null;
-      }, this.env.submitTimeoutMs ?? 30000);
+      }, this.env.submitTimeoutMs ?? 30000, { surface: this.surface!, control: "BAND_POST_DETAIL" });
     } catch (error) { trace('sites.band.plan.BandExecution.publish', 'fail', { reason: reasonCode(error) });
       if (!this.postAttempted) throw error;
       if (!this.env.directory.localPublish) throw error;

@@ -45,7 +45,7 @@ async function fixture(mode: string) {
     if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST,GET,OPTIONS', 'access-control-allow-headers': 'content-type' } });
     if (u.pathname === '/v2.0.2/create_post') {
       creates++; createdAt = Date.now(); const form = new URLSearchParams(request.postData() ?? ''); body = form.get('content') ?? ''; photos = JSON.parse(form.get('photo') ?? '[]');
-      return json({ result_code: mode === 'rejected' ? 0 : 1, result_data: mode.startsWith('identity') || mode === 'mismatch' ? { post_no: 9001 } : {} });
+      return json({ result_code: mode === 'rejected' ? 0 : 1, result_data: mode.startsWith('identity') || mode === 'mismatch' || mode === 'mobile-readback' ? { post_no: 9001 } : {} });
     }
     if (u.pathname === '/v2.0.0/get_posts_and_announcements') {
       feedReads++;
@@ -57,9 +57,12 @@ async function fixture(mode: string) {
     if (u.pathname.startsWith('/photos/')) return route.fulfill({ status: 200, contentType: 'image/png', body: png(160, 90) });
     if (/\/post\/9001$/.test(u.pathname)) {
       if (hold) await heldDetail;
+      if (mode === 'mobile-readback' && !request.headers()['user-agent']?.includes('Android')) {
+        return route.fulfill({ contentType:'text/html', body:'<main>Waiting for post</main>' });
+      }
       const text = escapeHtml(mode === 'mismatch' ? body.replace('둘째 줄\n','') : body).replace(/#합성|#태그/g, '<button class="hashTag">$&</button>').replace(/https:\/\/example.invalid\/[ab]/g, '<a href="$&">$&</a>');
       const root = mode === 'delayed' ? '<div class="postWrap -postDetailPage"><div class="cContentsCard"><div class="postBody"><div class="dPostTextView"><div class="postText">' : '<div class="postsDetailArea"><div class="_contentListRegion"><div class="postTextBox"><div class="postText _postTxt">';
-      const postHtml = root + text + '</div></div>' + photos.map(src => `<img class="mediaImg" src="${src}">`).join('') + '</div></div>';
+      const postHtml = root + text + '</div></div>' + photos.map(src => `<img class="mediaImg" data-lazy-src="${src}" src="/placeholder.gif">`).join('') + '</div></div>';
       const payload = [{ svc_id: 'synthetic', method: 'GET', path: '/v2.0.0/get_post?band_no=111&post_no=9001&resolution_type=synthetic&token=synthetic' }, { svc_id: 'synthetic', method: 'GET', path: '/v2.0.0/get_emotions?band_no=111&post_no=9001&content_key=synthetic&token=synthetic' }];
       return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: `<meta charset="utf-8"><style>.postText{white-space:pre-wrap}</style><div id="root"></div><script>fetch('https://bapi-kr.band.us/v2.0.0/batch',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({payload:${JSON.stringify(JSON.stringify(payload))}})}).then(r=>{if(r.ok)document.querySelector('#root').innerHTML=${JSON.stringify(postHtml)}})</script>` });
     }
@@ -93,7 +96,7 @@ async function fixture(mode: string) {
     lines: async () => { const date = (await readdir(store.directory)).find(n => /^\d{8}$/.test(n))!; const file = (await readdir(path.join(store.directory, date))).find(n => n.includes('band_post'))!; return (await readFile(path.join(store.directory, date, file), 'utf8')).trim().split('\n').map(s => JSON.parse(s)); } };
 }
 
-it.each(['identity-held', 'no-identity', 'delayed', 'rejected', 'mismatch', 'not-found'])('replays the full production Band job offline: %s', async mode => {
+it.each(['identity-held', 'no-identity', 'delayed', 'rejected', 'mismatch', 'not-found', 'mobile-readback'])('replays the full production Band job offline: %s', async mode => {
   const f = await fixture(mode);
   await f.runner.start({ productNo: 1, mode: 'publish', publishConfirmed: true, targets: [{ channel: 'band', key: '111', name: '합성' }], options: { polish: false, closing: false, linkCard: false } }, '합성 제목', 29, f.work);
   if (mode === 'identity-held') {
@@ -103,18 +106,21 @@ it.each(['identity-held', 'no-identity', 'delayed', 'rejected', 'mismatch', 'not
     } finally { f.release(); }
   }
   await vi.waitFor(() => expect(f.runner.job?.status).not.toBe('running'), { timeout: 60000 });
-  const success = !['rejected', 'mismatch', 'not-found'].includes(mode);
+  const success = !['rejected', 'not-found'].includes(mode);
   const diagnostic = JSON.stringify({ code: f.runner.job?.failureCode, counts: f.counts(), failures: (await f.lines()).filter(l => l.event === 'fail').slice(-8) });
   expect(f.runner.job?.status, diagnostic).toBe(success ? 'published' : 'failed');
   if (!['rejected', 'not-found'].includes(mode)) expect(f.runner.job?.targetResults?.[0]?.postUrl).toBe(url);
   if (mode === 'rejected') expect(f.runner.job?.failureCode).toBe('BAND_CREATE_REJECTED');
-  if (mode === 'mismatch') expect(f.runner.job?.failureCode).toBe('BAND_PUBLISHED_READBACK_MISMATCH:text');
+  if (mode === 'mismatch') expect(f.runner.job?.targetResults?.[0]).toMatchObject({
+    status:'published',reason:'PUBLISHED_CONTENT_MISSING',readbackNotes:[expect.objectContaining({field:'text',missing:true})],
+  });
   if (mode === 'not-found') expect(f.runner.job?.failureCode).toBe('BAND_POST_UNCONFIRMED:IDENTITY_NOT_FOUND');
   expect(f.counts()).toMatchObject({ creates: 1, forbidden: 0 });
   if (success) expect(f.counts().detailReads).toBeGreaterThan(0);
   await vi.waitFor(async () => expect((await f.lines()).filter(l => l.step === 'terminal')).toHaveLength(1));
   const lines = await f.lines(); expect(lines.at(-1).result).toBe(success ? 'succeeded' : mode === 'not-found' ? 'uncertain' : 'failed');
-  if (success) for (const check of ['text', 'line_breaks', 'photo_order', 'hashtags', 'links']) expect(lines.some(l => l.step === 'verification' && l.check === check && l.event === 'ok')).toBe(true);
+  if (success && mode !== 'mismatch') for (const check of ['text', 'line_breaks', 'photo_order', 'hashtags', 'links']) expect(lines.some(l => l.step === 'verification' && l.check === check && l.event === 'ok')).toBe(true);
+  if (mode === 'mobile-readback') expect(lines.some(l => l.step === 'band.confirm.detail' && l.event === 'retry')).toBe(true);
   if (mode === 'delayed') expect(lines.some(l => l.step === 'band.confirm.feed' && l.event === 'retry')).toBe(true);
   await expect(f.runner.resume()).rejects.toMatchObject({ code: 'conflict' });
 }, 180000);
