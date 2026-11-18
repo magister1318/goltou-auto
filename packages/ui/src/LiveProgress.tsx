@@ -59,8 +59,8 @@ export function LiveProgress({
       )
       .map((e) => e.photoIndex!),
   );
-  const totalPhotos = photos.length || job.total;
-  const donePhotos = Math.min(totalPhotos, Math.max(completedPhotos.size, job.step >= 4 ? job.current : 0));
+  const totalPhotos = photos.length || job.total || a?.photoTotal || 0;
+  const donePhotos = Math.min(totalPhotos, Math.max(completedPhotos.size, job.step >= 4 ? job.current || 0 : 0));
   const lastFor = (index: number) =>
     log
       .filter(

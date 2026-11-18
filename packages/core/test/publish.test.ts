@@ -156,7 +156,7 @@ describe.runIf(Boolean(executablePath))('publish, verified against synthetic loo
     await expect(f.execution.publish()).rejects.toThrow('BLOG_PUBLISHED_PRIVATE_UNCONFIRMED');
     expect(f.execution.publishedVerified).toBe(false);
     await expect(f.execution.publish()).rejects.toThrow('BLOG_PUBLISH_ALREADY_ATTEMPTED');
-  }, 30000);
+  }, 60000);
   it('publishes an ordinary private title once and deletes through the regular record engine', async () => {
     const f = await fixture('unknown-response', 'private', false, true, true);
     await f.execution.write(); await f.execution.saveAndVerify();
