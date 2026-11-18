@@ -828,7 +828,7 @@ export class BlogExecution {
         for (const field of issue.fields) {
           const missing = sameTitle && (field === 'text' || field === 'href' || field === 'number');
           const prior = issues.find(value => value.field === field && value.paragraph === undefined);
-          if (prior && missing) prior.missing = true;
+          if (prior && missing) { prior.missing = true; prior.paragraph = issue.paragraph; }
           else if (!prior) issues.push({ field, paragraph:issue.paragraph, ...(missing ? { missing: true } : {}) });
         }
       }
@@ -844,6 +844,9 @@ export class BlogExecution {
       if (issues.length) {
         for(const item of settled.classes) trace('verification', issues.some(issue=>issue.field===(item.check==='paragraphs'?'text':item.check))?'fail':'ok', {check:item.check,reason:item.reason,counts:{expected:item.expected,observed:item.observed}},Date.now()-started);
         trace('verification', settled.stable?'ok':'fail', {check:'stability',reason:'READBACK_STABILITY',counts:{expected:2,observed:settled.stable?2:1}},Date.now()-started);
+        if (issues.length === 1 && issues[0]?.field === 'visibility' && this.visibility === 'private') {
+          throw new ReadbackMismatch('BLOG_PUBLISHED_PRIVATE_UNCONFIRMED', issues);
+        }
         throw new ReadbackMismatch('BLOG_READBACK_MISMATCH:'+ [...new Set(issues.map(i=>i.field))].join(','), issues);
       }
     const pages = await read<PublishedPage[]>(s, `return docs.map(({d})=>({url:d.location.href,titles:Array.from(d.querySelectorAll('.se-documentTitle .se-text-paragraph')).map(e=>(e.textContent||'').trimStart().trimEnd())}));`);

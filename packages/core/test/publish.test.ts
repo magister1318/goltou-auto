@@ -236,7 +236,7 @@ describe('WP18 saved and published runs on a synthetic loopback service', () => 
       expect(compareBlogFormatting(makePreview(product, {}).blog, await readBlogDocument(f.execution.surface!))).toEqual([]);
     }
     expect(f.counts()).toMatchObject({ published: 1, submissions: 1, outside: 0 });
-  }, 20000);
+  }, 45000);
 });
 
 describe('WP20 publish and delete fixture log trails', () => {

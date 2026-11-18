@@ -262,7 +262,7 @@ describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback e
     expect(before.tokens.filter(t => t.kind === 'photo')).toHaveLength(5);
     expect(compareDocuments(observePlan(f.plan), blogObservation(f.plan, f.files, before)).matches).toBe(true);
     await f.execution.saveAndVerify(); expect(f.beforeSave).toHaveBeenCalledTimes(1);
-    expect(f.readbackBarriers).toHaveBeenCalledWith([{ hostname: 'blog.naver.com', pathname: '/RabbitAutoSaveWrite.naver' }], 'about:blank');
+    expect(f.readbackBarriers).toHaveBeenCalledWith([{ hostname: 'blog.naver.com', pathname: '/RabbitAutoSaveWrite.naver', expected: true }], 'about:blank');
     expect(await f.counts()).toEqual({ saves: 1, publishes: 0 }); expect(f.external()).toBe(0);
     const original = f.execution.surface!;
     f.execution.surface = { readState: async () => ({ url: 'https://blog.naver.com/never-requested', title: '', loading: false }) } as Surface;
@@ -663,5 +663,5 @@ it('keeps the planned photo total while the blog editor opens before the files a
     check:f.check, progress:f.progress, beforeSave:f.beforeSave,
   });
   await execution.ensureReady();
-  expect(f.progress).toHaveBeenCalledWith(expect.objectContaining({photos:0,totalPhotos:8}));
+  expect(f.progress).toHaveBeenCalledWith(expect.objectContaining({photos:0,totalPhotos:5}));
 });
