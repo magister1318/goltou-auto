@@ -41,6 +41,20 @@ describe('app update policy', () => {
     const f = fixture(); f.updater.setBlocked(true); await f.updater.check('auto'); expect(f.latest).not.toHaveBeenCalled();
     f.updater.setBlocked(false); await vi.waitFor(() => expect(f.latest).toHaveBeenCalledTimes(1));
   });
+  it('restores only notice metadata across restart and shows it next day inside the 24h throttle', async () => {
+    const f = fixture(); await f.updater.check('auto'); await f.updater.later();
+    const restored = fixture(f.memory()); restored.setNow(new Date(2026, 10, 21, 0, 0, 1).getTime());
+    await restored.updater.check('auto'); expect(restored.latest).not.toHaveBeenCalled();
+    expect(restored.updater.snapshot()).toMatchObject({ notice: true, release: { version: '1.0.5' } });
+    expect(JSON.stringify(restored.memory())).not.toMatch(/url|sha256|NEVER_LOG/);
+    await restored.updater.download(); expect(restored.latest).toHaveBeenCalledTimes(1);
+    expect(restored.port.download).toHaveBeenCalledWith(release);
+  });
+  it('removes a cached notice once that version is installed', async () => {
+    const f = fixture({ available: { version: '1.0.4 (8)', code: 8, date: '2026-11-20', size: 100 } });
+    await f.updater.initialize();
+    expect(f.updater.snapshot().notice).toBe(false); expect(f.memory().available).toBeUndefined();
+  });
   it('hides later for the local calendar day across restart and restores on next day', async () => {
     const f = fixture(); await f.updater.check('manual'); await f.updater.later();
     expect(f.updater.snapshot()).toMatchObject({ notice: false, sheet: false });

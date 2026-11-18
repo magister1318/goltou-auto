@@ -5,8 +5,9 @@ import type { UpdateDiagnostic } from '../../surface/src/update-diagnostics';
 import type { JobLogStore } from './job-logs';
 
 export type ReadyRelease = Extract<AppRelease, { ready: true }>;
+export type ReleaseNotice = Pick<ReadyRelease, 'version' | 'code' | 'date' | 'size'>;
 export interface InstalledVersion { name: string; code: number }
-export interface UpdateMemory { lastCheck?: number; hiddenDay?: string; installed?: InstalledVersion }
+export interface UpdateMemory { lastCheck?: number; hiddenDay?: string; installed?: InstalledVersion; available?: ReleaseNotice }
 export interface UpdateStore { read(): Promise<UpdateMemory>; write(value: UpdateMemory): Promise<void> }
 export interface UpdatePort {
   info(): Promise<InstalledVersion>;
@@ -37,7 +38,7 @@ export class AppUpdater {
   private memory: UpdateMemory = {};
   private initialized: Promise<void> | undefined;
   private installed: InstalledVersion = { name: '', code: 0 };
-  private release: ReadyRelease | undefined;
+  private release: ReleaseNotice | undefined;
   private phase: UpdateSnapshot['phase'] = 'idle';
   private sheet = false;
   private blocked = true;
@@ -72,6 +73,9 @@ export class AppUpdater {
     this.initialized ??= (async () => {
       this.memory = await this.options.store.read();
       this.installed = await this.options.port.info();
+      if (this.memory.available && this.memory.available.code > this.installed.code) {
+        this.release = this.memory.available; this.phase = 'available';
+      } else delete this.memory.available;
       const old = this.memory.installed;
       if (old && this.installed.code > old.code) {
         const log = this.options.logs?.begin('app_update', 'app');
@@ -112,6 +116,11 @@ export class AppUpdater {
       let errorCode: string | undefined;
       const result = await this.options.latest(code => { errorCode = code; });
       this.release = result.ready && result.code > this.installed.code ? result : undefined;
+      if (this.release) {
+        const { version, code, date, size } = this.release;
+        this.memory.available = { version, code, date, size };
+      } else delete this.memory.available;
+      await this.save();
       log?.line('update', errorCode ? 'fail' : 'ok', { ...(errorCode ? { reason: reasonCode(errorCode) } : {}), update: { event: errorCode ? 'error' : this.release ? 'newer' : result.ready ? 'same' : 'none', ...(errorCode ? { code: errorCode } : {}) } });
       log?.end(errorCode ? 'failed' : 'succeeded', errorCode ? reasonCode(errorCode) : undefined);
       this.phase = this.release ? 'available' : 'idle';
