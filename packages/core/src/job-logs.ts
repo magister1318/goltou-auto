@@ -12,13 +12,13 @@ import { sanitizeUpdate } from '../../surface/src/update-diagnostics';
 const kinds: readonly JobKind[] = ['blog_draft', 'blog_publish', 'blog_delete', 'unfinished_cleanup', 'band_post', 'band_delete', 'login_check', 'band_list', 'app_update'];
 const sites: readonly LogSite[] = ['naver', 'band', 'app'];
 const events: readonly TraceEvent[] = ['start', 'ok', 'fail', 'retry', 'skip', 'wait', 'blocked_expected'];
-const countKeys = ['rows', 'columns', 'cells', 'step', 'paragraphIndex', 'paragraphTotal', 'photoIndex', 'photoTotal', 'bytes', 'runs', 'attempt', 'expected', 'observed', 'status', 'differences', 'paragraphs', 'lineBreaks', 'hashtags', 'links'] as const;
+const countKeys = ['rows', 'columns', 'cells', 'step', 'paragraphIndex', 'paragraphTotal', 'photoIndex', 'photoTotal', 'bytes', 'runs', 'attempt', 'expected', 'observed', 'status', 'timeoutMs', 'documents', 'editables', 'fileInputs', 'writeButtons', 'dialogs', 'composers', 'postBodies', 'differences', 'paragraphs', 'lineBreaks', 'hashtags', 'links'] as const;
 const hosts = ['band.us', 'www.band.us', 'auth.band.us', 'api.band.us', 'api-kr.band.us', 'bapi-kr.band.us', 'up.band.us', 'blog.naver.com', 'm.blog.naver.com', 'nid.naver.com', '127.0.0.1'];
 const fieldNames = ['version', 'ts', 'band_no', 'post_no', 'band_key', 'post_key', 'body', 'content', 'contents', 'text', 'photos', 'photo_list', 'file', 'fileList', 'attachment', 'attachments', 'data', 'requests', 'url', 'method', 'params', 'access_token', 'token', 'signature', 'key', 'blogId', 'logNo', 'title', 'tags', 'is_public', 'schedule', 'device_type', 'set_band_notice', 'set_major_band_notice', 'set_linked_band_notice', 'copiable_state', 'should_disable_comment', 'band_notice_unset_at', 'photo', 'purpose', 'format', 'locale', 'app_id', 'documentJson', 'documentModel', 'mediaResources', 'populationParams', 'productApiVersion', 'tokenId', 'cpage', 'categoryNo', 'parentCategoryNo', 'viewDate', 'sourceCode', 'currentPage'];
 const fixedPaths = ['/RabbitAutoSaveWrite.naver', '/PostDelete.naver', '/v1.5.0/delete_post', '/v2.0.0/batch', '/v2.3.0/get_band_list', '/v2.0.2/create_post', '/v3/upload_photo', '/RabbitWrite.naver', '/RabbitUpdate.naver', '/RabbitTempPostWrite.naver', '/RabbitTempPostUpdate.naver', '/PostWriteForm.naver', '/PostView.naver', '/PostList.naver', '/', '/my/home', '/my', '/login'];
 const safeHost = (value: string) => hosts.includes(value) ? value : '[other]';
 const loginPaths = ['/about/kr/intro', '/nidlogin.login', '/user2/help/myInfo', '/user2/help/myInfoV2', '/email_login', '/phone_login'];
-const safePath = (value: string) => fixedPaths.includes(value) || loginPaths.includes(value) ? value : /^\/band\/\d+\/post\/\d+\/?$/.test(value) ? '/band/[id]/post/[id]' : /^\/band\/\d+(?:\/post)?\/?$/.test(value) ? '/band/[id]/post' : '[other]';
+const safePath = (value: string) => fixedPaths.includes(value) || loginPaths.includes(value) || ['/band/[id]/post/[id]', '/band/[id]/post'].includes(value) ? value : /^\/band\/\d+\/post\/\d+\/?$/.test(value) ? '/band/[id]/post/[id]' : /^\/band\/\d+(?:\/post)?\/?$/.test(value) ? '/band/[id]/post' : '[other]';
 const safeFields = (value: readonly string[]) => Array.isArray(value) ? value.slice(0, 80).map(name => fieldNames.includes(name) ? name : '[other]') : [];
 /** Reconstruct every field. Neither spread nor JSON.stringify of caller objects is permitted. */
 export function sanitizeDetail(detail: TraceDetail = {}) {
@@ -101,24 +101,53 @@ export class JobLogStore implements TraceProvider {
     }
   }
   forRecord(recordIdentity: string) { const hash = this.identity(recordIdentity); return this.list().find(row => row.recordHash === hash || row.recordHashes?.includes(hash)); }
-  /** Upload only step codes and numeric diagnostics, independent of optional local metadata. */
+  /** Compact only the upload. Original JSONL remains on the device. */
   uploadTail(jobId: string, cap = 512 * 1024): string {
     const row = this.rows.find(item => item.jobId === jobId);
     if (!row) return '';
     const raw = readFileSync(path.join(this.directory, row.file), 'utf8');
-    const kept: string[] = [];
-    let bytes = 0;
-    for (const line of raw.trimEnd().split('\n').reverse()) {
+    const entries: string[] = [];
+    const timings = new Map<string, { count: number; duration: number; maxDuration: number }>();
+    const lineOf = (value: object) => JSON.stringify(value) + '\n';
+    for (const line of raw.trimEnd().split('\n')) {
       let value;
       try { value = JSON.parse(line); } catch { continue; }
       if (!traceSteps.includes(value.step) || !events.includes(value.event)) continue;
-      const safe = sanitizeDetail({ reason: value.reason, counts: value.counts, check: value.check });
-      const entry = JSON.stringify({ step: value.step, event: value.event, ...safe }) + '\n';
-      const size = Buffer.byteLength(entry);
-      if (bytes + size > cap) break;
-      bytes += size; kept.push(entry);
+      const safe = sanitizeDetail({ reason: value.reason, counts: value.counts, check: value.check, selector: value.selector,
+        navigation: value.navigation, operation: value.operation, network: value.network });
+      const duration = Number.isFinite(value.duration) && value.duration >= 0 ? value.duration : 0;
+      const transport = /^(?:cdp$|native$|surface\.cdp\.)/.test(value.step);
+      const background = value.step === 'barrier' && (value.event === 'start' || value.network?.method === 'GET' && value.event === 'ok');
+      if (value.step === 'poll' || background || transport && ['start','ok'].includes(value.event)) {
+        if (value.event === 'start') continue;
+        const key = JSON.stringify({ step:value.step, event:value.event, ...(safe.operation ? { operation:safe.operation } : {}),
+          ...(safe.selector ? { selector:safe.selector } : {}) });
+        const group = timings.get(key) ?? { count:0, duration:0, maxDuration:0 };
+        group.count++; group.duration += duration; group.maxDuration = Math.max(group.maxDuration, duration);
+        timings.set(key, group);
+        continue;
+      }
+      entries.push(lineOf({ step:value.step, event:value.event, duration, ...safe }));
     }
-    return kept.reverse().join('');
+    const summary = [...timings].map(([key, group]) => lineOf({ ...JSON.parse(key), ...group }));
+    if (summary.length) entries.splice(entries[0]?.startsWith('{"step":"job","event":"start"') ? 1 : 0, 0, ...summary);
+    if (entries.reduce((size, line) => size + Buffer.byteLength(line), 0) <= cap) return entries.join('');
+    const marker = lineOf({ step:'job', event:'skip', reason:'UPLOAD_TRUNCATED' });
+    const available = cap - Buffer.byteLength(marker);
+    if (available < 0) return '';
+    const head: string[] = [], tail: string[] = [];
+    let used = 0;
+    for (const entry of entries) {
+      const bytes = Buffer.byteLength(entry);
+      if (used + bytes > available / 3) break;
+      head.push(entry); used += bytes;
+    }
+    for (let i = entries.length - 1; i >= head.length; i--) {
+      const entry = entries[i]!, bytes = Buffer.byteLength(entry);
+      if (used + bytes > available) break;
+      tail.push(entry); used += bytes;
+    }
+    return head.join('') + marker + tail.reverse().join('');
   }
   /** Proves one acknowledged create for this local record without retaining its URL. */
   creationProof(recordIdentity: string) {

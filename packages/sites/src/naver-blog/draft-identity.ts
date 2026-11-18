@@ -23,7 +23,7 @@ export async function openDraftEntries(surface: Surface, emptyAllowed = false) {
     if (emptyAllowed && await read<boolean>(surface, `return docs.some(({d})=>d.querySelector('button[data-click-area="tpb*s.count"]')?.textContent.trim()==='0');`)) return [];
     await click(surface, 'BLOG_DRAFT_LIST', 'button[data-click-area="tpb*s.count"]');
   }
-  await waitFor(opened);
+  await waitFor(opened, undefined, { surface, control: "BLOG_DRAFT_LIST" });
   return draftEntries(surface);
 
     });
@@ -32,7 +32,7 @@ export async function closeDraftEntries(surface: Surface) {
     return traceStep('sites.naver-blog.draft-identity.closeDraftEntries', async () => {
   if (await read<boolean>(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(list)})).some(visible));`)) {
     await click(surface, 'BLOG_DRAFT_CLOSE', 'button[data-click-area="tpb*s.close"]');
-    await waitFor(() => read(surface, `return !docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(list)})).some(visible));`));
+    await waitFor(() => read(surface, `return !docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(list)})).some(visible));`), undefined, { surface, control: "BLOG_DRAFT_CLOSE" });
   }
 
     });

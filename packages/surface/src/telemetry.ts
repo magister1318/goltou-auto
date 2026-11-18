@@ -22,6 +22,7 @@ export interface TraceCounts {
   step?: number; paragraphIndex?: number; paragraphTotal?: number; photoIndex?: number; photoTotal?: number;
   bytes?: number; runs?: number; attempt?: number; expected?: number; observed?: number; status?: number;
   rows?: number; columns?: number; cells?: number;
+  timeoutMs?: number; documents?: number; editables?: number; fileInputs?: number; writeButtons?: number; dialogs?: number; composers?: number; postBodies?: number;
   differences?: number; paragraphs?: number; lineBreaks?: number; hashtags?: number; links?: number;
 }
 export interface TraceDetail {
@@ -72,6 +73,7 @@ export function inTrace<T>(job: TraceJob | undefined, work: () => T): T { return
 export function bindTrace<T extends (...args: never[]) => unknown>(work: T): T { return provider?.bind(work) ?? work; }
 export function reasonCode(value: unknown): ReasonCode {
   const code = value instanceof Error ? value.message : value;
+  if (typeof code === 'string' && code.startsWith('SURFACE_DRAFT_BARRIER_FAILED:')) return 'SURFACE_DRAFT_BARRIER_FAILED';
   if (typeof code === 'string' && code.startsWith('CDP_TIMEOUT ')) return 'OBSERVATION_TIMEOUT';
   if (typeof code === 'string' && code.startsWith('NATIVE_TIMEOUT ')) return 'OBSERVATION_TIMEOUT';
   if (typeof code === 'string' && code.startsWith('CONTROL_NOT_FOUND:')) return 'CONTROL_NOT_FOUND';

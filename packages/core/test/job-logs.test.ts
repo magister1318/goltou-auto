@@ -173,3 +173,38 @@ describe('all job kinds and injected step failures', () => {
     }
   }
 });
+
+it('compacts transport success from 66 uploads while retaining timings, route counts and failures', () => {
+  const f = fixture(), job = f.store.begin('blog_publish','naver');
+  const rows: object[] = [];
+  for (let photo = 1; photo <= 66; photo++) {
+    for (let i = 0; i < 30; i++) {
+      rows.push(
+        { step:'cdp', event:'start', operation:'Runtime.evaluate' },
+        { step:'cdp', event:'ok', operation:'Runtime.evaluate', duration:7 },
+        { step:'native', event:'start', operation:'surface.dialog' },
+        { step:'native', event:'ok', operation:'surface.dialog', duration:2 },
+        { step:'surface.cdp.index.CdpSurface.intercept', event:'start' },
+        { step:'surface.cdp.index.CdpSurface.intercept', event:'ok', duration:1 },
+      );
+    }
+    rows.push({ step:'input.progress', event:'ok', counts:{photoIndex:photo,photoTotal:66}, duration:125 });
+  }
+  appendFileSync(f.files()[0]!, rows.map(row=>JSON.stringify({
+    timestamp:Date.now(),jobId:job.id,kind:'blog_publish',site:'naver',duration:0,...row,
+  })).join('\n')+'\n');
+  job.line('sites.dom.waitFor','fail',{selector:'BAND_COMPOSER',reason:'OBSERVATION_TIMEOUT',counts:{timeoutMs:15000,writeButtons:1,editables:0},
+    navigation:{host:'band.us',path:'/band/12345678/post'}},15000);
+  job.line('cdp','fail',{operation:'Input.dispatchKeyEvent',reason:'UNEXPECTED_FAILURE'},500);
+  job.end('failed','OBSERVATION_TIMEOUT');
+  expect(Buffer.byteLength(readFileSync(f.files()[0]!))).toBeGreaterThan(512 * 1024);
+  const uploaded = f.store.uploadTail(job.id);
+  const lines = uploaded.trim().split('\n').map(line=>JSON.parse(line));
+  expect(Buffer.byteLength(uploaded)).toBeLessThan(25 * 1024);
+  expect(lines).toContainEqual(expect.objectContaining({step:'cdp',event:'ok',count:1980,duration:13860,maxDuration:7}));
+  expect(lines).toContainEqual(expect.objectContaining({selector:'BAND_COMPOSER',duration:15000,navigation:{host:'band.us',path:'/band/[id]/post'}}));
+  expect(lines).toContainEqual(expect.objectContaining({step:'cdp',event:'fail',duration:500}));
+  expect(lines.at(-1)).toMatchObject({step:'terminal',event:'fail'});
+  expect(uploaded).not.toContain('12345678');
+  expect(f.lines().filter(line=>line.step==='cdp'&&line.event==='start')).toHaveLength(1980);
+});

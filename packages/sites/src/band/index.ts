@@ -7,7 +7,7 @@ import type { exampleArticle } from '../fixture';
 export async function listBands(surface: Surface, timeoutMs = 15000) {
     return traceStep('sites.band.index.listBands', async () => {
   const deadline = Date.now() + timeoutMs;
-  const observe = <T>(work: () => Promise<T | null | false>) => waitFor(work, Math.max(1, deadline - Date.now()));
+  const observe = <T>(work: () => Promise<T | null | false>) => waitFor(work, Math.max(1, deadline - Date.now()), { surface, control: "BAND_ALL_LIST" });
   const mode = await observe(() => read<string | null>(surface, `
     if(docs.some(({d})=>d.querySelector('._myBandListWrap a.bandCover:not(._adBandCover)')))return 'legacy';
     if(docs.some(({d})=>d.querySelector('.globalMyBandWrap a._allMyBandList')))return 'home';
@@ -79,11 +79,11 @@ export async function openBandComposer(surface: Surface) {
     const mobileSelector = 'button.uFloatingButton._btnPostWrite[aria-label="글쓰기"]';
     const desktopSelector = 'button._btnPostWrite, button.cPostWriteEventWrapper._btnOpenWriteLayer';
     const mode = await waitFor(async () => await point(surface, mobileSelector) ? 'mobile'
-      : await point(surface, desktopSelector, '글쓰기') ? 'desktop' : null);
+      : await point(surface, desktopSelector, '글쓰기') ? 'desktop' : null, undefined, { surface, control: "BAND_WRITE_CONTROL" });
     if (mode === 'mobile') await click(surface, 'BAND_WRITE_MOBILE', mobileSelector);
     else await click(surface, 'BAND_WRITE_DESKTOP', desktopSelector, '글쓰기');
   }
-  await waitFor(() => read(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(editor)})).some(visible));`));
+  await waitFor(() => read(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(editor)})).some(visible));`), undefined, { surface, control: "BAND_COMPOSER" });
 
     });
   }
@@ -102,7 +102,7 @@ export async function fillBand(surface: Surface, article: ReturnType<typeof exam
   if (!hasFile) await click(surface, 'BAND_PHOTO_BUTTON', 'button, label, a', '사진');
   await surface.attachFiles('input[type="file"][accept*="image"], input[type="file"]', photos);
   await confirmBandPhotos(surface, photos.length);
-  const result = await waitFor(async () => { const v = await bandSnapshot(surface, text); return v.images === photos.length ? v : null; }, 60000);
+  const result = await waitFor(async () => { const v = await bandSnapshot(surface, text); return v.images === photos.length ? v : null; }, 60000, { surface, control: "BAND_UPLOAD_SLOTS" });
   if (!result.bodyMatches || result.bodyChars !== compact(text).length) throw new Error('BAND_INPUT_MISMATCH');
   return { ...result, attachmentMethod: 'file-input', paste: 'not-tested', draftBehavior: 'not-tested', stoppedBeforePost: true };
 
@@ -123,7 +123,7 @@ export async function confirmBandPhotos(surface: Surface, count: number, check: 
       if (control) { confirmed = true; await surface.click(control.x, control.y); await sleep(350); }
     }
     return null;
-  }, timeoutMs);
+  }, timeoutMs, { surface, control: "BAND_UPLOAD_SLOTS" });
 
     });
   }
@@ -133,12 +133,12 @@ export async function saveBandDraftAndVerify(surface: Surface, article: ReturnTy
   const label = await read<string | null>(surface, `return docs.flatMap(({d})=>Array.from(d.querySelectorAll('button'))).filter(visible).map(e=>(e.textContent||'').trim()).find(t=>/^(임시저장|임시 저장|Save draft)$/i.test(t))||null;`);
   if (!label) throw new Error('BAND_DRAFT_CONTROL_MISSING');
   await click(surface, 'BAND_SAVE', 'button', label);
-  await waitFor(() => read(surface, `return !docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(editor)})).some(visible));`));
+  await waitFor(() => read(surface, `return !docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(editor)})).some(visible));`), undefined, { surface, control: "BAND_COMPOSER" });
   check();
   await click(surface, 'BAND_DRAFT_LIST', 'button, a', '임시저장 글');
   await click(surface, 'BAND_DRAFT_ITEM', '[role="dialog"] button, [role="dialog"] a, [class*="draft"] button, [class*="draft"] a', article.title);
   const expected = [article.title, ...article.paragraphs].join('\n\n');
-  const reopened = await waitFor(async () => { const v = await bandSnapshot(surface, expected); return v.bodyMatches && v.images === 5 ? v : null; });
+  const reopened = await waitFor(async () => { const v = await bandSnapshot(surface, expected); return v.bodyMatches && v.images === 5 ? v : null; }, undefined, { surface, control: "BAND_DRAFT_ITEM" });
   return { draftSaved: true, reopened: true, bodyChars: reopened.bodyChars, images: reopened.images };
 
     });

@@ -217,7 +217,7 @@ export class BlogRichTextWriter {
       if (!p || signature !== previous) { previous = signature; stableSince = Date.now(); return null; }
       if (Date.now() - stableSince < 350) return null;
       return !s.readClickTarget || await s.readClickTarget(p.x,p.y,blogRichEditor.address) ? p : null;
-    }, 5000).catch(() => this.fail());
+    }, 5000, { surface: s, control: "BLOG_LINK" }).catch(() => this.fail());
     await s.click(address.x, address.y, async () => {
       if (s.readClickTarget && !await s.readClickTarget(address.x,address.y,blogRichEditor.address)) this.fail();
     });

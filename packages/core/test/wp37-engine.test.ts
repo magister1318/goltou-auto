@@ -193,8 +193,12 @@ describe('WP37 상품 등록 계약', () => {
     await inTrace(log, async () => {
       trace('verification', 'fail', { reason: 'READBACK_HREF', counts: { observed: 1 } });
       trace('verification', 'fail', { reason: 'READBACK_NUMBER', counts: { observed: 222 } });
-      const tail = logs.uploadTail(log.id, 115);
-      expect(Buffer.byteLength(tail)).toBeLessThanOrEqual(115);
+      for(let i=0;i<10;i++) trace('verification', 'wait', { reason:'READBACK_PHOTOS', counts:{ observed:i } });
+      trace('verification', 'fail', { reason:'READBACK_NUMBER', counts:{ observed:222 } });
+      const tail = logs.uploadTail(log.id, 260);
+      expect(Buffer.byteLength(tail)).toBeLessThanOrEqual(260);
+      expect(tail).toContain('UPLOAD_TRUNCATED');
+      expect(tail.startsWith('{"step":"job","event":"start"')).toBe(true);
       expect(tail).toContain('READBACK_NUMBER'); expect(tail).not.toContain('READBACK_HREF');
       await uploadFailedPostLog(api, 17, tail, token);
     });
