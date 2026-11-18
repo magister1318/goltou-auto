@@ -1,7 +1,7 @@
 # WP36 앱 안에서 업데이트
 
-기존 codex/release-connect-fix 브랜치와 초안 PR #31에서 작업한다. 버전은 1.0.4 (8)이다.
-새 PR이나 병합은 하지 않는다.
+기존 codex/release-connect-fix 브랜치와 초안 PR #31에서 작업했다. 버전은 1.0.4 (8)이다.
+새 PR을 열거나 병합하지 않았다.
 
 한 일
 
@@ -18,12 +18,25 @@
 
 확인한 것
 
-- pnpm install 통과. 새 TypeScript 시험은 API 13, 코어 30, UI 8개다. 취소 때 네이티브 종료 바이트·시간·부분 파일 정리까지 기다린 뒤 로그를 닫는 회귀와 재시작·다음 날의 안내 복원도 포함한다.
+- pnpm install 통과. 새 TypeScript 시험 51개(API 13, 코어 30, UI 8)가 통과했다. 취소 때 네이티브 종료 바이트·시간·부분 파일 정리까지 기다린 뒤 로그를 닫는 회귀와 재시작·다음 날의 안내 복원도 포함한다.
 - 기존 릴리스 부팅·제어 채널 회귀 2파일·5개를 수정 없이 통과했다.
 - pnpm build 후 node scripts/check-app-update-ui.mjs 통과. 합성 회원 등급 3, 360/390/412px, 상태별 21장, 가로 넘침·44px 미만 버튼·외부 요청·페이지 오류 0. 이미지는 ../runs/blog-shots/wp36-ui에 보관했다.
-- 전체 공식 릴리스 게이트와 최종 Android 시험 결과, APK 해시·서명 비교는 빌드 완료 후 이 보고서에 덧붙인다. 소스 확정 전 전체 시험과 취소 로그·재시작 안내 보완 전 게이트 두 번은 중단했으며 완주한 결과로 세지 않는다.
+- 최종 전체 시험은 105파일·1,283개 모두 통과했다. 실패·건너뜀·TODO 0, 런타임 호환성 시험 6개 포함, 958.99초다. pnpm typecheck도 통과했다.
+- apps/android에서 ./gradlew.bat :buildSrc:test testDebugUnitTest testReleaseUnitTest assembleDebug --console=plain 통과. 앱 시험 debug/release 각 23개와 빌드 설정 10개, 실패·오류·건너뜀 0. 최종 debug 빌드는 13초다.
+- ./scripts/install-device.ps1 -Variant release -VerifyOnly -ArtifactDirectory ../release-out 전체 게이트 통과. 의존성·타입·전체 시험·Node 18 소스 104파일 검사·pnpm build·assembleRelease·APK 내부 엔진 2파일 검사·소스 커밋·v2/v3 서명·인증서 검사까지 완료했다. 최종 release 빌드는 7초, 결과는 INSTALLED=False다.
+- 소스 확정 전 전체 시험과 취소 로그·재시작 안내 보완 전 게이트 두 번은 중단했으며 완주한 결과로 세지 않는다.
 - 초기 타입 선언 오류와 외부 서명 설정의 상대 경로 오류는 고쳤다. 키 내용은 출력·복사하지 않았다.
 - 첫 전체 완주에서는 1,283개 중 1,282개 통과·1개 실패였다. 설정의 기존 골투오토 버전 문구를 교체해 기존 키보드 회귀가 실패했다. 기존 문구를 유지하는 것으로 고쳤으며 시험 파일은 바꾸지 않았다. 실패 로그는 wp36-install-gate-settings-failed.log에 보관했다.
+
+서명 APK
+
+- 파일: ../release-out/goltou-auto-1.0.4-8-release.apk 및 .apk.sha256. 크기 56,164,184바이트.
+- APK SHA-256: aa4444f756cb71b282421e50c25230c11c02f6cd7febb2ce46d109203a03bf82
+- 이전 1.0.3 (7) 인증서 SHA-256: B8EA4A8C931A8C711B2D4538ED8618045ABC202A3CF58B35639CCDACE5950665
+- 새 1.0.4 (8) 인증서 SHA-256: B8EA4A8C931A8C711B2D4538ED8618045ABC202A3CF58B35639CCDACE5950665
+- apksigner 비교 SAME, 두 APK의 v2/v3 서명 유효. aapt로 패키지 kr.goltou.auto, versionCode 7 → 8 증가, versionName 1.0.4를 확인했다. 이전 APK보다 늘어난 권한은 REQUEST_INSTALL_PACKAGES 하나다.
+- 게이트와 APK의 소스 커밋: 0bb88b9628418117df20947a0c04dc7e008cc685. 깨끗한 커밋에서 게이트를 완주했다. 이후 커밋은 이 최종 보고서만 바꾸며 실행 코드·시험·APK를 바꾸지 않는다.
+- 확인 자료는 ../runs/blog-shots/의 wp36-install-gate.log, wp36-android-debug.log, wp36-apk-verification.txt, wp36-summary.txt와 wp36-ui/ 21장이다. 중단·실패 기록도 같은 폴더에 별도로 보관했다.
 
 아직 확인하지 않은 것과 다음 작업
 
