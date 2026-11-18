@@ -45,7 +45,7 @@ export function requireDeleteConfirmation(dialog: SurfaceDialog | null | undefin
 /** Values contain numbers only. Item numbers are documented in the WP14 report. */
 export interface DeleteDiagnostic { item: number; pass: number; actual?: number; expected?: number; x?: number; y?: number; width?: number; height?: number; elapsedMs?: number; run?: number }
 export interface DeleteTarget {
-  url: string; title: string;
+  url: string; title: string; verifyListTitle?: boolean;
   extraIdentity?(page: DeletePage): DeleteDiagnostic[];
 }
 export type DeleteLog = (value: DeleteDiagnostic) => Promise<void>;
@@ -162,7 +162,7 @@ export async function verifyPostAbsentFromList(surface: Surface, url: string, ti
         const roots=docs.map(({d})=>d).filter(d=>d.querySelector('.blog2_post_function,.post-list,.list_post,.blog2_list,[data-post-list]'));
         return {ready:roots.length>0&&roots.every(d=>d.readyState==='complete'),
           links:roots.flatMap(d=>Array.from(d.querySelectorAll('a[href]')).map(e=>e.href)),
-          titlePresent:docs.some(({d})=>(d.body?.innerText||'').includes(${JSON.stringify(title)})),
+          titlePresent:${JSON.stringify(!!title)}&&docs.some(({d})=>(d.body?.innerText||'').includes(${JSON.stringify(title)})),
           login:docs.some(({d})=>!!d.querySelector('input[type="password"]'))};`);
       if(snapshot.login)throw Error('LOGIN_OR_EDITOR_LOST');
       const postUrls = [...new Set(snapshot.links.map(postIdentity).filter((p):p is PublishedPost=>!!p&&new URL(p.url).pathname.split('/')[1]===blog).map(p=>p.url))].sort();
@@ -170,7 +170,7 @@ export async function verifyPostAbsentFromList(surface: Surface, url: string, ti
     },
     classes: value => [
       {check:'feed_location',reason:'READBACK_POST_LIST',expected:1,observed:value?.ready?1:0,present:!!value?.ready},
-      {check:'links',reason:'READBACK_POST_LIST_LINKS',expected:1,observed:value?.postUrls.length??0,present:(value?.postUrls.length??0)>0},
+      {check:'links',reason:'READBACK_POST_LIST_LINKS',expected:1,observed:value?.postUrls.length??0,present:!title||(value?.postUrls.length??0)>0},
       {check:'same_post',reason:'READBACK_POST_LIST_ABSENCE',expected:0,observed:value?.targetPresent||value?.titlePresent?1:0,present:!!value&&!value.targetPresent&&!value.titlePresent},
     ],
   });
@@ -181,8 +181,8 @@ export async function verifyPostAbsentFromList(surface: Surface, url: string, ti
 export async function verifyPostGone(surface: Surface, target: DeleteTarget) {
     return traceStep('sites.naver-blog.delete.verifyPostGone', async () => {
   const missingAlert = await openPostDeletionRead(surface, target.url);
-  if (!missingAlert) await waitFor(() => read<boolean>(surface, `return !docs.some(({d})=>d.querySelector('.se-documentTitle'))&&docs.some(({d})=>Array.from(d.querySelectorAll('.error_content,.error_wrap,[data-post-deleted]')).some(e=>visible(e)&&/삭제된|존재하지 않는|찾을 수 없/.test(e.textContent||'')));`), 10000);
-  await verifyPostAbsentFromList(surface, target.url, target.title);
+  if (!missingAlert) await waitFor(() => read<boolean>(surface, `return !docs.some(({d})=>d.querySelector('.se-documentTitle'))&&docs.some(({d})=>Array.from(d.querySelectorAll('.error_content,.error_wrap,[data-post-deleted]')).some(e=>visible(e)&&/삭제된|존재하지 않는|찾을 수 없/.test(e.textContent||'')));`), 10000, { surface, control: "BLOG_POST_ABSENT" });
+  await verifyPostAbsentFromList(surface, target.url, target.verifyListTitle === false ? '' : target.title);
 
     });
   }

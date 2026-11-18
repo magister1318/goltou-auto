@@ -33,7 +33,7 @@ export interface RecordedBandReadback {
   photos: { path: string; width: number; height: number }[];
 }
 /** Parse only the exact recorded post. No account fields or authentication data escape. */
-export function parseRecordedBandFeed(body: string, target: { url: string; title: string }): RecordedBandReadback | null {
+export function parseRecordedBandFeed(body: string, target: { url: string; title?: string }): RecordedBandReadback | null {
   const id = bandPostIdentity(target.url);
   if (!id) throw Error('BAND_RECORD_READ_IDENTITY');
   const value = JSON.parse(body);
@@ -43,24 +43,24 @@ export function parseRecordedBandFeed(body: string, target: { url: string; title
   if (matches.length !== 1) throw Error('BAND_RECORD_READ_AMBIGUOUS');
   const p = matches[0];
   if (String(p.band?.band_no) !== id.band || bandPostIdentity(p.web_url)?.url !== id.url ||
-    typeof p.content !== 'string' || !Number.isFinite(p.created_at) || !Array.isArray(p.attachment?.photo) ||
-    !Number.isInteger(p.photo_count) || p.photo_count !== p.attachment.photo.length) throw Error('BAND_RECORD_READ_IDENTITY');
-  const text = bandStoredText(p.content);
-  if (compact(text.split('\n')[0] ?? '') !== compact(target.title)) throw Error('BAND_RECORD_READ_TITLE');
-  const photos = p.attachment.photo.map((photo: { photo_url: string; width: number; height: number }) => {
+    !Number.isFinite(p.created_at) || target.title && (typeof p.content !== 'string' || !Array.isArray(p.attachment?.photo) ||
+    !Number.isInteger(p.photo_count) || p.photo_count !== p.attachment.photo.length)) throw Error('BAND_RECORD_READ_IDENTITY');
+  const text = typeof p.content === 'string' ? bandStoredText(p.content) : '';
+  if (target.title && compact(text.split('\n')[0] ?? '') !== compact(target.title)) throw Error('BAND_RECORD_READ_TITLE');
+  const photos = (!target.title ? [] : p.attachment.photo).map((photo: { photo_url: string; width: number; height: number }) => {
     const path = typeof photo.photo_url === 'string' ? bandPhotoPath(photo.photo_url) : '';
     if (!path || !(photo.width > 0 && photo.height > 0)) throw Error('BAND_RECORD_READ_PHOTO');
     return { path, width: photo.width, height: photo.height };
   });
   return { url: id.url, body: text, createdAt: p.created_at, owned: p.author?.me === true, photos };
 }
-type FeedTarget = { url: string; title: string } | BandCreationMatch;
+type FeedTarget = { url: string; title?: string } | BandCreationMatch;
 export async function openRecordedBandFeed(host: SurfaceHost, target: FeedTarget,
   inspectWrite: (request: GuardedRequest) => boolean = () => false,
   onWrite: (status: number, body: string) => void = () => {}, log: BandDeleteLog = () => {}, readTimeoutMs = 20000) {
     return traceStep('sites.band.record-read.openRecordedBandFeed', async () => {
   const id = 'url' in target ? bandPostIdentity(target.url) : /^\d{1,30}$/.test(target.band) ? { band: target.band, post: '', url: '' } : null;
-  if (!id || !target.title.trim()) throw Error('BAND_RECORD_READ_IDENTITY');
+  if (!id || !('url' in target) && !target.title.trim()) throw Error('BAND_RECORD_READ_IDENTITY');
   const s = await host.create('band');
   let revision = 0, actual: RecordedBandReadback | null = null, failure = '', reading = false, checkingUrl = false, missingRead = false, reviewingFeed = false;
   try {
@@ -95,8 +95,11 @@ export async function openRecordedBandFeed(host: SurfaceHost, target: FeedTarget
             if (value.result_code !== 1 || !Array.isArray(value.result_data?.items)) throw Error('BAND_RECORD_READ_RESPONSE');
             const candidates: RecordedBandReadback[] = [];
             for (const item of value.result_data.items) {
-              const url = item?.post?.web_url;
-              if (bandPostIdentity(url)?.band !== id.band || typeof item?.post?.content !== 'string') continue;
+              const candidate = item?.post;
+              if (candidate?.author?.me !== true || !Number.isFinite(candidate.created_at) ||
+                candidate.created_at < target.after || candidate.created_at > target.before) continue;
+              const url = candidate.web_url;
+              if (bandPostIdentity(url)?.band !== id.band || typeof candidate.content !== 'string') continue;
               const title = bandStoredText(item.post.content).split('\n')[0] ?? '';
               if (!compact(title)) continue;
               const post = parseRecordedBandFeed(JSON.stringify({ result_code: 1, result_data: { items: [item] } }), { url, title });
@@ -125,10 +128,15 @@ export async function openRecordedBandFeed(host: SurfaceHost, target: FeedTarget
     }, r => bandFeedResponse(r) || r.method === 'POST' && ['/v1.5.0/delete_post', ...(checkingUrl ? ['/v2.0.0/batch'] : [])].includes(new URL(r.url).pathname), () => log({ code: 'SURFACE_BLOCKED' }));
     const refresh = async () => {
       const before = revision;
-      reading = true;
+      checkingUrl = false; reading = true;
       await s.open({ url: `https://band.us/band/${id.band}/post`, session: 'band', width: 1280, height: 900, userAgent: bandMobileUA });
-      await waitFor(async () => { if (failure) throw Error(failure); return revision > before; }, readTimeoutMs);
+      await waitFor(async () => { if (failure) throw Error(failure); return revision > before; }, readTimeoutMs, { surface: s, control: "BAND_FEED" });
       return actual;
+    };
+    const openDetail = async (mobile: boolean) => {
+      checkingUrl = true;
+      await s.open({ url:id.url, session:'band', width:1280, height:900, userAgent:mobile ? bandMobileUA :
+        'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36' });
     };
     const verifyGone = async () => {
       checkingUrl = true;
@@ -160,19 +168,19 @@ export async function openRecordedBandFeed(host: SurfaceHost, target: FeedTarget
           reason = result.post ? 'URL_POST_PRESENT' : 'URL_NO_DELETE_NOTICE';
           if (result.post) throw Error('BAND_URL_POST_PRESENT');
           return !result.post && result.notice;
-        }, 30000);
+        }, 30000, { surface: s, control: "BAND_POST_ABSENT" });
         log({ code: 'URL_ABSENT' });
         return true;
       } catch { trace('sites.band.record-read.openRecordedBandFeed', 'fail', { reason: 'CAUGHT_FAILURE' });  log({ code: reason }); return false; }
       finally { checkingUrl = false; }
     };
     await refresh();
-    return { surface: s, current: () => actual, refresh, verifyGone, reviewFeed: () => { reviewingFeed = true; }, close: () => host.destroy(s) };
+    return { surface: s, current: () => actual, refresh, openDetail, verifyGone, reviewFeed: () => { reviewingFeed = true; }, close: () => host.destroy(s) };
   } catch (e) { trace('sites.band.record-read.openRecordedBandFeed', 'fail', { reason: reasonCode(e) });  await host.destroy(s).catch(() => {}); throw e; }
 
     });
   }
-export async function readRecordedBandPost(host: SurfaceHost, target: { url: string; title: string }) {
+export async function readRecordedBandPost(host: SurfaceHost, target: { url: string; title?: string }) {
     return traceStep('sites.band.record-read.readRecordedBandPost', async () => {
   const session = await openRecordedBandFeed(host, target);
   try { return session.current(); } finally { await session.close(); }

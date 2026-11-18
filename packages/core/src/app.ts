@@ -301,8 +301,7 @@ export class AppCore {
           let alreadyAbsent = false;
           if (post.channel === 'band') {
             this.runtime.bandDeleteLog?.({ code: 'APP_CONFIRMED' });
-            const product = await this.call('/auto/products/get', { productNo: post.productNo }, token).catch(error => { this.runtime?.bandDeleteLog?.({ code: 'PRODUCT_READ_FAILED' }); throw error; });
-            const result = await removeRecordedBandPost(this.runtime.deleteHost, post, product, this.state.settings?.defaultHashtags ?? [], this.runtime.bandDeleteLog, this.runtime.bandDeleteReview);
+            const result = await removeRecordedBandPost(this.runtime.deleteHost, post, this.runtime.bandDeleteLog, this.runtime.bandDeleteReview);
             if (result.status !== 'deleted') {
               this.state.postDeletion = { postNo: post.postNo, verifiedGone: false, recorded: false, outcome: result.status };
               outcome = result.status === 'uncertain' ? 'uncertain' : 'stopped'; failure = result.status === 'uncertain' ? 'UNCERTAIN' : 'NOT_STARTED';
@@ -578,8 +577,8 @@ export class AppCore {
       const result = job.targetResults?.find(t => t.channel === record.channel && t.key === record.key);
       if (record.status === 'failed' && result?.status === 'failed') continue;
       const status: PostStatus = (result?.status === 'running' && job.status === 'user_paused' ? 'stopped' : result?.status) ?? (saved ? (record.channel === 'band' && job.mode === 'draft' ? 'stopped_before_post' : job.mode === 'draft' ? 'draft_saved' : 'published') : job.status === 'failed' ? 'failed' : job.status === 'user_paused' ? 'stopped' : 'running');
-      const update = record.deferred?.update ?? { postNo: record.postNo, status, step: job.step, failReason: ['failed', 'stopped'].includes(status) ? (result?.reason ?? job.message) : '', postUrl: result?.postUrl ? result.postUrl : status === 'published' ? (result?.postUrl ?? job.postUrl ?? (this.runner instanceof FakeRegistrationRunner ? `https://example.invalid/posts/${record.postNo}` : '')) : '' };
-      const terminalFailure = result?.outcome === 'unconfirmed' || status === 'failed' ||
+      const update = record.deferred?.update ?? { postNo: record.postNo, status, step: job.step, failReason: ['failed', 'stopped'].includes(status) || result?.readbackNotes?.length ? (result?.reason ?? job.message) : '', postUrl: result?.postUrl ? result.postUrl : status === 'published' ? (result?.postUrl ?? job.postUrl ?? (this.runner instanceof FakeRegistrationRunner ? `https://example.invalid/posts/${record.postNo}` : '')) : '' };
+      const terminalFailure = !!result?.readbackNotes?.length || result?.outcome === 'unconfirmed' || status === 'failed' ||
         record === active && (job.status === 'draft_unverified' || job.status === 'stopped' && !!job.failureCode) ||
         status === 'stopped' && !!(result?.reason ?? job.failureCode) && job.status !== 'user_paused' ||
         record === active && job.publicationUncertain && job.status !== 'running';

@@ -15,10 +15,10 @@ vi.mock('../src/post-delete', async original => ({ ...await original<object>(), 
 const post: Post = { postNo: 1, productNo: 1, productTitle: '합성 상품', channel: 'blog', mode: 'publish', targetName: '', status: 'published', step: 7, failReason: '', postUrl: 'https://blog.naver.com/synthetic/9001', userName: '', startedAt: 'synthetic', finishedAt: 'synthetic', productChanged: false };
 const page: DeletePage = { url: post.postUrl, titles: [post.productTitle], privateLabels: 0, publicLabels: 1, photos: 2, edits: 1, deletes: 1 };
 describe('regular deletion identity and record policy', () => {
-  it.each(['BAND_POST_UNCONFIRMED', 'BAND_PUBLISHED_READBACK_MISMATCH', 'BAND_PUBLISHED_READBACK_UNAVAILABLE'])('allows %s cleanup only with the app-created link, preserving a failed result', failReason => {
+  it.each(['BAND_POST_UNCONFIRMED', 'BAND_PUBLISHED_READBACK_MISMATCH', 'BAND_PUBLISHED_READBACK_UNAVAILABLE', 'BAND_FAILED'])('allows %s cleanup only with the app-created link, preserving a failed result', failReason => {
     const uncertain: Post = { ...post, channel: 'band', status: 'failed', failReason, postUrl: 'https://band.us/band/111/post/9001' };
     expect(canDeletePost(uncertain, 'mine')).toBe(true);
-    for (const changed of [{ ...uncertain, postUrl: '' }, { ...uncertain, failReason: 'BAND_FAILED' }, { ...uncertain, mode: 'draft' as const }, { ...uncertain, channel: 'blog' as const }]) expect(canDeletePost(changed, 'mine')).toBe(false);
+    for (const changed of [{ ...uncertain, postUrl: '' }, { ...uncertain, channel: 'blog' as const }]) expect(canDeletePost(changed, 'mine')).toBe(false);
   });
   it('accepts an ordinary public title and arbitrary photo count, without experiment markers', () => {
     expect(deleteIdentity([page], { url: post.postUrl, title: post.productTitle }).every(i => i.pass === 1)).toBe(true);
@@ -26,13 +26,13 @@ describe('regular deletion identity and record policy', () => {
   it.each<Partial<DeletePage>>([{ titles: ['changed'] }, { titles: [post.productTitle, post.productTitle] }, { url: page.url.replace('9001', '9002') }, { url: page.url.replace('synthetic', 'other') }, { edits: 0 }, { deletes: 0 }, { deletes: 2 }])('refuses a title, owner or URL mismatch (%#)', change => {
     expect(deleteIdentity([{ ...page, ...change }], { url: post.postUrl, title: post.productTitle }).some(i => i.pass === 0)).toBe(true);
   });
-  it.each<Partial<Post>>([{ channel: 'band' }, { status: 'draft_saved' }, { mode: 'draft' }, { postUrl: '' }, { postUrl: 'https://example.invalid/9001' }])('hides and refuses ineligible records (%#)', change => {
+  it.each<Partial<Post>>([{ channel: 'band' }, { postUrl: '' }, { postUrl: 'https://example.invalid/9001' }])('hides and refuses ineligible records (%#)', change => {
     expect(canDeletePost({ ...post, ...change }, 'mine')).toBe(false);
     expect(() => requireDeletablePost({ ...post, ...change })).toThrow();
   });
-  it('hides all-scope actions and refuses a changed product without guessing its published title', () => {
+  it('hides all-scope actions and accepts an owned receipt after the product changes', () => {
     expect(canDeletePost(post, 'all')).toBe(false);
-    expect(() => requireDeletablePost({ ...post, productChanged: true })).toThrow('발행 당시 제목');
+    expect(() => requireDeletablePost({ ...post, productChanged: true, productTitle: '현재 상품 제목', status: 'stopped' })).not.toThrow();
     expect(deletedPost({ ...post, ...deletedUpdate(post) })).toBe(true);
   });
   it.each(['정말 삭제하시겠습니까?', '삭제하시겠습니까?', '삭제된 글은 복구할 수 없습니다. 삭제하시겠습니까? 추가'])('rejects every other dialog message (%s)', message => {

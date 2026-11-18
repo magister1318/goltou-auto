@@ -1,6 +1,6 @@
 import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import type { SurfaceHost } from '@goltou/surface';
-import { compact, read, sleep, waitFor } from '../dom';
+import { read, sleep, waitFor } from '../dom';
 import { requestFields } from '../naver-blog/request-fields';
 import { bandPostIdentity, type BandDeleteResult } from './delete';
 import { openRecordedBandFeed } from './record-read';
@@ -29,7 +29,7 @@ export function bandDeleteRequestDecision(r: import('@goltou/surface').GuardedRe
   } catch { return 'BODY_PARSE'; }
 }
 
-export interface BandDeleteTarget { url: string; title: string; matchesBody: (body: string) => boolean; createdAfter: number; createdBefore: number }
+export interface BandDeleteTarget { url: string; title?: string; matchesBody?: (body: string) => boolean; createdAfter?: number; createdBefore?: number }
 export type BandDeleteReview = (surface: import('@goltou/surface').Surface) => Promise<void>;
 
 /** The stored URL, owned service receipt and the card's own permalink must agree. */
@@ -37,7 +37,7 @@ export async function deleteMobileRecordedBandPost(host: SurfaceHost, target: Ba
     return traceStep('sites.band.mobile-delete.deleteMobileRecordedBandPost', async () => {
   log({ code: 'START' });
   const id = bandPostIdentity(target.url);
-  if (!id || !target.title.trim() || typeof target.matchesBody !== 'function' || !Number.isFinite(target.createdAfter) || !Number.isFinite(target.createdBefore) || target.createdBefore < target.createdAfter) { log({ code: 'IDENTITY_REJECTED' }); return { status: 'not_started' }; }
+  if (!id) { log({ code: 'IDENTITY_REJECTED' }); return { status: 'not_started' }; }
   let armed = false, sent = false, attempted = false, success = false;
   let session: Awaited<ReturnType<typeof openRecordedBandFeed>> | undefined;
   try {
@@ -54,27 +54,45 @@ export async function deleteMobileRecordedBandPost(host: SurfaceHost, target: Ba
     const { surface: s } = session;
     if (!s.readClickTarget || !s.readAppFocus) throw Error('BAND_DELETE_CONTROL');
     const original = session.current();
+    const feedPath = `/band/${id.band}/post`, detailPath = new URL(id.url).pathname;
+    let activePath = feedPath;
     if (!original) {
-      if (await session.refresh() || !await session.verifyGone()) { log({ code: 'NOT_STARTED' }); return { status: 'not_started' }; }
-      if (review) { if (await session.refresh()) throw Error('BAND_DELETE_IDENTITY'); session.reviewFeed(); await review(s); }
-      log({ code: 'ALREADY_ABSENT' });
-      return { status: 'deleted', alreadyAbsent: true };
+      if (await session.refresh()) throw Error('BAND_DELETE_IDENTITY');
+      if (await session.verifyGone()) {
+        if (review) { if (await session.refresh()) throw Error('BAND_DELETE_IDENTITY'); session.reviewFeed(); await review(s); }
+        log({ code: 'ALREADY_ABSENT' });
+        return { status: 'deleted', alreadyAbsent: true };
+      }
+      // A first-page feed omission also occurs for older posts. The exact
+      // record detail must independently expose an owned post menu.
+      if (target.matchesBody) { log({ code:'NOT_STARTED' }); return { status:'not_started' }; }
+      await session.openDetail(true);
+      activePath = detailPath;
+    } else if (!original.owned || target.matchesBody && !target.matchesBody(original.body) ||
+      original.createdAt < (target.createdAfter ?? -Infinity) || original.createdAt > (target.createdBefore ?? Infinity)) {
+      throw Error('BAND_DELETE_IDENTITY');
     }
-    if (!target.matchesBody(original.body) || original.createdAt < target.createdAfter || original.createdAt > target.createdBefore) throw Error('BAND_DELETE_IDENTITY');
-    const root = `section.postCard:has(a.postCreatedAt[href=${JSON.stringify(id.url)}])`;
+    const www = id.url.replace('https://band.us/', 'https://www.band.us/');
+    const aliases = [id.url, www, detailPath].flatMap(url=>[url, url + '/']).map(url=>`a.postCreatedAt[href=${JSON.stringify(url)}],a._postPermalink[href=${JSON.stringify(url)}]`).join(',');
+    const root = `section.postCard:has(${aliases}),.postView[data-is-owner="true"][data-band-key="${id.band}"][data-post-key="${id.post}"]`;
     const identity = async () => {
       const p = session!.current();
       const u = new URL((await s.readState()).url);
-      if (!p?.owned || p.url !== id.url || !['band.us', 'www.band.us'].includes(u.hostname) ||
-        p.createdAt !== original?.createdAt || compact(p.body) !== compact(original.body) ||
-        u.pathname.replace(/\/$/, '') !== `/band/${id.band}/post` || !await s.readAppFocus!()) throw Error('BAND_DELETE_IDENTITY');
-      if (!await read<boolean>(s, `const ps=docs.flatMap(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(root)}))).filter(visible);return ps.length===1&&(ps[0].querySelector('p.postText')?.innerText||'').trim().split('\\n')[0].trim()===${JSON.stringify(target.title)};`)) throw Error('BAND_DELETE_IDENTITY');
+      if (u.protocol !== 'https:' || !['band.us', 'www.band.us'].includes(u.hostname) ||
+        u.pathname.replace(/\/$/, '') !== activePath || !await s.readAppFocus!()) throw Error('BAND_DELETE_IDENTITY');
+      if (original && (!p?.owned || p.url !== id.url || p.createdAt !== original.createdAt)) throw Error('BAND_DELETE_IDENTITY');
+      if (!await read<boolean>(s, `const ps=docs.flatMap(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(root)}))).filter(visible);
+        if(ps.length!==1||ps[0].getAttribute('data-is-owner')==='false')return false;
+        const title=${JSON.stringify(target.title ?? '')};
+        return !title||(ps[0].querySelector('p.postText,.postTextView')?.innerText||'').trimStart().trimEnd().split('\\n')[0].trimStart().trimEnd()===title;`)) throw Error('BAND_DELETE_IDENTITY');
     };
+    if (!original) await waitFor(async () => { try { await identity(); return true; } catch { return false; } },
+      5000, { surface:s, control:'BAND_POST_DETAIL' });
     await identity();
     log({ code: 'IDENTITY_VERIFIED' });
     if (await s.readDialog?.()) throw Error('BAND_DELETE_CONFIRM');
     const press = async (selector: string, label: string, before = async () => {}) => {
-      const focus = () => read<{ focused: boolean; backwards: boolean; count: number }>(s, `const es=docs.flatMap(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(selector)})).filter(e=>visible(e)&&!e.disabled&&(e.textContent||'').trim()===${JSON.stringify(label)}));
+      const focus = () => read<{ focused: boolean; backwards: boolean; count: number }>(s, `const es=docs.flatMap(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(selector)})).filter(e=>visible(e)&&!e.disabled&&(e.textContent||'').trimStart().trimEnd()===${JSON.stringify(label)}));
         if(es.length!==1)throw Error('BAND_DELETE_CONTROL');const all=docs.flatMap(({d})=>Array.from(d.querySelectorAll('button,a[href],input,select,textarea,[tabindex]')).filter(e=>visible(e)&&!e.disabled&&e.tabIndex>=0));
         const t=all.indexOf(es[0]),a=all.findIndex(e=>e===e.ownerDocument.activeElement),n=all.length;
         return{focused:docs.some(({d})=>d.activeElement===es[0]),backwards:a>=0&&t>=0&&t<a,count:n};`);
@@ -97,10 +115,10 @@ export async function deleteMobileRecordedBandPost(host: SurfaceHost, target: Ba
       // A host that ignores the callback cannot arm a destructive request.
       if (!checked) throw Error('BAND_DELETE_CONTROL');
     };
-    await press(`${root} button._btnPostMore`, '글 옵션');
+    await press(`:is(${root}) button._btnPostMore`, '글 옵션');
     log({ code: 'MENU_OPEN' });
     const menu = 'ul.modalMoreMenu._optionContainer';
-    await waitFor(() => read<boolean>(s, `const ms=docs.flatMap(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(menu)}))).filter(visible);return ms.length===1&&Array.from(ms[0].querySelectorAll('button')).some(e=>(e.textContent||'').trim()==='글 수정');`), 5000);
+    await waitFor(() => read<boolean>(s, `const ms=docs.flatMap(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(menu)}))).filter(visible);return ms.length===1&&Array.from(ms[0].querySelectorAll('button')).some(e=>(e.textContent||'').trimStart().trimEnd()==='글 수정');`), 5000, { surface: s, control: "BAND_POST_MENU" });
     try { await press(`${menu} button._menuLink`, '삭제하기'); }
     catch (e) { trace('sites.band.mobile-delete.deleteMobileRecordedBandPost', 'fail', { reason: reasonCode(e) });  if (!(await s.readDialog?.())) throw e; }
     const dialog = await s.readDialog?.();
@@ -108,19 +126,19 @@ export async function deleteMobileRecordedBandPost(host: SurfaceHost, target: Ba
     const arm = async () => { log({ code: 'CONFIRM_VERIFIED' }); attempted = true; armed = true; log({ code: 'ARMED' }); };
     if (dialog) {
       if (dialog.kind !== 'confirm' || dialog.message.length > 300 || !dialog.message.includes('삭제') || !s.respondDialog || !await s.readAppFocus()) throw Error('BAND_DELETE_CONFIRM');
-      if (dialog.url) { const u = new URL(dialog.url); if (!['band.us', 'www.band.us'].includes(u.hostname) || u.pathname.replace(/\/$/, '') !== `/band/${id.band}/post`) throw Error('BAND_DELETE_CONFIRM'); }
+      if (dialog.url) { const u = new URL(dialog.url); if (!['band.us', 'www.band.us'].includes(u.hostname) || u.pathname.replace(/\/$/, '') !== activePath) throw Error('BAND_DELETE_CONFIRM'); }
       await arm(); await s.respondDialog(dialog.id, true);
     } else {
       const selector = '[role="alertdialog"], [role="dialog"], .lyWrap, .modalLayerView';
       const confirmed = () => read<string | null>(s, `const message=n=>n.nodeType===3?n.textContent||'':n.nodeType!==1||['BUTTON','A','INPUT'].includes(n.tagName)?'':Array.from(n.childNodes).map(message).join('');
         const ds=docs.flatMap(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(selector)}))).filter(e=>visible(e)&&message(e).length<500&&message(e).includes('삭제'));
-        const matching=ds.filter(e=>{const bs=Array.from(e.querySelectorAll('button')).filter(b=>visible(b)&&!b.disabled);return bs.some(b=>(b.textContent||'').trim()==='취소')&&bs.filter(b=>['삭제','삭제하기','확인'].includes((b.textContent||'').trim())).length===1;});
+        const matching=ds.filter(e=>{const bs=Array.from(e.querySelectorAll('button')).filter(b=>visible(b)&&!b.disabled);return bs.some(b=>(b.textContent||'').trimStart().trimEnd()==='취소')&&bs.filter(b=>['삭제','삭제하기','확인'].includes((b.textContent||'').trimStart().trimEnd())).length===1;});
         const inner=matching.filter(e=>!matching.some(other=>other!==e&&e.contains(other)));if(inner.length!==1)return null;
-        return Array.from(inner[0].querySelectorAll('button')).find(b=>visible(b)&&['삭제','삭제하기','확인'].includes((b.textContent||'').trim()))?.textContent.trim()||null;`);
-      const label = await waitFor(confirmed, 5000);
+        return Array.from(inner[0].querySelectorAll('button')).find(b=>visible(b)&&['삭제','삭제하기','확인'].includes((b.textContent||'').trimStart().trimEnd()))?.textContent.trimStart().trimEnd()||null;`);
+      const label = await waitFor(confirmed, 5000, { surface: s, control: "confirm" });
       await press(`${selector.split(', ').map(x => `${x} button`).join(', ')}`, label, async () => { if (await confirmed() !== label) throw Error('BAND_DELETE_CONFIRM'); await arm(); });
     }
-    await waitFor(async () => success, timeoutMs);
+    await waitFor(async () => success, timeoutMs, { surface: s, control: "BAND_DELETE_RECEIPT" });
     if (!sent || await session.refresh()) { log({ code: 'UNCERTAIN' }); return { status: 'uncertain' }; }
     log({ code: 'FEED_ABSENT' });
     if (await session.refresh() || !await session.verifyGone()) { log({ code: 'UNCERTAIN' }); return { status: 'uncertain' }; }

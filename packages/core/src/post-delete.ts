@@ -1,30 +1,17 @@
 import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
-import { ApiError, type Post, type Product } from '@goltou/api-client';
-import { createHash } from 'node:crypto';
-import { compact, bandText, deleteMobileRecordedBandPost, deleteBlogPost, guardRecordedBlogDelete, openPostDeletionRead, verifyPostAbsentFromList, deletePageSource, read, verifyPostGone, type DeletePage, type DeleteLog, type BandDeleteLog, type BandDeleteReview } from '@goltou/sites';
+import { ApiError, type Post } from '@goltou/api-client';
+import { postIdentity, deleteMobileRecordedBandPost, deleteBlogPost, guardRecordedBlogDelete, openPostDeletionRead, verifyPostAbsentFromList, deletePageSource, read, verifyPostGone, type DeletePage, type DeleteLog, type BandDeleteLog, type BandDeleteReview } from '@goltou/sites';
 import type { SurfaceHost } from '@goltou/surface';
-import { makePreview } from './preparation';
 
 export { canDeletePost, deletedPost, deletedUpdate, requireDeletablePost } from './post-delete-policy';
 import { requireDeletablePost } from './post-delete-policy';
 
-export async function removeRecordedBandPost(host: SurfaceHost, post: Post, product: Product, hashtags: string[], log: BandDeleteLog = () => {}, review?: BandDeleteReview) {
-    return traceStep('core.post-delete.removeRecordedBandPost', async () => {
-  requireDeletablePost(post);
-  const after = Date.parse(post.startedAt), before = Date.parse(post.finishedAt);
-  if (product.productNo !== post.productNo || product.title !== post.productTitle || !Number.isFinite(after) || !Number.isFinite(before) || before < after) {
-    log({ code: 'IDENTITY_REJECTED' });
-    throw new ApiError('conflict', '발행 당시 본문과 시각을 확인하지 못했습니다. 삭제하지 않고 멈췄습니다.');
-  }
-  const preview = makePreview(product, { closing: false, linkCard: false, hashtags });
-  if (!preview.verification.band.matches) { log({ code: 'IDENTITY_REJECTED' }); throw new ApiError('conflict', '본문을 확인하지 못했습니다. 삭제하지 않고 멈췄습니다.'); }
-  log({ code: 'PRODUCT_VERIFIED' });
-  const hash = (body: string) => createHash('sha256').update(compact(body)).digest('hex');
-  const expected = hash(bandText(preview.band));
-  return deleteMobileRecordedBandPost(host, { url: post.postUrl, title: post.productTitle, matchesBody: body => hash(body) === expected, createdAfter: after, createdBefore: before }, 10000, log, review);
-
-    });
-  }
+export async function removeRecordedBandPost(host: SurfaceHost, post: Post, log: BandDeleteLog = () => {}, review?: BandDeleteReview) {
+  return traceStep('core.post-delete.removeRecordedBandPost', async () => {
+    requireDeletablePost(post);
+    return deleteMobileRecordedBandPost(host, { url: post.postUrl }, 10000, log, review);
+  });
+}
 /** Opens only the record's URL. A prior uncertain click is resolved by reading
  * that URL before any further deletion, including after restarting the app. */
 export async function removeRecordedBlogPost(host: SurfaceHost, post: Post, log: DeleteLog = async () => {}) {
@@ -35,15 +22,18 @@ export async function removeRecordedBlogPost(host: SurfaceHost, post: Post, log:
     await guardRecordedBlogDelete(surface, post.postUrl);
     await surface.blockRequests?.(['/RabbitWrite.naver', '/RabbitUpdate.naver', '/RabbitTempPostWrite.naver', '/RabbitTempPostUpdate.naver'].map(pathname => ({ hostname: 'blog.naver.com', pathname })));
     await log({ item: 80, pass: 1 });
-    if (await openPostDeletionRead(surface, post.postUrl)) { await log({ item: 81, pass: 1 }); await verifyPostAbsentFromList(surface, post.postUrl, post.productTitle); return; }
+    if (await openPostDeletionRead(surface, post.postUrl)) { await log({ item: 81, pass: 1 }); await verifyPostAbsentFromList(surface, post.postUrl, ''); return; }
     // Service automation stays hidden, just like editor input. Native visibility
     // is reserved for guarded manual login; app focus is checked before deletion.
     const pages = await read<DeletePage[]>(surface, deletePageSource);
     if (!pages.some(p => p.titles.length)) {
-      await verifyPostGone(surface, { url: post.postUrl, title: post.productTitle });
+      await verifyPostGone(surface, { url: post.postUrl, title: '' });
       return;
     }
-    await deleteBlogPost(surface, { url: post.postUrl, title: post.productTitle }, log);
+    const target = postIdentity(post.postUrl);
+    const title = pages.find(page => postIdentity(page.url)?.url === target?.url && page.titles.length === 1)?.titles[0];
+    if (!title) throw Error('BLOG_POST_DELETE_CHECK_1');
+    await deleteBlogPost(surface, { url: post.postUrl, title, verifyListTitle: false }, log);
   } catch (error) { trace('core.post-delete.removeRecordedBlogPost', 'fail', { reason: reasonCode(error) });
     const code = error instanceof Error ? error.message : '';
     const codes = ['OBSERVATION_TIMEOUT', 'SURFACE_NAVIGATION_TIMEOUT', 'BLOG_POST_DELETE_CONFIRM_UNCONFIRMED', 'BLOG_POST_DELETE_READ_ALERT_UNCONFIRMED', 'BLOG_POST_DELETE_LIST_UNCONFIRMED', 'SURFACE_READ_FAILED_OR_SIDE_EFFECT'];
