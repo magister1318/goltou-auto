@@ -71,7 +71,7 @@ async function fixture(kind: Kind, transport: 'fake' | 'http', failure: 'invalid
       : new ChannelRegistrationRunner({ band: { host, baseUrl: 'http://127.0.0.1', localPublish: true }, blog: services }, checkpoint, notify);
     if (runner instanceof ChannelRegistrationRunner) runner.directory.choices = [{ key: '111', name: '로컬', photoLimit: null, observedAt: null }];
     const start = runner.start.bind(runner);
-    runner.start = (input, title, photos) => start(input, title, photos, work);
+    runner.start = (input: JobInput, title: string, photos: number) => start(input, title, photos, work);
     return runner;
   });
   cleanup.push(() => app.dispose());

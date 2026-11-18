@@ -18,7 +18,7 @@ const app = {
   async handle({ command, input }) {
     if (command === 'session.get') return structuredClone(state);
     if (command === 'products.list' || command === 'posts.list') return { items: [], total: 0 };
-    if (command === 'preferences.get' || command === 'preferences.save') return { polish: false, closing: false, linkCard: false, lastBandKey: '' };
+    if (command === 'preferences.get' || command === 'preferences.save') return { polish: false, closing: false, linkCard: false, lastBandKeys: [] };
     if (command === 'polish.setting.get') return 'spelling';
     if (command === 'update.action') {
       if (input.action === 'open') state.update = { ...available, sheet: true };

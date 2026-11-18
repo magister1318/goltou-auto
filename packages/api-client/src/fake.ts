@@ -100,7 +100,7 @@ export function createFakeApi(fixtureSession?: { token: string; user: User; prod
           if (value.status === 'stopped_before_post' && post.channel !== 'band') throw new ApiError('invalid', '밴드만 게시 전 멈춤으로 기록할 수 있습니다.');
           if (post.status === 'stopped_before_post' && !['published', 'stopped', 'stopped_before_post'].includes(value.status)) throw new ApiError('conflict', '게시 전 멈춤 기록은 게시 완료 또는 중단으로만 바꿀 수 있습니다.');
           if (successful(post) && value.status === 'running') throw new ApiError('conflict', '저장한 기록을 다시 실행할 수 없습니다.');
-          Object.assign(post, value, { finishedAt: value.status === 'running' ? '' : stamp }); output = {}; break;
+          Object.assign(post, value, { finishedAt: value.status === 'running' ? '' : new Date().toISOString() }); output = {}; break;
         }
         case '/auto/settings/save': {
           if (user.userType < 8) throw new ApiError('forbidden', '관리자만 설정을 저장할 수 있습니다.');

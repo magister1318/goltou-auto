@@ -50,3 +50,5 @@ export function diagnose(url: string) { return send({ type: 'diagnose', url }) a
 export function experiment(command: string, input: Record<string, unknown> = {}) {
   return send({ type: 'experiment', command, input }) as Promise<import('@goltou/core/experiments').ExperimentState>;
 }
+
+export const saveMyText = (value: Commands['myText.save']['input']) => request('myText.save', value);

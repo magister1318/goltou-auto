@@ -180,7 +180,7 @@ describe('WP35 app-private Band list cache', () => {
     await new Promise(r => setTimeout(r, 10));
     expect(await f.store.read()).toBeNull(); expect(f.runner.directory.choices).toEqual([]);
   });
-  it.each(['not-member', 'member-korean', 'not-found', 'permission', 'disabled', 'route', 'dialog'])('fails a cached target before any input/post, drops the cache and never tries the next target (%s)', async mode => {
+  it.each(['not-member', 'member-korean', 'not-found', 'permission', 'disabled', 'route', 'dialog'])('fails a single cached target before any input or post and invalidates the cache (%s)', async mode => {
     const f = fixture(); await f.runner.listBands();
     vi.mocked(f.surface.open).mockImplementation(async options => {
       if (mode === 'dialog') { vi.mocked(f.surface.evaluateReadOnly).mockRejectedValue(Error('DIALOG_BLOCKS_RUNTIME')); vi.mocked(f.surface.readState).mockRejectedValue(Error('DIALOG_BLOCKS_RUNTIME')); }
@@ -188,11 +188,11 @@ describe('WP35 app-private Band list cache', () => {
       f.page.window.document.body.innerHTML = mode === 'disabled' ? '<button class="_btnPostWrite" disabled>글쓰기</button>' : '<p class="errorPage">' + ({ 'not-member': '가입하지 않은 밴드입니다.', 'member-korean': '이 밴드의 멤버가 아닙니다.', 'not-found': '존재하지 않는 밴드입니다.', permission: '글쓰기 권한이 없습니다.' }[mode] ?? '') + '</p>';
     });
     if (mode === 'dialog') vi.mocked(f.surface.readDialog!).mockResolvedValue({ id: 'denied', kind: 'alert', message: '글쓰기 권한이 없습니다.' });
-    await f.runner.start(input, '합성 시험', 0, work());
+    await f.runner.start({ ...input, targets: [input.targets[0]!] }, '합성 시험', 0, work());
     await until(() => f.runner.job?.status === 'failed');
     const message = '밴드 목록이 바뀌었습니다. 새로고침 후 다시 골라 주세요.';
     expect(f.runner.job).toMatchObject({ status: 'failed', failureCode: 'BAND_TARGET_INVALID', message, publicationUncertain: false });
-    expect(f.runner.job?.targetResults).toMatchObject([{ status: 'failed', reason: message }, { status: 'stopped' }]);
+    expect(f.runner.job?.targetResults).toMatchObject([{ status: 'failed', reason: 'BAND_TARGET_INVALID' }]);
     expect(await f.store.read()).toBeNull();
     expect(f.surface.open).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ url: 'https://band.us/band/987654321/post' }));
     for (const call of [f.surface.click, f.surface.typeText, f.surface.pressKey, f.surface.attachFiles]) expect(call).not.toHaveBeenCalled();

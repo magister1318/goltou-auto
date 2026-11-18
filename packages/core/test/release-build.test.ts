@@ -98,12 +98,12 @@ it('builds isolated release assets, strips debug tools and starts the bundled co
       };
       socket.on('message', receive); socket.send(JSON.stringify({ id: current, type, command, input }));
     });
-    const preferences = { polish: true, closing: false, linkCard: false, lastBandKey: '111' };
+    const preferences = { polish: true, closing: false, linkCard: false, lastBandKeys: ['111'] };
     expect(await request('preferences.save', preferences)).toMatchObject({ type: 'reply', data: preferences });
     expect(await request('localData.export')).toMatchObject({ type: 'reply', data: { cancelled: false } });
     expect(JSON.parse(document!).preferences).toEqual(preferences);
     expect(document).not.toMatch(/cookie|token|password|one-band-post/);
-    await request('preferences.save', { ...preferences, polish: false, lastBandKey: '' });
+    await request('preferences.save', { ...preferences, polish: false, lastBandKeys: [] });
     expect(await request('localData.import')).toMatchObject({ type: 'reply', data: { cancelled: false, preferences } });
     expect(await request('preferences.get')).toMatchObject({ type: 'reply', data: preferences });
     expect(await request('logs.list')).toMatchObject({ type: 'reply', data: [] });

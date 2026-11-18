@@ -127,7 +127,6 @@ export function App() {
   const [options, setOptions] = useState(initialPreviewOptions),
     [previewRefresh, setPreviewRefresh] = useState(0);
   const [preferencesReady, setPreferencesReady] = useState(false);
-  const lastBand = useRef('');
   const settingsReturn = useRef<Screen>('home');
   const preferencesWrites = useRef(Promise.resolve());
   const [mode, setMode] = useState<Mode>('draft'),
@@ -135,10 +134,12 @@ export function App() {
     [band, setBand] = useState(false),
     [visibility, setVisibility] = useState<'public' | 'private'>('public');
   const [bands, setBands] = useState<Band[]>([]),
-    [bandKey, setBandKey] = useState(''),
+    [bandKeys, setBandKeys] = useState<string[]>([]),
     [loadingBands, setLoadingBands] = useState(false),
     [bandsFailed, setBandsFailed] = useState(false),
     [bandsFailureReason, setBandsFailureReason] = useState('');
+  const bandKey = bandKeys[0] ?? '';
+  const chosenBands = bandKeys.flatMap(key => bands.filter(band => band.key === key));
   const [bandsSavedAt, setBandsSavedAt] = useState<number | null>(null);
   const [refreshingBands, setRefreshingBands] = useState(false);
   const bandsRevision = useRef(0);
@@ -322,15 +323,16 @@ export function App() {
     };
   }, [screen]);
   useEffect(() => {
+    setOptions(old => ({ ...old, closing: app?.myText?.closingOn ?? true }));
+  }, [app?.user?.userNo, app?.myText?.closingOn]);
+  useEffect(() => {
     if (connected)
       void request('preferences.get', {})
         .then((value) => {
-          lastBand.current = value.lastBandKey;
-          setBandKey(value.lastBandKey);
+          setBandKeys(value.lastBandKeys);
           setOptions((old) => ({
             ...old,
             polish: value.polish,
-            closing: value.closing,
             linkCard: value.linkCard,
           }));
           setPreferencesReady(true);
@@ -341,9 +343,9 @@ export function App() {
     if (!preferencesReady) return;
     const value = {
       polish: options.polish,
-      closing: options.closing,
+      closing: false,
       linkCard: options.linkCard,
-      lastBandKey: lastBand.current,
+      lastBandKeys: bandKeys,
     };
     preferencesWrites.current = preferencesWrites.current
       .catch(ignore)
@@ -354,9 +356,8 @@ export function App() {
   }, [
     preferencesReady,
     options.polish,
-    options.closing,
     options.linkCard,
-    bandKey,
+    bandKeys,
   ]);
   useEffect(() => {
     if (connected)
@@ -453,9 +454,10 @@ export function App() {
       setBandsFailed(!!result.failure);
       setBandsFailureReason(result.failure ?? '');
     }
-    setBandKey(old => old ? rows.some(b => b.key === old) ? old : ''
-      : rows.some(b => b.key === lastBand.current) ? lastBand.current
-        : rows.length === 1 ? rows[0]!.key : '');
+    if (Array.isArray(result) || !result.failure && !result.refreshing && (result.source === 'band' || result.savedAt !== null)) setBandKeys(old => {
+      const keys = old.filter(key => rows.some(band => band.key === key));
+      return keys.length === old.length ? old : keys;
+    });
   }
   useEffect(() => { if (app?.bandList) receiveBands(app.bandList); }, [app?.bandList]);
   async function loadBands(refresh = false) {
@@ -524,14 +526,8 @@ export function App() {
       ...(blog || mode === 'draft'
         ? [{ channel: 'blog' as const, key: 'overseas', name: '해외골프' }]
         : []),
-      ...(mode === 'publish' && band && bands.find((b) => b.key === bandKey)
-        ? [
-            {
-              channel: 'band' as const,
-              key: bandKey,
-              name: bands.find((b) => b.key === bandKey)!.name,
-            },
-          ]
+      ...(mode === 'publish' && band
+        ? chosenBands.map(({ key, name }) => ({ channel: 'band' as const, key, name }))
         : []),
     ];
   }
@@ -1038,7 +1034,7 @@ export function App() {
               {converted ? (
                 <ConversionPreview
                   plan={converted[preview]}
-                  bandName={bands.find((b) => b.key === bandKey)?.name}
+                  bandName={chosenBands.map(b => b.name).join(', ')}
                   ratios={sourcePhotoRatios(product.contentsHtml)}
                   expanded
                   droppedStruckCharacters={converted.droppedStruckCharacters}
@@ -1082,6 +1078,7 @@ export function App() {
                 className="btn primary"
                 disabled={!converted || preparing}
                 onClick={() => {
+                  setOptions(old => ({ ...old, closing: app?.myText?.closingOn ?? true }));
                   setMode('publish');
                   setVisibility('public');
                   setSheet('publish');
@@ -1271,6 +1268,7 @@ export function App() {
             )}
             <div className="bar">
               <JobResultActions job={job} busy={busy} act={action=>{
+                if (action === 'retryFailed') { void act(async () => { await request('job.retryFailed', {}); go('progress'); }); return; }
                 if (action==='history') { go('history'); return; }
                 if (action==='close' || action==='home') { setPage(1); go('home'); return; }
                 if (action==='stop') { setSheet('stop'); return; }
@@ -1495,8 +1493,8 @@ export function App() {
                     const result = await request('localData.import', {});
                     if (!result.cancelled && result.preferences && result.polishStrength) {
                       const value = result.preferences;
-                      lastBand.current = value.lastBandKey; setBandKey(value.lastBandKey);
-                      setOptions({ polish: value.polish, closing: value.closing, linkCard: value.linkCard, polishStrength: result.polishStrength });
+                      setBandKeys(value.lastBandKeys);
+                      setOptions({ polish: value.polish, closing: app?.myText?.closingOn ?? true, linkCard: value.linkCard, polishStrength: result.polishStrength });
                       setNotice('앱 데이터를 가져왔습니다. 등록 내역과 공통 설정은 같은 골투 계정으로 로그인하면 다시 읽습니다.');
                     }
                   })}>데이터 가져오기</button>
@@ -1580,7 +1578,9 @@ export function App() {
                     value={options[key]}
                     disabled={busy || active || !preferencesReady || loading}
                     change={(value) =>
-                      setOptions((old) => ({ ...old, [key]: value }))
+                      key === 'closing' && app?.myText
+                        ? void act(async () => { await request('myText.save', { ...app.myText!, closingOn: value }); })
+                        : setOptions((old) => ({ ...old, [key]: value }))
                     }
                   />
                 </div>
@@ -1813,12 +1813,10 @@ export function App() {
             {bandsFailed && <p>{bandListFailureHint(bandsFailureReason)}</p>}
             <BandChooser
               bands={bands}
-              value={bandKey}
+              value={bandKeys}
               back={() => setSheet('publish')}
               choose={(key) => {
-                lastBand.current = key;
-                setBandKey(key);
-                setSheet('publish');
+                setBandKeys(keys => keys.includes(key) ? keys.filter(value => value !== key) : [...keys, key]);
               }}
             />
             </>
@@ -2036,7 +2034,7 @@ export function App() {
                       >
                         <span>
                           <small>올릴 밴드</small>
-                          {bands.find((b) => b.key === bandKey)?.name ||
+                          {chosenBands.map(b => b.name).join(', ') ||
                             '올릴 밴드를 골라 주세요'}
                         </span>
                         <span className="green">
@@ -2077,6 +2075,10 @@ export function App() {
                   </button>
                 </div>
               )}
+              <div className="choice-row">
+                <span>글 끝 문구 넣기</span>
+                <Toggle label="글 끝 문구 넣기" value={options.closing} disabled={busy} change={closing => setOptions(old => ({ ...old, closing }))} />
+              </div>
               {startReason && (
                 <p className="why-disabled" role="status">
                   {startReason}
@@ -2112,7 +2114,7 @@ export function App() {
                   <div>
                     <span>네이버 밴드</span>
                     <strong>
-                      {bands.find((b) => b.key === bandKey)?.name}
+                      {chosenBands.map(b => b.name).join(', ')}
                     </strong>
                   </div>
                 )}

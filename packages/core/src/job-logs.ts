@@ -12,7 +12,7 @@ import { sanitizeUpdate } from '../../surface/src/update-diagnostics';
 const kinds: readonly JobKind[] = ['blog_draft', 'blog_publish', 'blog_delete', 'unfinished_cleanup', 'band_post', 'band_delete', 'login_check', 'band_list', 'app_update'];
 const sites: readonly LogSite[] = ['naver', 'band', 'app'];
 const events: readonly TraceEvent[] = ['start', 'ok', 'fail', 'retry', 'skip', 'wait', 'blocked_expected'];
-const countKeys = ['rows', 'columns', 'cells', 'step', 'paragraphIndex', 'paragraphTotal', 'photoIndex', 'photoTotal', 'bytes', 'runs', 'attempt', 'expected', 'observed', 'status', 'lineBreaks', 'hashtags', 'links'] as const;
+const countKeys = ['rows', 'columns', 'cells', 'step', 'paragraphIndex', 'paragraphTotal', 'photoIndex', 'photoTotal', 'bytes', 'runs', 'attempt', 'expected', 'observed', 'status', 'differences', 'paragraphs', 'lineBreaks', 'hashtags', 'links'] as const;
 const hosts = ['band.us', 'www.band.us', 'auth.band.us', 'api.band.us', 'api-kr.band.us', 'bapi-kr.band.us', 'up.band.us', 'blog.naver.com', 'm.blog.naver.com', 'nid.naver.com', '127.0.0.1'];
 const fieldNames = ['version', 'ts', 'band_no', 'post_no', 'band_key', 'post_key', 'body', 'content', 'contents', 'text', 'photos', 'photo_list', 'file', 'fileList', 'attachment', 'attachments', 'data', 'requests', 'url', 'method', 'params', 'access_token', 'token', 'signature', 'key', 'blogId', 'logNo', 'title', 'tags', 'is_public', 'schedule', 'device_type', 'set_band_notice', 'set_major_band_notice', 'set_linked_band_notice', 'copiable_state', 'should_disable_comment', 'band_notice_unset_at', 'photo', 'purpose', 'format', 'locale', 'app_id', 'documentJson', 'documentModel', 'mediaResources', 'populationParams', 'productApiVersion', 'tokenId', 'cpage', 'categoryNo', 'parentCategoryNo', 'viewDate', 'sourceCode', 'currentPage'];
 const fixedPaths = ['/RabbitAutoSaveWrite.naver', '/PostDelete.naver', '/v1.5.0/delete_post', '/v2.0.0/batch', '/v2.3.0/get_band_list', '/v2.0.2/create_post', '/v3/upload_photo', '/RabbitWrite.naver', '/RabbitUpdate.naver', '/RabbitTempPostWrite.naver', '/RabbitTempPostUpdate.naver', '/PostWriteForm.naver', '/PostView.naver', '/PostList.naver', '/', '/my/home', '/my', '/login'];
@@ -30,7 +30,7 @@ export function sanitizeDetail(detail: TraceDetail = {}) {
     for (const key of countKeys) { const n = detail.counts[key]; if (typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= Number.MAX_SAFE_INTEGER) counts[key] = n; }
     out.counts = counts;
   }
-  if (['table', 'title', 'paragraphs', 'prices', 'departures', 'golf_courses', 'text', 'photos', 'photo_order', 'photo_ratio', 'links', 'hashtags', 'line_breaks', 'identity', 'focus', 'record', 'alert_kind', 'delete_notice', 'same_post', 'missing_read', 'feed_location', 'bold', 'visibility', 'stability'].includes(detail.check ?? '')) out.check = detail.check;
+  if (['table', 'title', 'paragraphs', 'prices', 'departures', 'golf_courses', 'text', 'photos', 'photo_order', 'photo_ratio', 'links', 'hashtags', 'line_breaks', 'identity', 'focus', 'record', 'alert_kind', 'delete_notice', 'same_post', 'missing_read', 'feed_location', 'bold', 'number', 'cursor', 'input', 'href', 'photo', 'visibility', 'stability'].includes(detail.check ?? '')) out.check = detail.check;
   if (['alert', 'confirm'].includes(detail.dialog ?? '')) out.dialog = detail.dialog;
   if (traceSelectors.includes(detail.selector as typeof traceSelectors[number])) out.selector = detail.selector;
   if (traceOperations.includes(detail.operation as typeof traceOperations[number])) out.operation = detail.operation;
@@ -101,11 +101,30 @@ export class JobLogStore implements TraceProvider {
     }
   }
   forRecord(recordIdentity: string) { const hash = this.identity(recordIdentity); return this.list().find(row => row.recordHash === hash || row.recordHashes?.includes(hash)); }
+  /** Upload only step codes and numeric diagnostics, independent of optional local metadata. */
+  uploadTail(jobId: string, cap = 512 * 1024): string {
+    const row = this.rows.find(item => item.jobId === jobId);
+    if (!row) return '';
+    const raw = readFileSync(path.join(this.directory, row.file), 'utf8');
+    const kept: string[] = [];
+    let bytes = 0;
+    for (const line of raw.trimEnd().split('\n').reverse()) {
+      let value;
+      try { value = JSON.parse(line); } catch { continue; }
+      if (!traceSteps.includes(value.step) || !events.includes(value.event)) continue;
+      const safe = sanitizeDetail({ reason: value.reason, counts: value.counts, check: value.check });
+      const entry = JSON.stringify({ step: value.step, event: value.event, ...safe }) + '\n';
+      const size = Buffer.byteLength(entry);
+      if (bytes + size > cap) break;
+      bytes += size; kept.push(entry);
+    }
+    return kept.reverse().join('');
+  }
   /** Proves one acknowledged create for this local record without retaining its URL. */
   creationProof(recordIdentity: string) {
     const hash = this.identity(recordIdentity);
     for (const row of [...this.rows].reverse()) {
-      if (row.kind !== 'band_post' || row.result !== 'uncertain' || row.reason !== 'BAND_POST_UNCONFIRMED' || !(row.recordHash === hash || row.recordHashes?.includes(hash))) continue;
+      if (row.kind !== 'band_post' || row.result !== 'uncertain' || !row.reason?.startsWith('BAND_POST_UNCONFIRMED') || !(row.recordHash === hash || row.recordHashes?.includes(hash))) continue;
       const lines = readFileSync(path.join(this.directory, row.file), 'utf8').trim().split('\n').flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } });
       const creates = lines.filter(line => line.step === 'barrier' && line.reason === 'CREATE_ALLOWED' && !line.network);
       const responses = lines.filter(line => line.step === 'barrier' && line.reason === 'BAND_PUBLISH_RESPONSE_OK');

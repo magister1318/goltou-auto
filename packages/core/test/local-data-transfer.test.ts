@@ -13,7 +13,7 @@ afterEach(async () => { for (const dir of directories.splice(0)) await rm(dir, {
 async function directory() { const dir = await mkdtemp(path.join(os.tmpdir(), 'local-data-test-')); directories.push(dir); return dir; }
 async function populated() {
   const dir = await directory();
-  await filePreferencesStore(path.join(dir, 'preferences.json')).write({ polish: true, closing: false, linkCard: false, lastBandKey: '111' });
+  await filePreferencesStore(path.join(dir, 'preferences.json')).write({ polish: true, closing: false, linkCard: false, lastBandKeys: ['111'] });
   await filePolishStrengthStore(path.join(dir, 'polish-strength.txt')).write('natural');
   await writeFile(path.join(dir, 'post-metadata.json'), JSON.stringify({ 91: 'private', 92: { tableFallback: true, visibility: 'public' } }));
   // Files outside the fixed allowlist must never be copied.
@@ -25,7 +25,7 @@ it('round-trips options and history metadata without sessions, titles, allowance
   const text = await source.transfer.export();
   expect(text).not.toContain('SYNTHETIC_PRIVATE_VALUE');
   await fileLocalDataTransfer(target).import(text);
-  expect(await filePreferencesStore(path.join(target, 'preferences.json')).read()).toEqual({ polish: true, closing: false, linkCard: false, lastBandKey: '111' });
+  expect(await filePreferencesStore(path.join(target, 'preferences.json')).read()).toEqual({ polish: true, closing: false, linkCard: false, lastBandKeys: ['111'] });
   expect(await filePolishStrengthStore(path.join(target, 'polish-strength.txt')).read()).toBe('natural');
   expect(await filePostMetadata(path.join(target, 'post-metadata.json')).get(91)).toBe('private');
   expect(await filePostMetadata(path.join(target, 'post-metadata.json')).getTableFallback(92)).toBe(true);
@@ -56,7 +56,7 @@ it('merges existing metadata and refuses conflicting visibility without changing
 });
 it('exports safe defaults without creating any local files', async () => {
   const dir = await directory(); const data = JSON.parse(await fileLocalDataTransfer(dir).export());
-  expect(data.preferences).toEqual({ polish: false, closing: false, linkCard: false, lastBandKey: '' });
+  expect(data.preferences).toEqual({ polish: false, closing: false, linkCard: false, lastBandKeys: [] });
   expect(data.postMetadata).toEqual({}); expect(await readdir(dir)).toEqual([]);
 });
 it.each([['natural'], { value: 'natural' }, false])('requires a literal polish level rather than a coercible value (%j)', async polishStrength => {
@@ -108,7 +108,7 @@ it('locks other state-changing commands while the owner is choosing a document a
   });
   try {
     const pending = app.handle({ id: 1, type: 'app', command: 'localData.import', input: {} });
-    await expect(app.handle({ id: 2, type: 'app', command: 'preferences.save', input: { polish: true, closing: true, linkCard: true, lastBandKey: '' } })).rejects.toThrow('데이터 옮기기를 먼저');
+    await expect(app.handle({ id: 2, type: 'app', command: 'preferences.save', input: { polish: true, closing: true, linkCard: true, lastBandKeys: [] } })).rejects.toThrow('데이터 옮기기를 먼저');
     finish(null); expect(await pending).toEqual({ cancelled: true });
     expect(await app.handle({ id: 3, type: 'app', command: 'preferences.get', input: {} })).toMatchObject({ polish: false });
   } finally { app.dispose(); }

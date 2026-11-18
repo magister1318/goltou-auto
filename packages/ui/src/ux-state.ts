@@ -25,6 +25,7 @@ export function uncertainReason(reason = '') {
   );
 }
 export function targetStatus(job: Job, target: TargetResult): string {
+  if (target.outcome === 'unconfirmed') return '게시 여부 확인 못 함';
   if (target.postUrl && target.status==='failed') return '확인 필요';
   if (formattingMessage(target.reason)) return '확인 필요';
   if (target.status === 'published')

@@ -203,10 +203,10 @@ const app = {
         polish: false,
         closing: false,
         linkCard: false,
-        lastBandKey: chosen,
+        lastBandKeys: chosen ? [chosen] : [],
       };
     if (command === 'preferences.save') {
-      chosen = input.lastBandKey;
+      chosen = input.lastBandKeys[0] ?? '';
       return input;
     }
     if (command === 'polish.setting.get' || command === 'polish.setting.save')

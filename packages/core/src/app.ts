@@ -1,14 +1,17 @@
-import { beginTrace, inTrace, trace, traceJob, reasonCode, type TraceJob } from '@goltou/surface/telemetry';
+import { beginTrace, currentTrace, inTrace, trace, traceJob, reasonCode, type TraceJob } from '@goltou/surface/telemetry';
 import { randomUUID } from 'node:crypto';
 import { requireDeletablePost, removeRecordedBlogPost, removeRecordedBandPost, deletedUpdate } from './post-delete';
-import { ApiError, type ApiClient, type Channel, type PostStatus, type Product, type PostInput } from '@goltou/api-client';
+import { ApiError, defaultMyText, type ApiClient, type Channel, type PostStatus, type PostUpdate, type Product } from '@goltou/api-client';
 import { FakeRegistrationRunner, type RegistrationRunner } from './runner';
-import type { AppRequest, AppSnapshot, Job, JobInput, TokenStore } from './protocol';
+import type { AppRequest, AppSnapshot, Job, JobInput, JobOptions, TargetResult, TokenStore } from './protocol';
 import { makePreview, preparePreview, preparationWork, type PreparationServices, type PreparedPreview } from './preparation';
 import { RecordError } from './record-checkpoint';
 import { MemoryPolishStrengthStore, type PolishStrengthStore } from './polish/setting';
 import { updateJobBusy } from './app-update';
-import { MemoryPreferencesStore, validPreferences, type PreferencesStore } from './preferences';
+import { MemoryPreferencesStore, migratePreferences, type PreferencesStore } from './preferences';
+import { fillMyText, validMyText } from './convert';
+import { uploadFailedPostLog } from './failed-log-upload';
+import { canRetryJob } from './job-safety';
 import { MemoryPostMetadata, type PostMetadataStore } from './post-metadata';
 export class MemoryTokenStore implements TokenStore {
   private token: string | null = null;
@@ -32,10 +35,12 @@ export class AppCore {
   private serviceUnsubscribe: (() => void) | undefined;
   private readonly pendingServiceChecks = new Set<'naver' | 'band'>();
   private disposed = false;
-  private preview: { product: Product; options: PostInput['options']; result: PreparedPreview; reverted: string[] } | undefined;
+  private preview: { product: Product; options: JobOptions; result: PreparedPreview; reverted: string[] } | undefined;
+  private lastInput: JobInput | undefined;
+  private earlierResults: TargetResult[] | undefined;
   private uncertainStart = false;
   private jobPreview: PreparedPreview | null = null;
-  private records: { postNo: number; channel: Channel; key: string; status: PostStatus; updates: Map<string, RecordError | null> }[] = [];
+  private records: { postNo: number; channel: Channel; key: string; status: PostStatus; logUploaded?: boolean; deferred?: { update: PostUpdate; error: RecordError }; updates: Map<string, RecordError | null> }[] = [];
   private recordPrivateText: string[] = [];
   private deletionRecording: import('./record-checkpoint').RecordingCheckpoint | undefined;
   private readonly polishSetting: PolishStrengthStore;
@@ -45,7 +50,7 @@ export class AppCore {
     this.polishSetting = runtime?.polishStrength ?? new MemoryPolishStrengthStore();
     this.postMetadata = runtime?.postMetadata ?? new MemoryPostMetadata();
     this.preferences = runtime?.preferences ?? new MemoryPreferencesStore();
-    const notify = (job: Job) => { if (!this.state.user) return; this.state.job = job; if (!this.runner.serviceLogin && job.status === 'login_paused' && job.service) { this.state.services[job.service] = 'expired'; this.state.visibleService = job.service; } this.emit(); };
+    const notify = (job: Job) => { if (!this.state.user) return; this.state.job = this.aggregateJob(job); if (!this.runner.serviceLogin && job.status === 'login_paused' && job.service) { this.state.services[job.service] = 'expired'; this.state.visibleService = job.service; } this.emit(); };
     this.createRunner = () => factory ? factory((job, retry) => this.record(job, retry), notify) : new FakeRegistrationRunner(() => this.state.simulation, job => this.record(job), notify);
     this.runner = this.createRunner();
     if (this.runner.checkLogin) { this.state.realBlog = true; this.state.services.naver = 'unknown'; }
@@ -55,7 +60,10 @@ export class AppCore {
   }
   private bindServiceLogin() {
     this.serviceUnsubscribe?.();
-    const bands = this.runner.subscribeBands?.(value => { this.state.bandList = value; this.emit(); });
+    const bands = this.runner.subscribeBands?.(value => {
+      this.state.bandList = value; this.emit();
+      if (!value.failure && !value.refreshing && (value.source === 'band' || value.savedAt !== null)) void this.keepAvailableBands(value.rows).catch(() => {});
+    });
     const login = this.runner.serviceLogin?.subscribe(update => {
       this.state.services[update.service] = update.state;
       if (update.visible) this.state.visibleService = update.service;
@@ -96,8 +104,8 @@ export class AppCore {
   snapshot(): AppSnapshot { return structuredClone(this.state); }
   /** Restore an already provisioned session; never submits credentials or calls login. */
   async restoreSession() {
-    const { user, settings } = await this.call('/auto/me', {}, await this.token());
-    this.state.user = user; this.state.settings = settings; this.emit();
+    const { user, settings, myText } = await this.call('/auto/me', {}, await this.token());
+    this.state.user = user; this.state.settings = settings; this.state.myText = { ...defaultMyText(), ...myText }; this.emit();
     this.scheduleServiceChecks();
   }
   private emit() {
@@ -121,7 +129,7 @@ export class AppCore {
     await this.deletionRecording.emit(job);
   }
   private async token(): Promise<string> { const token = await this.tokens.read(); if (!token) throw new ApiError('auth', '다시 로그인해 주세요.'); return token; }
-  private async clearSession() { await this.tokens.write(null); this.initialization = Promise.resolve(); this.preview = undefined; this.jobPreview = null; this.records = []; this.recordPrivateText = []; this.deleteConfirmation = undefined; this.pendingDeleteUpdate = undefined; delete this.state.postDeletion; this.state.user = null; this.state.settings = null; this.state.job = null; this.emit(); }
+  private async clearSession() { await this.tokens.write(null); this.initialization = Promise.resolve(); this.preview = undefined; this.jobPreview = null; this.records = []; this.recordPrivateText = []; this.deleteConfirmation = undefined; this.pendingDeleteUpdate = undefined; delete this.state.postDeletion; this.state.user = null; this.state.settings = null; delete this.state.myText; this.lastInput = undefined; this.earlierResults = undefined; this.state.job = null; this.emit(); }
   private async call<P extends keyof import('@goltou/api-client').ApiRoutes>(path: P, input: import('@goltou/api-client').ApiRoutes[P]['input'], token?: string): Promise<import('@goltou/api-client').ApiRoutes[P]['output']> {
     try { return await this.api.request(path, input, token); }
     catch (error) {
@@ -161,7 +169,7 @@ export class AppCore {
       }
       return {};
     }
-    if (this.runtime?.updater?.busy && ['job.start', 'preview.prepare', 'posts.delete.prepare', 'posts.delete.confirm', 'localData.import', 'logout'].includes(request.command))
+    if (this.runtime?.updater?.busy && ['job.start', 'job.retryFailed', 'preview.prepare', 'posts.delete.prepare', 'posts.delete.confirm', 'localData.import', 'logout'].includes(request.command))
       throw new ApiError('conflict', '업데이트 확인 또는 설치를 먼저 마쳐 주세요.');
     if (this.transferringLocalData) throw new ApiError('conflict', '데이터 옮기기를 먼저 마쳐 주세요.');
     if (request.command === 'localData.export' || request.command === 'localData.import') {
@@ -183,8 +191,9 @@ export class AppCore {
     if (this.deleting && !['session.get', 'posts.list', 'products.list', 'products.get'].includes(request.command)) throw new ApiError('conflict', '글 삭제가 진행 중입니다.');
     if (request.command === 'preferences.get') return this.preferences.read();
     if (request.command === 'preferences.save') {
-      if (!validPreferences(request.input)) throw new ApiError('invalid', '글 옵션을 다시 확인해 주세요.');
-      await this.preferences.write(request.input); return this.preferences.read();
+      const value = migratePreferences(request.input);
+      if (!value) throw new ApiError('invalid', '글 옵션을 다시 확인해 주세요.');
+      await this.preferences.write(value); return this.preferences.read();
     }
     if (request.command === 'polish.setting.get') return this.polishSetting.read();
     if (request.command === 'polish.setting.save') {
@@ -214,7 +223,7 @@ export class AppCore {
         finally { request.input.password = ''; request.input.loginId = ''; }
         await this.tokens.write(result.token);
         const me = await this.call('/auto/me', {}, result.token);
-        this.initialization = Promise.resolve(); this.state.user = me.user; this.state.settings = me.settings;
+        this.initialization = Promise.resolve(); this.state.user = me.user; this.state.settings = me.settings; this.state.myText = { ...defaultMyText(), ...me.myText };
         this.scheduleServiceChecks();
         this.emit(); return this.snapshot();
       } finally { request.input.password = ''; request.input.loginId = ''; this.authenticating = false; }
@@ -313,6 +322,12 @@ export class AppCore {
         const page = await this.call('/auto/posts/list', request.input, token);
         return { ...page, items: await Promise.all(page.items.map(async post => ({ ...post, jobLog: this.runtime?.logs?.forRecord(String(post.postNo)), tableFallback: post.channel === 'blog' ? await this.postMetadata.getTableFallback(post.postNo) : false, blogVisibility: post.channel === 'blog' ? await this.postMetadata.get(post.postNo) ?? post.blogVisibility : undefined }))) };
       }
+      case 'myText.save': {
+        if (!validMyText(request.input)) throw new ApiError('invalid', '글 앞·끝 문구를 확인해 주세요.');
+        await this.api.request('/auto/me/text/save', request.input, token);
+        this.state.myText = { ...defaultMyText(), ...(await this.call('/auto/me', {}, token)).myText };
+        break;
+      }
       case 'settings.save': await this.call('/auto/settings/save', request.input, token); this.state.settings = (await this.call('/auto/me', {}, token)).settings; break;
       case 'service.check': this.requireServiceIdle(); this.state.services[request.input.service] = request.input.service === 'ai' ? 'unknown' : request.input.service === 'band' && this.runner.checkBandLogin ? await this.runner.checkBandLogin() : request.input.service === 'naver' && this.runner.checkLogin ? await this.runner.checkLogin() : 'confirmed'; break;
       case 'service.show': this.requireServiceIdle(); await this.runner.showService?.(request.input.service); if (!this.runner.serviceLogin) this.state.visibleService = request.input.service; break;
@@ -332,6 +347,14 @@ export class AppCore {
         if ((c.tickMs !== undefined && (!Number.isFinite(c.tickMs) || c.tickMs < 10 || c.tickMs > 10000)) || [c.loginAt, c.failAt].some(n => n !== undefined && n !== null && (!Number.isInteger(n) || n < 1 || n > 7))) throw new ApiError('invalid', '가짜 실행 설정을 확인해 주세요.');
         Object.assign(this.state.simulation, c); break;
       }
+      case 'job.retryFailed': {
+        const job = this.state.job;
+        if (!job || !this.lastInput || job.mode !== 'publish' || !['failed', 'published'].includes(job.status)) throw new ApiError('conflict', '다시 시도할 곳이 없습니다.');
+        const targets = this.lastInput.targets.filter(target => job.targetResults?.some(result => result.channel === target.channel && result.key === target.key && result.outcome === 'failed') || this.lastInput!.targets.length === 1 && canRetryJob(job));
+        if (!targets.length) throw new ApiError('conflict', '다시 시도할 곳이 없습니다.');
+        await this.start({ ...this.lastInput, targets }, token, true);
+        return this.snapshot();
+      }
       case 'job.start': await this.start(request.input, token); return this.snapshot();
       case 'job.preview': return structuredClone(this.jobPreview);
       case 'job.cancel':
@@ -350,11 +373,14 @@ export class AppCore {
         if (!this.runner.answerDialog || typeof request.input.id !== 'string' || typeof request.input.accept !== 'boolean') throw new ApiError('invalid', '확인창 선택을 확인해 주세요.');
         await this.runner.answerDialog(request.input.id, request.input.accept); return this.snapshot();
       case 'draft.show': throw new ApiError('invalid', '네이버 블로그 앱의 임시저장함에서 확인해 주세요.');
-      case 'bands.list':
+      case 'bands.list': {
         if (this.runner.serviceLogin?.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
         if (this.starting || this.state.job && (this.state.job.status === 'record_failed' || !['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(this.state.job.status) && !this.state.job.completedSteps.includes(7))) throw new ApiError('conflict', '진행 중인 작업을 먼저 마쳐 주세요.');
         if (request.input.refresh !== undefined && typeof request.input.refresh !== 'boolean') throw new ApiError('invalid', '새로고침 선택을 확인해 주세요.');
-        return this.runner.listBands ? this.runner.listBands(request.input) : [{ key: 'travel', name: '골투 여행', photoLimit: null, observedAt: null }, { key: 'golf', name: '해외골프 모임', photoLimit: null, observedAt: null }];
+        const result = this.runner.listBands ? await this.runner.listBands(request.input) : [{ key: 'travel', name: '골투 여행', photoLimit: null, observedAt: null }, { key: 'golf', name: '해외골프 모임', photoLimit: null, observedAt: null }];
+        if (Array.isArray(result) || !result.failure && !result.refreshing && (result.source === 'band' || result.savedAt !== null)) await this.keepAvailableBands(Array.isArray(result) ? result : result.rows);
+        return result;
+      }
       case 'band.show': throw new ApiError('invalid', '작업 화면은 앱 안에서만 확인합니다.');
       case 'band.check': await this.runner.checkBand?.(); return this.snapshot();
       case 'band.discard':
@@ -404,56 +430,154 @@ export class AppCore {
       throw new RecordError(error, [token]);
     }
   }
-  private async start(input: JobInput, token: string) {
+  private aggregateJob(job: Job): Job {
+    if (!this.earlierResults || !this.lastInput) return job;
+    const targetResults = this.earlierResults.map(earlier =>
+      job.targetResults?.find(result => result.channel === earlier.channel && result.key === earlier.key) ??
+      (job.targets.some(target => target.channel === earlier.channel && target.key === earlier.key)
+        ? { channel: earlier.channel, key: earlier.key, name: earlier.name, status: 'running' as const } : earlier));
+    const status = job.status === 'published' && targetResults.some(target => target.outcome === 'unconfirmed' || target.outcome === 'failed') ? 'failed' : job.status;
+    return { ...job, status, targets: this.lastInput.targets, targetResults };
+  }
+  private async keepAvailableBands(bands: readonly { key: string }[]) {
+    const prefs = await this.preferences.read();
+    const lastBandKeys = prefs.lastBandKeys.filter(key => bands.some(band => band.key === key));
+    if (lastBandKeys.length !== prefs.lastBandKeys.length) await this.preferences.write({ ...prefs, lastBandKeys });
+  }
+  private async checkBandLimit(selected: number, token: string) {
+    const limit = this.state.settings?.bandDailyLimit;
+    if (!selected || !limit) return;
+    const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' });
+    let used = 0;
+    for (let page = 1; ; page++) {
+      const data = await this.call('/auto/posts/list', { scope: 'mine', page, pageSize: 50 }, token);
+      if (!Array.isArray(data?.items)) break;
+      for (const post of data.items) {
+        const date = /(?:Z|[+-]\d\d:\d\d)$/.test(post.startedAt)
+          ? new Date(post.startedAt).toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' }) : post.startedAt.slice(0, 10);
+        if (post.channel === 'band' && date === today && (['running', 'published', 'stopped_before_post'].includes(post.status) || !!post.postUrl || post.failReason.startsWith('BAND_POST_UNCONFIRMED'))) used++;
+      }
+      if (data.items.length < 50 || page * 50 >= data.total) break;
+    }
+    if (selected + used > limit) throw new ApiError('conflict', `밴드 하루 한도 ${limit}건 중 오늘 ${used}건을 썼습니다. ${selected}곳을 고르면 한도를 넘습니다.`);
+  }
+  private async start(input: JobInput, token: string, retry = false) {
+    input = { ...input, targets: [...input.targets].sort((a,b) => Number(a.channel === 'band') - Number(b.channel === 'band')),
+      options: { ...input.options, closing: input.options.closing ?? this.state.myText?.closingOn ?? true } };
     if (input.mode === 'draft' && input.targets.some(t => t.channel === 'band')) throw new ApiError('invalid', '임시저장은 네이버 블로그만 선택할 수 있습니다.');
     if (this.state.visibleService || this.runner.serviceLogin?.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
     if (this.pendingDeleteUpdate) throw new ApiError('conflict', '삭제 결과 기록을 먼저 마쳐 주세요.');
     if (this.uncertainStart) throw new ApiError('conflict', '이전 기록 시작 요청의 결과를 확인하지 못했습니다. 등록 기록을 확인해 주세요.');
-    if (this.preparing || this.starting || (this.runner.job && (this.runner.job.status === 'record_failed' || !['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(this.runner.job.status) && !this.runner.job.completedSteps.includes(7)))) throw new ApiError('conflict', '한 번에 한 작업만 등록할 수 있습니다.');
-    if (!input.targets.length || new Set(input.targets.map(t => `${t.channel}:${t.key}`)).size !== input.targets.length) throw new ApiError('invalid', '올릴 곳을 선택해 주세요.');
+    if (this.preparing || this.starting || this.state.job?.status === 'running' || (this.runner.job && (this.runner.job.status === 'record_failed' || !['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(this.runner.job.status) && !this.runner.job.completedSteps.includes(7) && !retry))) throw new ApiError('conflict', '한 번에 한 작업만 등록할 수 있습니다.');
+    if (!input.targets.length || input.targets.filter(t => t.channel === 'blog').length > 1 || new Set(input.targets.map(t => `${t.channel}:${t.key}`)).size !== input.targets.length) throw new ApiError('invalid', '올릴 곳을 선택해 주세요.');
     if (input.mode === 'publish' && input.publishConfirmed !== true) throw new ApiError('invalid', '발행 전에 한 번 더 확인해 주세요.');
     if (!['draft', 'publish'].includes(input.mode) || input.blogVisibility !== undefined && !['public', 'private'].includes(input.blogVisibility)) throw new ApiError('invalid', '등록 방식과 공개 범위를 확인해 주세요.');
     this.starting = true; this.records = [];
+    const previousResults = this.earlierResults;
     try {
+      const bandKeys = input.targets.filter(target => target.channel === 'band').map(target => target.key);
+      await this.checkBandLimit(bandKeys.length, token);
       const product = this.forRegistration(await this.call('/auto/products/get', { productNo: input.productNo }, token));
       let preview: PreparedPreview;
       if (input.options.polish) {
         const cached = this.preview;
-        if (!cached || cached.product.productNo !== product.productNo || cached.result.contentHash !== product.contentHash || (cached.options.polishStrength ?? 'spelling') !== (input.options.polishStrength ?? 'spelling') || (['polish', 'closing', 'linkCard'] as const).some(key => cached.options[key] !== input.options[key])) throw new ApiError('invalid', '상품 또는 옵션이 바뀌었습니다. 내용을 다시 확인해 주세요.');
-        preview = cached.result;
+        if (!cached || cached.product.productNo !== product.productNo || cached.result.contentHash !== product.contentHash || (cached.options.polishStrength ?? 'spelling') !== (input.options.polishStrength ?? 'spelling') || (['polish', 'linkCard'] as const).some(key => cached.options[key] !== input.options[key]) || cached.result.options.closing !== input.options.closing) throw new ApiError('invalid', '상품 또는 옵션이 바뀌었습니다. 내용을 다시 확인해 주세요.');
+        preview = makePreview(product, this.convertOptions(input.options), undefined, cached.result.polish, cached.reverted);
       } else preview = makePreview(product, this.convertOptions(input.options));
       if (input.previewHash && input.previewHash !== product.contentHash) throw new ApiError('invalid', '상품이 바뀌었습니다. 내용을 다시 확인해 주세요.');
       const mismatch = input.targets.map(t => preview.verification[t.channel]).find(v => !v.matches);
       if (mismatch) throw new ApiError('invalid', mismatch.message);
       this.jobPreview = preview;
+      const startFailures: TargetResult[] = [];
       for (const target of input.targets) {
         let postNo: number;
-        try { this.uncertainStart = true; ({ postNo } = await this.call('/auto/posts/start', { productNo: input.productNo, channel: target.channel, mode: input.mode, target: { name: target.name, key: target.key }, options: input.options, contentHash: product.contentHash }, token)); this.uncertainStart = false; }
-        catch (error) { if (error instanceof ApiError && error.code !== 'server') this.uncertainStart = false; if (target.channel === 'band' && error instanceof ApiError && error.code === 'conflict') throw new ApiError('conflict', `${target.name}: ${error.message}`); throw error; }
+        try { this.uncertainStart = true; ({ postNo } = await this.call('/auto/posts/start', { productNo: input.productNo, channel: target.channel, mode: input.mode, target: { name: target.name, key: target.key }, options: { ...input.options, closing: input.options.closing! }, contentHash: product.contentHash }, token)); this.uncertainStart = false; }
+        catch (error) {
+          if (input.targets.length > 1 && target.channel === 'band' && this.state.user) {
+            this.uncertainStart = false;
+            const reason = 'POST_RECORD_START_FAILED';
+            const log = beginTrace('band_post', 'band');
+            log?.line('runner.record', 'fail', { reason }); log?.end('failed', reason);
+            startFailures.push({ ...target, status: 'failed', outcome: 'failed', reason });
+            continue;
+          }
+          if (error instanceof ApiError && error.code !== 'server') this.uncertainStart = false;
+          if (target.channel === 'band' && error instanceof ApiError && error.code === 'conflict') throw new ApiError('conflict', `${target.name}: ${error.message}`);
+          throw error;
+        }
         this.records.push({ postNo, channel: target.channel, key: target.key, status: 'running', updates: new Map() });
         if (target.channel === 'blog') await this.postMetadata.set(postNo, input.blogVisibility ?? 'public');
       }
       this.recordPrivateText = [product.title, ...product.golfCourses, ...preview.blog.steps.flatMap(step => step.kind === 'text' ? [step.text] : step.kind === 'table' ? step.rows.flat() : [])];
-      await this.runner.start(input, product.title, product.images.length, this.preparation ? preparationWork(product, preview, this.preparation) : undefined);
+      this.earlierResults = retry ? this.state.job?.targetResults : undefined;
+      await this.runner.start(input, product.title, product.images.length, this.preparation ? preparationWork(product, preview, this.preparation) : undefined, { retry, startFailures });
+      if (!retry) this.lastInput = structuredClone(input);
+      if (!retry && input.mode === 'publish' && bandKeys.length) {
+        await this.preferences.read().then(selected => this.preferences.write({ ...selected, lastBandKeys: bandKeys })).catch(() => {});
+      }
     } catch (error) {
-      for (const record of this.records) await this.call('/auto/posts/update', { postNo: record.postNo, status: 'stopped', step: 1, failReason: '작업 시작 실패', postUrl: '' }, token);
+      this.earlierResults = previousResults;
+      for (const record of this.records) {
+        const log = beginTrace(record.channel === 'band' ? 'band_post' : input.mode === 'draft' ? 'blog_draft' : 'blog_publish', record.channel === 'band' ? 'band' : 'naver');
+        await inTrace(log, async () => {
+          this.runtime?.logs?.associate(String(record.postNo));
+          trace('runner.record', 'fail', { reason: 'POST_RECORD_START_FAILED' });
+          await this.api.request('/auto/posts/update', { postNo: record.postNo, status: 'stopped', step: 1, failReason: 'POST_RECORD_START_FAILED', postUrl: '' }, token).catch(() => {});
+          if (log) await this.uploadLog(record, log, token);
+        });
+        log?.end('failed', 'POST_RECORD_START_FAILED');
+      }
       throw error;
     } finally { this.starting = false; }
   }
   private forRegistration(product: Product): Product { return this.runtime?.experimentTitle ? { ...product, title: `[골투오토 실험] ${this.runtime.experimentTitleLabel ?? ''}${product.title}` } : product; }
-  private convertOptions(options: PostInput['options']) {
-    return { closing: options.closing, closingText: this.state.settings?.closingText ?? '', linkCard: options.linkCard, hashtags: this.state.settings?.defaultHashtags ?? [], polishStrength: options.polishStrength ?? 'spelling' };
+  private convertOptions(options: JobOptions) {
+    const myText = this.state.myText ?? defaultMyText(), user = this.state.user ?? { name: '' };
+    return { closing: options.closing ?? myText.closingOn, closingText: fillMyText(myText.closing, user), prefixText: fillMyText(myText.prefix, user),
+      linkCard: options.linkCard, tagWords: this.state.settings?.defaultHashtags ?? [], polishStrength: options.polishStrength ?? 'spelling' };
+  }
+  private async uploadLog(record: AppCore['records'][number], log: TraceJob, token: string) {
+    if (record.logUploaded || !this.runtime?.logs) return;
+    record.logUploaded = true;
+    try {
+      const tail = this.runtime.logs.uploadTail(log.id);
+      if (tail) await uploadFailedPostLog(this.api, record.postNo, tail, token);
+    } catch { trace('runner.log_upload', 'skip', { reason: 'POST_LOG_UPLOAD_FAILED' }); }
   }
   private async record(job: Job, retry = false) {
     trace('runner.record', retry ? 'retry' : 'start', { counts: { step: job.step } });
     const token = await this.token();
+    const log = currentTrace();
+    const active = job.step < 6 ? this.records.find(record => record.channel === 'blog') ?? this.records[0]
+      : job.step === 6 ? this.records.find(record => record.channel === 'band' && record.key === job.activeTargetKey) : undefined;
     for (const record of this.records) {
-      this.runtime?.logs?.associate(String(record.postNo));
+      if (record === active) this.runtime?.logs?.associate(String(record.postNo));
+      if (record.deferred && !retry) {
+        if (job.completedSteps.includes(7)) throw record.deferred.error;
+        continue;
+      }
       if (['draft_saved', 'published'].includes(record.status) && !(record.channel === 'blog' && job.testPostDeleted && record.status === 'published')) continue;
       const saved = job.completedSteps.includes(record.channel === 'blog' ? 5 : 6);
       const result = job.targetResults?.find(t => t.channel === record.channel && t.key === record.key);
+      if (record.status === 'failed' && result?.status === 'failed') continue;
       const status: PostStatus = (result?.status === 'running' && job.status === 'user_paused' ? 'stopped' : result?.status) ?? (saved ? (record.channel === 'band' && job.mode === 'draft' ? 'stopped_before_post' : job.mode === 'draft' ? 'draft_saved' : 'published') : job.status === 'failed' ? 'failed' : job.status === 'user_paused' ? 'stopped' : 'running');
-      const update = { postNo: record.postNo, status, step: job.step, failReason: ['failed', 'stopped'].includes(status) ? (result?.reason ?? job.message) : '', postUrl: result?.postUrl ? result.postUrl : status === 'published' ? (result?.postUrl ?? job.postUrl ?? (job.targetResults ? '' : `https://example.invalid/posts/${record.postNo}`)) : '' };
+      const update = record.deferred?.update ?? { postNo: record.postNo, status, step: job.step, failReason: ['failed', 'stopped'].includes(status) ? (result?.reason ?? job.message) : '', postUrl: result?.postUrl ? result.postUrl : status === 'published' ? (result?.postUrl ?? job.postUrl ?? (this.runner instanceof FakeRegistrationRunner ? `https://example.invalid/posts/${record.postNo}` : '')) : '' };
+      const terminalFailure = result?.outcome === 'unconfirmed' || status === 'failed' ||
+        record === active && (job.status === 'draft_unverified' || job.status === 'stopped' && !!job.failureCode) ||
+        status === 'stopped' && !!(result?.reason ?? job.failureCode) && job.status !== 'user_paused' ||
+        record === active && job.publicationUncertain && job.status !== 'running';
+      if (terminalFailure && !record.logUploaded && log) {
+        if (record === active) await this.uploadLog(record, log, token);
+        else {
+          const targetLog = beginTrace(record.channel === 'band' ? 'band_post' : job.mode === 'draft' ? 'blog_draft' : 'blog_publish', record.channel === 'band' ? 'band' : 'naver');
+          if (targetLog) await inTrace(targetLog, async () => {
+            this.runtime?.logs?.associate(String(record.postNo));
+            trace('runner.record', 'fail', { reason: reasonCode(result?.reason ?? job.failureCode), counts: { step: job.step } });
+            await this.uploadLog(record, targetLog, token);
+            targetLog.end('failed', reasonCode(result?.reason ?? job.failureCode));
+          });
+        }
+      }
       const identity = JSON.stringify(update);
       if (record.updates.has(identity)) {
         const failure = record.updates.get(identity);
@@ -466,10 +590,20 @@ export class AppCore {
       }
       catch (error) {
         const failure = new RecordError(error, [token, job.title, ...this.recordPrivateText]);
-        record.updates.set(identity, failure); throw failure;
+        record.updates.set(identity, failure);
+        if (record === active && log) {
+          trace('runner.record', 'fail', { reason: 'RECORD_FAILED', counts: { step: job.step } });
+          await this.uploadLog(record, log, token);
+        }
+        if (record.channel === 'band' && job.targets.length > 1 && result?.outcome && job.step < 7 && this.state.user) {
+          record.deferred = { update, error: failure };
+          continue;
+        }
+        throw failure;
       }
       record.updates.set(identity, null);
-      record.status = status;
+      record.status = update.status;
+      delete record.deferred;
     }
   }
 }

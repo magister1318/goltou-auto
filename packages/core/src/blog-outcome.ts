@@ -14,8 +14,10 @@ export function retainBlogOutcome(job: Job, execution: BlogExecution | undefined
 }
 
 export function blogOutcomeFailure(job: Job, fallback: string) {
-  if (job.creationState === 'published') return 'BLOG_PUBLISHED_READBACK_' + (job.readbackIssues?.length ? 'MISMATCH' : 'UNAVAILABLE');
-  if (job.creationState === 'draft_saved') return 'BLOG_SAVED_READBACK_' + (job.readbackIssues?.length ? 'MISMATCH' : 'UNAVAILABLE');
+  const fields = [...new Set(job.readbackIssues?.map(issue => issue.field).filter(field => ['text', 'number', 'href', 'photo', 'cursor', 'input'].includes(field)))];
+  const outcome = job.readbackIssues?.length ? 'MISMATCH' + (fields.length ? ':' + fields.join(',') : '') : 'UNAVAILABLE';
+  if (job.creationState === 'published') return 'BLOG_PUBLISHED_READBACK_' + outcome;
+  if (job.creationState === 'draft_saved') return 'BLOG_SAVED_READBACK_' + outcome;
   if (job.creationState === 'uncertain') return job.publicationUncertain ? 'BLOG_PUBLISH_UNCONFIRMED' : 'DRAFT_SAVE_UNCONFIRMED';
   return fallback;
 }

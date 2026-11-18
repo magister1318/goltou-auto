@@ -275,10 +275,10 @@ describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pa
   }, 25000);
   for (const mode of ['drop', 'double', 'ratio-mismatch']) it(`rejects ${mode} without handoff, posting or a count-only retry`, async () => {
     const f = await fixture(mode);
-    await expect(f.execution.write()).rejects.toThrow('BAND_READBACK_MISMATCH:photos');
-    await expect(f.execution.stopBeforePost()).rejects.toThrow('BAND_READBACK_MISMATCH:photos');
+    await expect(f.execution.write()).rejects.toThrow('BAND_READBACK_MISMATCH:photo');
+    await expect(f.execution.stopBeforePost()).rejects.toThrow('BAND_READBACK_MISMATCH:photo');
     const attached = await f.page().evaluate("localStorage.getItem('attachSizes')");
-    await expect(f.execution.write()).rejects.toThrow('BAND_READBACK_MISMATCH:photos');
+    await expect(f.execution.write()).rejects.toThrow('BAND_READBACK_MISMATCH:photo');
     expect(await f.page().evaluate("localStorage.getItem('attachSizes')")).toBe(attached);
     expect(f.shown()).toBe(0); expect((await f.counts()).posts).toBe(0);
   }, 20000);
@@ -457,7 +457,7 @@ describe('WP6 daily limit and real-service boundaries', () => {
     const api = createFakeApi();
     const { token } = await api.request('/auto/login', { loginId: 'admin', password: 'demo', device: { kind: 'test', model: 'synthetic', appVersion: '0' } });
     await api.request('/auto/settings/save', { closingText: '', defaultHashtags: [], bandDailyLimit: 1 }, token);
-    const value = { productNo: 1234, channel: 'band' as const, mode: 'draft' as const, target: { key: 'local-limit', name: '밴드 A' }, options: input.options, contentHash: 'fake-content-0' };
+    const value = { productNo: 1234, channel: 'band' as const, mode: 'draft' as const, target: { key: 'local-limit', name: '밴드 A' }, options: { ...input.options, closing: false }, contentHash: 'fake-content-0' };
     const { postNo } = await api.request('/auto/posts/start', value, token);
     await api.request('/auto/posts/update', { postNo, status: 'stopped_before_post', step: 6, failReason: '', postUrl: '' }, token);
     await expect(api.request('/auto/posts/start', value, token)).rejects.toMatchObject({ code: 'conflict' });

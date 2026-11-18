@@ -7,10 +7,11 @@ export function BandChooser({
   back,
 }: {
   bands: BandChoice[];
-  value: string;
+  value: string | string[];
   choose(key: string): void;
   back(): void;
 }) {
+  const multiple = Array.isArray(value);
   const [query, setQuery] = useState('');
   const filtered = bands.filter((b) =>
     b.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()),
@@ -33,12 +34,12 @@ export function BandChooser({
           onChange={(e) => setQuery(e.target.value)}
         />
       )}
-      <div role="radiogroup" aria-label="올릴 밴드">
+      <div role={multiple ? 'group' : 'radiogroup'} aria-label="올릴 밴드">
         {filtered.map((b) => (
           <button
             className="band-row"
-            role="radio"
-            aria-checked={value === b.key}
+            role={multiple ? 'checkbox' : 'radio'}
+            aria-checked={Array.isArray(value) ? value.includes(b.key) : value === b.key}
             key={b.key}
             onClick={() => choose(b.key)}
           >

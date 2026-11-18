@@ -2,7 +2,7 @@ import { beginTrace, inTrace, reasonCode, type TraceJob } from '@goltou/surface/
 import type { Job, JobInput } from './protocol';
 
 export function registrationLog(input: Pick<JobInput, 'targets' | 'mode'>) {
-  const band = input.targets.some(target => target.channel === 'band');
+  const band = input.targets[0]?.channel === 'band';
   return beginTrace(band ? 'band_post' : input.mode === 'draft' ? 'blog_draft' : 'blog_publish', band ? 'band' : 'naver');
 }
 /** One terminal per execution attempt. Explicit resume creates a new attempt. */

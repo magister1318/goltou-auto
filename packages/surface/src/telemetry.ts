@@ -75,10 +75,10 @@ export function reasonCode(value: unknown): ReasonCode {
   if (typeof code === 'string' && code.startsWith('CDP_TIMEOUT ')) return 'OBSERVATION_TIMEOUT';
   if (typeof code === 'string' && code.startsWith('NATIVE_TIMEOUT ')) return 'OBSERVATION_TIMEOUT';
   if (typeof code === 'string' && code.startsWith('CONTROL_NOT_FOUND:')) return 'CONTROL_NOT_FOUND';
-  if (typeof code === 'string' && /^(BAND_POST_BLOCKED|BAND_(?:INPUT_MISMATCH|PUBLISHED_READBACK_MISMATCH|READBACK_MISMATCH)|BLOG_READBACK_MISMATCH|BLOG_FORMATTING_[A-Z_]+|RECORD_FAILED):/.test(code)) {
+  if (typeof code === 'string' && /^(BAND_POST_BLOCKED|BAND_(?:INPUT_MISMATCH|PUBLISHED_READBACK_MISMATCH|READBACK_MISMATCH)|BLOG_(?:(?:PUBLISHED|SAVED)_)?READBACK_MISMATCH|BLOG_FORMATTING_[A-Z_]+|RECORD_FAILED):/.test(code)) {
     const [prefix, suffix] = code.split(':');
     if (prefix === 'BAND_POST_BLOCKED' && traceReasons.includes(suffix as ReasonCode)) return suffix as ReasonCode;
-    if (prefix === 'BAND_PUBLISHED_READBACK_MISMATCH') return 'BAND_PUBLISHED_READBACK_MISMATCH';
+    if (traceReasons.includes(prefix as ReasonCode) && prefix?.includes('_READBACK_MISMATCH')) return prefix as ReasonCode;
     if (prefix === 'RECORD_FAILED') return 'RECORD_FAILED';
     return 'VERIFICATION_MISMATCH';
   }
