@@ -1480,6 +1480,7 @@ export function App() {
           <>
             <main className="pad settings-content">
               <h1 className="title">설정</h1>
+              <p className="meta">골투오토 {__GOLTOU_VERSION__} ({__GOLTOU_VERSION_CODE__})</p>
               <UpdateSettings value={app?.update} current={`${__GOLTOU_VERSION__} (${__GOLTOU_VERSION_CODE__})`} disabled={busy || active} />
               <div className="choice-row"><span>작업 로그<small>단계별 진행과 결과 확인</small></span><button className="green" onClick={() => go('logs')}>보기</button></div>
               <div className="choice-row"><span>앱 데이터 옮기기<small>글 옵션·기록의 공개 범위·표 표시만 옮깁니다. 로그인은 포함하지 않습니다.</small></span>
