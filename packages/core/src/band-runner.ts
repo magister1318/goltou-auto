@@ -14,6 +14,7 @@ import { updateInputProgress } from './input-progress';
 import { RecordError, RecordingCheckpoint } from './record-checkpoint';
 import { markDraftUnverified } from './draft-unverified';
 import { markBlogFormattingFailure } from './blog-formatting-failure';
+import { BandListCache, type BandListResult, type BandCacheClearReason } from './band-list-cache';
 
 /** One product, blog first, then exactly one Band composer at a time. */
 export class ChannelRegistrationRunner implements RegistrationRunner {
@@ -33,21 +34,39 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
   private discardPending = false;
   private blogSkipped = false;
   private readonly recording: RecordingCheckpoint;
+  private readonly bandCache: BandListCache | undefined;
+  private readonly bandListeners = new Set<(value: BandListResult) => void>();
   constructor(private readonly services: { band: BandServices; blog?: BlogServices }, checkpoint: Checkpoint, private readonly notify: (job: Job) => void) {
     this.recording = new RecordingCheckpoint(checkpoint, notify);
     this.directory = new BandDirectory(services.band.host, services.band.baseUrl, services.band.localPublish, services.band.publishEnabled, services.band.publishAllowance, services.band.recordBarrierDecision);
     this.serviceLogin = new ServiceLoginController(services.band.host);
+    if (services.band.listStore) this.bandCache = new BandListCache(this.directory, services.band.listStore, value => {
+      for (const listener of this.bandListeners) listener(value);
+    });
+    this.serviceLogin.subscribe(update => {
+      if (update.service === 'band' && update.state === 'expired') void this.clearBandCache('BAND_LOGOUT').catch(() => {});
+    });
   }
-  async listBands() {
+  subscribeBands(listener: (value: BandListResult) => void) { this.bandListeners.add(listener); return () => { this.bandListeners.delete(listener); }; }
+  async clearBandCache(reason: BandCacheClearReason) { await this.bandCache?.clear(reason); }
+  async listBands(input: { refresh?: boolean } = {}) {
+    if (this.bandCache) {
+      if (this.active || this.band && !['stopped', 'published'].includes(this.result()?.status ?? '')) throw new ApiError('conflict', '작성 중인 밴드부터 확인하거나 버려 주세요.');
+      return this.bandCache.list(input);
+    }
     return traceJob('band_list', 'band', async () => {
     if (this.active || this.band && !['stopped', 'published'].includes(this.result()?.status ?? '')) throw new ApiError('conflict', '작성 중인 밴드부터 확인하거나 버려 주세요.');
-    return this.directory.list();
+    const rows = await this.directory.list();
+    trace('band.list.cache', 'ok', { bandList: { cacheSource: 'band', cacheAgeMinutes: 0, stale: false, refreshRequested: input.refresh === true, rowCount: rows.length, cacheCleared: false } });
+    return rows;
     }, () => ({ result: 'succeeded', ...(this.directory.listReason ? { reason: this.directory.listReason } : {}) }));
   }
   async start(input: JobInput, title: string, photos: number, work?: PreparationWork) {
     this.log = registrationLog(input);
     return inTrace(this.log, async () => {
     try {
+    if (this.serviceLogin.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
+    await this.bandCache?.settle();
     if (this.serviceLogin.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
     if (this.job && (this.job.status === 'record_failed' || !['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(this.job.status) && !this.job.completedSteps.includes(7))) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
     if (!work?.preview || !input.targets.length) throw new ApiError('invalid', '입력 준비가 필요합니다.');
@@ -171,6 +190,8 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
       markDraftUnverified(j); await this.emit(); return;
     }
     const isBand = j.step === 6;
+    if (isBand && code === 'BAND_LOGIN_LOST') await this.clearBandCache('BAND_LOGIN_LOST');
+    if (isBand && code === 'BAND_TARGET_INVALID') await this.clearBandCache('BAND_TARGET_INVALID');
     const blocked = isBand ? this.directory.blockedBeforeSend(j.activeTargetKey ?? '') : undefined;
     if (isBand) j.bandBarrierDecisions = this.directory.decisionCodes;
     if (blocked || code === 'BAND_CREATE_REJECTED') { j.publicationUncertain = false; j.creationState = 'none'; }
@@ -178,7 +199,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     j.failureCode = blocked ?? (isBand && /^BAND_POST_UNCONFIRMED:/.test(code) ? code : j.publicationUncertain ? isBand ? 'BAND_POST_UNCONFIRMED' : 'BLOG_PUBLISH_UNCONFIRMED' : safeFailureCode(error, 'CHANNEL_FAILED'));
     if (!isBand) j.failureCode = blogOutcomeFailure(j, j.failureCode);
     const execution = isBand ? this.band : this.blog;
-    const dialog = blocked ? null : await execution?.dialog().catch(() => null);
+    const dialog = blocked || code === 'BAND_TARGET_INVALID' ? null : await execution?.dialog().catch(() => null);
     if (dialog) { j.status = 'dialog_paused'; j.dialog = dialog; j.service = isBand ? 'band' : 'naver'; j.message = '서비스 확인창에서 선택해 주세요.'; }
     else if (/^(BAND_LOGIN_LOST|BAND_LOGIN_UNCONFIRMED|LOGIN_OR_EDITOR_LOST)$/.test(code)) {
       j.status = 'login_paused'; j.service = isBand ? 'band' : 'naver'; j.message = '로그인 풀림으로 멈춤';
@@ -204,6 +225,12 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     if (code === 'BAND_PUBLISHED_READBACK_MISMATCH') j.message = '게시한 글 주소는 저장했습니다. 다시 읽은 본문·줄바꿈·사진·태그·링크가 계획과 달라 검증에 실패했습니다.';
     if (code === 'BAND_PUBLISHED_READBACK_UNAVAILABLE') j.message = '게시한 글 주소는 저장했습니다. 상세 내용을 끝까지 읽지 못해 검증을 마치지 못했습니다. 다시 게시하지 않습니다.';
     if (code === 'BAND_CREATE_REJECTED') j.message = '밴드가 게시 요청을 거절했습니다. 같은 작업을 자동으로 다시 게시하지 않습니다.';
+    if (isBand && code === 'BAND_TARGET_INVALID') {
+      j.publicationUncertain = false;
+      j.message = '밴드 목록이 바뀌었습니다. 새로고침 후 다시 골라 주세요.';
+      const result = this.result(); if (result) result.reason = j.message;
+      for (const target of j.targetResults ?? []) if (target !== result && target.status === 'running') { target.status = 'stopped'; target.reason = j.message; }
+    }
     const choice = this.directory.choices.find(b => b.key === j.activeTargetKey);
     if (choice) { j.bandPhotoLimit = choice.photoLimit; j.bandLimitObservedAt = choice.observedAt ?? undefined; }
     if (!dialog) await this.capture(isBand, 'failure');
@@ -219,13 +246,14 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     return traceJob('unfinished_cleanup', this.job?.step === 6 ? 'band' : 'naver', async () => {
     if (!this.job || !['running', 'login_paused', 'user_paused', 'failed', 'channel_paused', 'recovery_paused'].includes(this.job.status) || this.job.publicationUncertain || this.job.activity?.stage === 'submit' || this.job.failureCode === 'BAND_POST_UNCONFIRMED') throw new ApiError('conflict', '저장 또는 게시 결과를 먼저 확인해 주세요.');
     await this.stop();
-    if (this.band) await this.band.discard();
+    if (this.band && (this.job.failureCode !== 'BAND_TARGET_INVALID' || this.band.hasOwnedComposer)) await this.band.discard();
     await this.blog?.close(); await this.work?.cleanup();
     for (const target of this.job.targetResults ?? []) if (!['draft_saved', 'published'].includes(target.status)) target.status = 'stopped';
     this.job.status = 'stopped'; await this.emit();
     });
   }
   async resume() {
+    if (this.job?.failureCode === 'BAND_TARGET_INVALID') throw new ApiError('conflict', '밴드 목록이 바뀌었습니다. 새로고침 후 다시 골라 주세요.');
     if (this.job && existingServiceResult(this.job) && (this.job.status==='failed' || ['user_paused','login_paused'].includes(this.job.status) && !this.blogSkipped && !this.job.targetResults?.some(t=>t.status==='published'))) throw new ApiError('conflict', '저장 또는 게시 결과는 등록 기록에서 확인해 주세요. 같은 글을 다시 올리지 않습니다.');
     if (bandPostBlocked(this.job?.failureCode)) throw new ApiError('conflict', '같은 작업을 다시 게시하지 않습니다. 등록 기록에서 결과를 확인해 주세요.');
     if (this.job?.publicationUncertain || /^BAND_(POST_UNCONFIRMED|PUBLISHED_READBACK_|CREATE_REJECTED)/.test(this.job?.failureCode ?? '') || this.job?.failureCode?.startsWith('BLOG_PUBLISH_')) throw new ApiError('conflict', '게시됐는지 먼저 확인해 주세요. 같은 작업을 다시 게시하지 않습니다.');
@@ -301,6 +329,6 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
   }
   async hideService() { await this.serviceLogin.cancel(); await this.directory.surface?.hide(); await this.blog?.hide(); }
   async showDraft(title: string) { if (this.job?.title !== title || !this.job.targetResults?.some(t => t.channel === 'blog' && t.status === 'draft_saved')) throw new ApiError('invalid', '이번 실행의 임시글만 열 수 있습니다.'); await this.blog?.show(); }
-  dispose() { this.disposed = true; this.abort.abort(); this.serviceLogin.dispose(); void (this.active ?? Promise.resolve()).then(() => this.work?.cleanup()).catch(() => {}); }
+  dispose() { this.disposed = true; this.bandCache?.dispose(); this.bandListeners.clear(); this.abort.abort(); this.serviceLogin.dispose(); void (this.active ?? Promise.resolve()).then(() => this.work?.cleanup()).catch(() => {}); }
   blogExecution() { return this.blog; }
 }

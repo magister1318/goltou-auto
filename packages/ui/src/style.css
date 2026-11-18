@@ -947,6 +947,9 @@ textarea { resize: none; min-height: 92px; }
 .band-sub .green { flex-shrink: 0; }
 .why-disabled { color: var(--warn); font-size: 13px; margin-top: 14px; }
 .sheet-back { padding: 0; }
+.band-list-heading { display: flex; align-items: center; justify-content: space-between; }
+.band-list-heading button { font-size: 13px; }
+.band-list-time { display: block; color: var(--muted); font-size: 13px; margin-bottom: 8px; }
 .field-error, small.field-error { color: var(--danger); margin-top: 6px; font-size: 13px; }
 [aria-invalid="true"] { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
 .product-skeleton { display: flex; gap: 14px; padding: 18px 0; border-bottom: 1px solid var(--line); }

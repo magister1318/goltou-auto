@@ -8,6 +8,7 @@ import { imageDimensions } from './media/dimensions';
 import { verificationProgress } from './verify-progress';
 
 export interface BandServices { host: SurfaceHost; baseUrl?: string; localPublish?: boolean;
+  listStore?: import('./band-list-cache').BandListStore;
   publishEnabled?: boolean;
   publishAllowance?: import('./band-allowance').BandPostAllowance;
   recordBarrierDecision?(code: import('@goltou/sites').BandBarrierCode, expected?: boolean): void;

@@ -4,6 +4,8 @@ export interface BandListDiagnostic {
   legacy?: boolean; home?: boolean; my?: boolean; loginForm?: boolean;
   tileCount?: number; apiCaptured?: boolean; apiRows?: number;
   source?: 'DOM' | 'API' | 'none';
+  cacheSource?: 'cache' | 'band'; cacheAgeMinutes?: number; stale?: boolean;
+  refreshRequested?: boolean; rowCount?: number; cacheCleared?: boolean;
   method?: 'GET' | 'HEAD' | 'OPTIONS' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'other';
 }
 export function bandListLocation(url: string): ConnectionDiagnostic {
@@ -16,8 +18,9 @@ export function sanitizeBandListLocation(value: ConnectionDiagnostic): Connectio
 }
 export function sanitizeBandList(value: BandListDiagnostic): BandListDiagnostic {
   const out: BandListDiagnostic = {};
-  for (const key of ['legacy', 'home', 'my', 'loginForm', 'apiCaptured'] as const) if (typeof value[key] === 'boolean') out[key] = value[key];
-  for (const key of ['tileCount', 'apiRows'] as const) if (Number.isSafeInteger(value[key]) && value[key]! >= 0) out[key] = value[key]!;
+  for (const key of ['legacy', 'home', 'my', 'loginForm', 'apiCaptured', 'stale', 'refreshRequested', 'cacheCleared'] as const) if (typeof value[key] === 'boolean') out[key] = value[key];
+  for (const key of ['tileCount', 'apiRows', 'cacheAgeMinutes', 'rowCount'] as const) if (Number.isSafeInteger(value[key]) && value[key]! >= 0) out[key] = value[key]!;
+  if (value.cacheSource === 'cache' || value.cacheSource === 'band') out.cacheSource = value.cacheSource;
   if (['DOM', 'API', 'none'].includes(value.source ?? '')) out.source = value.source!;
   if (value.method !== undefined) out.method = ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(value.method) ? value.method : 'other';
   return out;

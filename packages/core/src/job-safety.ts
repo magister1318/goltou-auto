@@ -9,4 +9,4 @@ export function existingServiceResult(job: Job): 'published' | 'draft_saved' | '
   return null;
 }
 /** A new attempt is offered only with affirmative evidence of no creation. */
-export const canRetryJob = (job: Job) => job.status === 'failed' && job.creationState === 'none' && !existingServiceResult(job) && !/^BAND_(POST_BLOCKED|CREATE_REJECTED)/.test(job.failureCode ?? '');
+export const canRetryJob = (job: Job) => job.status === 'failed' && job.creationState === 'none' && !existingServiceResult(job) && !/^BAND_(POST_BLOCKED|CREATE_REJECTED|TARGET_INVALID)/.test(job.failureCode ?? '');

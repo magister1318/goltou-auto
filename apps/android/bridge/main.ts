@@ -17,6 +17,7 @@ import { fileLocalDataTransfer } from '../../../packages/core/src/local-data-tra
 import { filePreferencesStore } from '../../../packages/core/src/preferences';
 import { fileBandPostAllowance } from '../../../packages/core/src/band-allowance';
 import { filePostMetadata } from '../../../packages/core/src/post-metadata';
+import { fileBandListStore } from '../../../packages/core/src/band-list-cache';
 import { fileBlogTitleStore } from '../../../packages/core/src/blog-title-store';
 
 function argument(name: string): string {
@@ -36,7 +37,7 @@ const recordBandBarrierDecision = (code: import('../../../packages/sites/src/ind
 const options: CoreOptions = {
   native, host,
   diagnostics: __GOLTOU_DEBUG__,
-  band: { host, recordBarrierDecision: recordBandBarrierDecision, publishEnabled: !__GOLTOU_DEBUG__, ...(__GOLTOU_DEBUG__ ? { publishAllowance: fileBandPostAllowance(path.join(path.dirname(argument('data')), 'one-band-post.allow')) } : {}), ...(__GOLTOU_DEBUG__ ? { capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}) },
+  band: { host, listStore: fileBandListStore(path.join(path.dirname(argument('data')), 'band-list-cache.json')), recordBarrierDecision: recordBandBarrierDecision, publishEnabled: !__GOLTOU_DEBUG__, ...(__GOLTOU_DEBUG__ ? { publishAllowance: fileBandPostAllowance(path.join(path.dirname(argument('data')), 'one-band-post.allow')) } : {}), ...(__GOLTOU_DEBUG__ ? { capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}) },
   blog: {
     lastTypedTitle: fileBlogTitleStore(path.join(path.dirname(argument('data')), 'last-blog-title.txt')),
     host, publishEnabled: true, ...(__GOLTOU_DEBUG__ ? { draftSaveLimit: 1, capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}),

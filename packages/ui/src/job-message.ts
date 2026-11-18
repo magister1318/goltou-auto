@@ -5,6 +5,10 @@ import { bandPostBlocked } from '@goltou/sites';
 /** Never show engine codes, page messages, identifiers or transport errors. */
 export function jobMessage(job: Job): [string, string] {
   const code = job.failureCode ?? '';
+  if (code === 'BAND_TARGET_INVALID') return [
+    '밴드 목록이 바뀌었습니다. 새로고침 후 다시 골라 주세요.',
+    existingServiceResult(job) ? '앞서 저장하거나 발행한 글은 등록 기록에서 확인해 주세요.' : '밴드에는 게시하지 않았습니다.',
+  ];
   if (job.readbackIssues?.length) {
     const names = {table:'표',title:'제목',text:'본문 글자',line_breaks:'줄바꿈 수',photos:'사진 수 또는 순서',order:'본문과 사진 순서',hashtags:'태그',links:'링크 주소',bold:'문단 굵기',visibility:'공개 범위',stability:'화면 로딩 상태'};
     const details = [...new Set(job.readbackIssues.map(issue=>`${issue.paragraph ? `${issue.paragraph}번 문단의 ` : ''}${names[issue.field]}${issue.index ? ` ${issue.index}번째가` : issue.field==='title'?'이':'가'} 계획과 다릅니다.`))].join(' ');

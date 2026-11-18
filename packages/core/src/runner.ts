@@ -16,7 +16,9 @@ export interface RegistrationRunner {
   checkLogin?(): Promise<'confirmed' | 'expired' | 'unknown'>;
   showService?(service: import('./protocol').Service): Promise<void>;
   hideService?(): Promise<void>;
-  listBands?(): Promise<import('@goltou/sites').BandChoice[]>;
+  listBands?(input?: { refresh?: boolean }): Promise<import('@goltou/sites').BandChoice[] | import('./band-list-cache').BandListResult>;
+  subscribeBands?(listener: (value: import('./band-list-cache').BandListResult) => void): () => void;
+  clearBandCache?(reason: import('./band-list-cache').BandCacheClearReason): Promise<void>;
   showBand?(key: string): Promise<void>;
   checkBand?(): Promise<void>;
   discardBand?(): Promise<void>;

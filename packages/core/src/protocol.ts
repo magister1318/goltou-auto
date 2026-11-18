@@ -43,7 +43,7 @@ export interface Job {
   bandPhotoVerification?: { order: 'matched'; ratio: 'matched' | 'unavailable'; counts: number[]; sources: { width: number; height: number }[]; thumbnails: { width: number; height: number }[] };
 }
 export interface Simulation { tickMs: number; loginAt: number | null; failAt: number | null }
-export interface AppSnapshot { serviceError?: string; postDeletion?: { outcome?: 'deleted' | 'not_started' | 'uncertain'; postNo: number; verifiedGone: boolean; recorded: boolean; at?: string }; user: User | null; settings: Settings | null; services: Record<Service, LoginState>; visibleService: Service | null; job: Job | null; simulation: Simulation; realBlog?: boolean; realBand?: boolean }
+export interface AppSnapshot { bandList?: import('./band-list-cache').BandListResult; serviceError?: string; postDeletion?: { outcome?: 'deleted' | 'not_started' | 'uncertain'; postNo: number; verifiedGone: boolean; recorded: boolean; at?: string }; user: User | null; settings: Settings | null; services: Record<Service, LoginState>; visibleService: Service | null; job: Job | null; simulation: Simulation; realBlog?: boolean; realBand?: boolean }
 /** Platform-neutral contract; Android implements it with a Keystore-encrypted native channel. */
 export interface TokenStore { read(): Promise<string | null>; write(token: string | null): Promise<void> }
 export interface Commands {
@@ -82,7 +82,7 @@ export interface Commands {
   'job.recovery': { input: { discard: boolean }; output: AppSnapshot };
   'job.dialog': { input: { id: string; accept: boolean }; output: AppSnapshot };
   'draft.show': { input: { title: string }; output: AppSnapshot };
-  'bands.list': { input: Record<string, never>; output: import('@goltou/sites').BandChoice[] };
+  'bands.list': { input: { refresh?: boolean }; output: import('@goltou/sites').BandChoice[] | import('./band-list-cache').BandListResult };
   'band.show': { input: { key: string }; output: AppSnapshot };
   'band.check': { input: Record<string, never>; output: AppSnapshot };
   'band.discard': { input: Record<string, never>; output: AppSnapshot };

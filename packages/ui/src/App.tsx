@@ -30,6 +30,7 @@ import { LiveProgress } from './LiveProgress';
 import { jobMessage } from './job-message';
 import { bandListFailureHint } from './band-list-failure';
 import { BandChooser } from './BandChooser';
+import { BandListStatus } from './BandListStatus';
 import {
   bandChoiceReason,
   targetStatus,
@@ -66,7 +67,7 @@ type SheetName =
   | 'dialog'
   | 'leave'
   | null;
-type Band = Commands['bands.list']['output'][number];
+type Band = import('@goltou/sites').BandChoice;
 const ignore = () => {};
 const money = (value: number) => `${value.toLocaleString('ko-KR')}원`;
 const recordTime = (value: string) => {
@@ -137,6 +138,9 @@ export function App() {
     [loadingBands, setLoadingBands] = useState(false),
     [bandsFailed, setBandsFailed] = useState(false),
     [bandsFailureReason, setBandsFailureReason] = useState('');
+  const [bandsSavedAt, setBandsSavedAt] = useState<number | null>(null);
+  const [refreshingBands, setRefreshingBands] = useState(false);
+  const bandsRevision = useRef(0);
   const [service, setService] = useState<LoginService>('naver'),
     [loginOpened, setLoginOpened] = useState(false),
     [returnScreen, setReturnScreen] = useState<Screen>('connect'),
@@ -432,22 +436,30 @@ export function App() {
       live = false;
     };
   }, [screen, scope, postPage, postRefresh, app?.user?.userNo]);
-  async function loadBands() {
+  function receiveBands(result: Commands['bands.list']['output']) {
+    if (!Array.isArray(result) && result.revision !== undefined) {
+      if (result.revision < bandsRevision.current) return;
+      bandsRevision.current = result.revision;
+    }
+    const rows = Array.isArray(result) ? result : result.rows;
+    setBands(rows);
+    if (!Array.isArray(result)) {
+      setBandsSavedAt(result.savedAt);
+      setRefreshingBands(result.refreshing === true);
+      setBandsFailed(!!result.failure);
+      setBandsFailureReason(result.failure ?? '');
+    }
+    setBandKey(old => old ? rows.some(b => b.key === old) ? old : ''
+      : rows.some(b => b.key === lastBand.current) ? lastBand.current
+        : rows.length === 1 ? rows[0]!.key : '');
+  }
+  useEffect(() => { if (app?.bandList) receiveBands(app.bandList); }, [app?.bandList]);
+  async function loadBands(refresh = false) {
     setLoadingBands(true);
     setBandsFailed(false);
     setBandsFailureReason('');
     try {
-      const rows = await request('bands.list', {});
-      setBands(rows);
-      setBandKey((old) =>
-        rows.some((b) => b.key === old)
-          ? old
-          : rows.some((b) => b.key === lastBand.current)
-            ? lastBand.current
-            : rows.length === 1
-              ? rows[0]!.key
-              : '',
-      );
+      receiveBands(await request('bands.list', { refresh }));
     } catch (error) {
       clearError();
       setBandsFailureReason(error instanceof Error ? error.message : '');
@@ -688,8 +700,8 @@ export function App() {
       : bandChoiceReason({
           blog,
           band,
-          loading: loadingBands,
-          failed: bandsFailed,
+          loading: loadingBands && !bands.length,
+          failed: bandsFailed && !bands.length,
           selected:
             app?.services.band === 'confirmed' &&
             bands.some((b) => b.key === bandKey),
@@ -1789,6 +1801,9 @@ export function App() {
           close={sheetClose}
         >
           {sheet === 'bands' && (
+            <>
+            <BandListStatus savedAt={bandsSavedAt} loading={loadingBands || refreshingBands} refresh={() => void loadBands(true)} />
+            {bandsFailed && <p>{bandListFailureHint(bandsFailureReason)}</p>}
             <BandChooser
               bands={bands}
               value={bandKey}
@@ -1799,6 +1814,7 @@ export function App() {
                 setSheet('publish');
               }}
             />
+            </>
           )}
           {sheet === 'dialog' && job?.dialog && (
             <>
@@ -1987,12 +2003,10 @@ export function App() {
                       <small>바로 게시됩니다</small>
                     </span>
                   </button>
+                  {band && <BandListStatus savedAt={bandsSavedAt} loading={loadingBands || refreshingBands} refresh={() => void loadBands(true)} />}
+                  {band && bandsFailed && bands.length > 0 && <p>{bandListFailureHint(bandsFailureReason)}</p>}
                   {band &&
-                    (loadingBands ? (
-                      <p className="band-sub" role="status">
-                        밴드 목록을 읽는 중입니다
-                      </p>
-                    ) : bandsFailed || !bands.length ? (
+                    (loadingBands && !bands.length ? null : !bands.length ? (
                       <div className="band-sub">
                         <p>
                           {bandsFailed
@@ -2002,7 +2016,8 @@ export function App() {
                         {bandsFailed && <p>{bandListFailureHint(bandsFailureReason)}</p>}
                         <button
                           className="green"
-                          onClick={() => void loadBands()}
+                          disabled={loadingBands || refreshingBands}
+                          onClick={() => void loadBands(true)}
                         >
                           다시 읽기
                         </button>

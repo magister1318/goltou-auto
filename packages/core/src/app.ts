@@ -53,13 +53,15 @@ export class AppCore {
   }
   private bindServiceLogin() {
     this.serviceUnsubscribe?.();
-    this.serviceUnsubscribe = this.runner.serviceLogin?.subscribe(update => {
+    const bands = this.runner.subscribeBands?.(value => { this.state.bandList = value; this.emit(); });
+    const login = this.runner.serviceLogin?.subscribe(update => {
       this.state.services[update.service] = update.state;
       if (update.visible) this.state.visibleService = update.service;
       else if (this.state.visibleService === update.service) this.state.visibleService = null;
       if (update.error) this.state.serviceError = update.error; else delete this.state.serviceError;
       this.emit();
     });
+    this.serviceUnsubscribe = () => { bands?.(); login?.(); };
     this.scheduleServiceChecks();
   }
   /** Native lifecycle supplies only elapsed background time; no platform API in core. */
@@ -292,6 +294,7 @@ export class AppCore {
         this.requireServiceIdle();
         if (this.runner.job && !['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(this.runner.job.status)) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
         if (request.input.service !== 'ai' && this.runner.serviceLogin) {
+          if (request.input.service === 'band') await this.runner.clearBandCache?.('BAND_SERVICE_RESET');
           await this.runner.serviceLogin.clear(request.input.service);
           this.runner.dispose(); this.runner = this.createRunner(); this.bindServiceLogin();
         }
@@ -323,7 +326,8 @@ export class AppCore {
       case 'bands.list':
         if (this.runner.serviceLogin?.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
         if (this.starting || this.state.job && (this.state.job.status === 'record_failed' || !['draft_saved', 'draft_unverified', 'published', 'stopped'].includes(this.state.job.status) && !this.state.job.completedSteps.includes(7))) throw new ApiError('conflict', '진행 중인 작업을 먼저 마쳐 주세요.');
-        return this.runner.listBands ? this.runner.listBands() : [{ key: 'travel', name: '골투 여행', photoLimit: null, observedAt: null }, { key: 'golf', name: '해외골프 모임', photoLimit: null, observedAt: null }];
+        if (request.input.refresh !== undefined && typeof request.input.refresh !== 'boolean') throw new ApiError('invalid', '새로고침 선택을 확인해 주세요.');
+        return this.runner.listBands ? this.runner.listBands(request.input) : [{ key: 'travel', name: '골투 여행', photoLimit: null, observedAt: null }, { key: 'golf', name: '해외골프 모임', photoLimit: null, observedAt: null }];
       case 'band.show': throw new ApiError('invalid', '작업 화면은 앱 안에서만 확인합니다.');
       case 'band.check': await this.runner.checkBand?.(); return this.snapshot();
       case 'band.discard':
