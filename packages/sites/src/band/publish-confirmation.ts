@@ -1,5 +1,6 @@
+import { compareReadbackText } from '../readback-checks';
 import type { RecordedBandReadback } from './record-read';
-import { normalizedBandBody } from './posted';
+import { bandBodyIssues, normalizedBandBody } from './posted';
 
 /** Known envelope fields only; never guess an ID from arbitrary response numbers. */
 export function bandCreateIdentity(body: string, band: string): { succeeded: boolean; post?: string } {
@@ -24,7 +25,7 @@ export function bandBodyHash(body: string) {
 export interface BandCreationMatch { band: string; title: string; body: string; uploaded: readonly string[]; after: number; before: number; }
 export function matchesBandCreation(post: RecordedBandReadback, match: BandCreationMatch) {
   return post.owned && post.createdAt >= match.after && post.createdAt <= match.before &&
-    bandBodyHash(post.body) === bandBodyHash(match.body) && identityBody(post.body) === identityBody(match.body) &&
+    (identityBody(post.body) === identityBody(match.body) || compareReadbackText(match.body.split('\n'), post.body.split('\n')).tolerated && !bandBodyIssues(match.body, post.body, false).length) &&
     post.photos.length <= match.uploaded.length && post.photos.length >= Math.min(1, match.uploaded.length) &&
     post.photos.every((photo, i) => photo.path === match.uploaded[i]);
 }

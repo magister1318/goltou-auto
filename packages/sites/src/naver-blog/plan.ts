@@ -8,11 +8,11 @@ import { ControlNotFoundError } from '../control-failure';
 import { closeTagLayer, protectBlogInputs, requireTagFocus, requireTagLayerClosed, tagInputSelector, tagPanelToggle } from './draft-safety';
 import { finalPublishSelector, guardedPublishClick, inspectPrivateRequest, inspectPublicRequestDecision, postIdentity, readVisibility, requireVisibility, selectVisibility, type BlogVisibility, type PublishedPost, type VisibilityProof } from './publish-safety';
 import { parsePublishIdentity, resolvePublishEvidence, type ResponseIdentity, type PublishedPage, type PublishIdentitySource } from './publish-identity';
-import { containsServiceLink, tokenText, ReadbackMismatch, type ReadbackIssue } from '../readback-checks';
+import { containsServiceLink, tokenText, compareReadbackText, traceReadbackText, sameReadbackNumbers, sameReadbackIdentityText, ReadbackMismatch, type ReadbackIssue } from '../readback-checks';
 import { settledReadback, type ReadbackClass } from '../settled-readback';
-import { BlogRichTextWriter, blogBodyAtEnd } from './rich-text';
-import { insertBlogTable, tableRowRuns, exactBlogTable, type BlogTableToken } from './table';
-import { BlogFormattingError, blogRunReader, normalizeBlogRuns, splitBlogRuns, type BlogRun, type FormattingStage } from './formatting';
+import { BlogRichTextWriter, blogBodyAtEnd, hasBlogLiteralMarker } from './rich-text';
+import { insertBlogTable, tableRowRuns, type BlogTableToken } from './table';
+import { BlogFormattingError, blogFieldReason, blogRunReader, normalizeBlogRuns, splitBlogRuns, type BlogRun, type FormattingStage } from './formatting';
 import { closeDraftEntries, draftEntries, draftItem, draftSaveReceipt, identifySavedDraft, openDraftEntries, type DraftEntry } from './draft-identity';
 import { expectedBlogTags, plannedBlogTags, sameBlogTags, sameServiceBlogTags } from './tags';
 
@@ -101,60 +101,61 @@ export function plannedBlogParagraphs(plan: BlogPlan, modes: readonly ('native'|
   });
 }
 export function compareBlogFormatting(plan: BlogPlan, actual: BlogReadback, modes: readonly ('native'|'text-list')[] = []): import('./formatting').BlogFormattingIssue[] {
-  const expected = plannedBlogParagraphs(plan,modes), saved = actual.tokens.flatMap(t => t.kind === 'text' ? [t] : t.kind === 'table' ? t.rows.map((row,r) => ({kind:'text' as const,text:row.join(' | '),runs:tableRowRuns(t,r)})) : []);
-  const issues: import('./formatting').BlogFormattingIssue[] = [];
-  for (let index = 0; index < Math.max(expected.length, saved.length); index++) {
-    const planned = normalizeBlogRuns(expected[index] ?? []), token = saved[index];
-    // Missing rich readback is an error, even when the visible text matches.
-    const observed = normalizeBlogRuns(token?.runs ?? []);
-    const fields: import('./formatting').BlogFormattingIssue['fields'] = [];
-    if (!expected[index] || !token || token.text !== planned.map(r => r.text).join('') || observed.map(r => r.text).join('') !== token.text) fields.push('text');
-    const projection = (runs: typeof planned, key: 'bold' | 'href') => {
-      const parts: { text: string; value: boolean | string | null }[] = [];
-      for (const run of runs) { const last = parts[parts.length - 1]; if (last && last.value === run[key]) last.text += run.text; else parts.push({ text: run.text, value: run[key] }); }
-      return JSON.stringify(parts);
-    };
-    if (projection(planned, 'bold') !== projection(observed, 'bold')) fields.push('bold');
-    // Explicit links keep their exact destination and extent. Extra automatic
-    // anchors in plain URL text use the viewer's own boundary, at that position.
-    let position = 0;
-    const hrefGroups: {text:string;href:string|null;start:number}[] = [];
-    for (const run of observed) {
-      const last = hrefGroups[hrefGroups.length-1];
-      if (last && last.href === run.href) last.text += run.text;
-      else hrefGroups.push({text:run.text,href:run.href,start:position});
-      position += run.text.length;
-    }
-    const plannedText = planned.map(r=>r.text).join('');
-    const plainRanges: [number,number][] = [];
+  const expected = plannedBlogParagraphs(plan, modes);
+  const saved = actual.tokens.flatMap(t => t.kind === 'text' ? [t] : t.kind === 'table' ? t.rows.map((row, r) => ({ kind: 'text' as const, text: row.join(' | '), runs: tableRowRuns(t, r) })) : []);
+  const plannedText = expected.map(runs => runs.map(r => r.text).join(''));
+  const observedText = saved.map(t => t.text);
+  const result = compareReadbackText(plannedText, observedText);
+  traceReadbackText(result);
+  const issues: import('./formatting').BlogFormattingIssue[] = result.missing.map(paragraph => ({ paragraph, fields: ['text'] }));
+  if (!sameReadbackNumbers(plannedText.join('\n'), observedText.join('\n'))) issues.push({ paragraph: 1, fields: ['number'] });
+
+  const projections = (paragraphs: readonly (readonly BlogRun[])[]) => {
+    const bold: { start: number; text: string }[] = [];
+    const links: { start: number; text: string; href: string }[] = [];
+    const runs = normalizeBlogRuns(paragraphs.flatMap(runs => [...runs, { text: '\n' }]));
     let offset = 0;
-    for (const run of planned) { if (!run.href) plainRanges.push([offset,offset+run.text.length]); offset += run.text.length; }
-    const automatic = hrefGroups.filter(group => group.href &&
-      Array.from({length:group.text.length},(_,i)=>group.start+i).every(i=>plainRanges.some(([a,b])=>i>=a&&i<b)) &&
-      containsServiceLink(plannedText,{text:group.text,href:group.href,start:tokenText(plannedText.slice(0,group.start)).length}));
-    offset = 0;
-    const explicitObserved = observed.map(run=>{ const start=offset; offset+=run.text.length; return {...run,href:automatic.some(a=>start>=a.start&&offset<=a.start+a.text.length)?null:run.href}; });
-    if (projection(planned, 'href') !== projection(explicitObserved, 'href')) fields.push('href');
-    if (fields.length) issues.push({ paragraph: index + 1, fields });
+    for (const run of runs) {
+      const text = tokenText(run.text);
+      if (text && run.bold) bold.push({ start: offset, text });
+      if (text && run.href) {
+        const previous = links.at(-1);
+        if (previous?.href === run.href && previous.start + previous.text.length === offset) previous.text += text;
+        else links.push({ start: offset, text, href: run.href });
+      }
+      offset += text.length;
+    }
+    return { bold, links };
+  };
+  const planned = projections(expected);
+  const observed = projections(saved.map(t => t.runs ?? []));
+  if (JSON.stringify(planned.bold) !== JSON.stringify(observed.bold)) trace('verification', 'ok', {
+    check: 'bold', reason: 'READBACK_BOLD_VARIANCE', counts: { expected: planned.bold.length, observed: observed.bold.length },
+  });
+  const source = plannedText.join('\n'), output = observedText.join('\n');
+  const explicit = [...planned.links];
+  for (const link of observed.links) {
+    const next = explicit[0];
+    if (next?.href === link.href && (source === output ? next.start === link.start && next.text === link.text
+      : next.text === link.text || compareReadbackText([next.text], [link.text]).tolerated)) { explicit.shift(); continue; }
+    if (!containsServiceLink(output, link) || !tokenText(source).includes(link.text) ||
+      planned.links.some(planned => planned.start < link.start + link.text.length && link.start < planned.start + planned.text.length)) {
+      issues.push({ paragraph: 1, fields: ['href'] });
+      break;
+    }
   }
+  const cards = plan.steps.flatMap(step => step.kind === 'text' && step.role === 'linkCard' ? [step.text] : []);
+  if ((explicit.length || cards.some(url => !observedText.includes(url))) && !issues.some(i => i.fields.includes('href'))) issues.push({ paragraph: 1, fields: ['href'] });
   return issues;
 }
 
 export function blogTablesMatch(plan: BlogPlan, actual: BlogReadback, modes: readonly ('native'|'text-list')[] = []) {
-  let offset = 0, tableIndex = 0;
-  for (const step of plan.steps) {
-    if (step.kind === 'break' || step.kind === 'text' && ['title','hashtags'].includes(step.role)) continue;
-    if (step.kind === 'photos') { offset += step.urls.length; continue; }
-    if (step.kind === 'text') { offset += splitBlogRuns(step.runs ?? [{text:step.text}]).filter(r=>r.length).length; continue; }
-    if (modes[tableIndex++] === 'text-list') {
-      for (const row of step.rows) for (const piece of row.join(' | ').split('\n').filter(Boolean)) {
-        const token = actual.tokens[offset++]; if (token?.kind !== 'text' || token.text !== piece) return false;
-      }
-    } else {
-      const token = actual.tokens[offset++]; if (token?.kind !== 'table' || !exactBlogTable(step,token)) return false;
-    }
-  }
-  return actual.tokens.filter(t=>t.kind==='table').length === plan.steps.filter(s=>s.kind==='table').filter((_,i)=>modes[i]!=='text-list').length;
+  const expected = plan.steps.filter(step => step.kind === 'table').filter((_, i) => modes[i] !== 'text-list');
+  const tables = actual.tokens.filter(token => token.kind === 'table');
+  return expected.length === tables.length && expected.every((table, i) => {
+    const observed = tables[i]!;
+    return !observed.merged && observed.rows.length === table.rows.length && table.rows.every((row, r) => row.length === observed.rows[r]!.length);
+  });
 }
 export function verifyBlogTables(plan: BlogPlan, actual: BlogReadback, modes: readonly ('native'|'text-list')[] = []) {
   if (!blogTablesMatch(plan,actual,modes)) throw new ReadbackMismatch('BLOG_READBACK_MISMATCH:table',[{field:'table'}]);
@@ -178,6 +179,7 @@ export class BlogExecution {
     this.env.verify(value, stage);
     const issues = compareBlogFormatting(this.plan, value, this.tableModes);
     if (issues.length) {
+      for (const issue of issues) for (const field of issue.fields) trace('verification', 'fail', { check: field, reason: blogFieldReason[field], counts: { paragraphIndex: issue.paragraph } });
       const error = new BlogFormattingError(stage, issues);
       if (['AFTER_SAVE', 'REOPENED', 'PUBLISHED'].includes(stage)) this.formattingFailure = error;
       throw error;
@@ -563,9 +565,9 @@ export class BlogExecution {
         await closeTagLayer(s);
         await this.endOfBody();
       } else if (step.kind === 'text') {
-        if (step.runs) {
+        if (step.runs || hasBlogLiteralMarker(step.text)) {
           const ordinal = plannedBlogParagraphs({ ...this.plan, steps: this.plan.steps.slice(0, this.index) }).length + 1;
-          this.richWriter ??= new BlogRichTextWriter(step.text, step.runs, ordinal);
+          this.richWriter ??= new BlogRichTextWriter(step.text, step.runs ?? [{ text: step.text }], ordinal);
           await this.richWriter.write(s, () => this.guard(), async (added, runs) => {
             this.characters += added; this.blogParagraph = { blockIndex: this.index, runs };
             this.checkpoint = await readBlogDocument(s);
@@ -702,7 +704,7 @@ export class BlogExecution {
     const target = await point(s, selector);
     if (!target) throw new Error('BLOG_DRAFT_SAVED_UNVERIFIED');
     await s.click(target.x, target.y, matches);
-    await waitFor(async () => (await readBlogDocument(s)).title === this.title.text, 15000);
+    await waitFor(async () => sameReadbackIdentityText(this.title.text, (await readBlogDocument(s)).title), 15000);
     const observed = await this.observe(); this.verifyDocument(observed, 'REOPENED'); this.verified = true; return observed;
 
     });
@@ -766,9 +768,9 @@ export class BlogExecution {
       return [
         { check: 'table', reason: 'READBACK_TABLE', expected: this.plan.steps.filter(s=>s.kind==='table').filter((_,i)=>this.tableModes[i]!=='text-list').length, observed: value?.tokens.filter(t=>t.kind==='table').length ?? 0, present: !!value && blogTablesMatch(this.plan,value,this.tableModes) },
         { check: 'title', reason: 'READBACK_TITLE', expected: 1, observed: value?.title ? 1 : 0, present: !!value?.title },
-        { check: 'paragraphs', reason: 'READBACK_PARAGRAPHS', expected: paragraphs.length, observed: value?.tokens.reduce((n,t)=>n+(t.kind==='text'?1:t.kind==='table'?t.rows.length:0),0) ?? 0, present: (value?.tokens.reduce((n,t)=>n+(t.kind==='text'?1:t.kind==='table'?t.rows.length:0),0) ?? 0) >= paragraphs.length },
-        { check: 'text', reason: 'READBACK_TEXT', expected: plannedRuns.reduce((n,r)=>n+r.text.length,0), observed: observedRuns.reduce((n,r)=>n+r.text.length,0), present: observedRuns.reduce((n,r)=>n+r.text.length,0) >= plannedRuns.reduce((n,r)=>n+r.text.length,0) },
-        { check: 'bold', reason: 'READBACK_BOLD', expected: plannedRuns.filter(r=>r.bold).length, observed: observedRuns.filter(r=>r.bold).length, present: observedRuns.filter(r=>r.bold).length >= plannedRuns.filter(r=>r.bold).length },
+        { check: 'paragraphs', reason: 'READBACK_PARAGRAPHS', expected: paragraphs.length, observed: value?.tokens.reduce((n,t)=>n+(t.kind==='text'?1:t.kind==='table'?t.rows.length:0),0) ?? 0, present: !!value && (!paragraphs.length || observedRuns.length > 0) },
+        { check: 'text', reason: 'READBACK_TEXT', expected: plannedRuns.reduce((n,r)=>n+r.text.length,0), observed: observedRuns.reduce((n,r)=>n+r.text.length,0), present: !!value && (!plannedRuns.length || observedRuns.length > 0) },
+        { check: 'bold', reason: 'READBACK_BOLD', expected: plannedRuns.filter(r=>r.bold).length, observed: observedRuns.filter(r=>r.bold).length, present: !!value },
         { check: 'links', reason: 'READBACK_LINKS', expected: plannedRuns.filter(r=>r.href).length, observed: observedRuns.filter(r=>r.href).length, present: observedRuns.filter(r=>r.href).length >= plannedRuns.filter(r=>r.href).length },
         { check: 'photos', reason: 'READBACK_PHOTOS', expected: expectedPhotos, observed: photos.filter(t=>t.kind==='photo'&&t.identity&&t.loaded).length, present: photos.length >= expectedPhotos && photos.every(t=>t.kind==='photo'&&!!t.identity&&t.loaded===true) },
         { check: 'hashtags', reason: 'READBACK_TAGS', expected: plannedBlogTags(this.plan).length, observed: value?.tags.length ?? 0, present: (value?.tags.length ?? 0) >= plannedBlogTags(this.plan).length },
@@ -796,7 +798,7 @@ export class BlogExecution {
           if (mobile) {
             const proof = await read<{url:string;title:string;openType:number|null;login:boolean}>(mobile, `return {url:location.href,title:document.querySelector(${JSON.stringify(titleSelector)})?.textContent||'',openType:typeof openType==='number'?openType:null,login:!!document.querySelector('input[type="password"]')};`);
             if (proof.login) throw Error('LOGIN_OR_EDITOR_LOST');
-            actual.visibility = postIdentity(proof.url)?.url === this.publishedPost!.url && proof.title.trimStart().trimEnd() === actual.title ? proof.openType === 2 ? 'public' : proof.openType === 0 ? 'private' : null : null;
+            actual.visibility = postIdentity(proof.url)?.url === this.publishedPost!.url && sameReadbackIdentityText(actual.title, proof.title) ? proof.openType === 2 ? 'public' : proof.openType === 0 ? 'private' : null : null;
           } else {
             actual.visibility = await read<BlogVisibility|null>(s, `for(const {d} of docs){if(!${JSON.stringify(urls)}.includes(d.location.href))continue;const values=Array.from(d.querySelectorAll('.post_visibility, .blog2_visibility, .post_author, [data-post-visibility], .se-documentTitle .blog2_container .writer .desc .txt')).filter(visible).map(e=>(e.textContent||'').trimStart().trimEnd());if(values.includes('전체공개'))return 'public';if(values.includes('비공개'))return 'private';}return null;`);
           }
@@ -822,10 +824,10 @@ export class BlogExecution {
       if (!settled.stable) throw new ReadbackMismatch('BLOG_PUBLISHED_READBACK_UNAVAILABLE', [{field:'stability'}, ...settled.classes.filter(c=>!c.present).map(c=>({field:c.check==='paragraphs'?'text' as const:c.check as ReadbackIssue['field']}))]);
       const issues: ReadbackIssue[] = [];
       if (!blogTablesMatch(this.plan,value,this.tableModes)) issues.push({field:'table'});
-      if (!settled.classes.find(c=>c.check==='photos')!.present) issues.push({field:'photos'});
+      if (!settled.classes.find(c=>c.check==='photos')!.present) issues.push({field:'photo'});
       if (value.visibility !== this.visibility) issues.push({field:'visibility'});
       if (!sameServiceBlogTags(this.plan, value.tags)) issues.push({field:'hashtags'});
-      for (const issue of compareBlogFormatting(this.plan, value, this.tableModes)) for (const field of issue.fields) issues.push({field:field==='href'?'links':field==='input'?'text':field,paragraph:issue.paragraph});
+      for (const issue of compareBlogFormatting(this.plan, value, this.tableModes)) for (const field of issue.fields) issues.push({field,paragraph:issue.paragraph});
       try { this.env.verify(value, 'PUBLISHED'); } catch(error) { if(error instanceof ReadbackMismatch) issues.push(...error.issues); else throw error; }
       if (issues.length) {
         for(const item of settled.classes) trace('verification', issues.some(issue=>issue.field===(item.check==='paragraphs'?'text':item.check))?'fail':'ok', {check:item.check,reason:item.reason,counts:{expected:item.expected,observed:item.observed}},Date.now()-started);

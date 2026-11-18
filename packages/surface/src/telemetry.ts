@@ -22,12 +22,12 @@ export interface TraceCounts {
   step?: number; paragraphIndex?: number; paragraphTotal?: number; photoIndex?: number; photoTotal?: number;
   bytes?: number; runs?: number; attempt?: number; expected?: number; observed?: number; status?: number;
   rows?: number; columns?: number; cells?: number;
-  lineBreaks?: number; hashtags?: number; links?: number;
+  differences?: number; paragraphs?: number; lineBreaks?: number; hashtags?: number; links?: number;
 }
 export interface TraceDetail {
   update?: import('./update-diagnostics').UpdateDiagnostic;
   reason?: ReasonCode; counts?: TraceCounts;
-  check?: 'table' | 'title' | 'paragraphs' | 'prices' | 'departures' | 'golf_courses' | 'text' | 'photos' | 'photo_order' | 'photo_ratio' | 'links' | 'hashtags' | 'line_breaks' | 'identity' | 'focus' | 'record' | 'alert_kind' | 'delete_notice' | 'same_post' | 'missing_read' | 'feed_location' | 'bold' | 'visibility' | 'stability';
+  check?: 'table' | 'title' | 'paragraphs' | 'prices' | 'departures' | 'golf_courses' | 'text' | 'photos' | 'photo_order' | 'photo_ratio' | 'links' | 'hashtags' | 'line_breaks' | 'identity' | 'focus' | 'record' | 'alert_kind' | 'delete_notice' | 'same_post' | 'missing_read' | 'feed_location' | 'bold' | 'number' | 'cursor' | 'input' | 'href' | 'photo' | 'visibility' | 'stability';
   dialog?: 'alert' | 'confirm';
   selector?: typeof traceSelectors[number];
   operation?: typeof traceOperations[number];
@@ -75,9 +75,10 @@ export function reasonCode(value: unknown): ReasonCode {
   if (typeof code === 'string' && code.startsWith('CDP_TIMEOUT ')) return 'OBSERVATION_TIMEOUT';
   if (typeof code === 'string' && code.startsWith('NATIVE_TIMEOUT ')) return 'OBSERVATION_TIMEOUT';
   if (typeof code === 'string' && code.startsWith('CONTROL_NOT_FOUND:')) return 'CONTROL_NOT_FOUND';
-  if (typeof code === 'string' && /^(BAND_POST_BLOCKED|BAND_READBACK_MISMATCH|BLOG_READBACK_MISMATCH|BLOG_FORMATTING_[A-Z_]+|RECORD_FAILED):/.test(code)) {
+  if (typeof code === 'string' && /^(BAND_POST_BLOCKED|BAND_(?:INPUT_MISMATCH|PUBLISHED_READBACK_MISMATCH|READBACK_MISMATCH)|BLOG_READBACK_MISMATCH|BLOG_FORMATTING_[A-Z_]+|RECORD_FAILED):/.test(code)) {
     const [prefix, suffix] = code.split(':');
     if (prefix === 'BAND_POST_BLOCKED' && traceReasons.includes(suffix as ReasonCode)) return suffix as ReasonCode;
+    if (prefix === 'BAND_PUBLISHED_READBACK_MISMATCH') return 'BAND_PUBLISHED_READBACK_MISMATCH';
     if (prefix === 'RECORD_FAILED') return 'RECORD_FAILED';
     return 'VERIFICATION_MISMATCH';
   }

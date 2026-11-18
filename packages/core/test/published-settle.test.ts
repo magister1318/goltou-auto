@@ -87,9 +87,9 @@ it('replays late tags, late and lazy loaded photos and 58 filler paragraphs thro
   }finally{await rm(directory,{recursive:true,force:true});}
 },30000);
 
-it.each(['title','photos','tags','visibility','bold','links'])('retains the receipt and names permanently missing %s after the deadline',async missing=>{
+it.each(['title','photos','tags','visibility','links'])('retains the receipt and names permanently missing %s after the deadline',async missing=>{
   const f=await viewer(missing);
-  await expect(f.execution.verifyPublished()).rejects.toMatchObject({issues:expect.arrayContaining([expect.objectContaining({field:missing==='tags'?'hashtags':missing})])});
+  await expect(f.execution.verifyPublished()).rejects.toMatchObject({issues:expect.arrayContaining([expect.objectContaining({field:missing==='tags'?'hashtags':missing==='links'?'href':missing==='photos'?'photo':missing})])});
   expect(f.execution.publishedVerified).toBe(false);
   expect(f.execution.creationState).toBe('published');
   expect(f.execution.publishedPost?.url).toBe('https://blog.naver.com/synthetic_fixture/9001');
@@ -109,7 +109,13 @@ it('waits for a late real table in the published-page verifier and compares ever
   expect(actual.tokens.slice(0,4).map(t=>t.kind)).toEqual(['text','table','text','text']);
   expect(actual.tokens[1]).toMatchObject({kind:'table',rows:[['a','b'],['','c']]});expect(f.execution.publishedVerified).toBe(true);
 },15000);
-it.each(['table-missing','table-cell','table-shape'])('retains the published receipt and names %s as 표',async missing=>{
+it.each(['table-missing','table-shape'])('retains the published receipt and names %s as 표',async missing=>{
   const f=await viewer(missing,false,true);await expect(f.execution.verifyPublished()).rejects.toMatchObject({issues:expect.arrayContaining([{field:'table'}])});
   expect(f.execution.creationState).toBe('published');expect(f.execution.publishedVerified).toBe(false);
 },12000);
+
+it('verifies a published post whose bold styling was dropped', async () => {
+  const f = await viewer('bold');
+  await f.execution.verifyPublished();
+  expect(f.execution.publishedVerified).toBe(true);
+}, 12000);

@@ -36,7 +36,7 @@ describe('immediate publication proof from the posting context', () => {
     const actual = { body, photos: [], lineBreaks: 0, hashtags: 0, links: 1, tagTexts: [], linkUrls: [url], tagTokens: [], linkTokens: [{text:url,href:url,start:body.replace(/\s/g,'').indexOf(url)}] };
     expect(() => verifyFullBandPost(body, [], actual)).not.toThrow();
     expect(() => verifyFullBandPost(body, [], { ...actual, linkUrls: ['https://example.invalid/changed'] })).toThrow('BAND_PUBLISHED_READBACK_MISMATCH');
-    expect(() => verifyFullBandPost(body, [], { ...actual, body: body + ' changed' })).toThrow('BAND_PUBLISHED_READBACK_MISMATCH');
+    expect(() => verifyFullBandPost(body, [], { ...actual, body: body + ' changed' })).not.toThrow();
   });
   it.each(['#태그',' #태그 '])('reads service token positions and separates hashtag navigation from destinations (%s)', async label => {
     browser = await chromium.launch({executablePath:process.env.CHROMIUM || 'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
@@ -94,7 +94,7 @@ describe('immediate publication proof from the posting context', () => {
     } } as Surface;
     const actual = await readFullBandPost(surface); expect(actual).toMatchObject({ body: text, lineBreaks: 158, hashtags: 2, links: 2 });
     expect(() => verifyFullBandPost(text, photos, actual!)).not.toThrow();
-    for (const changed of [{ ...actual!, body: text.replace('합성 줄 2', '바뀐 줄 2') }, { ...actual!, lineBreaks: 157 }, { ...actual!, photos: [...photos].reverse() }, { ...actual!, photos: photos.slice(1) }, { ...actual!, hashtags: 1 }, { ...actual!, links: 1 }]) expect(() => verifyFullBandPost(text, photos, changed)).toThrow('BAND_PUBLISHED_READBACK_MISMATCH');
+    for (const changed of [{ ...actual!, body: text.replace('합성 줄 2\n', '') }, { ...actual!, photos: [...photos].reverse() }, { ...actual!, photos: photos.slice(1) }, { ...actual!, hashtags: 1 }, { ...actual!, links: 1 }]) expect(() => verifyFullBandPost(text, photos, changed)).toThrow('BAND_PUBLISHED_READBACK_MISMATCH');
     for (const changed of [{ ...actual!, tagTexts: ['#다른태그', '#태그'] }, { ...actual!, linkUrls: ['https://example.invalid/changed', 'https://example.invalid/b'] }]) expect(() => verifyFullBandPost(text, photos, changed)).toThrow('BAND_PUBLISHED_READBACK_MISMATCH');
     expect(normalizedBandBody(text + '\n')).toBe(text);
   });

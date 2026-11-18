@@ -297,10 +297,14 @@ export class CdpSurface implements Surface {
     });
   }
 
+  async insertText(text: string): Promise<void> {
+    this.jobTrace = currentTrace() ?? this.jobTrace;
+    await this.input('Input.insertText', { text });
+    await pause(this.inputDelayMs);
+  }
   async typeText(text: string): Promise<void> {
     return traceStep('surface.cdp.index.CdpSurface.typeText', async () => {
-    this.jobTrace = currentTrace() ?? this.jobTrace;
-    for (const char of inputCharacters(text)) { await this.input('Input.insertText', { text: char }); await pause(this.inputDelayMs); }
+    for (const char of inputCharacters(text)) { await this.insertText(char); }
 
     });
   }

@@ -57,7 +57,7 @@ async function fixture(mode: string) {
     if (u.pathname.startsWith('/photos/')) return route.fulfill({ status: 200, contentType: 'image/png', body: png(160, 90) });
     if (/\/post\/9001$/.test(u.pathname)) {
       if (hold) await heldDetail;
-      const text = escapeHtml(mode === 'mismatch' ? body + '변경' : body).replace(/#합성|#태그/g, '<button class="hashTag">$&</button>').replace(/https:\/\/example.invalid\/[ab]/g, '<a href="$&">$&</a>');
+      const text = escapeHtml(mode === 'mismatch' ? body.replace('둘째 줄\n','') : body).replace(/#합성|#태그/g, '<button class="hashTag">$&</button>').replace(/https:\/\/example.invalid\/[ab]/g, '<a href="$&">$&</a>');
       const root = mode === 'delayed' ? '<div class="postWrap -postDetailPage"><div class="cContentsCard"><div class="postBody"><div class="dPostTextView"><div class="postText">' : '<div class="postsDetailArea"><div class="_contentListRegion"><div class="postTextBox"><div class="postText _postTxt">';
       const postHtml = root + text + '</div></div>' + photos.map(src => `<img class="mediaImg" src="${src}">`).join('') + '</div></div>';
       const payload = [{ svc_id: 'synthetic', method: 'GET', path: '/v2.0.0/get_post?band_no=111&post_no=9001&resolution_type=synthetic&token=synthetic' }, { svc_id: 'synthetic', method: 'GET', path: '/v2.0.0/get_emotions?band_no=111&post_no=9001&content_key=synthetic&token=synthetic' }];
@@ -108,7 +108,7 @@ it.each(['identity-held', 'no-identity', 'delayed', 'rejected', 'mismatch', 'not
   expect(f.runner.job?.status, diagnostic).toBe(success ? 'published' : 'failed');
   if (!['rejected', 'not-found'].includes(mode)) expect(f.runner.job?.targetResults?.[0]?.postUrl).toBe(url);
   if (mode === 'rejected') expect(f.runner.job?.failureCode).toBe('BAND_CREATE_REJECTED');
-  if (mode === 'mismatch') expect(f.runner.job?.failureCode).toBe('BAND_PUBLISHED_READBACK_MISMATCH');
+  if (mode === 'mismatch') expect(f.runner.job?.failureCode).toBe('BAND_PUBLISHED_READBACK_MISMATCH:text');
   if (mode === 'not-found') expect(f.runner.job?.failureCode).toBe('BAND_POST_UNCONFIRMED:IDENTITY_NOT_FOUND');
   expect(f.counts()).toMatchObject({ creates: 1, forbidden: 0 });
   if (success) expect(f.counts().detailReads).toBeGreaterThan(0);

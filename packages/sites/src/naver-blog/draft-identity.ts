@@ -1,5 +1,6 @@
 import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import type { GuardedResponse, Surface } from '@goltou/surface';
+import { sameReadbackIdentityText } from '../readback-checks';
 import { click, read, waitFor } from '../dom';
 
 /** Ephemeral list evidence only. Never put titles, dates or draft IDs in logs. */
@@ -40,12 +41,12 @@ const key = (entry: DraftEntry) => JSON.stringify([entry.title, entry.stamp, ent
 /** No title-only, list-order or newest-of-equal-candidates fallback. */
 export function identifySavedDraft(before: readonly DraftEntry[], after: readonly DraftEntry[], title: string, responseId?: string) {
   if (responseId && after.some(e => e.id)) {
-    const matches = after.flatMap((e, index) => e.title === title && e.id === responseId ? [index] : []);
+    const matches = after.flatMap((e, index) => sameReadbackIdentityText(title, e.title) && e.id === responseId ? [index] : []);
     if (matches.length === 1 && !before.some(e => e.id === responseId)) return { index: matches[0]!, source: 'response-id' as const };
     return null;
   }
   const old = new Set(before.map(key));
-  const candidates = after.flatMap((e, index) => e.title === title && (e.stamp || e.id) && !old.has(key(e)) ? [index] : []);
+  const candidates = after.flatMap((e, index) => sameReadbackIdentityText(title, e.title) && (e.stamp || e.id) && !old.has(key(e)) ? [index] : []);
   if (candidates.length !== 1) return null;
   return { index: candidates[0]!, source: 'list-change' as const };
 }

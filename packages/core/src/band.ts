@@ -1,8 +1,9 @@
-import { BandExecution, type BandDirectory, type BandReadback } from '@goltou/sites';
+import { BandExecution, bandText, bandPlanLinks, hasBandLink, bandBodyIssues, ReadbackMismatch, type BandDirectory, type BandReadback } from '@goltou/sites';
+import { trace } from '@goltou/surface/telemetry';
 import type { SurfaceHost } from '@goltou/surface';
 import type { InputPlan } from './convert';
 import type { MediaFile } from './media';
-import { compact, compareDocuments, observePlan, type Observation } from './verify';
+import { compact, observePlan, type Observation } from './verify';
 import { readFile } from 'node:fs/promises';
 import { imageDimensions } from './media/dimensions';
 import { verificationProgress } from './verify-progress';
@@ -47,9 +48,19 @@ export function createBandExecution(plan: InputPlan, files: readonly Pick<MediaF
   const progress = (value: import('@goltou/sites').BandProgress) => { last = value; hooks.progress(value); };
   const execution: BandExecution = new BandExecution(plan, files, { ...hooks, progress, directory, key,
     sourceDimensions: async file => imageDimensions(await readFile(file.path)), verify: actual => {
-    const result = compareDocuments(observePlan(plan), bandObservation(plan, execution.files, actual));
-    verificationProgress('band', result, last, hooks.progress);
-    if (!result.matches) throw new Error(`BAND_READBACK_MISMATCH:${result.differences.map(d => d.field).join(',')}`);
+    const expected = observePlan(plan);
+    const observed = bandObservation(plan, execution.files, actual);
+    const issues = bandBodyIssues(bandText(plan), actual.body);
+    if (bandPlanLinks(plan).some(href => !hasBandLink(actual.body, href))) {
+      issues.push({ field: 'href' });
+      trace('verification', 'fail', { check: 'href', reason: 'READBACK_HREF' });
+    }
+    if (JSON.stringify(expected.photos) !== JSON.stringify(observed.photos)) {
+      issues.push({ field: 'photo' });
+      trace('verification', 'fail', { check: 'photo', reason: 'READBACK_PHOTO', counts: { expected: expected.photos.length, observed: observed.photos.length } });
+    }
+    verificationProgress('band', issues, last, hooks.progress);
+    if (issues.length) throw new ReadbackMismatch(`BAND_READBACK_MISMATCH:${[...new Set(issues.map(issue => issue.field))].join(',')}`, issues);
   } });
   return execution;
 }

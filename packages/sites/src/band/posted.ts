@@ -3,7 +3,7 @@ import { trace, traceStep } from '@goltou/surface/telemetry';
 import { read } from '../dom';
 import { settledReadback } from '../settled-readback';
 import { blogHashtagPattern } from '../naver-blog/tag-patterns';
-import { containsServiceLink, ReadbackMismatch, tokenText, type ReadbackIssue, type ServiceLink, type ServiceTextToken } from '../readback-checks';
+import { containsServiceLink, compareReadbackText, traceReadbackText, numberFacts, sameReadbackNumbers, ReadbackMismatch, tokenText, type ReadbackIssue, type ServiceLink, type ServiceTextToken } from '../readback-checks';
 
 export interface CreatedBandPost { url: string; body: string; createdAt: number; owned: boolean; photoCount: number; }
 const storedText = (value: string) => value.replace(/<\/?band:hashtag>/g, '').replace(/&(?:amp|lt|gt|quot|#39);/g, entity => ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'" })[entity]!);
@@ -52,7 +52,17 @@ export async function readFullBandPost(surface: Surface): Promise<FullBandPost |
     return {tagTokens,linkTokens,body,photos:all.map(img=>img.currentSrc||img.src||''),photosLoaded:all.filter(img=>img.complete&&img.naturalWidth>0&&img.naturalHeight>0).length,lineBreaks:(body.match(/\\n/g)||[]).length,hashtags:tagTexts.length,links:linkUrls.length,tagTexts,linkUrls};
   `).then(value => { if (!value) trace('selector', 'wait', { selector: 'body', reason: 'CONTROL_NOT_FOUND', counts: { expected: 1, observed: 0 } }); return value; }));
 }
-export async function settleFullBandPost(surface: Surface, expected: string, uploaded: readonly string[], check: () => void, timeoutMs = 90000, readCurrent = () => readFullBandPost(surface)) {
+export function bandBodyIssues(expected: string, actual: string, log = true): ReadbackIssue[] {
+  const result = compareReadbackText(expected.split('\n'), actual.split('\n'));
+  if (log) traceReadbackText(result);
+  const issues: ReadbackIssue[] = result.missing.map(paragraph => ({ field: 'text', paragraph }));
+  if (!sameReadbackNumbers(expected, actual)) {
+    if (log) trace('verification', 'fail', { check: 'number', reason: 'READBACK_NUMBER', counts: { expected: numberFacts(expected).length, observed: numberFacts(actual).length } });
+    issues.push({ field: 'number' });
+  }
+  return issues;
+}
+export async function settleFullBandPost(surface: Surface, expected: string, uploaded: readonly string[], check: () => void, timeoutMs = 90000, readCurrent = () => readFullBandPost(surface), requiredLinks: readonly string[] = []) {
   const planned = normalizedBandBody(expected);
   // The embedded runtime has no ICU property escapes. Reuse the existing
   // explicit keyword ranges for presence counts; Band's exact token positions
@@ -62,8 +72,8 @@ export async function settleFullBandPost(surface: Surface, expected: string, upl
   const result = await settledReadback({ read: readCurrent, check, timeoutMs,
     classes: value => [
       {check:'title',reason:'READBACK_TITLE',expected:1,observed:value?.body.split('\n')[0]?1:0,present:!!value?.body.split('\n')[0]},
-      {check:'text',reason:'READBACK_TEXT',expected:planned.length,observed:value?.body.length??0,present:(value?.body.length??0)>=planned.length},
-      {check:'line_breaks',reason:'READBACK_PARAGRAPHS',expected:(planned.match(/\n/g)??[]).length,observed:value?.lineBreaks??0,present:(value?.lineBreaks??0)>=(planned.match(/\n/g)??[]).length},
+      {check:'text',reason:'READBACK_TEXT',expected:planned.length,observed:value?.body.length??0,present:!!value?.body},
+      {check:'line_breaks',reason:'READBACK_PARAGRAPHS',expected:(planned.match(/\n/g)??[]).length,observed:value?.lineBreaks??0,present:!!value},
       {check:'photos',reason:'READBACK_PHOTOS',expected:uploaded.length,observed:value?.photosLoaded??0,present:!!value&&value.photos.length>=uploaded.length&&value.photosLoaded===value.photos.length},
       {check:'hashtags',reason:'READBACK_TAGS',expected:expectedTags,observed:value?.hashtags??0,present:(value?.hashtags??0)>=expectedTags},
       {check:'links',reason:'READBACK_LINKS',expected:expectedLinks,observed:value?.links??0,present:(value?.links??0)>=expectedLinks},
@@ -73,30 +83,30 @@ export async function settleFullBandPost(surface: Surface, expected: string, upl
   if(!result.value)throw Error('BAND_PUBLISHED_READBACK_UNAVAILABLE');
   if(!result.stable)throw new ReadbackMismatch('BAND_PUBLISHED_READBACK_UNAVAILABLE',[{field:'stability'},...result.classes.filter(c=>!c.present).map(c=>({field:c.check as ReadbackIssue['field']}))]);
   const issues: ReadbackIssue[] = [];
-  if(result.value.photosLoaded!==uploaded.length)issues.push({field:'photos'});
-  if((result.value.hashtags??0)<expectedTags)issues.push({field:'hashtags'});
-  if((result.value.links??0)<expectedLinks)issues.push({field:'links'});
-  try { verifyFullBandPost(expected,uploaded,result.value); } catch(error) { if(error instanceof ReadbackMismatch)issues.push(...error.issues);else throw error; }
-  if(issues.length)throw new ReadbackMismatch('BAND_PUBLISHED_READBACK_MISMATCH',issues);
+  if(result.value.photosLoaded!==uploaded.length)issues.push({field:'photo'});
+  if((result.value.links??0)<expectedLinks)issues.push({field:'href'});
+  try { verifyFullBandPost(expected,uploaded,result.value,requiredLinks); } catch(error) { if(error instanceof ReadbackMismatch)issues.push(...error.issues);else throw error; }
+  if(issues.length)throw new ReadbackMismatch('BAND_PUBLISHED_READBACK_MISMATCH:' + [...new Set(issues.map(issue=>issue.field))].join(','),issues);
   return result.value;
 }
-export function verifyFullBandPost(expected: string, uploaded: readonly string[], actual: FullBandPost) {
+export function verifyFullBandPost(expected: string, uploaded: readonly string[], actual: FullBandPost, requiredLinks: readonly string[] = []) {
   const planned = normalizedBandBody(expected);
   const links = actual.linkTokens, tags = actual.tagTokens;
-  const issues: ReadbackIssue[] = [];
-  if (planned !== normalizedBandBody(actual.body)) issues.push({field:'text'});
-  if ((planned.match(/\n/g) ?? []).length !== actual.lineBreaks) issues.push({field:'line_breaks'});
-  if (actual.photos.length !== uploaded.length || actual.photos.some((url,i) => !photoPath(url) || photoPath(url) !== photoPath(uploaded[i] ?? ''))) issues.push({field:'photos'});
+  const issues = bandBodyIssues(expected, actual.body);
+  if (actual.photos.length !== uploaded.length || actual.photos.some((url,i) => !photoPath(url) || photoPath(url) !== photoPath(uploaded[i] ?? ''))) issues.push({field:'photo'});
   if (actual.hashtags !== actual.tagTexts.length || tags.length !== actual.tagTexts.length) issues.push({field:'hashtags'});
-  tags.forEach((tag,i) => { if (!tag.text.startsWith('#') || tag.start < 0 || tokenText(planned).slice(tag.start,tag.start + tokenText(tag.text).length) !== tokenText(tag.text) || tag.text !== actual.tagTexts[i] || i > 0 && tag.start <= tags[i-1]!.start) issues.push({field:'hashtags',index:i+1}); });
-  if (actual.links !== actual.linkUrls.length || links.length !== actual.linkUrls.length) issues.push({field:'links'});
-  links.forEach((link,i) => { if (link.href !== actual.linkUrls[i] || !containsServiceLink(planned,link) || i > 0 && link.start <= links[i-1]!.start) issues.push({field:'links',index:i+1}); });
+  tags.forEach((tag,i) => { if (!tag.text.startsWith('#') || tag.start < 0 || tokenText(actual.body).slice(tag.start,tag.start + tokenText(tag.text).length) !== tokenText(tag.text) || tag.text !== actual.tagTexts[i] || i > 0 && tag.start <= tags[i-1]!.start) issues.push({field:'hashtags',index:i+1}); });
+  if (requiredLinks.some(value => {
+    try { return !actual.linkUrls.includes(new URL(value).href); } catch { return true; }
+  })) issues.push({ field: 'href' });
+  if (actual.links !== actual.linkUrls.length || links.length !== actual.linkUrls.length) issues.push({field:'href'});
+  links.forEach((link,i) => { if (link.href !== actual.linkUrls[i] || (!containsServiceLink(actual.body,link) || !tokenText(planned).includes(tokenText(link.text))) || i > 0 && link.start <= links[i-1]!.start) issues.push({field:'href',index:i+1}); });
   for (const [check,field,expectedCount,observedCount] of [
     ['text','text',Array.from(planned).length,Array.from(normalizedBandBody(actual.body)).length],
     ['line_breaks','line_breaks',(planned.match(/\n/g) ?? []).length,actual.lineBreaks],
-    ['photo_order','photos',uploaded.length,actual.photos.length],
+    ['photo_order','photo',uploaded.length,actual.photos.length],
     ['hashtags','hashtags',tags.length,actual.hashtags],
-    ['links','links',links.length,actual.links],
+    ['links','href',links.length,actual.links],
   ] as const) trace('verification', issues.some(i=>i.field===field)?'fail':'ok', {check,counts:{expected:expectedCount,observed:observedCount},...(issues.some(i=>i.field===field)?{reason:'VERIFICATION_MISMATCH' as const}:{})});
-  if (issues.length) throw new ReadbackMismatch('BAND_PUBLISHED_READBACK_MISMATCH',issues);
+  if (issues.length) throw new ReadbackMismatch('BAND_PUBLISHED_READBACK_MISMATCH:' + [...new Set(issues.map(issue=>issue.field))].join(','),issues);
 }

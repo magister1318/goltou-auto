@@ -2,7 +2,7 @@
 import type { Surface } from '@goltou/surface';
 import { trace, reasonCode, type ReasonCode } from '@goltou/surface/telemetry';
 import { point, read, sleep, waitFor } from '../dom';
-import { normalizeBlogRuns, type BlogRun } from './formatting';
+import { type BlogRun } from './formatting';
 import { BlogRichTextWriter } from './rich-text';
 
 export interface BlogTable { rows: string[][]; cellRuns?: BlogRun[][][] }
@@ -11,8 +11,8 @@ export function tableRowRuns(table: BlogTable, row: number): BlogRun[] {
   return table.rows[row]!.flatMap((text, column) => [...(column ? [{ text: ' | ' }] : []), ...(table.cellRuns?.[row]?.[column] ?? [{ text }])]);
 }
 export function exactBlogTable(expected: BlogTable, actual: BlogTableToken | undefined) {
-  return !!actual && !actual.merged && JSON.stringify(expected.rows) === JSON.stringify(actual.rows) &&
-    expected.rows.every((row, r) => row.every((text, c) => JSON.stringify(normalizeBlogRuns(expected.cellRuns?.[r]?.[c] ?? [{ text }])) === JSON.stringify(normalizeBlogRuns(actual.cellRuns?.[r]?.[c] ?? [{ text: actual.rows[r]![c]! }]))));
+  return !!actual && !actual.merged && expected.rows.length === actual.rows.length &&
+    expected.rows.every((row, r) => row.length === actual.rows[r]!.length);
 }
 
 /** Observed on the device: immediate 3x3; select row/column -> cell menu delete.

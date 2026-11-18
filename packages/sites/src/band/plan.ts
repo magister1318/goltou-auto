@@ -1,5 +1,5 @@
 // Reference: ../refs/golfliat/programs/golfliat-workbench/electron/renderer.js, fillBandComposerInWebview (readback and file input selectors only).
-import { createdBandPosts, readFullBandPost, settleFullBandPost, normalizedBandBody, type CreatedBandPost } from './posted';
+import { createdBandPosts, readFullBandPost, settleFullBandPost, bandBodyIssues, type CreatedBandPost } from './posted';
 import { currentTrace, traceStep, trace, reasonCode, expectedTelemetryRequest, type ReasonCode, type TraceJob } from '@goltou/surface/telemetry';
 import { bandListLocation, type BandListDiagnostic } from '../../../surface/src/band-list-diagnostics';
 import type { GuardedRequest, Surface, SurfaceDialog, SurfaceHost } from '@goltou/surface';
@@ -19,13 +19,21 @@ export const bandEditor = 'textarea._postTextArea, .cke_editable[contenteditable
 const bandSubmit = 'button._btnPostSubmit, button._btnSubmitPost, .postWriteSection .topBarGnbActionButtons button._btnPostWrite';
 export interface BandPlan {
   channel: 'blog' | 'band';
-  steps: ({ kind: 'text'; role: string; text: string } | { kind: 'break' } | { kind: 'photos'; urls: string[] } | { kind: 'table'; role: string; rows: string[][] })[];
+  steps: ({ kind: 'text'; role: string; text: string; runs?: { href?: string | null }[] } | { kind: 'break' } | { kind: 'photos'; urls: string[] } | { kind: 'table'; role: string; rows: string[][] })[];
 }
 export interface BandReadback { body: string; photos: string[]; slots: PhotoSlot[]; uploading: boolean; photoProof?: PhotoProof; composer: boolean; postUrl: string | null; photoLimit: number | null; textLimit: number | null }
 export interface BandChoice { key: string; name: string; photoLimit: number | null; observedAt: string | null }
 export interface BandProgress { characters: number; totalCharacters: number; photos: number; totalPhotos: number; photoUploadMilliseconds?: number; photoUploadSamples?: number; activity?: import('../progress').EngineActivity }
 export function bandText(plan: BandPlan) {
   return plan.steps.flatMap(s => s.kind === 'text' ? [s.text] : s.kind === 'table' ? s.rows.map(r => r.join(' | ')) : []).join('\n\n');
+}
+export function bandPlanLinks(plan: BandPlan) {
+  return plan.steps.flatMap(step => step.kind === 'text'
+    ? step.role === 'linkCard' ? [step.text] : [...new Set(step.runs?.flatMap(run => run.href ? [run.href] : []) ?? [])] : []);
+}
+export function hasBandLink(body: string, href: string): boolean {
+  return (body.match(/https?:\/\/[^\s]+/g) ?? []).some(text => text === href ||
+    text.startsWith(href) && /^[)\]}>.,!?;'"]+$/.test(text.slice(href.length)));
 }
 export function photoUrls(plan: BandPlan) { return plan.steps.flatMap(s => s.kind === 'photos' ? s.urls : []); }
 export async function readBandDocument(surface: Surface): Promise<BandReadback> {
@@ -120,6 +128,13 @@ export class BandDirectory {
     const url = new URL(baseUrl);
     if (localPublish && (url.hostname !== '127.0.0.1' || url.protocol !== 'http:')) throw new Error('LOCAL_BAND_REQUIRED');
     if (!localPublish && url.origin !== 'https://band.us') throw new Error('BAND_ORIGIN_REQUIRED');
+  }
+  /** Release this failed attempt's WebView without submitting or editing the composer. */
+  async releaseSurface() {
+    const surface = this.surface;
+    if (surface) await this.host.destroy(surface);
+    this.surface = undefined;
+    this.submit = undefined;
   }
   async getSurface() {
     return traceStep('sites.band.plan.BandDirectory.getSurface', async () => {
@@ -411,7 +426,7 @@ export class BandExecution {
     const already = await readBandDocument(s);
     if (already.composer) throw new Error('BAND_EXISTING_COMPOSER');
     const title = bandText(this.plan).split('\n')[0] ?? '';
-    if (!this.env.directory.localPublish && this.env.directory.existingTitle(title)) throw Error('BAND_EXISTING_TEST_POST');
+    if (!this.env.directory.localPublish && !this.env.directory.publishEnabled && this.env.directory.existingTitle(title)) throw Error('BAND_EXISTING_TEST_POST');
     trace('verification', 'ok', { check: 'identity', counts: { expected: 0, observed: 0 } });
     this.env.check();
     const mobile = await waitFor(async () => { await this.env.directory.guardCachedTarget(this.env.key); return await point(s, 'button.uFloatingButton._btnPostWrite[aria-label="글쓰기"]') ? true : await point(s, 'button._btnPostWrite, button._btnOpenWriteLayer', '글쓰기') ? 'desktop' : null; });
@@ -445,7 +460,8 @@ export class BandExecution {
     const s = this.surface!;
     let current = await readBandDocument(s);
     this.limits(current);
-    if (this.photoAttempted && this.offset === Array.from(bandText(this.plan)).length) {
+    if (this.photoAttempted && this.offset === Array.from(bandText(this.plan)).length &&
+        (!this.checkpoint || compact(current.body) === compact(this.checkpoint.body))) {
       // An ambiguous/failed attachment is never retried or accepted as a count-only prefix.
       current = await this.observe();
       try { this.env.verify(current); this.checkpoint = current; } catch { trace('sites.band.plan.BandExecution.write', 'fail', { reason: 'CAUGHT_FAILURE' });  /* Text edits still require restart consent below. */ }
@@ -466,7 +482,9 @@ export class BandExecution {
       if (text[end] === '\n') { await s.pressKey({ key: 'Enter' }); end++; }
       // Update only after readback confirms the entire prefix, even when login drops after input.
       current = await readBandDocument(s);
-      if (!current.composer || compact(current.body) !== compact(text.slice(0, end).join(''))) { await this.guard(); throw new Error('BAND_INPUT_MISMATCH'); }
+      if (!current.composer) { await this.guard(); throw new Error('BAND_INPUT_MISMATCH:input'); }
+      const issues = bandBodyIssues(text.slice(0, end).join(''), current.body);
+      if (issues.length) { await this.guard(); throw new ReadbackMismatch('BAND_INPUT_MISMATCH:' + [...new Set(issues.map(issue=>issue.field))].join(','), issues); }
       this.offset = end; this.checkpoint = current; this.report(current);
       let start = 0;
       for (const { step, index } of textSteps) {
@@ -583,7 +601,7 @@ export class BandExecution {
     const uploaded = this.checkpoint?.slots.map(slot => { try { return JSON.parse(slot.signature)[0] as string; } catch { return ''; } }) ?? [];
     let url = directory.createdReceipt(this.env.key);
     if (url) await this.storeIdentity(url);
-    if (uploaded.length !== this.photoUrls().length || uploaded.some(value => !bandPhotoPath(value))) throw Error('BAND_PUBLISHED_READBACK_MISMATCH');
+    if (uploaded.length !== this.photoUrls().length || uploaded.some(value => !bandPhotoPath(value))) throw new ReadbackMismatch('BAND_PUBLISHED_READBACK_MISMATCH:photo', [{ field: 'photo' }]);
     if (!url) {
       try {
         const post = await directory.readCreated({ band: this.env.key, title: bandText(this.plan).split('\n')[0] ?? '',
@@ -615,11 +633,11 @@ export class BandExecution {
         const state = await this.surface!.readState();
         if (!directory.sameOrigin(new URL(state.url)) || new URL(state.url).pathname.replace(/\/$/, '') !== new URL(url!).pathname) return null;
         return readFullBandPost(this.surface!);
-      });
+      }, bandPlanLinks(this.plan));
     } catch (error) {
       this.env.check();
       trace('band.confirm.detail', 'fail', { reason: reasonCode(error) });
-      if (error instanceof ReadbackMismatch || error instanceof Error && error.message === 'BAND_PUBLISHED_READBACK_MISMATCH') throw error;
+      if (error instanceof ReadbackMismatch || error instanceof Error && error.message.startsWith('BAND_PUBLISHED_READBACK_MISMATCH')) throw error;
       throw Error('BAND_PUBLISHED_READBACK_UNAVAILABLE');
     }
     this.verifiedPublished = url; trace('band.confirm.detail', 'ok'); return url;

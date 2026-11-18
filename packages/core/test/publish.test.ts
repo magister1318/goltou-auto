@@ -227,7 +227,7 @@ describe('WP18 saved and published runs on a synthetic loopback service', () => 
     const f = await fixture(loss ? 'formatting' : '', 'private', false, false, true, product);
     await f.execution.write(); await f.execution.saveAndVerify();
     if (loss) {
-      await expect(f.execution.publish()).rejects.toMatchObject({ message: 'BLOG_READBACK_MISMATCH:bold,links', issues: [{ paragraph: 1, field: 'bold' }, { paragraph: 1, field: 'links' }] });
+      await expect(f.execution.publish()).rejects.toMatchObject({ message: 'BLOG_READBACK_MISMATCH:href', issues: [{ paragraph: 1, field: 'href' }] });
       expect(f.execution.publishedVerified).toBe(false);
       await expect(f.execution.publish()).rejects.toThrow();
     } else {

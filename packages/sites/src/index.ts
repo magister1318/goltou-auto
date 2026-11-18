@@ -20,3 +20,5 @@ export * from './band/delete';
 export * from './band/record-read';
 export * from './band/mobile-delete';
 export * from './band/delete-log';
+
+export { bandBodyIssues } from './band/posted';

@@ -96,9 +96,10 @@ export async function openRecordedBandFeed(host: SurfaceHost, target: FeedTarget
             const candidates: RecordedBandReadback[] = [];
             for (const item of value.result_data.items) {
               const url = item?.post?.web_url;
-              if (bandPostIdentity(url)?.band !== id.band || typeof item?.post?.content !== 'string' ||
-                compact(bandStoredText(item.post.content).split('\n')[0] ?? '') !== compact(target.title)) continue;
-              const post = parseRecordedBandFeed(JSON.stringify({ result_code: 1, result_data: { items: [item] } }), { url, title: target.title });
+              if (bandPostIdentity(url)?.band !== id.band || typeof item?.post?.content !== 'string') continue;
+              const title = bandStoredText(item.post.content).split('\n')[0] ?? '';
+              if (!compact(title)) continue;
+              const post = parseRecordedBandFeed(JSON.stringify({ result_code: 1, result_data: { items: [item] } }), { url, title });
               if (post && matchesBandCreation(post, target)) candidates.push(post);
             }
             trace('band.confirm.feed', candidates.length === 1 ? 'ok' : 'wait', { counts: { observed: candidates.length, expected: 1 } });

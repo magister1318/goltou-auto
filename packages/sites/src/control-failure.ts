@@ -42,6 +42,6 @@ export function safeFailureCode(error: unknown, fallback: string): string {
   };
   if (Object.prototype.hasOwnProperty.call(timeouts, code)) return timeouts[code]!;
   if (bandPostBlocked(code)) return code;
-  if (/^BLOG_FORMATTING_(INPUT|BEFORE_SAVE|AFTER_SAVE|REOPENED|PUBLISHED):[1-9]\d*(?:,[1-9]\d*)*$/.test(code)) return code;
-  return /^[A-Z_]+(?::[A-Za-z,]+)?$/.test(code) ? code : fallback;
+  if (/^BLOG_FORMATTING_(INPUT|BEFORE_SAVE|AFTER_SAVE|REOPENED|PUBLISHED):[1-9]\d*(?:,[1-9]\d*)*(?::(?:text|bold|href|cursor|input|number|photo)(?:,(?:text|bold|href|cursor|input|number|photo))*)?$/.test(code)) return code;
+  return /^[A-Z_]+(?::[A-Za-z_,]+)?$/.test(code) ? code : fallback;
 }
