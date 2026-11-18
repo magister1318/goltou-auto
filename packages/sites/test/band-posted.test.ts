@@ -109,7 +109,7 @@ it('replays a nested mobile post with 66 lazy photo slots and four tags, then re
   const paragraphs = Array.from({length:19}, (_, i)=>`합성 안내 ${i+1}`);
   const tags = ['#지역','#나라','#코스','#골프'];
   const expected = ['합성 제목', ...paragraphs, tags.join(' ')].join('\n\n');
-  const html = `<section class="postCard"><div class="postView"><div class="postTextView"><p class="postText" style="white-space:pre-wrap">${['합성 제목', ...paragraphs, tags.map(tag=>`<button class="hashTag">${tag}</button>`).join(' ')].join('\n\n')}</p></div>
+  const html = `<section class="postCard"><div class="postView"><div class="postTextView"><p class="postText" style="white-space:pre-wrap">${['합성 제목', ...paragraphs.map((text,i)=> i < 17 ? text.replace('안내','  안내') : text), tags.map(tag=>`<button class="hashTag">${tag}</button>`).join(' ')].join('\n\n')}</p></div>
     <div class="postWriterInfo"><img class="mediaImg" src="https://profile.invalid/user.png"></div>
     <div class="_photoListRegion">${photos.map((url,i)=>i%3===0 ? `<div data-photo-url="${url}" data-photo-key="${i}"><img class="mediaImg"></div>` :
       i%3===1 ? `<img class="mediaImg" data-lazy-src="${url}" src="/placeholder.gif">` : `<div class="photoPlaceholder" data-original="${url}"></div>`).join('')}</div></div></section>`;

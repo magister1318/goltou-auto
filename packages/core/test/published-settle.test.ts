@@ -27,7 +27,7 @@ async function viewer(missing = '', mobileProof = false, withTable = false) {
   const paragraphs = Array.from({length:shape.paragraphs},(_,i)=>`합성 문단 ${i+1}`);
   paragraphs.forEach((text,i)=>plan.steps.push({kind:'text',role:'body',text,runs:i===0?[{text,bold:true}]:i===1||i===2?[{text,href:`https://example.invalid/${i}`}]:[{text}]}));
   const files = Array.from({length:shape.photos},(_,i)=>({url:`https://example.invalid/photo/${i}`,path:`/synthetic/goltou-1234567890abcdef-${i+1}.png`}));
-  plan.steps.push({kind:'photos',urls:files.map(f=>f.url)},{kind:'text',role:'hashtags',text:'#one #two'});
+  plan.steps.push({kind:'photos',urls:files.map(f=>f.url)},{kind:'text',role:'hashtags',text:missing==='private-no-tags'?'#one #two #three #four':'#one #two'});
   if(withTable)plan.steps.splice(2,0,{kind:'table',role:'body',rows:[['a','b'],['','c']]});
   const body = paragraphs.map((text,i)=>`<div class="se-component se-text"><p class="se-text-paragraph"><span class="se-fs-fs15 se-ff-nanumgothic">${i===0?`<b>${text}</b>`:i===1||i===2?`<a href="https://example.invalid/${i}">${text}</a>`:text}</span></p></div>`).join('');
   // Observed real shape: 99 meaningful paragraphs plus 58 standalone U+200B
@@ -124,7 +124,7 @@ it('counts all 66 private-post photo slots and only flags the absent separate ta
   const f = await viewer('private-no-tags');
   const press = vi.spyOn(f.surface, 'pressKey').mockRejectedValue(Error('CDP_KEY_FAILURE'));
   const hit = vi.spyOn(f.surface, 'readClickTarget').mockResolvedValue(false);
-  await expect(f.execution.verifyPublished()).rejects.toMatchObject({ issues:[{field:'hashtags',expected:2,observed:0}] });
+  await expect(f.execution.verifyPublished()).rejects.toMatchObject({ issues:[{field:'hashtags',expected:4,observed:0}] });
   expect(f.execution.creationState).toBe('published');
   expect(f.execution.readbackTimings[0]).toMatchObject({ photos:66, navigationKeys:0 });
   expect(press).not.toHaveBeenCalled(); expect(hit).not.toHaveBeenCalled();
