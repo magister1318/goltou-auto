@@ -1,7 +1,7 @@
-import { ApiError, type ApiClient, type ApiRoutes, type Channel, type Post, type Product, type Settings, type User } from './index';
+import { defaultMyText, ApiError, type MyText, type ApiClient, type ApiRoutes, type Channel, type Post, type Product, type Settings, type User } from './index';
 
 export const fakeAccounts: Record<string, User> = {
-  manager: { userNo: 12, name: '김매니저', userType: 4, role: 'manager' },
+  manager: { userNo: 12, name: '김매니저', nickname: '골프매니저', phone: '', userType: 4, role: 'manager' },
   staff: { userNo: 13, name: '이직원', userType: 7, role: 'staff' },
   admin: { userNo: 14, name: '박관리자', userType: 9, role: 'admin' },
 };
@@ -13,6 +13,7 @@ const stamp = '2026-11-12T09:00:00+09:00';
 const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 export function createFakeApi(fixtureSession?: { token: string; user: User; productTitle?: string }): ApiClient {
   let settings: Settings = { closingText: '', defaultHashtags: [], bandDailyLimit: 3 };
+  const personalText = new Map<number, MyText>();
   const sessions = new Map<string, User>();
   if (fixtureSession) sessions.set(fixtureSession.token, copy(fixtureSession.user));
   let serial = 100;
@@ -22,7 +23,7 @@ export function createFakeApi(fixtureSession?: { token: string; user: User; prod
     images: Array.from({ length: 5 }, (_, order) => ({ order: order + 1, url: `https://example.invalid/images/${i}/${order}.png` })),
     departures: Array.from({ length: counts[i % 4]! }, (_, d) => ({ date: `${i >= 12 ? '2027-01' : '2026-12'}-${String(3 + d * 4 + (d ? 3 : 0)).padStart(2, '0')}`, price: prices[i % 4]! + d * 60000 })),
     golfCourses: i === 0 ? ['다낭CC', '몽고메리CC', '바나힐CC'] : [`${regions[i]}CC`],
-    productUrl: `https://example.invalid/products/${1234 + i}`, updatedAt: stamp, contentHash: `fake-content-${i}`,
+    productUrl: `https://example.invalid/products/${1234 + i}`, updatedAt: stamp, ownerNickname: i % 2 ? null : '골프매니저', contentHash: `fake-content-${i}`,
   }));
   type StoredPost = Post & { owner: number; targetKey: string; hash: string };
   const posts: StoredPost[] = [];
@@ -48,17 +49,28 @@ export function createFakeApi(fixtureSession?: { token: string; user: User; prod
       const visibleMark = (p: StoredPost) => successful(p) || p.channel === 'band' && p.status === 'stopped_before_post';
       switch (path) {
         case '/auto/logout': sessions.delete(token!); output = {}; break;
-        case '/auto/me': output = { user, settings }; break;
+        case '/auto/me': output = { user, settings, myText: personalText.get(user.userNo) ?? defaultMyText() }; break;
+        case '/auto/me/text/save': {
+          const value = input as MyText;
+          if (typeof value.prefix !== 'string' || [...value.prefix].length > 500 || typeof value.closing !== 'string' || [...value.closing].length > 1000 || typeof value.closingOn !== 'boolean') throw new ApiError('invalid', '글 앞·끝 문구를 확인해 주세요.');
+          personalText.set(user.userNo, copy(value)); output = {}; break;
+        }
         case '/auto/products/get': {
-          output = products.find(p => p.productNo === data.productNo);
-          if (!output) throw new ApiError('not_found', '상품을 찾지 못했습니다.'); break;
+          const product = products.find(p => p.productNo === data.productNo);
+          if (!product) throw new ApiError('not_found', '상품을 찾지 못했습니다.');
+          output = { ...product, posts: posts.filter(p => p.productNo === product.productNo && successful(p))
+            .sort((a, b) => (b.finishedAt || b.startedAt).localeCompare(a.finishedAt || a.startedAt) || b.postNo - a.postNo).slice(0, 30)
+            .map(p => ({ postNo: p.postNo, channel: p.channel, mode: p.mode, status: p.status, nickname: Object.values(fakeAccounts).find(u => u.userNo === p.owner)?.nickname ?? p.userName,
+              at: p.finishedAt || p.startedAt, targetName: p.targetName, targetKey: p.channel === 'band' ? p.targetKey : '', postUrl: p.postUrl, changed: p.hash !== product.contentHash })) }; break;
         }
         case '/auto/products/list': {
           let filtered = products.filter(p => (!data.q || `${p.title} ${p.golfCourses.join(' ')}`.includes(String(data.q))) && (!data.country || p.country === data.country) && (!data.region || p.region === data.region) && (!data.month || p.departures.some(d => d.date.startsWith(String(data.month)))) && (!data.onlyUnposted || !posts.some(post => post.owner === user.userNo && post.productNo === p.productNo && successful(post))));
           if (data.sort === 'departure') filtered = [...filtered].sort((a, b) => a.departures[0]!.date.localeCompare(b.departures[0]!.date));
           output = page(filtered.map(p => {
-            const mark = (channel: Channel) => { const post = [...posts].reverse().find(post => post.owner === user.userNo && post.productNo === p.productNo && post.channel === channel && visibleMark(post)); return post ? { status: post.status, at: post.finishedAt.slice(0, 10) } : null; };
-            return { productNo: p.productNo, title: p.title, country: p.country, region: p.region, thumbUrl: p.images[0]!.url, priceFrom: Math.min(...p.departures.map(d => d.price)), departureCount: p.departures.length, updatedAt: p.updatedAt, myPosts: { blog: mark('blog'), band: mark('band') } };
+            const latest = (channel: Channel) => [...posts].reverse().find(post => post.owner === user.userNo && post.productNo === p.productNo && post.channel === channel && visibleMark(post));
+            const mark = (channel: Channel) => { const post = latest(channel); return post ? { status: post.status, at: post.finishedAt.slice(0, 10) } : null; };
+            const changed = (channel: Channel) => { const post = latest(channel); return !!post && post.hash !== p.contentHash; };
+            return { productNo: p.productNo, title: p.title, country: p.country, region: p.region, thumbUrl: p.images[0]!.url, priceFrom: Math.min(...p.departures.map(d => d.price)), departureCount: p.departures.length, updatedAt: p.updatedAt, ownerNickname: p.ownerNickname, changed: { blog: changed('blog'), band: changed('band') }, myPosts: { blog: mark('blog'), band: mark('band') } };
           })); break;
         }
         case '/auto/posts/list':
@@ -69,10 +81,17 @@ export function createFakeApi(fixtureSession?: { token: string; user: User; prod
           const product = products.find(p => p.productNo === value.productNo);
           if (!product) throw new ApiError('not_found', '상품을 찾지 못했습니다.');
           const today = new Date().toLocaleDateString('sv-SE', { timeZone: 'Asia/Seoul' });
-          if (value.channel === 'band' && posts.filter(p => p.owner === user.userNo && p.channel === 'band' && p.targetKey === value.target.key && p.startedAt.slice(0, 10) === today && p.status !== 'failed' && p.status !== 'stopped').length >= settings.bandDailyLimit) throw new ApiError('conflict', '이 밴드의 하루 등록 한도에 도달했습니다.');
+          if (value.channel === 'band' && posts.filter(p => p.owner === user.userNo && p.channel === 'band' && p.startedAt.slice(0, 10) === today && p.status !== 'failed' && p.status !== 'stopped').length >= settings.bandDailyLimit) throw new ApiError('conflict', '밴드 하루 등록 한도에 도달했습니다.');
           const postNo = ++serial;
           posts.push({ postNo, productNo: product.productNo, productTitle: product.title, channel: value.channel, mode: value.mode, targetName: value.target.name, status: 'running', step: 1, failReason: '', postUrl: '', userName: user.name, startedAt: `${today}T12:00:00+09:00`, finishedAt: '', productChanged: false, owner: user.userNo, targetKey: value.target.key, hash: value.contentHash });
           output = { postNo }; break;
+        }
+        case '/auto/posts/log': {
+          const post = posts.find(p => p.postNo === data.postNo);
+          if (!post) throw new ApiError('not_found', '기록을 찾지 못했습니다.');
+          if (post.owner !== user.userNo && user.role !== 'admin') throw new ApiError('forbidden', '내 기록만 고칠 수 있습니다.');
+          if (typeof data.log !== 'string' || data.log.length > 524288) throw new ApiError('invalid', '로그 길이를 확인해 주세요.');
+          output = {}; break;
         }
         case '/auto/posts/update': {
           const value = input as ApiRoutes['/auto/posts/update']['input']; const post = posts.find(p => p.postNo === value.postNo);

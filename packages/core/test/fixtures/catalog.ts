@@ -5,7 +5,7 @@ export const fixtureCases = [
   { name: 'interleaved', label: '사진·글 교차', photos: 3, paragraphs: 3, tables: 0 },
   { name: 'messy', label: '붙여넣기 흔적', photos: 1, paragraphs: 2, tables: 0 },
   { name: 'long', label: '장문', photos: 0, paragraphs: 40, tables: 0 },
-  { name: 'empty', label: '빈 문단', photos: 0, paragraphs: 1, tables: 0 },
+  { name: 'empty', label: '빈 문단', photos: 0, paragraphs: 3, tables: 0 },
   { name: 'links-bold', label: '링크·강조', photos: 0, paragraphs: 2, tables: 0 },
   { name: 'broken', label: '깨진 태그', photos: 1, paragraphs: 3, tables: 0 },
 ] as const;
