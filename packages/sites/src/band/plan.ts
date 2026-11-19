@@ -1,5 +1,5 @@
 // Reference: ../refs/golfliat/programs/golfliat-workbench/electron/renderer.js, fillBandComposerInWebview (readback and file input selectors only).
-import { createdBandPosts, readFullBandPost, settleFullBandPost, bandBodyIssues, type CreatedBandPost } from './posted';
+import { bandPhotoPath, createdBandPosts, readFullBandPost, settleFullBandPost, bandBodyIssues, type CreatedBandPost } from './posted';
 import { currentTrace, traceStep, trace, reasonCode, expectedTelemetryRequest, type ReasonCode, type TraceJob } from '@goltou/surface/telemetry';
 import { bandListLocation, type BandListDiagnostic } from '../../../surface/src/band-list-diagnostics';
 import type { GuardedRequest, Surface, SurfaceDialog, SurfaceHost } from '@goltou/surface';
@@ -10,7 +10,7 @@ import { PhotoOrder, type PhotoProof, type PhotoSize, type PhotoSlot } from './p
 import { requestFields } from '../naver-blog/request-fields';
 import type { BandBarrierCode } from './barrier-codes';
 import { bandReadBatchTarget } from './read-batch';
-import { readCreatedBandPost, bandPhotoPath, bandRecordReadAllowed } from './record-read';
+import { bandFeedResponse, readCreatedBandPost, parseBandDetailPhotos, bandRecordReadAllowed } from './record-read';
 import { bandCreateIdentity } from './publish-confirmation';
 import { ReadbackMismatch } from '../readback-checks';
 import { bandWrite, waitForBandWrite } from './write-control';
@@ -215,7 +215,7 @@ export class BandDirectory {
         this.listPhase.job?.line('band.list.api', 'ok', { reason: rows ? 'BAND_LIST_API_CAPTURED' : 'BAND_LIST_API_INVALID', bandList: { apiCaptured: !!rows, apiRows: rows?.length ?? 0 } });
         return;
       }
-      if (response.method === 'GET' && response.url && new URL(response.url).hostname === 'api-kr.band.us' && new URL(response.url).pathname === '/v2.0.0/get_posts_and_announcements') {
+      if (response.url && bandFeedResponse({ method: response.method ?? '', url: response.url })) {
         const band = new URL(response.url).searchParams.get('band_no');
         if (band) { this.feedPosts = createdBandPosts(response.body, band); this.feedBand = band; this.feedRevision++; }
         return;
@@ -232,7 +232,7 @@ export class BandDirectory {
         }
         trace('band.confirm.response', this.submit.post ? 'ok' : 'wait', { reason: this.submit.post ? 'BAND_RESPONSE_IDENTITY' : 'BAND_RESPONSE_NO_IDENTITY', counts: { expected: 1, observed: this.submit.post ? 1 : 0 } });
       } catch { trace('sites.band.plan.BandDirectory.getSurface', 'fail', { reason: 'CAUGHT_FAILURE' });  this.submit.succeeded = false; }
-    }, request => !!this.listPhase && ['GET', 'POST'].includes(request.method) && isBandListEndpoint(new URL(request.url)) || request.method === 'POST' && this.isCreate(new URL(request.url)) || request.method === 'GET' && new URL(request.url).hostname === 'api-kr.band.us' && new URL(request.url).pathname === '/v2.0.0/get_posts_and_announcements', (request, reason) => {
+    }, request => !!this.listPhase && ['GET', 'POST'].includes(request.method) && isBandListEndpoint(new URL(request.url)) || request.method === 'POST' && this.isCreate(new URL(request.url)) || bandFeedResponse(request), (request, reason) => {
       if (reason !== 'INSPECTOR_DENIED') {
         const code = reason === 'STATIC_BLOCK' ? 'SURFACE_STATIC_BLOCK' : reason === 'INSPECTOR_ERROR' ? 'SURFACE_INSPECTOR_ERROR' : 'SURFACE_REQUEST_INVALID';
         this.listRejected(request, code);
@@ -288,23 +288,38 @@ export class BandDirectory {
   sameOrigin(url: URL) {
     return url.origin === new URL(this.baseUrl).origin || (!this.localPublish && url.origin === 'https://www.band.us');
   }
-  async openPublishedView(url: string, mobile: boolean, readPost: (view: Surface) => Promise<void>) {
+  async openPublishedView(url: string, mobile: boolean, readPost: (view: Surface, detailPhotos: () => string[] | undefined) => Promise<void>) {
     const identity = new URL(url);
     if (!this.sameOrigin(identity) || !/^\/band\/\d+\/post\/\d+$/.test(identity.pathname)) throw Error('BAND_LOCATION_UNCONFIRMED');
     const [, , band, , post] = identity.pathname.split('/');
     const view = await this.host.create('band');
+    const detailBatch = (request: Pick<GuardedRequest, 'method' | 'url'>) => {
+      const endpoint = new URL(request.url);
+      return request.method === 'POST' && endpoint.origin === 'https://bapi-kr.band.us' && endpoint.pathname === '/v2.0.0/batch';
+    };
+    let paths: string[] | undefined;
     try {
       if (!view.guardRequests) throw Error('BAND_BARRIER_UNAVAILABLE');
       await view.guardRequests([{ hostname:'*', pathname:'/', prefix:true }], request => {
         if (bandRecordReadAllowed(request)) return true;
         const batch = bandReadBatchTarget(request);
         return batch?.band === band && batch?.post === post;
-      }, () => {}, () => false);
+      }, response => {
+        if (response.url && detailBatch({ url: response.url, method: response.method ?? '' }) && response.status >= 200 && response.status < 300) {
+          paths = parseBandDetailPhotos(response.body, url);
+        }
+      }, detailBatch);
       await view.open({ url, session:'band', width:1280, height:900, userAgent:mobile ? bandMobileUA :
         'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36' });
       await dismissBandAppPrompt(view, url);
-      await readPost(view);
+      await readPost(view, () => paths);
     } finally { await this.host.destroy(view); }
+  }
+  publishedFeedPhotos(url: string, expected: number, submittedAt: number) {
+    // The mobile feed may cap both fields at its preview size. It can confirm a
+    // full match, while a short feed alone cannot prove an attachment missing.
+    const matches = this.feedPosts.filter(post => post.url === url && post.owned && post.createdAt >= submittedAt - 5000);
+    return matches.length === 1 && matches[0]!.photoCount === expected ? matches[0]!.photoPaths : undefined;
   }
   async list(retryRead = true): Promise<BandChoice[]> {
     return traceStep('sites.band.plan.BandDirectory.list', async () => {
@@ -639,6 +654,7 @@ export class BandExecution {
     if (result?.received && !result.succeeded) throw Error('BAND_CREATE_REJECTED');
     const uploaded = this.checkpoint?.slots.map(slot => { try { return JSON.parse(slot.signature)[0] as string; } catch { return ''; } }) ?? [];
     let url = directory.createdReceipt(this.env.key);
+    let recoveredPaths: string[] | undefined;
     if (url) await this.storeIdentity(url);
     if (uploaded.length !== this.photoUrls().length || uploaded.some(value => !bandPhotoPath(value))) throw new ReadbackMismatch('BAND_PUBLISHED_READBACK_MISMATCH:photo', [{ field: 'photo' }]);
     if (!url) {
@@ -647,6 +663,7 @@ export class BandExecution {
           body: bandText(this.plan), uploaded: uploaded.map(bandPhotoPath), after: this.submittedAt - 5000,
           before: (result?.at ?? this.submittedAt + timeout) + 5000 }, timeout, this.env.check);
         url = post?.url;
+        if (post?.photos.length === uploaded.length) recoveredPaths = post.photos.map(photo => photo.path);
       } catch (error) {
         this.env.check();
         trace('band.confirm.feed', 'fail', { reason: reasonCode(error) });
@@ -664,13 +681,16 @@ export class BandExecution {
     }
     trace('band.confirm.detail', 'start');
     const expectedUrl = url;
-    const inspect = (mobile: boolean) => directory.openPublishedView(expectedUrl, mobile, async view => {
+    const inspect = (mobile: boolean) => directory.openPublishedView(expectedUrl, mobile, async (view, detailPhotos) => {
       await settleFullBandPost(view, bandText(this.plan), uploaded, this.env.check, this.env.submitTimeoutMs ?? 12000, async () => {
         this.env.check();
         if (await view.readDialog?.()) throw Error('USER_DIALOG_REQUIRED');
         const state = new URL((await view.readState()).url);
         if (!directory.sameOrigin(state) || state.pathname.replace(/\/$/, '') !== new URL(expectedUrl).pathname) return null;
-        return readFullBandPost(view);
+        const actual = await readFullBandPost(view);
+        if (!actual) return null;
+        const apiPhotoPaths = detailPhotos() ?? directory.publishedFeedPhotos(expectedUrl, uploaded.length, this.submittedAt) ?? recoveredPaths;
+        return apiPhotoPaths ? { ...actual, apiPhotoPaths } : actual;
       }, bandPlanLinks(this.plan));
     });
     try {
@@ -680,9 +700,16 @@ export class BandExecution {
         // An unreadable desktop layout gets one independent mobile detail read.
         // Retain concrete desktop observations without a second navigation.
         if (error instanceof Error && error.message === bandAppPromptFailure) throw error;
-        if (error instanceof ReadbackMismatch && error.issues.some(issue=>issue.missing || (issue.observed ?? 0) > 0)) throw error;
+        if (error instanceof ReadbackMismatch && error.issues.some(issue => issue.missing || (issue.observed ?? 0) > 0 &&
+          !(issue.field === 'photo' && issue.expected !== undefined && issue.observed! < issue.expected))) throw error;
         trace('band.confirm.detail', 'retry', { reason:reasonCode(error) });
-        await inspect(true);
+        try { await inspect(true); }
+        catch (mobileError) {
+          this.env.check();
+          if (error instanceof ReadbackMismatch && error.issues.some(issue => (issue.observed ?? 0) > 0) &&
+            mobileError instanceof ReadbackMismatch && mobileError.issues.every(issue => !issue.missing && !issue.observed)) throw error;
+          throw mobileError;
+        }
       }
     } catch (error) {
       this.env.check();

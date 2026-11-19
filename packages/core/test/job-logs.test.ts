@@ -208,3 +208,24 @@ it('compacts transport success from 66 uploads while retaining timings, route co
   expect(uploaded).not.toContain('12345678');
   expect(f.lines().filter(line=>line.step==='cdp'&&line.event==='start')).toHaveLength(1980);
 });
+
+it('summarizes repeated Band detail reads and preserves both ends of each verification wait', () => {
+  const f = fixture(), job = f.store.begin('band_post', 'band');
+  const step = 'sites.band.posted.readFullBandPost';
+  for (let i = 0; i < 100; i++) {
+    job.line(step, 'start');
+    job.line(step, 'ok', undefined, i);
+    job.line('verification', 'wait', { check:'photos', reason:'READBACK_PHOTOS', counts:{ expected:66, observed:Math.min(i, 31) } }, i * 750);
+    job.line('verification', 'wait', { check:'hashtags', reason:'READBACK_TAGS', counts:{ expected:4, observed:4 } });
+  }
+  job.line('verification', 'fail', {check:'photo_order',reason:'VERIFICATION_MISMATCH',counts:{expected:66,observed:65}});
+  job.end('succeeded');
+  const rows = f.store.uploadTail(job.id).trim().split('\n').map(line => JSON.parse(line));
+  expect(rows).toContainEqual({ step, event:'start', count:100, duration:0, maxDuration:0 });
+  expect(rows).toContainEqual({ step, event:'ok', count:100, duration:4950, maxDuration:99 });
+  expect(rows.filter(row => row.event === 'wait')).toHaveLength(2);
+  expect(rows).toContainEqual(expect.objectContaining({ step:'verification', event:'wait', check:'photos', count:100,
+    firstCounts:{ expected:66, observed:0 }, lastCounts:{ expected:66, observed:31 } }));
+  expect(rows).toContainEqual(expect.objectContaining({ step:'verification', event:'fail', check:'photo_order', counts:{ expected:66, observed:65 } }));
+  expect(f.lines().filter(row => row.step === step)).toHaveLength(200);
+});

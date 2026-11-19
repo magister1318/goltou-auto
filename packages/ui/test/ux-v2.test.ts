@@ -167,13 +167,15 @@ it('counts the two published receipts and displays per-target verification notes
   const html = renderToStaticMarkup(createElement(PublishResult,{open:()=>{},job:{
     ...job, mode:'publish', status:'failed', step:7, completedSteps:[1,2,3,4,5,6,7],targets,
     targetResults:[
-      {...targets[0]!,status:'published',outcome:'ok',postUrl:'https://blog.naver.com/synthetic/1234',readbackNotes:[{field:'hashtags'}]},
+      {...targets[0]!,status:'published',outcome:'ok',postUrl:'https://blog.naver.com/synthetic/1234',readbackNotes:[{field:'hashtags'},{field:'photo',expected:66,observed:65,missing:true},{field:'order',expected:66,observed:66}]},
       {...targets[1]!,status:'failed',outcome:'failed',reason:'BAND_WRITE_NOT_ALLOWED'},
       {...targets[2]!,status:'published',outcome:'ok',postUrl:'https://band.us/band/222/post/333',readbackNotes:[{field:'photo',expected:66,observed:43}]},
     ],
   }}));
   expect(html).toContain('3곳 중 2곳');
   expect(html).toContain('사진 66장 중 43장까지 확인');
+  expect(html).toContain('사진 66장 중 65장 게시 확인 · 1장 누락');
+  expect(html).toContain('사진 순서 확인 필요');
   expect(html).toContain('태그 확인 필요');
   expect(html).toContain('이 밴드에서 글을 쓸 권한이 없습니다.');
   expect(html).not.toContain('게시됐는지 확인하지 못했습니다');

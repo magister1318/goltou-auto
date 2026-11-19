@@ -100,6 +100,25 @@ describe('immediate publication proof from the posting context', () => {
   });
 });
 
+it('reads all 31 visible collage paths from the reported markup in DOM order', async () => {
+  browser = await chromium.launch({executablePath:process.env.CHROMIUM || 'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+  const context = await browser.newContext();
+  await context.route('**/*', route => route.abort());
+  const page = await context.newPage();
+  const photos = Array.from({ length:31 }, (_, i) => `https://images.invalid/photo-${i}.jpg`);
+  await page.setContent(`<div class="postContent"><p class="postText _postTxt">${title}</p>
+    <div class="_photoArea"></div><div class="attachedImageWrap _photoList"></div>
+    <div class="uWidget -expanded"><ul class="uCollage">${photos.map(src => `<li class="collageItem"><div class="collageImage"><img src="${src}" alt="" width="160" height="90"></div></li>`).join('')}</ul></div>
+    <div class="postAuthor"><img class="mediaImg" src="https://images.invalid/profile.jpg"></div></div>`);
+  const cdp = await context.newCDPSession(page);
+  const surface = { evaluateReadOnly:async (expression:string) => {
+    const result = await cdp.send('Runtime.evaluate',{expression,returnByValue:true,throwOnSideEffect:true});
+    if (result.exceptionDetails) throw Error(result.exceptionDetails.exception?.description ?? 'READ_FAILED');
+    return result.result.value;
+  } } as Surface;
+  expect(await readFullBandPost(surface)).toMatchObject({ body:title, collage:true, photos, declaredPhotos:null });
+});
+
 it('replays a nested mobile post with 66 lazy photo slots and four tags, then reports a partial count', async () => {
   browser = await chromium.launch({executablePath:process.env.CHROMIUM || 'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
   const context = await browser.newContext();
@@ -133,3 +152,14 @@ it('replays a nested mobile post with 66 lazy photo slots and four tags, then re
   });
   expect(pressKey).not.toHaveBeenCalled();
 }, 15000);
+
+it('compares API attachment order and checks displayed collage photos as a subsequence', () => {
+  const uploaded = ['one', 'two', 'three'].map(name => `https://photos.invalid/${name}.jpg`);
+  const paths = ['/one.jpg', '/two.jpg', '/three.jpg'];
+  const photos = [uploaded[0]!, uploaded[2]!];
+  const actual = { body: title, photos, collage: true, lineBreaks: 0, hashtags: 0, links: 0, tagTexts: [], linkUrls: [], tagTokens: [], linkTokens: [] };
+  expect(() => verifyFullBandPost(title, uploaded, { ...actual, apiPhotoPaths: paths })).not.toThrow();
+  expect(() => verifyFullBandPost(title, uploaded, actual)).toThrow(expect.objectContaining({ issues: [{ field:'photo', expected:3, observed:2 }] }));
+  expect(() => verifyFullBandPost(title, uploaded, { ...actual, photos: [...photos].reverse(), apiPhotoPaths: paths })).toThrow('BAND_PUBLISHED_READBACK_MISMATCH:order');
+  expect(() => verifyFullBandPost(title, uploaded, { ...actual, apiPhotoPaths: [...paths].reverse() })).toThrow('BAND_PUBLISHED_READBACK_MISMATCH:order');
+});

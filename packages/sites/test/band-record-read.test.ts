@@ -1,10 +1,22 @@
 import { describe, expect, it } from 'vitest';
-import { bandFeedResponse, bandRecordReadAllowed, bandStoredText, parseRecordedBandFeed } from '../src/band/record-read';
+import { bandFeedResponse, bandRecordReadAllowed, bandStoredText, parseBandDetailPhotos, parseRecordedBandFeed } from '../src/band/record-read';
 const target = { url: 'https://band.us/band/111/post/9001', title: '합성 상품' };
 export const syntheticBandPost = () => ({ post_no: 9001, band: { band_no: 111 }, web_url: target.url,
   content: '합성 상품\n\n내용 &amp; 안내\n<band:hashtag>#합성</band:hashtag>', created_at: 1700000000000,
   author: { me: true }, photo_count: 1, attachment: { photo: [{ photo_url: '//example.invalid/upload/one.jpg?private=removed', width: 100, height: 80 }] } });
 const body = (posts = [syntheticBandPost()]) => JSON.stringify({ result_code: 1, result_data: { items: posts.map(post => ({ post })) } });
+it('reads ordered detail API paths only for a single exact post with a consistent attachment count', () => {
+  const post = syntheticBandPost();
+  const envelope = (value: object | undefined) => ({ result_code: 1, result_data: { post: value } });
+  const batch = (...responses: object[]) => JSON.stringify({ result_code: 1, result_data: { responses } });
+  expect(parseBandDetailPhotos(batch(envelope(post), envelope(undefined)), target.url)).toEqual(['/upload/one.jpg']);
+  expect(parseBandDetailPhotos(batch(envelope({ ...post, attachment: undefined, photo_count: 0 })), target.url)).toEqual([]);
+  for (const response of [
+    batch(envelope({ ...post, photo_count: 2 })), batch(envelope({ ...post, post_no: 9002 })),
+    batch(envelope({ ...post, band: { band_no: 222 } })), batch(envelope(post), envelope(post)),
+    batch({ ...envelope(post), result_code: 0 }),
+  ]) expect(parseBandDetailPhotos(response, target.url)).toBeUndefined();
+});
 describe('exact recorded Band feed receipt', () => {
   it('allows only the observed mobile session-bootstrap GET, never login documents or writes', () => {
     expect(bandRecordReadAllowed({ method: 'GET', url: 'https://auth.band.us/s/login/getKey' })).toBe(true);

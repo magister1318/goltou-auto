@@ -5,7 +5,7 @@ import { settledReadback } from '../settled-readback';
 import { blogHashtagPattern } from '../naver-blog/tag-patterns';
 import { containsServiceLink, compareReadbackText, traceReadbackText, numberFacts, sameReadbackNumbers, sameReadbackIdentityText, ReadbackMismatch, tokenText, type ReadbackIssue, type ServiceLink, type ServiceTextToken } from '../readback-checks';
 
-export interface CreatedBandPost { url: string; body: string; createdAt: number; owned: boolean; photoCount: number; }
+export interface CreatedBandPost { url: string; body: string; createdAt: number; owned: boolean; photoCount: number; photoPaths?: string[]; }
 const storedText = (value: string) => value.replace(/<\/?band:hashtag>/g, '').replace(/&(?:amp|lt|gt|quot|#39);/g, entity => ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'" })[entity]!);
 /** Ephemeral evidence from the app's already-open posting WebView, never persisted. */
 export function createdBandPosts(body: string, band: string): CreatedBandPost[] {
@@ -18,18 +18,26 @@ export function createdBandPosts(body: string, band: string): CreatedBandPost[] 
     if (!u || !['band.us', 'www.band.us'].includes(u.hostname) || u.protocol !== 'https:' || u.search || u.hash || u.pathname !== `/band/${band}/post/${p.post_no}`) return [];
     const author = p.author as { me?: unknown } | undefined, parent = p.band as { band_no?: unknown } | undefined;
     if (String(parent?.band_no) !== band) return [];
-    return [{ url: `https://band.us${u.pathname}`, body: storedText(p.content), createdAt: p.created_at as number, owned: author?.me === true, photoCount: p.photo_count as number }];
+    const photoPaths = bandApiPhotoPaths(p);
+    return [{ url: `https://band.us${u.pathname}`, body: storedText(p.content), createdAt: p.created_at as number, owned: author?.me === true, photoCount: p.photo_count as number, ...(photoPaths ? { photoPaths } : {}) }];
   });
 }
-export interface FullBandPost { body: string; photos: string[]; declaredPhotos?: number | null; lineBreaks: number; hashtags: number; links: number; tagTexts: string[]; linkUrls: string[]; tagTokens: ServiceTextToken[]; linkTokens: ServiceLink[]; }
+export interface FullBandPost { body: string; photos: string[]; declaredPhotos?: number | null; collage?: boolean; apiPhotoPaths?: string[]; lineBreaks: number; hashtags: number; links: number; tagTexts: string[]; linkUrls: string[]; tagTokens: ServiceTextToken[]; linkTokens: ServiceLink[]; }
 /** innerText omits trailing spaces on each rendered line; preserve every line and all wording. */
 export function normalizedBandBody(body: string) { return body.replace(/\r\n?/g, '\n').replace(/[\u200b-\u200d\ufeff]/g, '').split('\n').map(line => line.trimEnd()).join('\n').trimEnd(); }
-export function photoPath(value: string) {
-  try { return new URL(value.startsWith('//') ? `https:${value}` : value).pathname; } catch { return ''; }
+export function bandPhotoPath(value: string) {
+  try { const url = new URL(value.startsWith('//') ? `https:${value}` : value); return ['http:', 'https:'].includes(url.protocol) ? url.pathname : ''; } catch { return ''; }
+}
+export function bandApiPhotoPaths(post: { photo_count?: unknown; attachment?: unknown }) {
+  const photos = (post.attachment as { photo?: unknown } | undefined)?.photo;
+  if (post.photo_count === 0 && photos === undefined) return [];
+  if (!Array.isArray(photos) || post.photo_count !== photos.length) return undefined;
+  const paths = photos.map(photo => typeof photo?.photo_url === 'string' ? bandPhotoPath(photo.photo_url) : '');
+  return paths.every(Boolean) ? paths : undefined;
 }
 export async function readFullBandPost(surface: Surface): Promise<FullBandPost | null> {
   return traceStep('sites.band.posted.readFullBandPost', async () => read<FullBandPost | null>(surface, `
-    const roots=docs.flatMap(({d})=>Array.from(d.querySelectorAll('.postsDetailArea ._contentListRegion,.postWrap.-postDetailPage .cContentsCard .postBody,.postView,section.postCard'))).filter(visible);
+    const roots=docs.flatMap(({d})=>Array.from(d.querySelectorAll('.postsDetailArea ._contentListRegion,.postWrap.-postDetailPage .cContentsCard .postBody,.postView,section.postCard,.postContent')).filter(node=>!node.classList.contains('postContent')||node.querySelector('p.postText._postTxt'))).filter(visible);
     const outer=roots.filter(node=>!roots.some(other=>other!==node&&other.contains(node)));
     if(outer.length!==1)return null;const root=outer[0];
     const texts=Array.from(root.querySelectorAll('p.txtBody,p.postText,.postTextView,.dPostTextView > .postText,.postTextBox > .postText._postTxt')).filter(visible);
@@ -37,6 +45,8 @@ export async function readFullBandPost(surface: Surface): Promise<FullBandPost |
     if(leaves.length!==1)return null;
     const text=leaves[0],body=text.innerText.replace(/\\r\\n?/g,'\\n').replace(/[\\u200b-\\u200d\\ufeff]/g,'').trimEnd();
     const areas='._photoRegion,._photoListRegion,.photo,.postPhoto,.photoView,.photoRegion';
+    const collageSelector='div.uWidget.-expanded > ul.uCollage';
+    const collageImages=new Set(root.querySelectorAll(collageSelector+' > li.collageItem > div.collageImage > img'));
     const nodes=Array.from(root.querySelectorAll('img,[data-photo-url],[data-lazy-src],[data-original],[data-src],.photoPlaceholder,[data-photo-key]'));
     const photoAreas=Array.from(root.querySelectorAll(areas));
     const media=nodes.filter(n=>{
@@ -44,7 +54,7 @@ export async function readFullBandPost(surface: Surface): Promise<FullBandPost |
         const c=p.getAttribute('class')||'';
         if(/(^|\\s)(postWriterInfo|postAuthor|comment|profile|linkPreview)(\\s|$)/.test(c))return false;
       }
-      return n.tagName==='IMG'&&n.classList.contains('mediaImg')||photoAreas.some(area=>area.contains(n));
+      return collageImages.has(n)||n.tagName==='IMG'&&n.classList.contains('mediaImg')||photoAreas.some(area=>area.contains(n));
     });
     const slots=media.filter(node=>!media.some(other=>other!==node&&node.contains(other)));
     const imageUrl=node=>{
@@ -68,7 +78,7 @@ export async function readFullBandPost(surface: Surface): Promise<FullBandPost |
       if(linkNodes.includes(n))linkTokens.push({text:label,start:offset,href:n.href});
       for(const child of n.childNodes)walk(child);
     };walk(text);
-    return {tagTokens,linkTokens,body,photos:slots.map(imageUrl),declaredPhotos:declared&&/^\\d+$/.test(declared)?Number(declared):null,lineBreaks:(body.match(/\\n/g)||[]).length,hashtags:tagTexts.length,links:linkUrls.length,tagTexts,linkUrls};
+    return {tagTokens,linkTokens,body,photos:slots.map(imageUrl),collage:!!root.querySelector(collageSelector),declaredPhotos:declared&&/^\\d+$/.test(declared)?Number(declared):null,lineBreaks:(body.match(/\\n/g)||[]).length,hashtags:tagTexts.length,links:linkUrls.length,tagTexts,linkUrls};
   `));
 }
 export function bandBodyIssues(expected: string, actual: string, log = true): ReadbackIssue[] {
@@ -93,7 +103,8 @@ export async function settleFullBandPost(surface: Surface, expected: string, upl
       {check:'title',reason:'READBACK_TITLE',expected:1,observed:value?.body.split('\n')[0]?1:0,present:!!value?.body.split('\n')[0]},
       {check:'text',reason:'READBACK_TEXT',expected:planned.length,observed:value?.body.length??0,present:!!value?.body},
       {check:'line_breaks',reason:'READBACK_PARAGRAPHS',expected:(planned.match(/\n/g)??[]).length,observed:value?.lineBreaks??0,present:!!value},
-      {check:'photos',reason:'READBACK_PHOTOS',expected:uploaded.length,observed:value?.photos.length??0,present:!!value&&(value.photos.length>=uploaded.length||value.declaredPhotos===value.photos.length)},
+      {check:'photos',reason:'READBACK_PHOTOS',expected:uploaded.length,observed:value?.apiPhotoPaths?.length??value?.photos.length??0,
+        present:!!value&&(!!value.apiPhotoPaths||(!value.collage||!uploaded.length)&&(value.photos.length>=uploaded.length||value.declaredPhotos===value.photos.length))},
       {check:'hashtags',reason:'READBACK_TAGS',expected:expectedTags,observed:value?.hashtags??0,present:(value?.hashtags??0)>=expectedTags},
       {check:'links',reason:'READBACK_LINKS',expected:expectedLinks,observed:value?.links??0,present:(value?.links??0)>=expectedLinks},
     ],
@@ -109,11 +120,7 @@ export async function settleFullBandPost(surface: Surface, expected: string, upl
   try { verifyFullBandPost(expected,uploaded,actual,requiredLinks); } catch(error) {
     if (!(error instanceof ReadbackMismatch)) throw error;
     for (const issue of error.issues) {
-      if (issue.field === 'photo') issues.push({
-        ...issue, expected:uploaded.length, observed:actual.photos.length,
-        ...(actual.declaredPhotos === actual.photos.length && actual.photos.length < uploaded.length ? { missing:true } : {}),
-      });
-      else issues.push(sameTitle && ['number','text','href'].includes(issue.field) ? { ...issue, missing:true } : issue);
+      issues.push(sameTitle && ['number','text','href'].includes(issue.field) ? { ...issue, missing:true } : issue);
     }
   }
   for (const issue of fields) if (!issues.some(item=>item.field===issue.field)) issues.push(issue);
@@ -124,7 +131,22 @@ export function verifyFullBandPost(expected: string, uploaded: readonly string[]
   const planned = normalizedBandBody(expected);
   const links = actual.linkTokens, tags = actual.tagTokens;
   const issues = bandBodyIssues(expected, actual.body);
-  if (actual.photos.length !== uploaded.length || actual.photos.some((url,i) => !photoPath(url) || photoPath(url) !== photoPath(uploaded[i] ?? ''))) issues.push({field:'photo'});
+  const uploadedPaths = uploaded.map(bandPhotoPath);
+  const domPaths = actual.photos.map(bandPhotoPath);
+  const paths = actual.apiPhotoPaths ?? domPaths;
+  const photosComplete = actual.apiPhotoPaths !== undefined || !actual.collage || !uploaded.length;
+  let next = 0;
+  const domOrderMatches = !actual.apiPhotoPaths || domPaths.filter(Boolean).every(path => {
+    const index = paths.indexOf(path, next);
+    next = index + 1;
+    return index >= 0;
+  });
+  if (!photosComplete || paths.length !== uploadedPaths.length) {
+    const missing = paths.length < uploaded.length && (actual.apiPhotoPaths !== undefined || !actual.collage && actual.declaredPhotos === paths.length);
+    issues.push({field:'photo',expected:uploaded.length,observed:paths.length,...(missing ? {missing:true} : {})});
+  } else if (paths.some((path,i) => !path || path !== uploadedPaths[i]) || !domOrderMatches) {
+    issues.push({field:'order',expected:uploaded.length,observed:paths.length});
+  }
   if (actual.hashtags !== actual.tagTexts.length || tags.length !== actual.tagTexts.length) issues.push({field:'hashtags'});
   tags.forEach((tag,i) => { if (!tag.text.startsWith('#') || tag.start < 0 || tokenText(actual.body).slice(tag.start,tag.start + tokenText(tag.text).length) !== tokenText(tag.text) || tag.text !== actual.tagTexts[i] || i > 0 && tag.start <= tags[i-1]!.start) issues.push({field:'hashtags',index:i+1}); });
   if (requiredLinks.some(value => {
@@ -135,9 +157,12 @@ export function verifyFullBandPost(expected: string, uploaded: readonly string[]
   for (const [check,field,expectedCount,observedCount] of [
     ['text','text',Array.from(planned).length,Array.from(normalizedBandBody(actual.body)).length],
     ['line_breaks','line_breaks',(planned.match(/\n/g) ?? []).length,actual.lineBreaks],
-    ['photo_order','photo',uploaded.length,actual.photos.length],
+    ['photo_order','order',uploaded.length,paths.length],
     ['hashtags','hashtags',tags.length,actual.hashtags],
     ['links','href',links.length,actual.links],
-  ] as const) trace('verification', issues.some(i=>i.field===field)?'fail':'ok', {check,counts:{expected:expectedCount,observed:observedCount},...(issues.some(i=>i.field===field)?{reason:'VERIFICATION_MISMATCH' as const}:{})});
+  ] as const) {
+    const failed = issues.some(issue => issue.field === field || field === 'order' && issue.field === 'photo');
+    trace('verification', failed ? 'fail' : 'ok', {check,counts:{expected:expectedCount,observed:observedCount},...(failed ? {reason:'VERIFICATION_MISMATCH' as const} : {})});
+  }
   if (issues.length) throw new ReadbackMismatch('BAND_PUBLISHED_READBACK_MISMATCH:' + [...new Set(issues.map(issue=>issue.field))].join(','),issues);
 }

@@ -37,7 +37,9 @@ function publishedNotes(result: TargetResult) {
   return [...new Set(notes.map(note => {
     const label = noteLabels[note.field];
     if (note.field === 'photo' && note.expected !== undefined && note.observed !== undefined && note.observed !== note.expected) {
-      return `사진 ${note.expected}장 중 ${note.observed}${note.missing ? '장 게시 확인' : '장까지 확인'}`;
+      if (note.missing && note.observed < note.expected) return `사진 ${note.expected}장 중 ${note.observed}장 게시 확인 · ${note.expected - note.observed}장 누락`;
+      if (note.observed > note.expected) return `사진 ${note.expected}장 계획 · ${note.observed}장 확인`;
+      return `사진 ${note.expected}장 중 ${note.observed}장까지 확인`;
     }
     return `${label}${note.paragraph && note.field === 'text' ? ' ' + note.paragraph : ''} ${note.missing ? '누락·변경 확인' : '확인 필요'}`;
   }))].join(' · ');

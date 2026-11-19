@@ -51,6 +51,15 @@ export interface JobLogRow { jobId: string; at: number; kind: JobKind; site: Log
 interface StoredRow extends JobLogRow { file: string }
 export interface LogEnvironment { appVersion?: string; commit?: string; webViewVersion?: string; deviceModel?: string }
 const dayMs = 86400000;
+const bandPollSteps = new Set<TraceStep>([
+  'sites.band.posted.readFullBandPost', 'sites.band.plan.readBandDocument', 'sites.band.plan.BandDirectory.getSurface',
+  'sites.band.plan.BandDirectory.guard', 'sites.band.plan.BandExecution.guard', 'sites.band.plan.BandExecution.settlePhoto',
+  'sites.band.index.bandSnapshot', 'sites.band.index.confirmBandPhotos',
+]);
+interface LogTiming {
+  count: number; duration: number; maxDuration: number;
+  firstCounts?: unknown; lastCounts?: unknown;
+}
 function failedStep(step: TraceStep, counts?: TraceDetail['counts']): TraceStep {
   return step === 'job' && counts?.step ? (['runner.ready', 'runner.download', 'runner.arrange', 'runner.blog_write', 'runner.blog_save', 'runner.band_write', 'runner.record'] as const)[counts.step - 1] ?? step : step;
 }
@@ -109,7 +118,7 @@ export class JobLogStore implements TraceProvider {
     if (!row) return '';
     const raw = readFileSync(path.join(this.directory, row.file), 'utf8');
     const entries: string[] = [];
-    const timings = new Map<string, { count: number; duration: number; maxDuration: number }>();
+    const timings = new Map<string, LogTiming>();
     const lineOf = (value: object) => JSON.stringify(value) + '\n';
     for (const line of raw.trimEnd().split('\n')) {
       let value;
@@ -120,11 +129,23 @@ export class JobLogStore implements TraceProvider {
       const duration = Number.isFinite(value.duration) && value.duration >= 0 ? value.duration : 0;
       const transport = /^(?:cdp$|native$|surface\.cdp\.)/.test(value.step);
       const background = value.step === 'barrier' && (value.event === 'start' || value.network?.method === 'GET' && value.event === 'ok');
-      if (value.step === 'poll' || background || transport && ['start','ok'].includes(value.event)) {
-        if (value.event === 'start') continue;
+      const bandRepeat = row.kind === 'band_post' && (
+        value.step === 'verification' && value.event === 'wait' ||
+        value.step === 'input.progress' && ['start', 'ok', 'wait'].includes(value.event) ||
+        bandPollSteps.has(value.step) && ['start', 'ok'].includes(value.event) ||
+        value.step === 'barrier' && (value.event === 'blocked_expected' || value.event === 'ok' &&
+          (safe.reason === 'PREFLIGHT_ALLOWED' || safe.reason === 'UPLOAD_ALLOWED' || value.network?.method === 'OPTIONS')));
+      if (bandRepeat || value.step === 'poll' || background || transport && ['start','ok'].includes(value.event)) {
+        if (value.event === 'start' && !bandRepeat) continue;
         const key = JSON.stringify({ step:value.step, event:value.event, ...(safe.operation ? { operation:safe.operation } : {}),
-          ...(safe.selector ? { selector:safe.selector } : {}) });
+          ...(safe.selector ? { selector:safe.selector } : {}), ...(bandRepeat && safe.check ? { check:safe.check } : {}),
+          ...(bandRepeat && safe.reason ? { reason:safe.reason } : {}), ...(bandRepeat && safe.network ? { network:safe.network } : {}),
+          ...(bandRepeat && value.step === 'input.progress' && (safe.counts as TraceDetail['counts'])?.photoTotal ? { check:'photos' } : {}) });
         const group = timings.get(key) ?? { count:0, duration:0, maxDuration:0 };
+        if (bandRepeat && safe.counts && Object.keys(safe.counts).length) {
+          group.firstCounts ??= safe.counts;
+          group.lastCounts = safe.counts;
+        }
         group.count++; group.duration += duration; group.maxDuration = Math.max(group.maxDuration, duration);
         timings.set(key, group);
         continue;

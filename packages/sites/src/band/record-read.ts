@@ -7,6 +7,8 @@ import type { BandDeleteCode, BandDeleteLog } from './delete-log';
 import { bandReadBatchTarget } from './read-batch';
 import { matchesBandCreation, type BandCreationMatch } from './publish-confirmation';
 import { bandAppPromptFailure, dismissBandAppPrompt } from './app-prompt';
+import { bandApiPhotoPaths, bandPhotoPath } from './posted';
+export { bandPhotoPath } from './posted';
 
 export const bandFeedResponse = (r: Pick<GuardedRequest, 'method' | 'url'>) => {
   const u = new URL(r.url);
@@ -26,8 +28,34 @@ export function bandStoredText(value: string) {
   const entities: Record<string, string> = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'" };
   return value.replace(/<\/?band:hashtag>/g, '').replace(/&(?:amp|lt|gt|quot|#39);/g, entity => entities[entity]!);
 }
-export function bandPhotoPath(value: string) {
-  try { const u = new URL(value.startsWith('//') ? `https:${value}` : value); return ['http:', 'https:'].includes(u.protocol) ? u.pathname : ''; } catch { return ''; }
+/** Read only successful post results from the detail page's guarded batch. */
+export function parseBandDetailPhotos(body: string, url: string): string[] | undefined {
+  const id = bandPostIdentity(url);
+  if (!id) return undefined;
+  const matches: Array<string[] | undefined> = [];
+  const visit = (value: unknown, depth: number, successful = false) => {
+    if (!value || typeof value !== 'object' || depth === 0) return;
+    if (Array.isArray(value)) {
+      for (const entry of value) visit(entry, depth - 1);
+      return;
+    }
+    const entry = value as Record<string, unknown>;
+    if (entry.result_code !== undefined) {
+      if (entry.result_code === 1) visit(entry.result_data, depth - 1, true);
+      return;
+    }
+    if (successful) {
+      const post = (entry.post ?? entry) as Record<string, unknown>;
+      if (String(post.post_no) === id.post && String((post.band as { band_no?: unknown } | undefined)?.band_no ?? post.band_no) === id.band &&
+        (post.web_url === undefined || typeof post.web_url === 'string' && bandPostIdentity(post.web_url)?.url === id.url)) {
+        matches.push(bandApiPhotoPaths(post));
+        return;
+      }
+    }
+    for (const key of ['responses', 'results', 'items', 'response', 'body']) visit(entry[key], depth - 1);
+  };
+  try { visit(JSON.parse(body), 8); } catch { return undefined; }
+  return matches.length === 1 ? matches[0] : undefined;
 }
 export interface RecordedBandReadback {
   url: string; body: string; createdAt: number; owned: boolean;
