@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { defaultPreferences, validPreferences, type Preferences } from './preferences';
+import { defaultPreferences, migratePreferences, type Preferences } from './preferences';
 
 export interface LocalDataTransfer { export(): Promise<string>; import(text: string): Promise<void> }
 type Metadata = Record<string, { visibility?: 'public' | 'private'; tableFallback?: true }>;
@@ -11,8 +11,9 @@ function exact(value: unknown, keys: string[]): value is Record<string, unknown>
   return !!value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).every(k => keys.includes(k));
 }
 function preferences(value: unknown): Preferences {
-  if (!exact(value, ['polish', 'closing', 'linkCard', 'lastBandKey']) || !validPreferences(value) || !/^[A-Za-z0-9_-]{0,100}$/.test(value.lastBandKey)) throw Error('LOCAL_DATA_INVALID');
-  return { polish: value.polish, closing: value.closing, linkCard: value.linkCard, lastBandKey: value.lastBandKey };
+  const migrated = exact(value, ['polish', 'closing', 'linkCard', 'lastBandKey', 'lastBandKeys']) && migratePreferences(value);
+  if (!migrated) throw Error('LOCAL_DATA_INVALID');
+  return migrated;
 }
 function metadata(value: unknown): Metadata {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error('LOCAL_DATA_INVALID');

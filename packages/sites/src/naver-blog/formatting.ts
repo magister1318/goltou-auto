@@ -21,11 +21,16 @@ export function splitBlogRuns(runs: readonly BlogRun[]): NormalizedBlogRun[][] {
   return paragraphs.map(normalizeBlogRuns);
 }
 export type FormattingStage = 'INPUT' | 'BEFORE_SAVE' | 'AFTER_SAVE' | 'REOPENED' | 'PUBLISHED';
-export interface BlogFormattingIssue { paragraph: number; fields: ('text' | 'bold' | 'href' | 'input')[] }
+export type BlogFormattingField = 'text' | 'bold' | 'href' | 'cursor' | 'input' | 'number' | 'photo';
+export interface BlogFormattingIssue { paragraph: number; fields: BlogFormattingField[] }
+export const blogFieldReason = { text: 'READBACK_TEXT', bold: 'READBACK_BOLD_VARIANCE', href: 'READBACK_HREF', cursor: 'READBACK_CURSOR', input: 'READBACK_INPUT', number: 'READBACK_NUMBER', photo: 'READBACK_PHOTO' } as const;
+export function runValues<T extends 'bold' | 'href'>(runs: readonly NormalizedBlogRun[], key: T): NormalizedBlogRun[T][] {
+  return runs.map(run => run[key]).filter((value, index, values) => index === 0 || value !== values[index - 1]);
+}
 /** Contains positions only, never editor content, addresses or account data. */
 export class BlogFormattingError extends Error {
   constructor(readonly stage: FormattingStage, readonly issues: BlogFormattingIssue[]) {
-    super(`BLOG_FORMATTING_${stage}:${[...new Set(issues.map(i => i.paragraph))].join(',')}`);
+    super(`BLOG_FORMATTING_${stage}:${[...new Set(issues.map(i => i.paragraph))].join(',')}:${[...new Set(issues.flatMap(i => i.fields))].join(',')}`);
   }
 }
 

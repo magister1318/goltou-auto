@@ -173,3 +173,85 @@ describe('all job kinds and injected step failures', () => {
     }
   }
 });
+
+it('compacts transport success from 66 uploads while retaining timings, route counts and failures', () => {
+  const f = fixture(), job = f.store.begin('blog_publish','naver');
+  const rows: object[] = [];
+  for (let photo = 1; photo <= 66; photo++) {
+    for (let i = 0; i < 30; i++) {
+      rows.push(
+        { step:'cdp', event:'start', operation:'Runtime.evaluate' },
+        { step:'cdp', event:'ok', operation:'Runtime.evaluate', duration:7 },
+        { step:'native', event:'start', operation:'surface.dialog' },
+        { step:'native', event:'ok', operation:'surface.dialog', duration:2 },
+        { step:'surface.cdp.index.CdpSurface.intercept', event:'start' },
+        { step:'surface.cdp.index.CdpSurface.intercept', event:'ok', duration:1 },
+      );
+    }
+    rows.push({ step:'input.progress', event:'ok', counts:{photoIndex:photo,photoTotal:66}, duration:125 });
+  }
+  appendFileSync(f.files()[0]!, rows.map(row=>JSON.stringify({
+    timestamp:Date.now(),jobId:job.id,kind:'blog_publish',site:'naver',duration:0,...row,
+  })).join('\n')+'\n');
+  job.line('sites.dom.waitFor','fail',{selector:'BAND_COMPOSER',reason:'OBSERVATION_TIMEOUT',counts:{timeoutMs:15000,writeButtons:1,editables:0},
+    navigation:{host:'band.us',path:'/band/12345678/post'}},15000);
+  job.line('cdp','fail',{operation:'Input.dispatchKeyEvent',reason:'UNEXPECTED_FAILURE'},500);
+  job.end('failed','OBSERVATION_TIMEOUT');
+  expect(Buffer.byteLength(readFileSync(f.files()[0]!))).toBeGreaterThan(512 * 1024);
+  const uploaded = f.store.uploadTail(job.id);
+  const lines = uploaded.trim().split('\n').map(line=>JSON.parse(line));
+  expect(Buffer.byteLength(uploaded)).toBeLessThan(25 * 1024);
+  expect(lines).toContainEqual(expect.objectContaining({step:'cdp',event:'ok',count:1980,duration:13860,maxDuration:7}));
+  expect(lines).toContainEqual(expect.objectContaining({selector:'BAND_COMPOSER',duration:15000,navigation:{host:'band.us',path:'/band/[id]/post'}}));
+  expect(lines).toContainEqual(expect.objectContaining({step:'cdp',event:'fail',duration:500}));
+  expect(lines.at(-1)).toMatchObject({step:'terminal',event:'fail'});
+  expect(uploaded).not.toContain('12345678');
+  expect(f.lines().filter(line=>line.step==='cdp'&&line.event==='start')).toHaveLength(1980);
+});
+
+it('summarizes repeated Band detail reads and preserves both ends of each verification wait', () => {
+  const f = fixture(), job = f.store.begin('band_post', 'band');
+  const step = 'sites.band.posted.readFullBandPost';
+  for (let i = 0; i < 100; i++) {
+    job.line(step, 'start');
+    job.line(step, 'ok', undefined, i);
+    job.line('verification', 'wait', { check:'photos', reason:'READBACK_PHOTOS', counts:{ expected:66, observed:Math.min(i, 31) } }, i * 750);
+    job.line('verification', 'wait', { check:'hashtags', reason:'READBACK_TAGS', counts:{ expected:4, observed:4 } });
+  }
+  job.line('verification', 'fail', {check:'photo_order',reason:'VERIFICATION_MISMATCH',counts:{expected:66,observed:65}});
+  job.end('succeeded');
+  const rows = f.store.uploadTail(job.id).trim().split('\n').map(line => JSON.parse(line));
+  expect(rows).toContainEqual({ step, event:'start', count:100, duration:0, maxDuration:0 });
+  expect(rows).toContainEqual({ step, event:'ok', count:100, duration:4950, maxDuration:99 });
+  expect(rows.filter(row => row.event === 'wait')).toHaveLength(2);
+  expect(rows).toContainEqual(expect.objectContaining({ step:'verification', event:'wait', check:'photos', count:100,
+    firstCounts:{ expected:66, observed:0 }, lastCounts:{ expected:66, observed:31 } }));
+  expect(rows).toContainEqual(expect.objectContaining({ step:'verification', event:'fail', check:'photo_order', counts:{ expected:66, observed:65 } }));
+  expect(f.lines().filter(row => row.step === step)).toHaveLength(200);
+});
+
+it('keeps a bounded Band order diagnostic in both local and uploaded logs', () => {
+  const f = fixture(), job = f.store.begin('band_post', 'band');
+  const expected = { host: 'coresos.phinf.naver.net', fileTail: '1234.jpg', hasSizeSuffix: false };
+  const observed = { host: 'coresos-phinf.pstatic.net', fileTail: '_std.jpg', hasSizeSuffix: true };
+  const poison = { url: 'https://example.invalid/secret-photo?token=secret-token', cookie: 'secret-cookie' };
+  const detail = { check:'photo_order', reason:'DOM_ORDER_MISMATCH', counts:{ expected:66, observed:66 },
+    photoOrder: { index:31, expected: { ...expected, ...poison }, observed: { ...observed, ...poison }, ...poison } } as TraceDetail;
+  job.line('verification', 'fail', detail);
+  const malformed = { ...detail, reason: 'UPLOAD_PATH_MISMATCH', photoOrder: { index: 1,
+    expected: { ...expected, fileTail: poison.url }, observed: { ...observed, host: poison.url } } };
+  job.line('verification', 'fail', malformed as unknown as TraceDetail);
+  job.end('succeeded');
+
+  const local = readFileSync(f.files()[0]!, 'utf8'), uploaded = f.store.uploadTail(job.id);
+  for (const log of [local, uploaded]) {
+    expect(log).not.toContain('secret-');
+    const failures = log.trim().split('\n').map(line => JSON.parse(line)).filter(row => row.event === 'fail');
+    expect(failures).toHaveLength(2);
+    expect(failures[0]).toMatchObject({ check: 'photo_order', reason: 'DOM_ORDER_MISMATCH', counts: { expected: 66, observed: 66 } });
+    expect(failures[0].photoOrder).toEqual({ index: 31, expected, observed });
+    expect(failures[1].photoOrder).toEqual({ index: 1, expected: { ...expected, fileTail: '' },
+      observed: { host: '[other]', fileTail: '', hasSizeSuffix: true } });
+  }
+  expect(Buffer.byteLength(uploaded)).toBeLessThan(512 * 1024);
+});

@@ -3,17 +3,20 @@ import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import type { Surface } from '@goltou/surface';
 import { click, compact, point, read, sleep, typeParagraphs, waitFor } from '../dom';
 import type { exampleArticle } from '../fixture';
+import { dismissBandAppPrompt } from './app-prompt';
 
-export async function listBands(surface: Surface) {
+export async function listBands(surface: Surface, timeoutMs = 15000) {
     return traceStep('sites.band.index.listBands', async () => {
-  const mode = await waitFor(() => read<string | null>(surface, `
+  const deadline = Date.now() + timeoutMs;
+  const observe = <T>(work: () => Promise<T | null | false>) => waitFor(work, Math.max(1, deadline - Date.now()), { surface, control: "BAND_ALL_LIST" });
+  const mode = await observe(() => read<string | null>(surface, `
     if(docs.some(({d})=>d.querySelector('._myBandListWrap a.bandCover:not(._adBandCover)')))return 'legacy';
     if(docs.some(({d})=>d.querySelector('.globalMyBandWrap a._allMyBandList')))return 'home';
     if(docs.some(({d})=>d.querySelector('.myBandGroupList a.myBandGroupItem')))return 'my';
     return null;`));
   if (mode !== 'legacy') {
     if (mode === 'home') await click(surface, 'BAND_ALL_LIST', '.globalMyBandWrap a._allMyBandList', '전체보기');
-    const tiles = await waitFor(() => read<{ name: string; key: string | null }[] | null>(surface, `
+    const tiles = await observe(() => read<{ name: string; key: string | null }[] | null>(surface, `
       const es=docs.flatMap(({d})=>Array.from(d.querySelectorAll('.myBandGroupList a.myBandGroupItem'))).filter(e=>visible(e)&&!e.querySelector('.adBox,.aNewFolder,.aNewFolderBox')&&e.querySelector('.globalMyBandName'));
       return es.length?es.map(e=>({name:(e.querySelector('.globalMyBandName').textContent||'').trim().slice(0,100),key:/[/]band[/]([0-9]+)(?:[/]post)?[/]?$/.exec(e.getAttribute('href')||'')?.[1]||null})):null;`));
     const listUrl = (await surface.readState()).url;
@@ -31,19 +34,25 @@ export async function listBands(surface: Surface) {
       }
       if (!target) throw Error('BAND_LIST_INCOMPLETE');
       await surface.click(target.x, target.y);
-      const key = await waitFor(async () => /^[/]band[/]([0-9]+)(?:[/]post)?[/]?$/.exec(new URL((await surface.readState()).url).pathname)?.[1] ?? null);
-      const permission = await waitFor(() => read<{ writable: boolean } | null>(surface, `const es=docs.flatMap(({d})=>Array.from(d.querySelectorAll('._btnPostWrite,._btnOpenWriteLayer')));return es.length?{writable:es.some(e=>visible(e)&&!e.disabled&&e.getAttribute('aria-disabled')!=='true')}:null;`));
-      if (permission.writable) result.push({ key, name: tile.name });
+      const feed = await observe(async () => {
+        const url = new URL((await surface.readState()).url);
+        const key = /^[/]band[/]([0-9]+)(?:[/]post)?[/]?$/.exec(url.pathname)?.[1];
+        return key ? { key, path: url.pathname } : null;
+      });
+      await dismissBandAppPrompt(surface, new URL(feed.path, listUrl).href);
+      const permission = await observe(() => read<{ writable: boolean } | null>(surface, `const es=docs.flatMap(({d})=>Array.from(d.querySelectorAll('._btnPostWrite,._btnOpenWriteLayer')));return es.length?{writable:es.some(e=>visible(e)&&!e.disabled&&e.getAttribute('aria-disabled')!=='true')}:null;`));
+      if (permission.writable) result.push({ key: feed.key, name: tile.name });
       await surface.open({ url: listUrl, session: 'band', width: 1280, height: 900, userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36' });
-      const landing = await waitFor(() => read<'list' | 'home' | null>(surface, `if(docs.some(({d})=>Array.from(d.querySelectorAll('.myBandGroupList .globalMyBandName')).some(visible)))return 'list';return docs.some(({d})=>Array.from(d.querySelectorAll('.globalMyBandWrap a._allMyBandList')).some(visible))?'home':null;`));
+      await dismissBandAppPrompt(surface, listUrl);
+      const landing = await observe(() => read<'list' | 'home' | null>(surface, `if(docs.some(({d})=>Array.from(d.querySelectorAll('.myBandGroupList .globalMyBandName')).some(visible)))return 'list';return docs.some(({d})=>Array.from(d.querySelectorAll('.globalMyBandWrap a._allMyBandList')).some(visible))?'home':null;`));
       // On the current mobile site, 전체보기 opens a dropdown without changing
       // the URL. Reopening that URL leaves its tiles hidden until this click.
       if(landing === 'home') await click(surface, 'BAND_ALL_LIST', '.globalMyBandWrap a._allMyBandList', '전체보기');
-      await waitFor(() => read(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll('.myBandGroupList .globalMyBandName')).some(visible));`));
+      await observe(() => read(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll('.myBandGroupList .globalMyBandName')).some(visible));`));
     }
     return result.filter((v,i,all)=>all.findIndex(x=>x.key===v.key)===i);
   }
-  return waitFor(async () => {
+  return observe(async () => {
     const rows = await read<{ key: string; name: string }[]>(surface, `const seen=new Set(); return docs.flatMap(({d})=>Array.from(d.querySelectorAll('._myBandListWrap a.bandCover:not(._adBandCover)'))).flatMap(e=>{
       const m=(e.getAttribute('href')||'').match(/^(?:https:[/][/](?:www[.])?band[.]us)?[/]band[/]([0-9]+)(?:[/]post)?[/]?(?:[?#].*)?$/);
       const name=(e.querySelector('.bandName')?.textContent||e.textContent||'').trim(); if (!m || !name || seen.has(m[1])) return []; seen.add(m[1]); return [{key:m[1],name:name.slice(0,100)}]; });`);
@@ -71,17 +80,19 @@ export async function bandSnapshot(surface: Surface, expected: string) {
   }
 export async function openBandComposer(surface: Surface) {
     return traceStep('sites.band.index.openBandComposer', async () => {
-  if (!/^https:\/\/(?:www\.)?band\.us\/band\/\d+\/post\/?(?:[?#].*)?$/.test((await surface.readState()).url)) throw new Error('NOT_BAND_COMPOSE_ROUTE');
+  const url = (await surface.readState()).url;
+  if (!/^https:\/\/(?:www\.)?band\.us\/band\/\d+\/post\/?(?:[?#].*)?$/.test(url)) throw new Error('NOT_BAND_COMPOSE_ROUTE');
+  await dismissBandAppPrompt(surface, url);
   // Never type into an existing composition or a search/comment box.
   if (!await read<boolean>(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(editor)})).some(visible));`)) {
     const mobileSelector = 'button.uFloatingButton._btnPostWrite[aria-label="글쓰기"]';
     const desktopSelector = 'button._btnPostWrite, button.cPostWriteEventWrapper._btnOpenWriteLayer';
     const mode = await waitFor(async () => await point(surface, mobileSelector) ? 'mobile'
-      : await point(surface, desktopSelector, '글쓰기') ? 'desktop' : null);
+      : await point(surface, desktopSelector, '글쓰기') ? 'desktop' : null, undefined, { surface, control: "BAND_WRITE_CONTROL" });
     if (mode === 'mobile') await click(surface, 'BAND_WRITE_MOBILE', mobileSelector);
     else await click(surface, 'BAND_WRITE_DESKTOP', desktopSelector, '글쓰기');
   }
-  await waitFor(() => read(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(editor)})).some(visible));`));
+  await waitFor(() => read(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(editor)})).some(visible));`), undefined, { surface, control: "BAND_COMPOSER" });
 
     });
   }
@@ -100,7 +111,7 @@ export async function fillBand(surface: Surface, article: ReturnType<typeof exam
   if (!hasFile) await click(surface, 'BAND_PHOTO_BUTTON', 'button, label, a', '사진');
   await surface.attachFiles('input[type="file"][accept*="image"], input[type="file"]', photos);
   await confirmBandPhotos(surface, photos.length);
-  const result = await waitFor(async () => { const v = await bandSnapshot(surface, text); return v.images === photos.length ? v : null; }, 60000);
+  const result = await waitFor(async () => { const v = await bandSnapshot(surface, text); return v.images === photos.length ? v : null; }, 60000, { surface, control: "BAND_UPLOAD_SLOTS" });
   if (!result.bodyMatches || result.bodyChars !== compact(text).length) throw new Error('BAND_INPUT_MISMATCH');
   return { ...result, attachmentMethod: 'file-input', paste: 'not-tested', draftBehavior: 'not-tested', stoppedBeforePost: true };
 
@@ -121,7 +132,7 @@ export async function confirmBandPhotos(surface: Surface, count: number, check: 
       if (control) { confirmed = true; await surface.click(control.x, control.y); await sleep(350); }
     }
     return null;
-  }, timeoutMs);
+  }, timeoutMs, { surface, control: "BAND_UPLOAD_SLOTS" });
 
     });
   }
@@ -131,12 +142,12 @@ export async function saveBandDraftAndVerify(surface: Surface, article: ReturnTy
   const label = await read<string | null>(surface, `return docs.flatMap(({d})=>Array.from(d.querySelectorAll('button'))).filter(visible).map(e=>(e.textContent||'').trim()).find(t=>/^(임시저장|임시 저장|Save draft)$/i.test(t))||null;`);
   if (!label) throw new Error('BAND_DRAFT_CONTROL_MISSING');
   await click(surface, 'BAND_SAVE', 'button', label);
-  await waitFor(() => read(surface, `return !docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(editor)})).some(visible));`));
+  await waitFor(() => read(surface, `return !docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(editor)})).some(visible));`), undefined, { surface, control: "BAND_COMPOSER" });
   check();
   await click(surface, 'BAND_DRAFT_LIST', 'button, a', '임시저장 글');
   await click(surface, 'BAND_DRAFT_ITEM', '[role="dialog"] button, [role="dialog"] a, [class*="draft"] button, [class*="draft"] a', article.title);
   const expected = [article.title, ...article.paragraphs].join('\n\n');
-  const reopened = await waitFor(async () => { const v = await bandSnapshot(surface, expected); return v.bodyMatches && v.images === 5 ? v : null; });
+  const reopened = await waitFor(async () => { const v = await bandSnapshot(surface, expected); return v.bodyMatches && v.images === 5 ? v : null; }, undefined, { surface, control: "BAND_DRAFT_ITEM" });
   return { draftSaved: true, reopened: true, bodyChars: reopened.bodyChars, images: reopened.images };
 
     });

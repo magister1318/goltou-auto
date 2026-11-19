@@ -1,6 +1,7 @@
 import { traceStep, trace, reasonCode, requestTrace, currentTrace, inTrace, expectedTelemetryRequest } from '../telemetry';
-import type { GuardedRequest, GuardedResponse, RequestBlockReason, RequestRule, KeyInput, NavigationOptions, NavigationPolicy, Surface, SurfaceDialog, SurfaceOpenOptions, SurfaceSession, SurfaceState } from '../index';
+import type { ClickTargetMiss, ClickTargetOptions, GuardedRequest, GuardedResponse, RequestBlockReason, RequestRule, KeyInput, NavigationOptions, NavigationPolicy, Surface, SurfaceDialog, SurfaceOpenOptions, SurfaceSession, SurfaceState } from '../index';
 import { inputCharacters } from '../index';
+import { clickTargetExpression } from './click-target';
 import { CdpConnection } from './connection';
 export { CdpConnection } from './connection';
 export { redactionGeometry } from './redaction';
@@ -38,7 +39,7 @@ export class CdpSurface implements Surface {
   private dialogSerial = 0;
   private barrierFailed = false;
   private barrierFailure = '';
-  private readonly blockedRequests = new Set<string>();
+  private readonly blockedRequests = new Map<string, boolean>();
   private requestGuard: { paths: Set<string>; rules: readonly RequestRule[]; inspect: (request: GuardedRequest) => boolean | Promise<boolean>; response: (response: GuardedResponse) => void; observeResponse?: (request: Pick<GuardedRequest, 'url' | 'method'>) => boolean; blocked?: (request: Pick<GuardedRequest, 'url' | 'method'> | undefined, reason: RequestBlockReason) => void } | undefined;
   private readonly acceptedRequests = new Map<string, GuardedRequest>();
 
@@ -84,6 +85,11 @@ export class CdpSurface implements Surface {
       const requestId = String(p.requestId);
       if (p.responseStatusCode !== undefined || p.responseErrorReason !== undefined) {
         const accepted = this.acceptedRequests.get(requestId); this.acceptedRequests.delete(requestId);
+        if (accepted) {
+          const status = Number(p.responseStatusCode);
+          trace('barrier', 'ok', { ...requestTrace(accepted, true),
+            ...(Number.isInteger(status) ? { counts: { status } } : {}), reason: 'REQUEST_ALLOWED' });
+        }
         if (accepted && p.responseErrorReason === undefined &&
           (!['GET', 'HEAD', 'OPTIONS'].includes(accepted.method) ||
             accepted.method === 'GET' && this.requestGuard?.observeResponse?.(accepted) === true)) {
@@ -105,7 +111,7 @@ export class CdpSurface implements Surface {
           reason = 'STATIC_BLOCK';
           const raw = p.request as GuardedRequest & { headers?: Record<string, unknown> };
           const contentType = Object.entries(raw.headers ?? {}).find(([key]) => key.toLowerCase() === 'content-type')?.[1];
-          trace('barrier', 'fail', { ...requestTrace({ url: raw.url, method: raw.method, contentType: String(contentType ?? ''), ...(typeof raw.postData === 'string' ? { postData: raw.postData, postDataComplete: true } : {}) }, false), reason });
+          trace('barrier', this.blockedRequests.get(path) ? 'blocked_expected' : 'fail', { ...requestTrace({ url: raw.url, method: raw.method, contentType: String(contentType ?? ''), ...(typeof raw.postData === 'string' ? { postData: raw.postData, postDataComplete: true } : {}) }, false), reason });
         }
         if (!blocked && this.requestGuard?.rules.some(r => (r.hostname === '*' || r.hostname === url.hostname) && (r.prefix ? url.pathname.startsWith(r.pathname) : r.pathname === url.pathname))) {
           const raw = p.request as GuardedRequest & { headers?: Record<string, unknown> };
@@ -168,12 +174,12 @@ export class CdpSurface implements Surface {
     });
   }
 
-  async blockRequests(rules: readonly { hostname: string; pathname: string }[]): Promise<void> {
+  async blockRequests(rules: readonly { hostname: string; pathname: string; expected?: boolean }[]): Promise<void> {
     return traceStep('surface.cdp.index.CdpSurface.blockRequests', async () => {
     this.jobTrace = currentTrace() ?? this.jobTrace;
     for (const rule of rules) {
       if (!/^[a-z0-9.-]+$/.test(rule.hostname) || !/^\/[a-zA-Z0-9/_.-]+$/.test(rule.pathname)) throw new Error('SURFACE_BAD_REQUEST_BARRIER');
-      this.blockedRequests.add(`${rule.hostname}${rule.pathname}`);
+      this.blockedRequests.set(`${rule.hostname}${rule.pathname}`, rule.expected === true);
     }
     await this.updateRequestPatterns();
 
@@ -183,7 +189,7 @@ export class CdpSurface implements Surface {
   /** Fetch.enable replaces its complete pattern set. Adding static blocks must
    * retain an installed inspector and its response observation in either order. */
   private async updateRequestPatterns() {
-    const paths = new Set([...(this.requestGuard?.paths ?? []), ...this.blockedRequests]);
+    const paths = new Set([...(this.requestGuard?.paths ?? []), ...this.blockedRequests.keys()]);
     const stages = this.requestGuard ? ['Request', 'Response'] : ['Request'];
     await this.cdp.send('Fetch.enable', { patterns: [...paths].flatMap(path =>
       stages.flatMap(requestStage => [path, ...(path.startsWith('127.0.0.1/') ? [path.replace('127.0.0.1/', '127.0.0.1:*/')] : [])]
@@ -239,27 +245,23 @@ export class CdpSurface implements Surface {
     return this.evaluateReadOnly<SurfaceState>('({url: location.href, title: document.title, loading: document.readyState !== "complete"})');
   }
 
-  async readClickTarget(x: number, y: number, selector: string): Promise<boolean> {
+  async readClickTarget(x: number, y: number, selector: string, options?: ClickTargetOptions): Promise<boolean> {
     return traceStep('surface.cdp.index.CdpSurface.readClickTarget', async () => {
-    this.jobTrace = currentTrace() ?? this.jobTrace;
-    // Points from read() use the outer document's layout viewport. Android CDP
-    // can report the focused iframe's scroll in Page.getLayoutMetrics instead.
-    // Adding that offset double-counts its scroll and can hit outside the view.
-    const scroll = await this.evaluateReadOnly<{ x: number; y: number }>('({x:scrollX,y:scrollY})');
-    if (![x, y, scroll?.x, scroll?.y].every(Number.isFinite)) throw new Error('SURFACE_HIT_TEST_FAILED');
-    const node = await this.cdp.send<{ backendNodeId?: number }>('DOM.getNodeForLocation', { x: Math.round(x + scroll.x), y: Math.round(y + scroll.y), includeUserAgentShadowDOM: false, ignorePointerEventsNone: false });
-    if (!node.backendNodeId) return false;
-    const { object } = await this.cdp.send<{ object: { objectId?: string } }>('DOM.resolveNode', { backendNodeId: node.backendNodeId });
-    if (!object.objectId) return false;
-    try {
-      const result = await this.cdp.send<{ result: { value?: boolean }; exceptionDetails?: unknown }>('Runtime.callFunctionOn', {
-        objectId: object.objectId, functionDeclaration: 'function(selector) { const targets=Array.from(this.ownerDocument.querySelectorAll(selector)); let e=this; while(e) { if(targets.includes(e)) return true; e=e.parentElement; } return false; }',
-        arguments: [{ value: selector }], returnByValue: true, throwOnSideEffect: true,
+      this.jobTrace = currentTrace() ?? this.jobTrace;
+      if (![x, y].every(Number.isFinite)) throw new Error('SURFACE_HIT_TEST_FAILED');
+      const { frameTree } = await this.cdp.send<{ frameTree: { frame: { id: string } } }>('Page.getFrameTree');
+      const { executionContextId } = await this.cdp.send<{ executionContextId: number }>('Page.createIsolatedWorld', {
+        frameId: frameTree.frame.id, worldName: 'goltou-click-target',
       });
-      if (result.exceptionDetails) throw new Error('SURFACE_HIT_TEST_FAILED');
-      return result.result.value === true;
-    } finally { await this.cdp.send('Runtime.releaseObject', { objectId: object.objectId }); }
-
+      // Blink may flush layout for elementFromPoint, which V8 rejects with
+      // throwOnSideEffect. Only this fixed reader runs in the isolated world.
+      const { result, exceptionDetails } = await this.cdp.send<{ result: { value?: boolean | ClickTargetMiss }; exceptionDetails?: unknown }>('Runtime.evaluate', {
+        expression: clickTargetExpression(x, y, selector, options), contextId: executionContextId,
+        returnByValue: true, timeout: 5000,
+      });
+      if (exceptionDetails) throw new Error('SURFACE_HIT_TEST_FAILED');
+      if (result.value && typeof result.value === 'object') options?.onMiss?.report(result.value);
+      return result.value === true;
     });
   }
 
@@ -297,10 +299,14 @@ export class CdpSurface implements Surface {
     });
   }
 
+  async insertText(text: string): Promise<void> {
+    this.jobTrace = currentTrace() ?? this.jobTrace;
+    await this.input('Input.insertText', { text });
+    await pause(this.inputDelayMs);
+  }
   async typeText(text: string): Promise<void> {
     return traceStep('surface.cdp.index.CdpSurface.typeText', async () => {
-    this.jobTrace = currentTrace() ?? this.jobTrace;
-    for (const char of inputCharacters(text)) { await this.input('Input.insertText', { text: char }); await pause(this.inputDelayMs); }
+    for (const char of inputCharacters(text)) { await this.insertText(char); }
 
     });
   }

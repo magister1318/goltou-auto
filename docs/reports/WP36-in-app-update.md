@@ -1,0 +1,47 @@
+# WP36 앱 안에서 업데이트
+
+기존 codex/release-connect-fix 브랜치와 초안 PR #31에서 작업했다. 버전은 1.0.4 (8)이다.
+새 PR을 열거나 병합하지 않았다.
+
+한 일
+
+- API 계약에 POST /auto/app/latest를 추가했다. 기존 /auto 인증을 쓰며 ready true/false를 검사한다. 404·미등록 경로·서버·인증·통신 오류는 고정 코드로만 기록하고 화면에는 업데이트 정보 없음으로 처리한다.
+- 홈이 보일 때 24시간 간격으로 확인하고, 설정의 수동 확인은 간격을 무시한다. 마지막 확인 시각·당일 숨김 날짜·새 버전의 공개 안내 정보만 앱 내부 파일에 보관한다. 재시작 후 24시간 제한 중에도 안내를 복원하며 다운로드 URL·해시·토큰은 보관하지 않는다. 설치 버전은 Kotlin의 BuildConfig.VERSION_CODE와 VERSION_NAME을 기존 환경 브리지로 읽는다.
+- 진행·일시정지·확인창·기록 재시도 등 앱이 미완료로 취급하는 작업에서는 확인을 미루고 안내·시트를 숨긴다. 작업 완료 알림 뒤 보류한 확인을 실행한다. 업데이트 확인·다운로드·설치 중에는 새 등록 시작을 막는다.
+- 홈 맨 위 흰 바탕 한 줄과 초록 글자 버튼, 설정의 앱 버전 행, 기존 양식의 아래 시트를 추가했다. 용량은 십진 MB 소수 한 자리다. 나중에는 그날만 홈 안내를 숨기며 자정과 앱 복귀 때 날짜를 다시 반영한다.
+- Kotlin의 기존 OkHttp로 같은 HTTPS API 호스트의 링크만 받는다. 인증 헤더·쿠키·리다이렉트 없이 앱 내부 cache/updates에 저장하며 진행량·취소를 브리지로 전달한다. 4xx는 새 링크를 딱 한 번 받아 다시 시도한다. 실패·취소 파일은 지우고 다음 프로세스 시작 때 잔여 파일도 정리한다.
+- SHA-256, kr.goltou.auto 패키지, 더 높은 설치 코드, 설치 앱과 APK의 현재 서명 인증서 SHA-256 집합 일치를 모두 검사한다. APK 판독 불가·서명 없음도 거부한다. 실패 시 파일을 지우며 지정한 네 가지 사유 코드를 기록한다. 설치 허용 화면에서 돌아온 뒤 설치 직전에도 다시 검증한다.
+- REQUEST_INSTALL_PACKAGES와 updates 캐시만 공유하는 FileProvider를 추가했다. 허용이 없으면 안내 후 앱별 출처 설정을 연다. onResume에서 허용을 재확인하여 이어간다. 허용된 ACTION_VIEW + content URI 방식이며 설치 화면의 Activity 결과가 돌아오면 원래 숫자만 기록한다. 그 숫자를 설치 성공 증명으로 취급하지 않는다.
+- app_update 로그를 기존 영구 작업 로그·ZIP 내보내기에 넣었다. 확인 출처·결과·링크 취득·다운로드 바이트/시간·취소·각 검증·설치 허용·설정·설치 화면·결과·버전 변경을 기록한다. 이벤트·사유·숫자·검사된 버전만 보관하고 URL·토큰·예외 원문은 버린다.
+- 첫 실행은 버전 기준값을 저장하고, 이후 처음 읽은 코드가 올라가면 update_done의 from/to를 한 번 기록한다. 이전 버전 기록이 없는 최초 도입에서는 과거 버전을 추측하지 않는다.
+- 로그인·밴드 목록·게시 구현은 수정하지 않았다. 공통 AppCore 요청·상태 경계에 업데이트 차단만 연결했다. 기존 시험 파일도 수정하지 않았다.
+
+확인한 것
+
+- pnpm install 통과. 새 TypeScript 시험 51개(API 13, 코어 30, UI 8)가 통과했다. 취소 때 네이티브 종료 바이트·시간·부분 파일 정리까지 기다린 뒤 로그를 닫는 회귀와 재시작·다음 날의 안내 복원도 포함한다.
+- 기존 릴리스 부팅·제어 채널 회귀 2파일·5개를 수정 없이 통과했다.
+- pnpm build 후 node scripts/check-app-update-ui.mjs 통과. 합성 회원 등급 3, 360/390/412px, 상태별 21장, 가로 넘침·44px 미만 버튼·외부 요청·페이지 오류 0. 이미지는 ../runs/blog-shots/wp36-ui에 보관했다.
+- 최종 전체 시험은 105파일·1,283개 모두 통과했다. 실패·건너뜀·TODO 0, 런타임 호환성 시험 6개 포함, 958.99초다. pnpm typecheck도 통과했다.
+- apps/android에서 ./gradlew.bat :buildSrc:test testDebugUnitTest testReleaseUnitTest assembleDebug --console=plain 통과. 앱 시험 debug/release 각 23개와 빌드 설정 10개, 실패·오류·건너뜀 0. 최종 debug 빌드는 13초다.
+- ./scripts/install-device.ps1 -Variant release -VerifyOnly -ArtifactDirectory ../release-out 전체 게이트 통과. 의존성·타입·전체 시험·Node 18 소스 104파일 검사·pnpm build·assembleRelease·APK 내부 엔진 2파일 검사·소스 커밋·v2/v3 서명·인증서 검사까지 완료했다. 최종 release 빌드는 7초, 결과는 INSTALLED=False다.
+- 소스 확정 전 전체 시험과 취소 로그·재시작 안내 보완 전 게이트 두 번은 중단했으며 완주한 결과로 세지 않는다.
+- 초기 타입 선언 오류와 외부 서명 설정의 상대 경로 오류는 고쳤다. 키 내용은 출력·복사하지 않았다.
+- 첫 전체 완주에서는 1,283개 중 1,282개 통과·1개 실패였다. 설정의 기존 골투오토 버전 문구를 교체해 기존 키보드 회귀가 실패했다. 기존 문구를 유지하는 것으로 고쳤으며 시험 파일은 바꾸지 않았다. 실패 로그는 wp36-install-gate-settings-failed.log에 보관했다.
+
+서명 APK
+
+- 파일: ../release-out/goltou-auto-1.0.4-8-release.apk 및 .apk.sha256. 크기 56,164,184바이트.
+- APK SHA-256: aa4444f756cb71b282421e50c25230c11c02f6cd7febb2ce46d109203a03bf82
+- 이전 1.0.3 (7) 인증서 SHA-256: B8EA4A8C931A8C711B2D4538ED8618045ABC202A3CF58B35639CCDACE5950665
+- 새 1.0.4 (8) 인증서 SHA-256: B8EA4A8C931A8C711B2D4538ED8618045ABC202A3CF58B35639CCDACE5950665
+- apksigner 비교 SAME, 두 APK의 v2/v3 서명 유효. aapt로 패키지 kr.goltou.auto, versionCode 7 → 8 증가, versionName 1.0.4를 확인했다. 이전 APK보다 늘어난 권한은 REQUEST_INSTALL_PACKAGES 하나다.
+- 게이트와 APK의 소스 커밋: 0bb88b9628418117df20947a0c04dc7e008cc685. 깨끗한 커밋에서 게이트를 완주했다. 이후 커밋은 이 최종 보고서만 바꾸며 실행 코드·시험·APK를 바꾸지 않는다.
+- 확인 자료는 ../runs/blog-shots/의 wp36-install-gate.log, wp36-android-debug.log, wp36-apk-verification.txt, wp36-summary.txt와 wp36-ui/ 21장이다. 중단·실패 기록도 같은 폴더에 별도로 보관했다.
+
+아직 확인하지 않은 것과 다음 작업
+
+- 병행 개발 중인 서버의 실제 응답·만료 링크·운영 다운로드는 호출하지 않았다. 서버가 준비되면 별도 시험 환경에서 계약과 MIME을 맞춰 확인해야 한다.
+- 휴대폰·에뮬레이터·실제 계정·BAND/NAVER 호출·게시·설치·삭제·데이터 초기화는 하지 않았다. 설치 허용 설정 왕복, 실제 Android 설치 화면·설치 결과, 업데이트 뒤 로그인 유지·update_done은 실기기에서 확인해야 한다.
+- ACTION_VIEW 설치 방식에서는 PackageInstaller 세션 상태를 얻지 않는다. Activity 결과가 없거나 앱 프로세스가 교체되면 설치 완료 여부는 다음 시작의 버전 증가로 확인한다.
+
+API 근거: [PackageManager](https://developer.android.com/reference/android/content/pm/PackageManager), [SigningInfo](https://developer.android.com/reference/android/content/pm/SigningInfo).

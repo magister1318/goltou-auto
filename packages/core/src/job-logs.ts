@@ -2,34 +2,52 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHmac, randomBytes, randomUUID } from 'node:crypto';
 import { appendFileSync, closeSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, statSync, truncateSync, unlinkSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import type { JobKind, JobResult, LogSite, ReasonCode, TraceDetail, TraceEvent, TraceJob, TraceProvider, TraceStep } from '@goltou/surface/telemetry';
-import { reasonCode, traceOperations } from '@goltou/surface/telemetry';
+import type { LogJobKind as JobKind, JobResult, LogSite, ReasonCode, TraceDetail, TraceEvent, TraceJob, TraceProvider, TraceStep } from '@goltou/surface/telemetry';
+import { reasonCode, traceCheckpoints, traceChoices, traceOperations, tracePhotoSources } from '@goltou/surface/telemetry';
 import { traceSteps, traceSelectors } from '../../surface/src/telemetry-catalog';
+import { sanitizeBandList } from '../../surface/src/band-list-diagnostics';
+import { sanitizeBandWrite } from '../../surface/src/band-write-diagnostics';
+import { sanitizeBandPhotoOrder } from '../../surface/src/band-photo-diagnostics';
+import { sanitizeConnection } from '../../surface/src/connection-diagnostics';
+import { sanitizeUpdate } from '../../surface/src/update-diagnostics';
 
-const kinds: readonly JobKind[] = ['blog_draft', 'blog_publish', 'blog_delete', 'unfinished_cleanup', 'band_post', 'band_delete', 'login_check', 'band_list'];
+const kinds: readonly JobKind[] = ['blog_draft', 'blog_publish', 'blog_delete', 'unfinished_cleanup', 'band_post', 'band_delete', 'login_check', 'band_list', 'app_update', 'record'];
 const sites: readonly LogSite[] = ['naver', 'band', 'app'];
-const events: readonly TraceEvent[] = ['start', 'ok', 'fail', 'retry', 'skip', 'wait', 'blocked_expected'];
-const countKeys = ['rows', 'columns', 'cells', 'step', 'paragraphIndex', 'paragraphTotal', 'photoIndex', 'photoTotal', 'bytes', 'runs', 'attempt', 'expected', 'observed', 'status', 'lineBreaks', 'hashtags', 'links'] as const;
-const hosts = ['band.us', 'www.band.us', 'api.band.us', 'api-kr.band.us', 'bapi-kr.band.us', 'up.band.us', 'blog.naver.com', 'm.blog.naver.com', 'nid.naver.com', '127.0.0.1'];
+const events: readonly TraceEvent[] = ['start', 'ok', 'fail', 'retry', 'skip', 'wait', 'blocked_expected', 'decision'];
+const countKeys = ['rows', 'columns', 'cells', 'step', 'paragraphIndex', 'paragraphTotal', 'photoIndex', 'photoTotal', 'photoSlots', 'bytes', 'runs', 'attempt', 'expected', 'observed', 'status', 'timeoutMs', 'documents', 'editables', 'fileInputs', 'writeButtons', 'dialogs', 'composers', 'postBodies', 'differences', 'paragraphs', 'lineBreaks', 'hashtags', 'links'] as const;
+const hosts = ['band.us', 'www.band.us', 'auth.band.us', 'api.band.us', 'api-kr.band.us', 'bapi-kr.band.us', 'up.band.us', 'blog.naver.com', 'm.blog.naver.com', 'nid.naver.com', '127.0.0.1'];
 const fieldNames = ['version', 'ts', 'band_no', 'post_no', 'band_key', 'post_key', 'body', 'content', 'contents', 'text', 'photos', 'photo_list', 'file', 'fileList', 'attachment', 'attachments', 'data', 'requests', 'url', 'method', 'params', 'access_token', 'token', 'signature', 'key', 'blogId', 'logNo', 'title', 'tags', 'is_public', 'schedule', 'device_type', 'set_band_notice', 'set_major_band_notice', 'set_linked_band_notice', 'copiable_state', 'should_disable_comment', 'band_notice_unset_at', 'photo', 'purpose', 'format', 'locale', 'app_id', 'documentJson', 'documentModel', 'mediaResources', 'populationParams', 'productApiVersion', 'tokenId', 'cpage', 'categoryNo', 'parentCategoryNo', 'viewDate', 'sourceCode', 'currentPage'];
 const fixedPaths = ['/RabbitAutoSaveWrite.naver', '/PostDelete.naver', '/v1.5.0/delete_post', '/v2.0.0/batch', '/v2.3.0/get_band_list', '/v2.0.2/create_post', '/v3/upload_photo', '/RabbitWrite.naver', '/RabbitUpdate.naver', '/RabbitTempPostWrite.naver', '/RabbitTempPostUpdate.naver', '/PostWriteForm.naver', '/PostView.naver', '/PostList.naver', '/', '/my/home', '/my', '/login'];
 const safeHost = (value: string) => hosts.includes(value) ? value : '[other]';
-const safePath = (value: string) => fixedPaths.includes(value) ? value : /^\/band\/\d+\/post\/\d+\/?$/.test(value) ? '/band/[id]/post/[id]' : /^\/band\/\d+(?:\/post)?\/?$/.test(value) ? '/band/[id]/post' : '[other]';
+const loginPaths = ['/about/kr/intro', '/nidlogin.login', '/user2/help/myInfo', '/user2/help/myInfoV2', '/email_login', '/phone_login'];
+const safePath = (value: string) => fixedPaths.includes(value) || loginPaths.includes(value) || ['/band/[id]/post/[id]', '/band/[id]/post'].includes(value) ? value : /^\/band\/\d+\/post\/\d+\/?$/.test(value) ? '/band/[id]/post/[id]' : /^\/band\/\d+(?:\/post)?\/?$/.test(value) ? '/band/[id]/post' : '[other]';
 const safeFields = (value: readonly string[]) => Array.isArray(value) ? value.slice(0, 80).map(name => fieldNames.includes(name) ? name : '[other]') : [];
 /** Reconstruct every field. Neither spread nor JSON.stringify of caller objects is permitted. */
-export function sanitizeDetail(detail: TraceDetail = {}) {
-  const out: Record<string, unknown> = {};
+type SafeDetail = Partial<Record<keyof TraceDetail, unknown>> & Pick<TraceDetail, 'check' | 'counts' | 'checkpoint' | 'photoSource' | 'choice' | 'reason'>;
+export function sanitizeDetail(detail: TraceDetail = {}): SafeDetail {
+  const out: SafeDetail = {};
+  if (detail.update) out.update = sanitizeUpdate(detail.update);
   if (detail.reason !== undefined) out.reason = reasonCode(detail.reason);
   if (detail.counts) {
     const counts: Record<string, number> = {};
     for (const key of countKeys) { const n = detail.counts[key]; if (typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= Number.MAX_SAFE_INTEGER) counts[key] = n; }
     out.counts = counts;
   }
-  if (['table', 'title', 'paragraphs', 'prices', 'departures', 'golf_courses', 'text', 'photos', 'photo_order', 'photo_ratio', 'links', 'hashtags', 'line_breaks', 'identity', 'focus', 'record', 'alert_kind', 'delete_notice', 'same_post', 'missing_read', 'feed_location', 'bold', 'visibility', 'stability'].includes(detail.check ?? '')) out.check = detail.check;
+  if (detail.check && ['table', 'title', 'paragraphs', 'prices', 'departures', 'golf_courses', 'text', 'photos', 'photo_order', 'photo_ratio', 'links', 'hashtags', 'line_breaks', 'identity', 'focus', 'record', 'alert_kind', 'delete_notice', 'same_post', 'missing_read', 'feed_location', 'bold', 'number', 'cursor', 'input', 'href', 'photo', 'visibility', 'stability'].includes(detail.check)) out.check = detail.check;
   if (['alert', 'confirm'].includes(detail.dialog ?? '')) out.dialog = detail.dialog;
+  if (detail.checkpoint && traceCheckpoints.includes(detail.checkpoint)) out.checkpoint = detail.checkpoint;
+  if (detail.photoSource && tracePhotoSources.includes(detail.photoSource)) out.photoSource = detail.photoSource;
+  if (detail.choice && traceChoices.includes(detail.choice)) out.choice = detail.choice;
   if (traceSelectors.includes(detail.selector as typeof traceSelectors[number])) out.selector = detail.selector;
   if (traceOperations.includes(detail.operation as typeof traceOperations[number])) out.operation = detail.operation;
   if (detail.navigation) out.navigation = { host: safeHost(detail.navigation.host), path: safePath(detail.navigation.path) };
+  if (detail.connection) out.connection = sanitizeConnection(detail.connection);
+  if (detail.bandList) out.bandList = sanitizeBandList(detail.bandList);
+  if (detail.bandWrite) out.bandWrite = sanitizeBandWrite(detail.bandWrite);
+  if (detail.photoOrder && out.check === 'photo_order' && (out.reason === 'UPLOAD_PATH_MISMATCH' || out.reason === 'DOM_ORDER_MISMATCH')) {
+    const photoOrder = sanitizeBandPhotoOrder(detail.photoOrder);
+    if (photoOrder) out.photoOrder = photoOrder;
+  }
   if (detail.network) {
     const n = detail.network;
     out.network = { method: ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(n.method) ? n.method : 'other',
@@ -38,19 +56,32 @@ export function sanitizeDetail(detail: TraceDetail = {}) {
   }
   return out;
 }
+export interface UploadLogLine extends SafeDetail { step: TraceStep; event: TraceEvent; t: number; duration: number }
+export interface LogNotice { jobId: string; checkpoint?: NonNullable<TraceDetail['checkpoint']> }
 export interface JobLogRow { jobId: string; at: number; kind: JobKind; site: LogSite; result: JobResult | 'running'; reason?: ReasonCode; failedStep?: TraceStep; recordHash?: string; recordHashes?: string[]; blockedExpected?: number; tableFallback?: boolean; }
 interface StoredRow extends JobLogRow { file: string }
 export interface LogEnvironment { appVersion?: string; commit?: string; webViewVersion?: string; deviceModel?: string }
 const dayMs = 86400000;
+const bandPollSteps = new Set<TraceStep>([
+  'sites.band.posted.readFullBandPost', 'sites.band.plan.readBandDocument', 'sites.band.plan.BandDirectory.getSurface',
+  'sites.band.plan.BandDirectory.guard', 'sites.band.plan.BandExecution.guard', 'sites.band.plan.BandExecution.settlePhoto',
+  'sites.band.index.bandSnapshot', 'sites.band.index.confirmBandPhotos',
+]);
+interface LogTiming {
+  count: number; duration: number; maxDuration: number;
+  firstCounts?: unknown; lastCounts?: unknown;
+}
 function failedStep(step: TraceStep, counts?: TraceDetail['counts']): TraceStep {
   return step === 'job' && counts?.step ? (['runner.ready', 'runner.download', 'runner.arrange', 'runner.blog_write', 'runner.blog_save', 'runner.band_write', 'runner.record'] as const)[counts.step - 1] ?? step : step;
 }
+const isJobFailure = (step: string, event: string) => event === 'fail' && step !== 'terminal' && step !== 'runner.log_upload' && !step.startsWith('band.photo.');
 export class JobLogStore implements TraceProvider {
   private readonly context = new AsyncLocalStorage<TraceJob>();
   private rows: StoredRow[] = [];
   private salt: Buffer;
   private logBytes = 0;
   private environment: Record<string, string> = {};
+  private readonly listeners = new Set<(notice: LogNotice) => void>();
   constructor(readonly directory: string, private readonly limits = { days: 30, bytes: 50 * 1024 * 1024 }, private readonly now = Date.now) {
     mkdirSync(directory, { recursive: true, mode: 0o700 });
     const saltFile = path.join(directory, '.salt');
@@ -60,7 +91,7 @@ export class JobLogStore implements TraceProvider {
   }
   setEnvironment(value: LogEnvironment) {
     const clean: Record<string, string> = {};
-    if (/^\d+\.\d+\.\d+(?:\.\d+)?$/.test(value.appVersion ?? '')) clean.appVersion = value.appVersion!;
+    if (value.appVersion && value.appVersion.length <= 20 && /^\d+\.\d+\.\d+(?:\.\d+)?$/.test(value.appVersion)) clean.appVersion = value.appVersion;
     if (/^[a-f0-9]{7,40}$/.test(value.commit ?? '')) clean.commit = value.commit!;
     if (/^\d+(?:\.\d+){1,4}$/.test(value.webViewVersion ?? '')) clean.webViewVersion = value.webViewVersion!;
     if (/^(?:SM-[A-Z0-9]{3,12}|Pixel [0-9]{1,2}(?: Pro|a| XL)?|sdk_gphone64_arm64|emulator)$/.test(value.deviceModel ?? '')) clean.deviceModel = value.deviceModel!;
@@ -85,23 +116,129 @@ export class JobLogStore implements TraceProvider {
     this.durable(temp, JSON.stringify(this.rows), false); renameSync(temp, path.join(this.directory, 'index.json'));
   }
   list(): JobLogRow[] { return this.rows.slice().reverse().map(({ file: _file, ...row }) => ({ ...row })); }
+  runningKind(jobId: string) { return this.rows.find(row => row.jobId === jobId && row.result === 'running')?.kind; }
+  subscribe(listener: (notice: LogNotice) => void) { this.listeners.add(listener); return () => this.listeners.delete(listener); }
+  private notify(notice: LogNotice) { for (const listener of this.listeners) listener(notice); }
+  private storedLines(row: StoredRow) {
+    return readFileSync(path.join(this.directory, row.file), 'utf8').trimEnd().split('\n').flatMap(line => {
+      try { const value = JSON.parse(line); return value && typeof value === 'object' ? [value] : []; } catch { return []; }
+    });
+  }
+  readTrace(jobId: string) {
+    const row = this.rows.find(item => item.jobId === jobId);
+    if (!row) return;
+    const raw = this.storedLines(row);
+    const end = raw.filter(line => line.step === 'terminal').at(-1);
+    const start = raw[0]?.environment;
+    const appVersion: string = typeof start?.appVersion === 'string' && start.appVersion.length <= 20 && /^\d+\.\d+\.\d+(?:\.\d+)?$/.test(start.appVersion) ? start.appVersion : '';
+    const device: string = typeof start?.deviceModel === 'string' && /^(?:SM-[A-Z0-9]{3,12}|Pixel [0-9]{1,2}(?: Pro|a| XL)?|sdk_gphone64_arm64|emulator)$/.test(start.deviceModel) ? start.deviceModel : '';
+    const lines: UploadLogLine[] = raw.flatMap(value => {
+      if (!traceSteps.includes(value.step) || !events.includes(value.event)) return [];
+      const t = Number.isSafeInteger(value.timestamp) ? Math.max(0, value.timestamp - row.at) : 0;
+      const duration = Number.isFinite(value.duration) && value.duration >= 0 ? value.duration : 0;
+      const safe = sanitizeDetail(value);
+      if (value.connection) {
+        const connection = sanitizeConnection(value.connection);
+        safe.connection = { ...connection, host: safeHost(connection.host), path: safePath(connection.path) };
+      }
+      return [{ step: value.step, event: value.event, t, duration, ...safe }];
+    });
+    return { at: row.at, kind: row.kind, last: row.result, reason: row.reason, appVersion, device, lines,
+      endedAt: end && Number.isSafeInteger(end.timestamp) ? end.timestamp as number : null };
+  }
+  logUpload(jobId: string, event: 'ok' | 'fail' | 'retry', reason: ReasonCode, bytes: number) {
+    const row = this.rows.find(item => item.jobId === jobId);
+    if (!row) return;
+    const timestamp = this.now();
+    this.durable(path.join(this.directory, row.file), JSON.stringify({ timestamp, t: Math.max(0, timestamp - row.at), jobId,
+      step: 'runner.log_upload', event, duration: 0, ...sanitizeDetail({ reason, counts: { bytes } }) }) + '\n');
+    this.retain();
+  }
   associate(recordIdentity: string) {
     const row = this.rows.find(item => item.jobId === this.current()?.id);
     if (row?.result === 'running') {
       const hash = this.identity(recordIdentity); if (row.recordHashes?.includes(hash)) return;
       row.recordHash = hash; row.recordHashes = [...(row.recordHashes ?? []), hash];
-      this.durable(path.join(this.directory, row.file), JSON.stringify({ timestamp: this.now(), jobId: row.jobId, site: row.site, kind: row.kind, step: 'runner.record', event: 'ok', duration: 0, recordHash: hash }) + '\n'); this.index();
+      const timestamp = this.now();
+      this.durable(path.join(this.directory, row.file), JSON.stringify({ timestamp, t: Math.max(0, timestamp - row.at), jobId: row.jobId, site: row.site, kind: row.kind, step: 'runner.record', event: 'ok', duration: 0, recordHash: hash }) + '\n'); this.index();
     }
   }
   forRecord(recordIdentity: string) { const hash = this.identity(recordIdentity); return this.list().find(row => row.recordHash === hash || row.recordHashes?.includes(hash)); }
+  /** Compact only the upload. Original JSONL remains on the device. */
+  uploadTail(jobId: string, cap = 512 * 1024): string {
+    const row = this.rows.find(item => item.jobId === jobId);
+    if (!row) return '';
+    const raw = readFileSync(path.join(this.directory, row.file), 'utf8');
+    const entries: string[] = [];
+    const timings = new Map<string, LogTiming>();
+    const singleComparisons = new Map<string, string>();
+    const lineOf = (value: object) => JSON.stringify(value) + '\n';
+    for (const line of raw.trimEnd().split('\n')) {
+      let value;
+      try { value = JSON.parse(line); } catch { continue; }
+      if (!traceSteps.includes(value.step) || !events.includes(value.event)) continue;
+      const safe = sanitizeDetail(value);
+      const duration = Number.isFinite(value.duration) && value.duration >= 0 ? value.duration : 0;
+      const transport = /^(?:cdp$|native$|surface\.cdp\.)/.test(value.step);
+      const background = value.step === 'barrier' && (value.event === 'start' || value.network?.method === 'GET' && value.event === 'ok');
+      const responseStatus = safe.network ? safe.counts?.status : undefined;
+      const repeatedComparison = value.step === 'verification' && (value.event === 'ok' || value.event === 'decision' && safe.choice === 'ok');
+      const photoWait = value.step === 'sites.dom.waitFor' && safe.selector === 'BAND_UPLOAD_SLOTS' && ['start', 'ok'].includes(value.event);
+      const bandRepeat = row.kind === 'band_post' && (
+        value.step === 'verification' && value.event === 'wait' || repeatedComparison || photoWait ||
+        value.step === 'input.progress' && ['start', 'ok', 'wait'].includes(value.event) ||
+        bandPollSteps.has(value.step) && ['start', 'ok'].includes(value.event) ||
+        value.step === 'barrier' && (value.event === 'blocked_expected' || value.event === 'decision' && safe.choice !== 'fail' || value.event === 'ok' &&
+          (safe.reason === 'PREFLIGHT_ALLOWED' || safe.reason === 'UPLOAD_ALLOWED' || value.network?.method === 'OPTIONS' || responseStatus !== undefined)));
+      if (bandRepeat || value.step === 'poll' || background || transport && ['start','ok'].includes(value.event)) {
+        if (value.event === 'start' && !bandRepeat) continue;
+        const key = JSON.stringify({ step:value.step, event:value.event, ...(safe.operation ? { operation:safe.operation } : {}),
+          ...(safe.selector ? { selector:safe.selector } : {}), ...(bandRepeat && safe.check ? { check:safe.check } : {}),
+          ...(bandRepeat && safe.reason ? { reason:safe.reason } : {}), ...(bandRepeat && safe.network ? { network:safe.network } : {}),
+          ...(bandRepeat && safe.choice ? { choice: safe.choice } : {}),
+          ...(repeatedComparison && safe.counts ? { counts: safe.counts } : responseStatus !== undefined ? { counts: { status: responseStatus } } : {}),
+          ...(bandRepeat && value.step === 'input.progress' && (safe.counts as TraceDetail['counts'])?.photoTotal ? { check:'photos' } : {}) });
+        const group = timings.get(key) ?? { count:0, duration:0, maxDuration:0 };
+        if (repeatedComparison && group.count === 0) singleComparisons.set(key, lineOf({ step: value.step, event: value.event, duration, ...safe }));
+        if (bandRepeat && !repeatedComparison && safe.counts && Object.keys(safe.counts).length) {
+          group.firstCounts ??= safe.counts;
+          group.lastCounts = safe.counts;
+        }
+        group.count++; group.duration += duration; group.maxDuration = Math.max(group.maxDuration, duration);
+        timings.set(key, group);
+        continue;
+      }
+      entries.push(lineOf({ step:value.step, event:value.event, duration, ...safe }));
+    }
+    const summary = [...timings].map(([key, group]) => group.count === 1 && singleComparisons.has(key)
+      ? singleComparisons.get(key)! : lineOf({ ...JSON.parse(key), ...group }));
+    if (summary.length) entries.splice(entries[0]?.startsWith('{"step":"job","event":"start"') ? 1 : 0, 0, ...summary);
+    if (entries.reduce((size, line) => size + Buffer.byteLength(line), 0) <= cap) return entries.join('');
+    const marker = lineOf({ step:'job', event:'skip', reason:'UPLOAD_TRUNCATED' });
+    const available = cap - Buffer.byteLength(marker);
+    if (available < 0) return '';
+    const head: string[] = [], tail: string[] = [];
+    let used = 0;
+    for (const entry of entries) {
+      const bytes = Buffer.byteLength(entry);
+      if (used + bytes > available / 3) break;
+      head.push(entry); used += bytes;
+    }
+    for (let i = entries.length - 1; i >= head.length; i--) {
+      const entry = entries[i]!, bytes = Buffer.byteLength(entry);
+      if (used + bytes > available) break;
+      tail.push(entry); used += bytes;
+    }
+    return head.join('') + marker + tail.reverse().join('');
+  }
   /** Proves one acknowledged create for this local record without retaining its URL. */
   creationProof(recordIdentity: string) {
     const hash = this.identity(recordIdentity);
     for (const row of [...this.rows].reverse()) {
-      if (row.kind !== 'band_post' || row.result !== 'uncertain' || row.reason !== 'BAND_POST_UNCONFIRMED' || !(row.recordHash === hash || row.recordHashes?.includes(hash))) continue;
+      if (row.kind !== 'band_post' || row.result !== 'uncertain' || !row.reason?.startsWith('BAND_POST_UNCONFIRMED') || !(row.recordHash === hash || row.recordHashes?.includes(hash))) continue;
       const lines = readFileSync(path.join(this.directory, row.file), 'utf8').trim().split('\n').flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } });
-      const creates = lines.filter(line => line.step === 'barrier' && line.reason === 'CREATE_ALLOWED' && !line.network);
-      const responses = lines.filter(line => line.step === 'barrier' && line.reason === 'BAND_PUBLISH_RESPONSE_OK');
+      const creates = lines.filter(line => line.step === 'barrier' && line.event === 'ok' && line.reason === 'CREATE_ALLOWED' && !line.network);
+      const responses = lines.filter(line => line.step === 'barrier' && line.event === 'ok' && line.reason === 'BAND_PUBLISH_RESPONSE_OK');
       if (creates.length === 1 && responses.length === 1) return { startedAt: row.at, acknowledgedAt: responses[0].timestamp as number };
     }
     return undefined;
@@ -125,11 +262,12 @@ export class JobLogStore implements TraceProvider {
       if (event === 'fail' && !detail?.reason) data.reason = 'UNEXPECTED_FAILURE';
       if (step === 'barrier' && event === 'start') decisionReason = undefined;
       else if (['barrier', 'delete'].includes(step) && detail?.reason && !detail.network) decisionReason = reasonCode(detail.reason);
-      if (event === 'fail' && step !== 'terminal') {
+      if (isJobFailure(step, event)) {
         row.failedStep = failedStep(step, detail?.counts);
         row.reason = reasonCode(detail?.reason);
       }
-      const serialized = JSON.stringify({ timestamp: this.now(), jobId: id, site, kind, step, event,
+      const timestamp = this.now();
+      const serialized = JSON.stringify({ timestamp, t: Math.max(0, timestamp - at), jobId: id, site, kind, step, event,
         duration: Number.isFinite(duration) && duration >= 0 ? duration : 0, ...data,
         ...(step === 'job' && event === 'start' ? { environment: this.environment } : {}), ...(end ? { result: end } : {}) }) + '\n';
       const reserve = step === 'terminal' ? 0 : Math.min(1024, Math.floor(this.limits.bytes / 4));
@@ -141,7 +279,12 @@ export class JobLogStore implements TraceProvider {
         throw Error('LOG_STORAGE_LIMIT');
       }
       this.durable(path.join(this.directory, row.file), serialized);
-      if (end) { terminal = true; row.result = end; if (detail?.reason) row.reason = reasonCode(detail.reason); else if (event === 'fail') row.reason = 'UNEXPECTED_FAILURE'; else delete row.reason; this.index(); this.retain(); }
+      const choice = traceChoices.find(value => value === event);
+      if (choice && (step === 'verification' || step === 'delete' || step === 'barrier' && !detail?.network ||
+          step.startsWith('band.photo.') || step.startsWith('band.confirm.')))
+        line(step, 'decision', { ...detail, choice, ...(data.reason ? { reason: data.reason } : {}) });
+      if (end) { terminal = true; row.result = end; if (detail?.reason) row.reason = reasonCode(detail.reason); else if (event === 'fail') row.reason = 'UNEXPECTED_FAILURE'; else delete row.reason; this.index(); this.retain(); this.notify({ jobId: id }); }
+      else if (step === 'job.checkpoint' && data.checkpoint) this.notify({ jobId: id, checkpoint: data.checkpoint });
     };
     const job: TraceJob = { id, get decisionReason() { return decisionReason; }, line, end: (result, reason) => {
       if (!['succeeded', 'failed', 'stopped', 'uncertain'].includes(result)) throw new Error('INVALID_LOG_RESULT');
@@ -157,17 +300,17 @@ export class JobLogStore implements TraceProvider {
         const lastNewline = raw.lastIndexOf(10);
         if (lastNewline !== raw.length - 1) truncateSync(absolute, lastNewline + 1);
         const lines = raw.subarray(0, lastNewline + 1).toString('utf8').trim().split('\n').flatMap(line => { try { return [JSON.parse(line)]; } catch { return []; } });
-        let first = lines[0], last = lines.at(-1);
+        let first = lines[0]; const last = lines.filter(line => line.step === 'terminal').at(-1);
         if (!first) {
           const match = /^(\d+)-([a-z_]+)-([a-f0-9-]{36})\.jsonl$/.exec(file);
           if (match && kinds.includes(match[2] as JobKind) && Number.isSafeInteger(Number(match[1]))) {
             const kind = match[2] as JobKind;
             first = { timestamp: Number(match[1]), jobId: match[3], kind, site: kind.startsWith('blog') ? 'naver' : kind.startsWith('band') ? 'band' : 'app', step: 'job', event: 'start', duration: 0 };
-            this.durable(absolute, JSON.stringify(first) + '\n', false); lines.push(first); last = first;
+            this.durable(absolute, JSON.stringify(first) + '\n', false); lines.push(first);
           }
         }
         if (!first || !kinds.includes(first.kind) || !sites.includes(first.site) || !/^[a-f0-9-]{36}$/.test(first.jobId) || !Number.isFinite(first.timestamp)) continue;
-        const failure = lines.filter(line => line.event === 'fail' && line.step !== 'terminal').at(-1);
+        const failure = lines.filter(line => isJobFailure(line.step, line.event)).at(-1);
         const row: StoredRow = { at: first.timestamp, jobId: first.jobId, kind: first.kind, site: first.site, file: `${date}/${file}`,
           ...(lines.some(line => line.event === 'blocked_expected' && line.network?.decision === 'blocked') ? { blockedExpected: lines.filter(line => line.event === 'blocked_expected' && line.network?.decision === 'blocked').length } : {}),
           ...(lines.some(line=>line.step==='table_fallback'&&line.event==='ok') ? {tableFallback:true} : {}),
@@ -176,7 +319,8 @@ export class JobLogStore implements TraceProvider {
         const correlations = lines.filter(line => /^[a-f0-9]{12}$/.test(line.recordHash ?? '')); if (correlations.length) { row.recordHashes = [...new Set<string>(correlations.map(line => line.recordHash))]; row.recordHash = row.recordHashes[0]!; }
         if (last?.step !== 'terminal') {
           row.reason = 'INTERRUPTED'; row.failedStep ??= 'recovery';
-          this.durable(absolute, JSON.stringify({ timestamp: this.now(), jobId: row.jobId, site: row.site, kind: row.kind, step: 'terminal', event: 'fail', duration: Math.max(0, this.now() - row.at), reason: 'INTERRUPTED', recovery: 'interrupted', result: 'stopped' }) + '\n');
+          const timestamp = this.now(), t = Math.max(0, timestamp - row.at);
+          this.durable(absolute, JSON.stringify({ timestamp, t, jobId: row.jobId, site: row.site, kind: row.kind, step: 'terminal', event: 'fail', duration: t, reason: 'INTERRUPTED', recovery: 'interrupted', result: 'stopped' }) + '\n');
         } else if (last.reason) row.reason = reasonCode(last.reason);
         this.rows.push(row);
       }

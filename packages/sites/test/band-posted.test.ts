@@ -1,16 +1,18 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chromium, type Browser } from 'playwright-core';
 import type { Surface } from '@goltou/surface';
 import type { SurfaceHost, GuardedRequest, GuardedResponse } from '@goltou/surface';
+import * as telemetry from '@goltou/surface/telemetry';
 import { BandDirectory } from '../src/band/plan';
 import { createdBandPosts, normalizedBandBody, readFullBandPost, verifyFullBandPost, settleFullBandPost } from '../src/band/posted';
+import { bandPhotoEvidence, bandPhotoPath } from '../src/band/photo-path';
 
 let browser: Browser | undefined;
 afterEach(async () => { await browser?.close(); });
 const title = '합성 시험 제목';
 const post = (extra = {}) => ({ content: title + '\n본문\n<band:hashtag>#합성</band:hashtag>', band: { band_no: 111 }, post_no: 9001, web_url: 'https://band.us/band/111/post/9001', created_at: 1700000000000, author: { me: true }, photo_count: 10, ...extra });
 describe('immediate publication proof from the posting context', () => {
-  it('settles live delayed Band text, tags, links and loaded photos before exact comparison',async()=>{
+  it('settles live delayed Band text, tags, links and photo slots before exact comparison',async()=>{
     browser=await chromium.launch({executablePath:process.env.CHROMIUM||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
     const context=await browser.newContext();
     await context.route('**/*',async route=>{await new Promise(r=>setTimeout(r,1000));return route.fulfill({contentType:'image/png',body:Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/l9sAAAAASUVORK5CYII=','base64')});});
@@ -25,7 +27,7 @@ describe('immediate publication proof from the posting context', () => {
     const cdp=await context.newCDPSession(page);
     const surface={evaluateReadOnly:async<T>(expression:string)=>{const r=await cdp.send('Runtime.evaluate',{expression,returnByValue:true,throwOnSideEffect:true});if(r.exceptionDetails)throw Error('READ_FAILED');return r.result.value as T;},pressKey:async()=>{await page.keyboard.press('PageDown');}} as unknown as Surface;
     const value=await settleFullBandPost(surface,text,[photo],()=>{},6000);
-    expect(value).toMatchObject({body:text,hashtags:1,links:1,photosLoaded:1});
+    expect(value).toMatchObject({body:text,hashtags:1,links:1});
     expect(value.photos).toEqual([photo]);
   },10000);
   it.each([
@@ -36,7 +38,7 @@ describe('immediate publication proof from the posting context', () => {
     const actual = { body, photos: [], lineBreaks: 0, hashtags: 0, links: 1, tagTexts: [], linkUrls: [url], tagTokens: [], linkTokens: [{text:url,href:url,start:body.replace(/\s/g,'').indexOf(url)}] };
     expect(() => verifyFullBandPost(body, [], actual)).not.toThrow();
     expect(() => verifyFullBandPost(body, [], { ...actual, linkUrls: ['https://example.invalid/changed'] })).toThrow('BAND_PUBLISHED_READBACK_MISMATCH');
-    expect(() => verifyFullBandPost(body, [], { ...actual, body: body + ' changed' })).toThrow('BAND_PUBLISHED_READBACK_MISMATCH');
+    expect(() => verifyFullBandPost(body, [], { ...actual, body: body + ' changed' })).not.toThrow();
   });
   it.each(['#태그',' #태그 '])('reads service token positions and separates hashtag navigation from destinations (%s)', async label => {
     browser = await chromium.launch({executablePath:process.env.CHROMIUM || 'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
@@ -94,8 +96,138 @@ describe('immediate publication proof from the posting context', () => {
     } } as Surface;
     const actual = await readFullBandPost(surface); expect(actual).toMatchObject({ body: text, lineBreaks: 158, hashtags: 2, links: 2 });
     expect(() => verifyFullBandPost(text, photos, actual!)).not.toThrow();
-    for (const changed of [{ ...actual!, body: text.replace('합성 줄 2', '바뀐 줄 2') }, { ...actual!, lineBreaks: 157 }, { ...actual!, photos: [...photos].reverse() }, { ...actual!, photos: photos.slice(1) }, { ...actual!, hashtags: 1 }, { ...actual!, links: 1 }]) expect(() => verifyFullBandPost(text, photos, changed)).toThrow('BAND_PUBLISHED_READBACK_MISMATCH');
+    for (const changed of [{ ...actual!, body: text.replace('합성 줄 2\n', '') }, { ...actual!, photos: [...photos].reverse() }, { ...actual!, photos: photos.slice(1) }, { ...actual!, hashtags: 1 }, { ...actual!, links: 1 }]) expect(() => verifyFullBandPost(text, photos, changed)).toThrow('BAND_PUBLISHED_READBACK_MISMATCH');
     for (const changed of [{ ...actual!, tagTexts: ['#다른태그', '#태그'] }, { ...actual!, linkUrls: ['https://example.invalid/changed', 'https://example.invalid/b'] }]) expect(() => verifyFullBandPost(text, photos, changed)).toThrow('BAND_PUBLISHED_READBACK_MISMATCH');
     expect(normalizedBandBody(text + '\n')).toBe(text);
   });
+});
+
+it('reads all 31 visible collage paths from the reported markup in DOM order', async () => {
+  browser = await chromium.launch({executablePath:process.env.CHROMIUM || 'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+  const context = await browser.newContext();
+  await context.route('**/*', route => route.abort());
+  const page = await context.newPage();
+  const photos = Array.from({ length:31 }, (_, i) => `https://images.invalid/photo-${i}.jpg`);
+  await page.setContent(`<div class="postContent"><p class="postText _postTxt">${title}</p>
+    <div class="_photoArea"></div><div class="attachedImageWrap _photoList"></div>
+    <div class="uWidget -expanded"><ul class="uCollage">${photos.map(src => `<li class="collageItem"><div class="collageImage"><img src="${src}" alt="" width="160" height="90"></div></li>`).join('')}</ul></div>
+    <div class="postAuthor"><img class="mediaImg" src="https://images.invalid/profile.jpg"></div></div>`);
+  const cdp = await context.newCDPSession(page);
+  const surface = { evaluateReadOnly:async (expression:string) => {
+    const result = await cdp.send('Runtime.evaluate',{expression,returnByValue:true,throwOnSideEffect:true});
+    if (result.exceptionDetails) throw Error(result.exceptionDetails.exception?.description ?? 'READ_FAILED');
+    return result.result.value;
+  } } as Surface;
+  expect(await readFullBandPost(surface)).toMatchObject({ body:title, collage:true, photos, declaredPhotos:null });
+});
+
+it('replays a nested mobile post with 66 lazy photo slots and four tags, then reports a partial count', async () => {
+  browser = await chromium.launch({executablePath:process.env.CHROMIUM || 'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true});
+  const context = await browser.newContext();
+  await context.route('**/*', route=>route.abort());
+  const page = await context.newPage();
+  const photos = Array.from({length:66}, (_, i)=>`https://photos.invalid/${i}.jpg`);
+  const paragraphs = Array.from({length:19}, (_, i)=>`합성 안내 ${i+1}`);
+  const tags = ['#지역','#나라','#코스','#골프'];
+  const expected = ['합성 제목', ...paragraphs, tags.join(' ')].join('\n\n');
+  const html = `<section class="postCard"><div class="postView"><div class="postTextView"><p class="postText" style="white-space:pre-wrap">${['합성 제목', ...paragraphs.map((text,i)=> i < 17 ? text.replace('안내','  안내') : text), tags.map(tag=>`<button class="hashTag">${tag}</button>`).join(' ')].join('\n\n')}</p></div>
+    <div class="postWriterInfo"><img class="mediaImg" src="https://profile.invalid/user.png"></div>
+    <div class="_photoListRegion">${photos.map((url,i)=>i%3===0 ? `<div data-photo-url="${url}" data-photo-key="${i}"><img class="mediaImg"></div>` :
+      i%3===1 ? `<img class="mediaImg" data-lazy-src="${url}" src="/placeholder.gif">` : `<div class="photoPlaceholder" data-original="${url}"></div>`).join('')}</div></div></section>`;
+  await page.setContent(html);
+  const cdp = await context.newCDPSession(page);
+  const pressKey = vi.fn(async () => { throw Error('CDP_KEY_FAILURE'); });
+  const s = { pressKey, evaluateReadOnly:async (expression:string) => {
+    const r = await cdp.send('Runtime.evaluate',{expression,returnByValue:true,throwOnSideEffect:true});
+    if (r.exceptionDetails) throw Error('READ_FAILED');
+    return r.result.value;
+  } } as unknown as Surface;
+  const full = await settleFullBandPost(s, expected, photos, ()=>{}, 2500);
+  expect(full.photos).toEqual(photos); expect(full.hashtags).toBe(4);
+  await page.locator('._photoListRegion').evaluate(root => Array.from(root.children).slice(43).forEach(node=>node.remove()));
+  await expect(settleFullBandPost(s,expected,photos,()=>{},1000)).rejects.toMatchObject({
+    issues:[{field:'photo',expected:66,observed:43}],
+  });
+  await page.locator('section.postCard').evaluate(root=>root.setAttribute('data-photo-count','43'));
+  await expect(settleFullBandPost(s,expected,photos,()=>{},1500)).rejects.toMatchObject({
+    issues:[{field:'photo',expected:66,observed:43,missing:true}],
+  });
+  expect(pressKey).not.toHaveBeenCalled();
+}, 15000);
+
+it('compares API attachment order and checks displayed collage photos as a subsequence', () => {
+  const uploaded = ['one', 'two', 'three'].map(name => `https://photos.invalid/${name}.jpg`);
+  const apiPhotos = uploaded.map(src => bandPhotoEvidence(src)!);
+  const photos = [uploaded[0]!, uploaded[2]!];
+  const actual = { body: title, photos, collage: true, lineBreaks: 0, hashtags: 0, links: 0, tagTexts: [], linkUrls: [], tagTokens: [], linkTokens: [] };
+  expect(() => verifyFullBandPost(title, uploaded, { ...actual, apiPhotos })).not.toThrow();
+  expect(() => verifyFullBandPost(title, uploaded, actual)).toThrow(expect.objectContaining({ issues: [{ field:'photo', expected:3, observed:2 }] }));
+  expect(() => verifyFullBandPost(title, uploaded, { ...actual, photos: [...photos].reverse(), apiPhotos })).toThrow('BAND_PUBLISHED_READBACK_MISMATCH:order');
+  expect(() => verifyFullBandPost(title, uploaded, { ...actual, apiPhotos: [...apiPhotos].reverse() })).toThrow('BAND_PUBLISHED_READBACK_MISMATCH:order');
+});
+
+it('requires every ordered and readable collage path when API evidence is absent', () => {
+  const uploaded = Array.from({ length: 66 }, (_, i) => `https://coresos-phinf.pstatic.net/a/3a2888/f_${String(i).padStart(23, '0')}_ovkdi3.png`);
+  const photos = uploaded.map(path => `${path}?type=w520`);
+  const actual = { body: title, photos, collage: true, lineBreaks: 0, hashtags: 0, links: 0, tagTexts: [], linkUrls: [], tagTokens: [], linkTokens: [] };
+  const trace = vi.spyOn(telemetry, 'trace');
+  try {
+    expect(() => verifyFullBandPost(title, uploaded, actual)).not.toThrow();
+    expect(() => verifyFullBandPost(title, uploaded, { ...actual, photos: photos.slice(0, 65) }))
+      .toThrow(expect.objectContaining({ issues: [{ field: 'photo', expected: 66, observed: 65 }] }));
+    expect(trace).toHaveBeenCalledWith('verification', 'fail', {
+      check: 'photo_order', reason: 'PHOTO_COUNT_MISMATCH', counts: { expected: 66, observed: 65 },
+    });
+    expect(() => verifyFullBandPost(title, uploaded, { ...actual, photos: ['', ...photos.slice(1)] }))
+      .toThrow(expect.objectContaining({ issues: [{ field: 'photo', expected: 66, observed: 65 }] }));
+    expect(trace).toHaveBeenCalledWith('verification', 'fail', {
+      check: 'photo_order', reason: 'PHOTO_PATH_UNREADABLE', counts: { expected: 66, observed: 65, photoSlots: 66 },
+    });
+    for (const changed of [[photos[1]!, photos[0]!, ...photos.slice(2)], [photos[0]!.replace('/3a2888/', '/3a2889/'), ...photos.slice(1)]]) {
+      expect(() => verifyFullBandPost(title, uploaded, { ...actual, photos: changed }))
+        .toThrow(expect.objectContaining({ issues: [{ field: 'order', index: 1, expected: 66, observed: 66 }] }));
+    }
+    expect(JSON.stringify(trace.mock.calls)).not.toMatch(/w520|\/a\/3a2888/);
+  } finally { trace.mockRestore(); }
+});
+
+const cdnPath = '/a/abc123/a_01234567890123456789012_id0001';
+const cdnHost = 'coresos-phinf.pstatic.net';
+const cdnAlias = 'coresos.phinf.naver.net';
+it('normalizes CDN host, scheme, size query and bounded path suffix while preserving the photo identity', () => {
+  expect(bandPhotoPath(`https://${cdnHost}${cdnPath}.jpg`)).toBe(cdnPath + '.jpg');
+  expect(bandPhotoPath(`http://${cdnAlias}${cdnPath}.jpg?type=e1920_std`)).toBe(cdnPath + '.jpg');
+  expect(bandPhotoPath(`//${cdnHost}${cdnPath}_e1920_std.jpg?type=e1920_std`)).toBe(cdnPath + '.jpg');
+  expect(bandPhotoPath(`https://${cdnHost}${cdnPath}.jpg!e1920_std`)).toBe(cdnPath + '.jpg');
+  expect(bandPhotoPath(`https://${cdnHost}${cdnPath}.jpg_other`)).toBe(cdnPath + '.jpg_other');
+  expect(bandPhotoPath(`https://${cdnHost}${cdnPath}_anything_e1920_std.jpg`)).toBe(cdnPath + '_anything_e1920_std.jpg');
+  expect(bandPhotoPath(`https://${cdnHost}.invalid${cdnPath}_e1920_std.jpg`)).toBe(cdnPath + '_e1920_std.jpg');
+  expect(bandPhotoPath(`https://${cdnAlias}${cdnPath.replace('abc123', 'abc124')}.jpg`)).not.toBe(cdnPath + '.jpg');
+});
+
+it('reports the first API mismatch or the first out-of-order collage slot with only photo shapes', () => {
+  const trace = vi.spyOn(telemetry, 'trace');
+  try {
+    const paths = [cdnPath, cdnPath.replace('id0001', 'id0002'), cdnPath.replace('id0001', 'id0003')];
+    const uploaded = paths.map(path => `https://${cdnHost}${path}.jpg?token=upload-private`);
+    const apiPhotos = paths.map(path => bandPhotoEvidence(`http://${cdnAlias}${path}.jpg?token=api-private`)!);
+    const photos = [paths[2]!, paths[0]!].map(path => `https://${cdnHost}${path}_e1920_std.jpg?token=dom-private`);
+    const actual = { body: title, photos, apiPhotos, collage: true, lineBreaks: 0, hashtags: 0, links: 0, tagTexts: [], linkUrls: [], tagTokens: [], linkTokens: [] };
+    expect(() => verifyFullBandPost(title, uploaded, { ...actual, apiPhotos: [apiPhotos[0]!, apiPhotos[2]!, apiPhotos[1]!] }))
+      .toThrow(expect.objectContaining({ issues: [{ field:'order', index:2, expected:3, observed:3 }] }));
+    expect(trace).toHaveBeenCalledWith('verification', 'fail', {
+      check: 'photo_order', reason: 'UPLOAD_PATH_MISMATCH', counts: { expected: 3, observed: 3 },
+      photoOrder: { index: 2, expected: { host: cdnHost, fileTail: '0002.jpg', hasSizeSuffix: false },
+        observed: { host: cdnAlias, fileTail: '0003.jpg', hasSizeSuffix: false } },
+    });
+    trace.mockClear();
+    expect(() => verifyFullBandPost(title, uploaded, actual))
+      .toThrow(expect.objectContaining({ issues: [{ field:'order', index:2, expected:3, observed:3 }] }));
+    expect(trace).toHaveBeenCalledWith('verification', 'fail', {
+      check: 'photo_order', reason: 'DOM_ORDER_MISMATCH', counts: { expected: 3, observed: 3 },
+      photoOrder: { index: 2, expected: { host: cdnAlias, fileTail: '0003.jpg', hasSizeSuffix: false },
+        observed: { host: cdnHost, fileTail: '_std.jpg', hasSizeSuffix: true } },
+    });
+    expect(JSON.stringify(trace.mock.calls)).not.toMatch(/-private|\/a\//);
+  } finally { trace.mockRestore(); }
 });

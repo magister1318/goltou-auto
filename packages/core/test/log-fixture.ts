@@ -2,6 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { expect } from 'vitest';
 import { JobLogStore } from '../src/job-logs';
+import { tracePayload } from '../src/post-trace-payload';
 import { configureTrace, traceJob, type JobKind, type TraceProvider, type TraceStep } from '@goltou/surface/telemetry';
 
 /** A durable boundary is written, then that boundary fails before any action. */
@@ -29,6 +30,8 @@ export async function loggedFixture<T>(directory: string, kind: JobKind, work: (
     const terminal = lines.filter(line => line.step === 'terminal'); expect(terminal).toHaveLength(1); expect(terminal[0].result).toBe('succeeded');
     const starts = lines.filter(line => line.event === 'start' && expectedSteps.includes(line.step)).map(line => line.step);
     expect(starts).toEqual(expectedSteps);
-    return { result, lines };
+    const channel = kind.startsWith('blog') ? 'blog' : 'band';
+    const payload = tracePayload(store, terminal[0].jobId, 1, channel, store.identity('fixture'));
+    return { result, lines, payload };
   } finally { configureTrace(undefined); }
 }

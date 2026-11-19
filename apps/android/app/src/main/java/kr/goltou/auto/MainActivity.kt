@@ -28,6 +28,10 @@ class MainActivity : ComponentActivity() {
     private lateinit var link: CoreLink
     private lateinit var session: AppSession
     private val localDataDocuments = LocalDataDocuments(this) { session }
+    private val updateInstaller = registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult()) {
+        if (::session.isInitialized && session.initialized) session.updater.installerResult(it.resultCode)
+    }
+    fun openUpdateInstaller(intent: android.content.Intent) { updateInstaller.launch(intent) }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -93,13 +97,23 @@ class MainActivity : ComponentActivity() {
         root.addView(visible, FrameLayout.LayoutParams(-1, -1))
         surfaces = SurfaceHost(session.context, hidden, visible,
             { id -> retained.link.event("surface.hidden", org.json.JSONObject().put("surface", id)) },
-            { id -> retained.link.event("surface.navigationHidden", org.json.JSONObject().put("surface", id)) })
+            { id -> retained.link.event("surface.navigationHidden", org.json.JSONObject().put("surface", id)) },
+            { diagnostic -> retained.link.event("surface.connectionDiagnostic", diagnostic) })
         retained.surfaces = surfaces
         val secureSession = SecureSession(applicationContext)
+        retained.updater = AppUpdate(retained)
         link = CoreLink { op, msg, reply ->
-            if (op == "app.jobState") {
+            if (op.startsWith("update.")) retained.updater.handle(op, msg, reply)
+            else if (op == "app.jobState") {
                 retained.root.post { retained.root.keepScreenOn = msg.optBoolean("running") }
                 reply(org.json.JSONObject(), null)
+            }
+            else if (op == "app.exit") {
+                val event = msg.getString("event")
+                check(event in setOf("hint", "confirm", "cancel", "finish"))
+                android.util.Log.i("GOLTOU", "app.exit.$event")
+                reply(org.json.JSONObject(), null)
+                if (event == "finish") retained.root.post { retained.activity?.finish() }
             }
             else if (op == "app.openPost") {
                 val uri = android.net.Uri.parse(msg.getString("url"))
@@ -111,6 +125,7 @@ class MainActivity : ComponentActivity() {
             }
             else if (op == "logs.environment") reply(org.json.JSONObject()
                 .put("appVersion", BuildConfig.VERSION_NAME)
+                .put("versionCode", BuildConfig.VERSION_CODE)
                 .put("deviceModel", android.os.Build.MODEL)
                 .put("webViewVersion", android.webkit.WebView.getCurrentWebViewPackage()?.versionName ?: ""), null)
             else if (op == "logs.export") Thread {

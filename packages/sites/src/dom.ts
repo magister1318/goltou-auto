@@ -1,4 +1,4 @@
-import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
+import { traceStep, trace, reasonCode, type TraceDetail } from '@goltou/surface/telemetry';
 import type { Surface } from '@goltou/surface';
 import { ControlNotFoundError, type ControlId } from './control-failure';
 
@@ -28,17 +28,10 @@ export async function point(surface: Surface, selector: string, exactText?: stri
     });
   }
 export async function click(surface: Surface, control: ControlId, selector: string, text?: string, timeoutMs = 8000): Promise<void> {
-    return traceStep('sites.dom.click', async () => {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const found = await point(surface, selector, text);
-    if (found) { await surface.click(found.x, found.y); await sleep(350); return; }
-    trace('poll', 'retry'); await sleep(250);
-  }
-  trace('selector', 'fail', { selector: /TITLE/.test(control) ? 'title' : /BODY/.test(control) ? 'body' : /PHOTO|IMAGE/.test(control) ? 'photo_input' : /SAVE|PUBLISH/.test(control) ? 'submit' : 'other', reason: 'CONTROL_NOT_FOUND' });
-  throw new ControlNotFoundError(control);
-
-    });
+  const found = await pollControl(() => point(surface, selector, text), timeoutMs, { surface, control },
+    'sites.dom.click', () => new ControlNotFoundError(control));
+  await surface.click(found.x, found.y);
+  await sleep(350);
   }
 export async function typeParagraphs(surface: Surface, paragraphs: readonly string[], check: () => void) {
     return traceStep('sites.dom.typeParagraphs', async () => {
@@ -49,15 +42,49 @@ export async function typeParagraphs(surface: Surface, paragraphs: readonly stri
 
     });
   }
-export async function waitFor<T>(readValue: () => Promise<T | null | false>, timeoutMs = 15000): Promise<T> {
-    return traceStep('sites.dom.waitFor', async () => {
+type ControlObservation = { surface: Surface; control: NonNullable<TraceDetail['selector']>; diagnostics?: () => Pick<TraceDetail, 'bandWrite'> };
+
+export function waitFor<T>(readValue: () => Promise<T | null | false>, timeoutMs = 15000, observation?: ControlObservation): Promise<T> {
+  return pollControl(readValue, timeoutMs, observation, 'sites.dom.waitFor', () => Error('OBSERVATION_TIMEOUT'));
+}
+
+async function pollControl<T>(readValue: () => Promise<T | null | false>, timeoutMs: number, observation: ControlObservation | undefined,
+  step: 'sites.dom.waitFor' | 'sites.dom.click', timeout: () => Error): Promise<T> {
+  const start = Date.now();
+  const detail = { selector: observation?.control ?? 'other', counts: { timeoutMs } } as const;
+  trace(step, 'start', detail);
   const deadline = Date.now() + timeoutMs;
   let attempt = 0;
-  while (Date.now() < deadline) { const v = await readValue(); if (v) return v; trace('poll', 'wait', { counts: { attempt: ++attempt } }); await sleep(250); }
-  throw new Error('OBSERVATION_TIMEOUT');
-
-    });
+  try {
+    while (Date.now() < deadline) {
+      const value = await readValue();
+      if (value) { trace(step, 'ok', { ...detail, counts: { timeoutMs, attempt: attempt + 1 } }, Date.now() - start); return value; }
+      trace('poll', 'wait', { ...detail, counts: { timeoutMs, attempt: ++attempt } });
+      await sleep(250);
+    }
+  } catch (error) {
+    trace(step, 'fail', { ...detail, reason: reasonCode(error) }, Date.now() - start);
+    throw error;
   }
+  let summary: Awaited<ReturnType<typeof observationSummary>> | undefined;
+  try {
+    if (observation && !await observation.surface.readDialog?.()) summary = await observationSummary(observation.surface);
+  } catch { /* A detached or dialog-blocked document has no summary. */ }
+  const error = timeout();
+  trace(step, 'fail', { ...detail, reason: reasonCode(error),
+    ...observation?.diagnostics?.(),
+    ...(summary ? { navigation: { host: summary.host, path: summary.path } } : {}),
+    counts: { timeoutMs, attempt, ...summary?.controls } }, Date.now() - start);
+  throw error;
+  }
+
+const observationSummary = (surface: Surface) => read<{ host: string; path: string; controls: NonNullable<TraceDetail['counts']> }>(surface, `
+  const count=selector=>docs.reduce((sum,{d})=>sum+d.querySelectorAll(selector).length,0);
+  return {host:location.hostname,path:location.pathname,controls:{
+    documents:docs.length,editables:count('textarea,[contenteditable="true"]'),fileInputs:count('input[type="file"]'),
+    writeButtons:count('._btnPostWrite,._btnOpenWriteLayer'),dialogs:count('[role="dialog"],[role="alertdialog"],.lyWrap,.modalLayerView,[class*="modalWrap"]'),
+    composers:count('.postWriteSection,.cke_editable,._postTextArea'),postBodies:count('.postTextView,.postText,p.txtBody,.se-main-container')
+  }};`);
 export const compact = (text: string) => text.replace(/[\s\u200b-\u200d\ufeff]+/gu, '');
 
 /** A structural summary contains counts only. Text, attributes and URLs never leave the page. */

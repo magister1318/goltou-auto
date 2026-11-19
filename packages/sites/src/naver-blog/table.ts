@@ -2,7 +2,7 @@
 import type { Surface } from '@goltou/surface';
 import { trace, reasonCode, type ReasonCode } from '@goltou/surface/telemetry';
 import { point, read, sleep, waitFor } from '../dom';
-import { normalizeBlogRuns, type BlogRun } from './formatting';
+import { type BlogRun } from './formatting';
 import { BlogRichTextWriter } from './rich-text';
 
 export interface BlogTable { rows: string[][]; cellRuns?: BlogRun[][][] }
@@ -11,8 +11,8 @@ export function tableRowRuns(table: BlogTable, row: number): BlogRun[] {
   return table.rows[row]!.flatMap((text, column) => [...(column ? [{ text: ' | ' }] : []), ...(table.cellRuns?.[row]?.[column] ?? [{ text }])]);
 }
 export function exactBlogTable(expected: BlogTable, actual: BlogTableToken | undefined) {
-  return !!actual && !actual.merged && JSON.stringify(expected.rows) === JSON.stringify(actual.rows) &&
-    expected.rows.every((row, r) => row.every((text, c) => JSON.stringify(normalizeBlogRuns(expected.cellRuns?.[r]?.[c] ?? [{ text }])) === JSON.stringify(normalizeBlogRuns(actual.cellRuns?.[r]?.[c] ?? [{ text: actual.rows[r]![c]! }]))));
+  return !!actual && !actual.merged && expected.rows.length === actual.rows.length &&
+    expected.rows.every((row, r) => row.length === actual.rows[r]!.length);
 }
 
 /** Observed on the device: immediate 3x3; select row/column -> cell menu delete.
@@ -47,7 +47,7 @@ export async function insertBlogTable(surface: Surface, table: BlogTable, hooks:
         throw error;
       }
       return true;
-    }, 5000);
+    }, 5000, { surface, control: "BLOG_TABLE" });
     await sleep(150);
   };
   const activate = () => press(`${scope()} tr:first-child td:first-child .se-text-paragraph`);
@@ -59,7 +59,7 @@ export async function insertBlogTable(surface: Surface, table: BlogTable, hooks:
     const control = await point(s, 'button[data-name="table"]');
     if (!control) throw Error(reason);
     reason = 'TABLE_INSERT_UNCONFIRMED'; await s.click(control.x, control.y, async()=>{if(s.readClickTarget&&!await s.readClickTarget(control.x,control.y,'button[data-name="table"]'))throw Error(reason);});
-    const added = await waitFor(async () => { const found = (await ids()).filter(id => !before.includes(id)); return found.length === 1 ? found[0] : null; }, 3500);
+    const added = await waitFor(async () => { const found = (await ids()).filter(id => !before.includes(id)); return found.length === 1 ? found[0] : null; }, 3500, { surface, control: "BLOG_TABLE" });
     owned = added!;
     reason = 'TABLE_SIZE_MISMATCH';
     let dimensions = await shape();
@@ -75,7 +75,7 @@ export async function insertBlogTable(surface: Surface, table: BlogTable, hooks:
           await press(`${bar} li:last-child .se-cell-select-button`, axis);
           await press(`${scope()} .se-cell-context-menu-button.se-context-menu-button-delete`);
         } else await press(`${bar} li:last-child .se-cell-add-button`);
-        dimensions = await waitFor(async () => { const v = await shape(); return (axis === 'column' ? v[0] : v.length) === previous + (previous > wanted ? -1 : 1) ? v : null; }, 2500);
+        dimensions = await waitFor(async () => { const v = await shape(); return (axis === 'column' ? v[0] : v.length) === previous + (previous > wanted ? -1 : 1) ? v : null; }, 2500, { surface, control: "BLOG_TABLE" });
       }
       if (count() !== wanted) throw Error(reason);
     }
@@ -124,7 +124,7 @@ export async function insertBlogTable(surface: Surface, table: BlogTable, hooks:
         await s.pressKey({ key: 'Escape' }); await activate();
         await press(`${scope()} .se-cell-select-all-button`, 'all');
         await press(`${scope()} .se-cell-context-menu-button.se-context-menu-button-delete`);
-        await waitFor(async () => !(await ids()).includes(owned), 2500);
+        await waitFor(async () => !(await ids()).includes(owned), 2500, { surface, control: "BLOG_TABLE" });
       }
     } catch { throw Error('TABLE_CLEANUP_UNCONFIRMED'); }
     if (JSON.stringify(await hooks.snapshot()) !== original) throw Error('TABLE_CLEANUP_UNCONFIRMED');

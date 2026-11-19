@@ -26,6 +26,7 @@ class AppSession(application: Application) : AndroidViewModel(application) {
     lateinit var ui: WebView
     lateinit var surfaces: SurfaceHost
     lateinit var link: CoreLink
+    lateinit var updater: AppUpdate
     val initialized get() = ::ui.isInitialized
     var activity: MainActivity? = null
     var localDataReply: ((JSONObject?, String?) -> Unit)? = null
@@ -113,7 +114,7 @@ class AppSession(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         disposed = true
         if (initialized) {
-            link.close(); surfaces.close()
+            updater.cancel(); link.close(); surfaces.close()
             (ui.parent as? android.view.ViewGroup)?.removeView(ui)
             ui.destroy()
         }

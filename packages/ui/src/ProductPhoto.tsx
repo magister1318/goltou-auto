@@ -39,10 +39,12 @@ function Photo({
   src,
   preview,
   ratio,
+  retry,
 }: {
   src: string | undefined;
   preview: boolean;
   ratio?: number | undefined;
+  retry: boolean;
 }) {
   const frame = useRef<HTMLSpanElement>(null);
   const [nearby, setNearby] = useState(!preview);
@@ -82,7 +84,7 @@ function Photo({
       {unavailable ? (
         <>
           <PhotoPlaceholder preview={preview} />
-          {failed && (
+          {failed && retry && (
             <button
               className="photo-retry"
               onClick={() => {
@@ -122,10 +124,12 @@ export function ProductPhoto({
   url,
   preview = false,
   ratio,
+  retry = true,
 }: {
   url?: string;
   preview?: boolean;
   ratio?: number | undefined;
+  retry?: boolean;
 }) {
   const src = photoSource(url);
   // Reset load/error state when an API URL changes, even in the same list row.
@@ -135,6 +139,7 @@ export function ProductPhoto({
       src={src}
       preview={preview}
       ratio={ratio}
+      retry={retry}
     />
   );
 }

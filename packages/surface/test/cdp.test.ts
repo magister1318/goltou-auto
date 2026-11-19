@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { existsSync } from 'node:fs';
+import { chromium } from 'playwright-core';
 import { WebSocketServer, type WebSocket } from 'ws';
 import { CdpConnection, CdpSurface, type SurfaceLifecycle } from '../src/cdp';
 import { configureTrace, type TraceDetail, type TraceJob } from '../src/telemetry';
@@ -6,6 +8,7 @@ import { configureTrace, type TraceDetail, type TraceJob } from '../src/telemetr
 interface Command { id: number; method: string; params: Record<string, unknown> }
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => { for (const fn of cleanup.splice(0).reverse()) await fn(); });
+const executablePath = [process.env.CHROMIUM, 'C:/Program Files/Google/Chrome/Application/chrome.exe', '/usr/bin/chromium'].find(p => p && existsSync(p));
 
 async function fixture(handler?: (command: Command, socket: WebSocket) => boolean) {
   const commands: Command[] = [];
@@ -158,22 +161,20 @@ describe('CDP Surface', () => {
     await expect(f.surface.open({ url: 'https://example.com/', session: 'naver', width: 412, height: 800, userAgent: 'fixture' })).rejects.toThrow('net::ERR_ABORTED');
     expect(f.visibility()).toBe(false);
   });
-  it.each([{ x: 0, y: 0 }, { x: 12, y: 340 }])('uses the outer document scroll for hit testing even when CDP metrics describe a scrolled iframe (%j)', async scroll => {
+  it.each([{ x: 490, y: 895 }, { x: 12.25, y: 340.75 }])('tests the unrounded viewport point in the root frame isolated world (%j)', async ({ x, y }) => {
     const f = await fixture((command, socket) => {
       let result: unknown;
-      if (command.method === 'Runtime.evaluate') result = { result: { value: scroll } };
-      else if (command.method === 'Page.getLayoutMetrics') result = { cssVisualViewport: { pageX: 0, pageY: 1647 } };
-      else if (command.method === 'DOM.getNodeForLocation') result = { backendNodeId: 91 };
-      else if (command.method === 'DOM.resolveNode') result = { object: { objectId: 'synthetic-node' } };
-      else if (command.method === 'Runtime.callFunctionOn') result = { result: { value: true } };
+      if (command.method === 'Page.getFrameTree') result = { frameTree: { frame: { id: 'outer' }, childFrames: [{ frame: { id: 'editor' } }] } };
+      else if (command.method === 'Page.createIsolatedWorld') result = { executionContextId: 19 };
+      else if (command.method === 'Runtime.evaluate') result = { result: { value: true } };
       else return false;
       socket.send(JSON.stringify({ id: command.id, result })); return true;
     });
-    expect(await f.surface.readClickTarget(490, 895, 'body')).toBe(true);
-    expect(f.commands.find(c => c.method === 'DOM.getNodeForLocation')?.params).toMatchObject({ x: 490 + scroll.x, y: 895 + scroll.y });
-    expect(f.commands.filter(c => c.method === 'Runtime.evaluate' || c.method === 'Runtime.callFunctionOn').every(c => c.params.throwOnSideEffect === true)).toBe(true);
-    expect(f.commands.some(c => c.method.startsWith('Input.'))).toBe(false);
-    expect(f.commands.at(-1)?.method).toBe('Runtime.releaseObject');
+    expect(await f.surface.readClickTarget(x, y, 'body')).toBe(true);
+    expect(f.commands.map(c => c.method)).toEqual(['Page.getFrameTree', 'Page.createIsolatedWorld', 'Runtime.evaluate']);
+    expect(f.commands[1]?.params).toEqual({ frameId: 'outer', worldName: 'goltou-click-target' });
+    expect(f.commands[2]?.params).toMatchObject({ contextId: 19, returnByValue: true });
+    expect(f.commands[2]?.params.expression).toContain(`)(${x},${y},"body",null,null)`);
   });
   it.each(['missing', 'truncated', 'unavailable'] as const)('obtains omitted/full paused POST data or fails closed (%s)', async mode => {
     const inspect = vi.fn(request => request.postDataComplete === true && request.postData === 'openType=0');
@@ -395,4 +396,42 @@ describe('CDP Surface', () => {
     f.connection.close();
     await expect(pending).rejects.toThrow('CDP_CLOSED');
   });
+});
+
+it.runIf(Boolean(executablePath))('hits a scrolled same-origin editor frame and rejects parent overlays and opaque frames', async () => {
+  const browser = await chromium.launch({ executablePath: executablePath!, headless: true, args: ['--disable-background-networking'] });
+  cleanup.push(() => browser.close());
+  const page = await browser.newPage({ viewport: { width: 600, height: 600 } });
+  const cdp = await page.context().newCDPSession(page);
+  const connection = {
+    on: () => {},
+    send: (method: string, params: object) => cdp.send(method as never, params as never),
+  } as unknown as CdpConnection;
+  const surface = new CdpSurface('naver', connection, { setVisible: async () => {}, close: async () => {} }, 0);
+  await page.setContent(`
+    <style>body{margin:0;height:1800px}iframe{position:fixed;top:40px;left:30px;border:8px solid;padding:4px}
+    #overlay{position:fixed;top:80px;left:60px;width:80px;height:60px}</style>
+    <iframe srcdoc="<style>body{margin:0;height:800px}button{position:absolute;left:20px;top:230px;width:80px;height:36px}span{display:block}</style>
+      <button id='target'><span>저장</span></button>"></iframe>
+    <button id="overlay" hidden>다른 제어</button>
+    <script>document.elementFromPoint = () => document.querySelector('#overlay')</script>`);
+  await page.evaluate(() => window.scrollTo(0, 300));
+  await page.frameLocator('iframe').locator('#target').evaluate(e => {
+    e.ownerDocument.defaultView!.scrollTo(0, 180);
+    e.ownerDocument.elementFromPoint = () => e.ownerDocument.body;
+  });
+  const { x, y } = (await page.frameLocator('iframe').locator('#target span').boundingBox())!;
+  const report = vi.fn();
+  const onMiss = { classes: [], ariaLabels: [], report };
+  await expect(surface.readClickTarget(x + 4, y + 4, '#target', { exactText: '저장' })).resolves.toBe(true);
+  await expect(surface.readClickTarget(x + 4, y + 4, '#target', { exactText: '발행', onMiss })).resolves.toBe(false);
+  expect(report).toHaveBeenLastCalledWith(expect.objectContaining({ scrollY: 300, rejectedHit: expect.objectContaining({ tag: 'span', relation: 'descendant' }) }));
+  await page.locator('#overlay').evaluate(e => { (e as HTMLElement).hidden = false; });
+  await expect(surface.readClickTarget(x + 4, y + 4, '#target', { onMiss })).resolves.toBe(false);
+  expect(report).toHaveBeenLastCalledWith(expect.objectContaining({ rejectedHit: expect.objectContaining({ tag: 'button', relation: 'unrelated' }) }));
+  await page.locator('#overlay').evaluate(e => { (e as HTMLElement).hidden = true; });
+  await page.locator('iframe').evaluate(e => { e.setAttribute('sandbox', ''); e.setAttribute('srcdoc', '<button id="target" style="width:100%;height:100%">저장</button>'); });
+  await page.frameLocator('iframe').locator('#target').waitFor();
+  await expect(surface.readClickTarget(x + 4, y + 4, '#target', { onMiss })).resolves.toBe(false);
+  expect(report).toHaveBeenLastCalledWith(expect.objectContaining({ rejectedHit: expect.objectContaining({ tag: 'iframe' }) }));
 });

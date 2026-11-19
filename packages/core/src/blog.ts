@@ -1,7 +1,8 @@
-import { BlogExecution, expectedBlogTags, sameBlogTags, sameServiceBlogTags, ReadbackMismatch, type BlogReadback, type BlogToken } from '@goltou/sites';
+import { BlogExecution, expectedBlogTags, sameBlogTags, sameServiceBlogTags, ReadbackMismatch, compareReadbackText, traceReadbackText, sameReadbackNumbers, type BlogReadback, type BlogToken, type ReadbackIssue } from '@goltou/sites';
+import { trace } from '@goltou/surface/telemetry';
 import type { SurfaceHost } from '@goltou/surface';
 import type { InputPlan } from './convert';
-import { compact, compareDocuments, observePlan, type Observation } from './verify';
+import { compact, observePlan, type Observation } from './verify';
 import type { MediaFile } from './media';
 import { verificationProgress } from './verify-progress';
 
@@ -21,6 +22,7 @@ export interface BlogServices {
 // Naver can transcode an upload (jpg -> png). The source-byte hash and ordinal
 // in our filename remain the identity; a server-chosen suffix is not identity.
 const photoIdentity = (value: string) => /^(goltou-[a-f0-9]{16}-[0-9]+)(?:\.[a-z]+)?$/i.exec(value)?.[1] ?? '';
+// Strict projection for explicit recovery tools and original-plan diagnostics.
 export function blogObservation(plan: InputPlan, files: readonly MediaFile[], actual: BlogReadback, saved = false): Observation {
   const result: Observation = { title: actual.title, text: '', paragraphs: [], photos: [], prices: [], departures: [], golfCourses: [] };
   const all = [actual.title];
@@ -73,14 +75,36 @@ export function blogObservation(plan: InputPlan, files: readonly MediaFile[], ac
   if (!(saved ? sameServiceBlogTags(plan, actual.tags) : sameBlogTags(expectedBlogTags(plan), actual.tags))) all.push('UNEXPECTED_TAGS');
   result.text = all.join('\n'); return result;
 }
+function verifyBlogContent(plan: InputPlan, files: readonly MediaFile[], actual: BlogReadback, saved: boolean) {
+  const expected = observePlan(plan);
+  const issues: ReadbackIssue[] = [];
+  const title = compareReadbackText([expected.title], [actual.title]);
+  traceReadbackText(title);
+  if (title.missing.length) issues.push({ field: 'title' });
+  if (!sameReadbackNumbers(expected.title, actual.title)) issues.push({ field: 'number' });
+  const photos = actual.tokens.filter(token => token.kind === 'photo');
+  if (photos.length !== expected.photos.length || expected.photos.some((url, i) => {
+    const identity = photoIdentity(files.find(file => file.url === url)?.path.split(/[\\/]/).pop() ?? '');
+    return !identity || photoIdentity(photos[i]?.identity ?? '') !== identity;
+  })) issues.push({ field: 'photo' });
+  const checked = (check: 'title' | 'number' | 'photo' | 'photo_order' | 'hashtags', same: boolean, expected: number, observed: number, reason: import('@goltou/surface/telemetry').ReasonCode) =>
+    trace('verification', same ? 'ok' : 'fail', { check, reason, counts: { expected, observed } });
+  checked('title', !title.missing.length, expected.title.length, actual.title.length, 'READBACK_TITLE');
+  checked('number', !issues.some(issue => issue.field === 'number'), 1, Number(!issues.some(issue => issue.field === 'number')), 'READBACK_NUMBER');
+  checked('photo', photos.length === expected.photos.length, expected.photos.length, photos.length, 'READBACK_PHOTO');
+  checked('photo_order', !issues.some(issue => issue.field === 'photo'), expected.photos.length, photos.length, 'READBACK_PHOTO');
+  const tagsMatch = saved ? sameServiceBlogTags(plan, actual.tags) : sameBlogTags(expectedBlogTags(plan), actual.tags);
+  trace('verification', tagsMatch ? 'ok' : 'wait', { check: 'hashtags', reason: 'READBACK_TAGS', counts: { expected: expectedBlogTags(plan).length, observed: actual.tags.length } });
+  return issues;
+}
 export function createBlogExecution(plan: InputPlan, files: readonly MediaFile[], services: BlogServices,
   hooks: Pick<ConstructorParameters<typeof BlogExecution>[2], 'check' | 'progress' | 'beforeSave' | 'mode' | 'visibility'>) {
   let last: import('@goltou/sites').BlogProgress = { characters: 0, totalCharacters: 0, photos: 0, totalPhotos: files.length };
   const progress = (value: import('@goltou/sites').BlogProgress) => { last = value; hooks.progress(value); };
   const execution: BlogExecution = new BlogExecution(plan, files, { ...services, ...hooks, progress, verify: (actual, stage) => {
-    const comparison = compareDocuments(observePlan(plan), blogObservation(plan, execution.files, actual, !!stage && ['AFTER_SAVE','REOPENED','PUBLISHED'].includes(stage)));
-    verificationProgress('blog', comparison, last, hooks.progress);
-    if (!comparison.matches) throw new ReadbackMismatch(`BLOG_READBACK_MISMATCH:${comparison.differences.map(d => d.field).join(',')}`, comparison.differences.map(d=>({field:d.field==='title'?'title':d.field==='photos'?'photos':'text'})));
+    const issues = verifyBlogContent(plan, execution.files, actual, !!stage && ['AFTER_SAVE', 'REOPENED', 'PUBLISHED'].includes(stage));
+    verificationProgress('blog', issues, last, hooks.progress);
+    if (issues.length) throw new ReadbackMismatch(`BLOG_READBACK_MISMATCH:${[...new Set(issues.map(issue => issue.field))].join(',')}`, issues);
   } });
   return execution;
 }

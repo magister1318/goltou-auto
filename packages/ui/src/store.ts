@@ -3,7 +3,7 @@ import type { AppSnapshot, Commands } from '@goltou/core/protocol';
 type State = { connected: boolean; debug: boolean; snapshot: AppSnapshot | null; error: string };
 let state: State = { connected: false, debug: false, snapshot: null, error: '' };
 const listeners = new Set<() => void>();
-const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
+const pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout>; quiet: boolean }>();
 let socket: WebSocket;
 let serial = 0;
 function update(next: Partial<State>) { state = { ...state, ...next }; for (const listener of listeners) listener(); }
@@ -25,7 +25,8 @@ export function connect() {
     if (!item) return;
     clearTimeout(item.timer); pending.delete(message.id!);
     if (message.type === 'error') {
-      update({ error: message.message ?? '요청에 실패했습니다.' }); item.reject(Object.assign(new Error(message.message), { code: message.code }));
+      if (!item.quiet) update({ error: message.message ?? '요청에 실패했습니다.' });
+      item.reject(Object.assign(new Error(message.message), { code: message.code }));
     } else item.resolve(message.data ?? message.state);
   };
   socket.onclose = () => {
@@ -34,17 +35,17 @@ export function connect() {
   };
   socket.onerror = () => update({ error: '앱에 연결하지 못했습니다. 다시 열어 주세요.' });
 }
-function send(message: Record<string, unknown>): Promise<unknown> {
+function send(message: Record<string, unknown>, quiet = false): Promise<unknown> {
   if (socket?.readyState !== WebSocket.OPEN) return Promise.reject(new Error('앱 연결을 기다려 주세요.'));
   return new Promise((resolve, reject) => {
     const id = ++serial;
     // A long introduction is still typed at the Surface's human input pace.
-    const timer = setTimeout(() => { pending.delete(id); update({ error: '응답이 늦습니다. 다시 시도해 주세요.' }); reject(new Error('응답 시간 초과')); }, message.command === 'preview.prepare' ? 1800000 : message.command === 'posts.delete.confirm' ? 180000 : ['bands.list', 'service.show', 'service.hide', 'service.check'].includes(String(message.command)) ? 120000 : 30000);
-    pending.set(id, { resolve, reject, timer }); socket.send(JSON.stringify({ id, ...message }));
+    const timer = setTimeout(() => { pending.delete(id); if (!quiet) update({ error: '응답이 늦습니다. 다시 시도해 주세요.' }); reject(new Error('응답 시간 초과')); }, message.command === 'preview.prepare' ? 1800000 : message.command === 'posts.delete.confirm' ? 180000 : ['bands.list', 'service.show', 'service.hide', 'service.check'].includes(String(message.command)) ? 120000 : 30000);
+    pending.set(id, { resolve, reject, timer, quiet }); socket.send(JSON.stringify({ id, ...message }));
   });
 }
-export function request<K extends keyof Commands>(command: K, input: Commands[K]['input']): Promise<Commands[K]['output']> {
-  return send({ type: 'app', command, input }) as Promise<Commands[K]['output']>;
+export function request<K extends keyof Commands>(command: K, input: Commands[K]['input'], quiet = false): Promise<Commands[K]['output']> {
+  return send({ type: 'app', command, input }, quiet) as Promise<Commands[K]['output']>;
 }
 export function diagnose(url: string) { return send({ type: 'diagnose', url }) as Promise<{ title: string; url: string }>; }
 export function experiment(command: string, input: Record<string, unknown> = {}) {

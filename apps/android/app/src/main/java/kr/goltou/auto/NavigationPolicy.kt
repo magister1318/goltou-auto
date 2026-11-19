@@ -11,6 +11,6 @@ data class NavigationPolicy(val allowed: List<NavigationRoute>, val landing: Lis
         val uri = URI(url)
         uri.scheme == "https" && uri.rawUserInfo == null && (uri.port == -1 || uri.port == 443) &&
             routes.any { uri.host.equals(it.hostname, ignoreCase = true) &&
-                if (it.prefix) uri.rawPath.startsWith(it.pathname) else uri.rawPath == it.pathname }
+                if (it.prefix) uri.rawPath.ifEmpty { "/" }.startsWith(it.pathname) else uri.rawPath.ifEmpty { "/" } == it.pathname }
     } catch (_: Exception) { false }
 }

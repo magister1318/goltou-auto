@@ -10,7 +10,7 @@ const store = vi.hoisted(() => ({
     services: { naver: 'confirmed', band: 'confirmed' }, job: null,
   },
   request: vi.fn(async (command: string) => command === 'preferences.get'
-    ? { polish: false, closing: false, linkCard: false, lastBandKey: '' }
+    ? { polish: false, closing: false, linkCard: false, lastBandKeys: [] }
     : command === 'polish.setting.get' ? 'spelling' : { items: [], total: 0 }),
 }));
 vi.mock('../src/store', () => ({

@@ -33,8 +33,7 @@ export function protectBlogInputs(surface: Surface, allowLayerClick?: (x: number
   };
   surface.click = async (x, y, beforePress) => {
     if (await tagLayerOpen(surface)) {
-      // elementFromPoint is rejected by CDP throwOnSideEffect (layout flush).
-      // Use the Surface's read-only compositor hit test, never approximate rectangles.
+      // Check the element hit at the actual pointer position.
       const safe = await surface.readClickTarget?.(x, y, `${tagInputSelector}, ${tagPanelToggle}`).catch(() => false);
       if (!safe && !await allowLayerClick?.(x, y)) throw new Error('BLOG_TAG_FOCUS_LOST');
     }

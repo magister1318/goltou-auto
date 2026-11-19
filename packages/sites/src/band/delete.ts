@@ -3,6 +3,7 @@ import type { Surface, SurfaceHost } from '@goltou/surface';
 import { read, sleep } from '../dom';
 import { requestFields } from '../naver-blog/request-fields';
 import { bandMobileUA } from './plan';
+import { dismissBandAppPrompt } from './app-prompt';
 
 export type BandDeleteResult = {
   status: 'deleted' | 'not_started' | 'uncertain';
@@ -97,14 +98,16 @@ export async function deleteRecordedBandPost(
       },
       () => {},
     );
-    const open = () =>
-      s.open({
+    const open = async () => {
+      await s.open({
         url: identity.url,
         session: 'band',
         width: 1280,
         height: 900,
         userAgent: bandMobileUA,
       });
+      await dismissBandAppPrompt(s, identity.url);
+    };
     const location = async () =>
       sameUrl((await s.readState()).url, identity.url);
     const gone = async () =>
@@ -199,7 +202,7 @@ export async function deleteRecordedBandPost(
       await sleep(250);
     }
     return { status: 'uncertain' };
-  } catch { trace('sites.band.delete.deleteRecordedBandPost', 'fail', { reason: 'CAUGHT_FAILURE' });
+  } catch (error) { trace('sites.band.delete.deleteRecordedBandPost', 'fail', { reason: reasonCode(error) });
     return { status: attempted ? 'uncertain' : 'not_started' };
   } finally {
     armed = false;

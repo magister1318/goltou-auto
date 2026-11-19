@@ -45,7 +45,7 @@ export function requireDeleteConfirmation(dialog: SurfaceDialog | null | undefin
 /** Values contain numbers only. Item numbers are documented in the WP14 report. */
 export interface DeleteDiagnostic { item: number; pass: number; actual?: number; expected?: number; x?: number; y?: number; width?: number; height?: number; elapsedMs?: number; run?: number }
 export interface DeleteTarget {
-  url: string; title: string;
+  url: string; title: string; verifyListTitle?: boolean;
   extraIdentity?(page: DeletePage): DeleteDiagnostic[];
 }
 export type DeleteLog = (value: DeleteDiagnostic) => Promise<void>;
@@ -67,7 +67,13 @@ const noop: DeleteLog = async () => {};
 export async function preparePostDelete(surface: Surface, target: DeleteTarget, log: DeleteLog = noop, run = 0) {
     return traceStep('sites.naver-blog.delete.preparePostDelete', async () => {
   const check = async (items: DeleteDiagnostic[]) => {
-    for (const item of items) await log({ ...item, run });
+    for (const item of items) {
+      if (item.item <= 4 || item.pass !== 1) trace('verification', item.pass === 1 ? 'ok' : 'fail', {
+        check: item.item <= 4 ? 'identity' : item.item === 8 ? 'focus' : item.item === 9 ? 'alert_kind' : 'input',
+        counts: { expected: item.expected ?? 1, observed: item.actual ?? item.pass, step: item.item },
+      });
+      await log({ ...item, run });
+    }
     const failed = items.find(i => i.pass !== 1);
     if (failed) throw new Error(`BLOG_POST_DELETE_CHECK_${failed.item}`);
   };
@@ -158,31 +164,37 @@ export async function verifyPostAbsentFromList(surface: Surface, url: string, ti
     read: async () => {
       if (await surface.readAppFocus?.() === false) throw Error('BLOG_POST_DELETE_CHECK_8');
       if (await surface.readDialog?.()) throw Error('BLOG_POST_DELETE_READ_ALERT_UNCONFIRMED');
-      const snapshot = await read<{ready:boolean;links:string[];titlePresent:boolean;login:boolean}>(surface, `
+      const snapshot = await read<{ready:boolean;empty:boolean;links:string[];titlePresent:boolean;login:boolean}>(surface, `
         const roots=docs.map(({d})=>d).filter(d=>d.querySelector('.blog2_post_function,.post-list,.list_post,.blog2_list,[data-post-list]'));
         return {ready:roots.length>0&&roots.every(d=>d.readyState==='complete'),
+          empty:roots.some(d=>Array.from(d.querySelectorAll('.no_post,.noPost,.no_result,[data-post-list-empty]')).some(e=>visible(e)&&/등록된 (?:글|게시글)이 없|게시글이 없|작성한 글이 없/.test(e.textContent||''))),
           links:roots.flatMap(d=>Array.from(d.querySelectorAll('a[href]')).map(e=>e.href)),
-          titlePresent:docs.some(({d})=>(d.body?.innerText||'').includes(${JSON.stringify(title)})),
+          titlePresent:${JSON.stringify(!!title)}&&docs.some(({d})=>(d.body?.innerText||'').includes(${JSON.stringify(title)})),
           login:docs.some(({d})=>!!d.querySelector('input[type="password"]'))};`);
       if(snapshot.login)throw Error('LOGIN_OR_EDITOR_LOST');
       const postUrls = [...new Set(snapshot.links.map(postIdentity).filter((p):p is PublishedPost=>!!p&&new URL(p.url).pathname.split('/')[1]===blog).map(p=>p.url))].sort();
-      return {ready:snapshot.ready,postUrls,titlePresent:snapshot.titlePresent,targetPresent:postUrls.includes(receipt.url)};
+      return {ready:snapshot.ready,empty:snapshot.empty,postUrls,titlePresent:snapshot.titlePresent,targetPresent:postUrls.includes(receipt.url)};
     },
     classes: value => [
       {check:'feed_location',reason:'READBACK_POST_LIST',expected:1,observed:value?.ready?1:0,present:!!value?.ready},
-      {check:'links',reason:'READBACK_POST_LIST_LINKS',expected:1,observed:value?.postUrls.length??0,present:(value?.postUrls.length??0)>0},
+      {check:'links',reason:'READBACK_POST_LIST_LINKS',expected:1,observed:value?.postUrls.length??0,present:!!value?.empty||(value?.postUrls.length??0)>0},
       {check:'same_post',reason:'READBACK_POST_LIST_ABSENCE',expected:0,observed:value?.targetPresent||value?.titlePresent?1:0,present:!!value&&!value.targetPresent&&!value.titlePresent},
     ],
   });
-  if(!settled.stable||settled.classes.some(item=>!item.present))throw Error('BLOG_POST_DELETE_LIST_UNCONFIRMED');
+  if (!settled.stable || settled.classes.some(item => !item.present)) {
+    for (const item of settled.classes) if (!item.present) trace('verification', 'fail', {
+      check: item.check, reason: item.reason, counts: { expected: item.expected, observed: item.observed },
+    });
+    throw Error('BLOG_POST_DELETE_LIST_UNCONFIRMED');
+  }
 
     });
   }
 export async function verifyPostGone(surface: Surface, target: DeleteTarget) {
     return traceStep('sites.naver-blog.delete.verifyPostGone', async () => {
   const missingAlert = await openPostDeletionRead(surface, target.url);
-  if (!missingAlert) await waitFor(() => read<boolean>(surface, `return !docs.some(({d})=>d.querySelector('.se-documentTitle'))&&docs.some(({d})=>Array.from(d.querySelectorAll('.error_content,.error_wrap,[data-post-deleted]')).some(e=>visible(e)&&/삭제된|존재하지 않는|찾을 수 없/.test(e.textContent||'')));`), 10000);
-  await verifyPostAbsentFromList(surface, target.url, target.title);
+  if (!missingAlert) await waitFor(() => read<boolean>(surface, `return !docs.some(({d})=>d.querySelector('.se-documentTitle'))&&docs.some(({d})=>Array.from(d.querySelectorAll('.error_content,.error_wrap,[data-post-deleted]')).some(e=>visible(e)&&/삭제된|존재하지 않는|찾을 수 없/.test(e.textContent||'')));`), 10000, { surface, control: "BLOG_POST_ABSENT" });
+  await verifyPostAbsentFromList(surface, target.url, target.verifyListTitle === false ? '' : target.title);
 
     });
   }
@@ -203,6 +215,7 @@ export async function deleteBlogPost(surface: Surface, target: DeleteTarget, log
   requireDeleteConfirmation(dialog, receipt);
   if (!pressed || !dialog || !surface.respondDialog || await surface.readAppFocus?.() === false) throw new Error('BLOG_POST_DELETE_CONFIRM_UNCONFIRMED');
   await log({ item: 16, pass: 1 });
+  trace('job.checkpoint', 'ok', { checkpoint: 'before_submit' });
   await surface.respondDialog(dialog.id, true); await sleep(800);
   await verifyPostGone(surface, target);
   await log({ item: 17, pass: 1 });

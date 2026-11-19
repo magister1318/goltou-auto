@@ -45,3 +45,8 @@ export function sameServiceBlogTags(plan: BlogPlan, actual: readonly string[]): 
   return new Set(actual).size === actual.length && explicit.every(tag=>actual.includes(tag)) &&
     actual.every(tag=>!!tag && (explicit.includes(tag) || body.includes('#'+tag) || tag.startsWith('.') && body.includes('.#'+tag.slice(1))));
 }
+
+/** Use the same character ranges as the observed editor tag parser. */
+export function cleanBlogTag(text: string): string {
+  return Array.from(text).filter(char => ('#' + char).match(blogHashtagPattern)?.[0] === '#' + char && char !== '#').join('').slice(0, 100);
+}

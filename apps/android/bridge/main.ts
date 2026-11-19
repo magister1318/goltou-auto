@@ -9,6 +9,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { AppCore, ChannelRegistrationRunner, goltouPhotoUrl, NativeBridge, startCore, fileMediaStorage, filePolishStrengthStore, type CoreOptions } from '../../../packages/core/src/index';
 import { createApiClient } from '../../../packages/api-client/src/index';
 import { apiOrigin } from './config';
+import { androidUpdater } from './app-update';
 declare const __GOLTOU_DEBUG__: boolean;
 import { AndroidTokenStore } from './session';
 import { AiModeClient } from '../../../packages/sites/src/ai-mode';
@@ -17,6 +18,7 @@ import { fileLocalDataTransfer } from '../../../packages/core/src/local-data-tra
 import { filePreferencesStore } from '../../../packages/core/src/preferences';
 import { fileBandPostAllowance } from '../../../packages/core/src/band-allowance';
 import { filePostMetadata } from '../../../packages/core/src/post-metadata';
+import { fileBandListStore } from '../../../packages/core/src/band-list-cache';
 import { fileBlogTitleStore } from '../../../packages/core/src/blog-title-store';
 
 function argument(name: string): string {
@@ -36,7 +38,7 @@ const recordBandBarrierDecision = (code: import('../../../packages/sites/src/ind
 const options: CoreOptions = {
   native, host,
   diagnostics: __GOLTOU_DEBUG__,
-  band: { host, recordBarrierDecision: recordBandBarrierDecision, publishEnabled: !__GOLTOU_DEBUG__, ...(__GOLTOU_DEBUG__ ? { publishAllowance: fileBandPostAllowance(path.join(path.dirname(argument('data')), 'one-band-post.allow')) } : {}), ...(__GOLTOU_DEBUG__ ? { capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}) },
+  band: { host, listStore: fileBandListStore(path.join(path.dirname(argument('data')), 'band-list-cache.json')), recordBarrierDecision: recordBandBarrierDecision, publishEnabled: !__GOLTOU_DEBUG__, ...(__GOLTOU_DEBUG__ ? { publishAllowance: fileBandPostAllowance(path.join(path.dirname(argument('data')), 'one-band-post.allow')) } : {}), ...(__GOLTOU_DEBUG__ ? { capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}) },
   blog: {
     lastTypedTitle: fileBlogTitleStore(path.join(path.dirname(argument('data')), 'last-blog-title.txt')),
     host, publishEnabled: true, ...(__GOLTOU_DEBUG__ ? { draftSaveLimit: 1, capture: (surface: import('../../../packages/surface/src/index').Surface, name: string) => host.capture(surface, name) } : {}),
@@ -65,7 +67,11 @@ async function start() {
     for (const status of event.resultCodes ?? []) trace('delete', 'ok', { reason: reasonCode(event.code), counts: { status } });
   };
   runtime.deleteLog = async value => trace('delete', value.pass ? 'ok' : 'fail', { ...(value.pass ? {} : { reason: 'VERIFICATION_MISMATCH' as const }), counts: { step: value.item, expected: value.expected ?? 0, observed: value.actual ?? 0 } });
-  const app = new AppCore(createApiClient(apiOrigin, fetch), new AndroidTokenStore(native),
+  const api = createApiClient(apiOrigin, fetch);
+  const tokens = new AndroidTokenStore(native);
+  runtime.exit = async event => { await native.call('app.exit', { event }); };
+  runtime.updater = androidUpdater(native, api, tokens, logs, path.join(path.dirname(argument('data')), 'app-update.json'), apiOrigin);
+  const app = new AppCore(api, tokens,
     (checkpoint, notify) => new ChannelRegistrationRunner({ band: options.band!, blog: options.blog! }, checkpoint, notify), options.preparation,
     runtime);
   options.app = app;

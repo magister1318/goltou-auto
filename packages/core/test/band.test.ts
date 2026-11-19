@@ -8,8 +8,10 @@ import http from 'node:http';
 import { chromium, type Page } from 'playwright-core';
 import { CdpConnection, CdpSurface } from '@goltou/surface/cdp';
 import type { Surface, SurfaceHost } from '@goltou/surface';
+import { bandWriteHitClasses, bandWritePromptClasses } from '../../surface/src/band-write-diagnostics';
 import { BandDirectory, readBandDocument } from '@goltou/sites';
 import { bandFixture } from '../../sites/test/band-fixture';
+import { point } from '../../sites/src/dom';
 import { blogFixture } from '../../sites/test/blog-fixture';
 import { createBandExecution, bandObservation } from '../src/band';
 import { ChannelRegistrationRunner } from '../src/band-runner';
@@ -24,7 +26,7 @@ import { png } from './image-fixture';
 const executablePath = [process.env.CHROMIUM, 'C:/Program Files/Google/Chrome/Application/chrome.exe', '/usr/bin/chromium'].find(p => p && existsSync(p));
 const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const fn of cleanup.splice(0).reverse()) await fn(); });
-async function fixture(mode = 'mobile') {
+async function fixture(mode = 'mobile', beforeHit?: (page: Page) => Promise<void>) {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'goltou-wp6-'));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   const files = [1, 2, 3, 4, 5].map(i => ({ url: `https://example.invalid/${i}`, path: path.join(dir, `goltou-1234567890abcdef-${i}.png`) }));
@@ -38,7 +40,7 @@ async function fixture(mode = 'mobile') {
       const square = mode === 'cropped' || mode === 'ratio-mismatch';
       res.writeHead(200, { 'content-type': 'image/png' }).end(png(square ? 90 : 160, 90)); return;
     }
-    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(req.url === '/login' ? '<input type="password"><p>로컬 로그인 풀림</p>' : req.url?.startsWith('/blog') ? blogFixture(mode === 'blog-fail' ? 'duplicate' : '') : mode === 'new-dropdown' && req.url === '/' ? dropdown : mode === 'new-home' && req.url === '/' ? '<section class="globalMyBandWrap"><a class="_allMyBandList" href="/my/bands">전체보기</a></section>' : mode === 'new-home' && req.url === '/my/bands' ? newList : bandFixture(mode));
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(req.url === '/login' ? '<input type="password"><p>로컬 로그인 풀림</p>' : req.url?.startsWith('/blog') ? blogFixture(mode === 'blog-fail' ? 'duplicate' : '') : mode === 'new-dropdown' && req.url === '/' ? dropdown : mode === 'new-home' && req.url === '/' ? '<section class="globalMyBandWrap"><a class="_allMyBandList" href="/my/bands">전체보기</a></section>' : mode === 'new-home' && req.url === '/my/bands' ? newList : bandFixture(mode.startsWith('app-prompt') && req.url === '/' ? 'mobile' : mode));
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   cleanup.push(() => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }));
@@ -55,7 +57,12 @@ async function fixture(mode = 'mobile') {
     async create(session) {
       const page = await context.newPage(); page.on('dialog', () => {});
       const cdp = await context.newCDPSession(page);
-      const shim = { send: async (method: string, params: object) => { const reply = await cdp.send(method as never, params as never) as { exceptionDetails?: { exception?: { description?: string } } }; if (reply.exceptionDetails) throw new Error(reply.exceptionDetails.exception?.description ?? 'FIXTURE_READ_FAILED'); return reply; },
+      const shim = { send: async (method: string, params: { expression?: string }) => {
+        if (method === 'DOM.getNodeForLocation' || params?.expression?.includes('elementFromPoint(')) await beforeHit?.(page);
+        const reply = await cdp.send(method as never, params as never) as { exceptionDetails?: { exception?: { description?: string } } };
+        if (reply.exceptionDetails) throw new Error(reply.exceptionDetails.exception?.description ?? 'FIXTURE_READ_FAILED');
+        return reply;
+      },
         on: (method: string, listener: (params: Record<string, unknown>) => void) => { cdp.on(method as never, listener); return () => cdp.off(method as never, listener); },
         close: () => { void cdp.detach().catch(() => {}); }, isOpen: true };
       const s = new CdpSurface(session, shim as unknown as CdpConnection, { setVisible: async visible => { if (visible) shown++; }, close: async () => page.close() }, 0);
@@ -89,6 +96,92 @@ function workFor(plan: InputPlan, files: { url: string; path: string }[]) {
 const input: JobInput = { productNo: 1, mode: 'draft', targets: [{ channel: 'band', name: '밴드 A', key: '111' }], options: { polish: false, closing: false, linkCard: false } };
 
 describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pages', () => {
+  it.each([['app-prompt', 'web ', 'BAND_APP_PROMPT_WEB'], ['app-prompt-close', 'close ', 'BAND_APP_PROMPT_CLOSE']])(
+    'dismisses the full-viewport BAND app prompt before opening the floating composer (%s)', async (mode, action, control) => {
+    const f = await fixture(mode);
+    const surface = f.directory.surface!;
+    await surface.open({ url: `${f.baseUrl}/band/111/post`, session: 'band', width: 1280, height: 900, userAgent: 'Band fixture' });
+    const selector = 'button.uFloatingButton._btnPostWrite[aria-label="글쓰기"]';
+    expect(await point(surface, selector)).toEqual({ x: 1238, y: 856 });
+    const report = vi.fn();
+    expect(await surface.readClickTarget!(1238, 856, selector, {
+      onMiss: { classes: bandWriteHitClasses, ancestorClasses: bandWritePromptClasses, ariaLabels: [], report },
+    })).toBe(false);
+    expect(report).toHaveBeenCalledExactlyOnceWith({ scrollX: 0, scrollY: 0, rejectedHit: {
+      tag: 'button', classes: ['buttonModalClose', '_closeBtn'], ariaLabel: null, relation: 'unrelated',
+      rect: { x: 0, y: 0, width: 1280, height: 900 }, ancestorClasses: ['modalWrap_800', '_appUsagePromptModalRegion', 'modalLayerView'],
+    } });
+    const { lines } = await loggedFixture(path.dirname(f.files[0]!.path), 'band_post', () => f.execution.ensureReady(), ['sites.band.app-prompt']);
+    expect(lines.filter(line => line.step === 'sites.band.app-prompt')).toMatchObject([
+      { event: 'start', counts: { observed: 1 } }, { event: 'wait', selector: control }, { event: 'ok', selector: control, counts: { observed: 0 } },
+    ]);
+    expect(await f.page().evaluate(() => localStorage.getItem('promptPresses'))).toBe(action);
+    await expect(f.counts()).resolves.toMatchObject({ opens: 1, posts: 0 });
+    expect(f.external()).toBe(0);
+  }, 25000);
+
+  it('stops after a single dismissal if the BAND app prompt stays over the composer', async () => {
+    const f = await fixture('app-prompt-stuck');
+    const { lines } = await loggedFixture(path.dirname(f.files[0]!.path), 'band_post', async () => {
+      await expect(f.execution.ensureReady()).rejects.toThrow('BAND_APP_PROMPT_NOT_DISMISSED');
+    }, ['sites.band.app-prompt']);
+    expect(lines).toContainEqual(expect.objectContaining({ step: 'sites.band.app-prompt', event: 'fail', reason: 'BAND_APP_PROMPT_NOT_DISMISSED' }));
+    expect(lines).toContainEqual(expect.objectContaining({ step: 'sites.dom.waitFor', event: 'fail', selector: 'BAND_APP_PROMPT_WEB',
+      counts: expect.objectContaining({ dialogs: 2, writeButtons: 1 }),
+    }));
+    expect(await f.page().evaluate(() => localStorage.getItem('promptPresses'))).toBe('web ');
+    await expect(f.counts()).resolves.toMatchObject({ opens: 0, posts: 0 });
+    expect(f.external()).toBe(0);
+  }, 10000);
+  it('hits a fixed write button while the scrolled Band feed moves before hit testing', async () => {
+    let moved = false;
+    const f = await fixture('scrolled-feed', async page => {
+      if (moved) return;
+      moved = true;
+      await page.evaluate(() => window.scrollTo(0, 100));
+    });
+    const surface = f.directory.surface!;
+    await surface.open({ url: `${f.baseUrl}/band/111/post`, session: 'band', width: 1280, height: 900, userAgent: 'Band fixture' });
+    expect(await f.page().evaluate(() => window.scrollY)).toBe(350);
+    const selector = 'button.uFloatingButton._btnPostWrite[aria-label="글쓰기"]';
+    const at = await point(surface, selector);
+    expect(at).toEqual({ x: 160, y: 320 });
+    expect(await point(surface, selector, '글쓰기')).toBeNull();
+    expect(await surface.readClickTarget!(at!.x, at!.y, selector)).toBe(true);
+    expect(moved).toBe(true);
+    expect(await f.page().evaluate(() => window.scrollY)).toBe(100);
+    const report = vi.fn();
+    await expect(surface.readClickTarget!(160, 560, selector, { onMiss: { classes: [], ariaLabels: ['글쓰기'], report } })).resolves.toBe(false);
+    expect(report).toHaveBeenCalledExactlyOnceWith({ scrollX: 0, scrollY: 100, rejectedHit: {
+      tag: 'button', classes: [], ariaLabel: '[other]', rect: { x: 100, y: 540, width: 120, height: 40 }, relation: 'unrelated',
+    } });
+    await f.execution.ensureReady();
+    await expect(f.counts()).resolves.toMatchObject({ opens: 1, posts: 0 });
+    expect(await f.page().evaluate(() => localStorage.getItem('wrongPress'))).toBeNull();
+    expect(f.external()).toBe(0);
+  });
+
+  it('finds the sole legacy floating button and opens from an unobstructed point when the WP39 center misses', async () => {
+    const f = await fixture('center-covered');
+    const surface = f.directory.surface!;
+    await surface.open({ url: `${f.baseUrl}/band/111/post`, session: 'band', width: 1280, height: 900, userAgent: 'Band fixture' });
+    await expect(f.directory.guardTarget('111')).resolves.toBeUndefined();
+    const wp38 = await point(surface, 'button.uFloatingButton._btnPostWrite[aria-label="글쓰기"]');
+    const wp39Selector = 'button._btnPostWrite[aria-label="글쓰기"], button._btnOpenWriteLayer[aria-label="글쓰기"]';
+    const wp39 = await point(surface, wp39Selector);
+    expect(wp39).toEqual(wp38);
+    expect(await point(surface, 'button._btnPostWrite, button._btnOpenWriteLayer', '글쓰기')).toBeNull();
+    const rejected = vi.fn();
+    expect(await surface.readClickTarget!(wp39!.x, wp39!.y, wp39Selector, {
+      onMiss: { classes: ['lyWrap'], ariaLabels: ['닫기'], report: rejected },
+    })).toBe(false);
+    expect(rejected).toHaveBeenCalledExactlyOnceWith({ scrollX: 0, scrollY: 0, rejectedHit: {
+      tag: 'div', classes: ['lyWrap'], ariaLabel: '닫기', rect: { x: 150, y: 300, width: 20, height: 40 }, relation: 'unrelated',
+    } });
+    await f.execution.ensureReady();
+    await expect(f.counts()).resolves.toMatchObject({ opens: 1, posts: 0 });
+    expect(await f.page().evaluate(() => localStorage.getItem('wrongPress'))).toBeNull();
+  });
   it('release owner publishing does not consume a debug allowance and still enforces the request barrier', async () => {
     const f = await fixture();
     await f.execution.write();
@@ -275,10 +368,10 @@ describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pa
   }, 25000);
   for (const mode of ['drop', 'double', 'ratio-mismatch']) it(`rejects ${mode} without handoff, posting or a count-only retry`, async () => {
     const f = await fixture(mode);
-    await expect(f.execution.write()).rejects.toThrow('BAND_READBACK_MISMATCH:photos');
-    await expect(f.execution.stopBeforePost()).rejects.toThrow('BAND_READBACK_MISMATCH:photos');
+    await expect(f.execution.write()).rejects.toThrow('BAND_READBACK_MISMATCH:photo');
+    await expect(f.execution.stopBeforePost()).rejects.toThrow('BAND_READBACK_MISMATCH:photo');
     const attached = await f.page().evaluate("localStorage.getItem('attachSizes')");
-    await expect(f.execution.write()).rejects.toThrow('BAND_READBACK_MISMATCH:photos');
+    await expect(f.execution.write()).rejects.toThrow('BAND_READBACK_MISMATCH:photo');
     expect(await f.page().evaluate("localStorage.getItem('attachSizes')")).toBe(attached);
     expect(f.shown()).toBe(0); expect((await f.counts()).posts).toBe(0);
   }, 20000);
@@ -457,7 +550,7 @@ describe('WP6 daily limit and real-service boundaries', () => {
     const api = createFakeApi();
     const { token } = await api.request('/auto/login', { loginId: 'admin', password: 'demo', device: { kind: 'test', model: 'synthetic', appVersion: '0' } });
     await api.request('/auto/settings/save', { closingText: '', defaultHashtags: [], bandDailyLimit: 1 }, token);
-    const value = { productNo: 1234, channel: 'band' as const, mode: 'draft' as const, target: { key: 'local-limit', name: '밴드 A' }, options: input.options, contentHash: 'fake-content-0' };
+    const value = { productNo: 1234, channel: 'band' as const, mode: 'draft' as const, target: { key: 'local-limit', name: '밴드 A' }, options: { ...input.options, closing: false }, contentHash: 'fake-content-0' };
     const { postNo } = await api.request('/auto/posts/start', value, token);
     await api.request('/auto/posts/update', { postNo, status: 'stopped_before_post', step: 6, failReason: '', postUrl: '' }, token);
     await expect(api.request('/auto/posts/start', value, token)).rejects.toMatchObject({ code: 'conflict' });

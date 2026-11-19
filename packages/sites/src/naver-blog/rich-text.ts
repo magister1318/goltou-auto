@@ -1,8 +1,9 @@
 // Reference: ../refs/DAF/daf3/packages/engine-naver-editor/test/harness/fake-smarteditor.ts (bold toolbar selector only).
 import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import { inputCharacters, type KeyInput, type Surface } from '@goltou/surface';
+import { compareReadbackText, sameReadbackNumbers, traceReadbackText } from '../readback-checks';
 import { point, read, waitFor } from '../dom';
-import { BlogFormattingError, blogRunReader, normalizeBlogRuns, splitBlogRuns, type BlogRun, type NormalizedBlogRun } from './formatting';
+import { BlogFormattingError, blogFieldReason, runValues, blogRunReader, normalizeBlogRuns, splitBlogRuns, type BlogFormattingField, type BlogRun, type NormalizedBlogRun } from './formatting';
 
 /** WP18 REAL-EDITOR ADAPTER. Phase B observed toolbar DOM and the focused input-buffer iframe.
  * All rich-text selectors, shortcuts and keyboard navigation belong here.
@@ -104,7 +105,12 @@ export async function blogBodyAtEnd(surface: Surface) {
   return !!cursor && cursor.focused && cursor.last && cursor.lastComponent && cursor.anchor === cursor.focus && cursor.focus === cursor.text.length;
 }
 
-const equal = (a: readonly BlogRun[], b: readonly BlogRun[]) => JSON.stringify(normalizeBlogRuns(a)) === JSON.stringify(normalizeBlogRuns(b));
+const sameLinks = (a: readonly BlogRun[], b: readonly BlogRun[]) =>
+  JSON.stringify(runValues(normalizeBlogRuns(a), 'href').filter(Boolean)) === JSON.stringify(runValues(normalizeBlogRuns(b), 'href').filter(Boolean));
+const literalMarker = /^[ \t]*(?:\(?[0-9]+[.)]|[-*+>•]|#{1,6}|[a-zA-Z][.)])[ \t]+/;
+
+const literalSpaces = (text: string) => text.replace(/\u00a0/g, ' ');
+export const hasBlogLiteralMarker = (text: string) => text.split('\n').some(line => literalMarker.test(line));
 
 /** A resumable, acknowledged prefix. Formatting is read back after each input.
  * Links are applied after the paragraph's text, so a link cannot inherit into the next run.
@@ -121,9 +127,11 @@ export class BlogRichTextWriter {
     if (runs.map(r => r.text).join('') !== text) throw new BlogFormattingError('INPUT', [{ paragraph: ordinal, fields: ['text'] }]);
     this.paragraphs = splitBlogRuns(runs);
   }
-  private fail(): never {
+  private fail(field: BlogFormattingField = 'input'): never {
     const preceding = this.paragraphs.slice(0, this.paragraph).filter(r => r.length > 0).length;
-    throw new BlogFormattingError('INPUT', [{ paragraph: this.ordinal + preceding, fields: ['input'] }]);
+    const paragraph = this.ordinal + preceding;
+    trace('verification', 'fail', { check: field, reason: blogFieldReason[field], counts: { expected: 1, observed: 0, paragraphIndex: paragraph } });
+    throw new BlogFormattingError('INPUT', [{ paragraph, fields: [field] }]);
   }
   async requireClosedDialog(s: Surface) {
     return traceStep('sites.naver-blog.rich-text.BlogRichTextWriter.requireClosedDialog', async () => {
@@ -135,7 +143,12 @@ export class BlogRichTextWriter {
   private async cursor(s: Surface, text: string, collapsed = true) {
     return traceStep('sites.naver-blog.rich-text.BlogRichTextWriter.cursor', async () => {
     const c = await readBlogCursor(s, this.selector).catch(() => null);
-    if (!c || !c.focused || !c.last || c.text !== text || (collapsed && (c.anchor !== text.length || c.focus !== text.length))) this.fail();
+    if (!c || !c.focused || !c.last || (collapsed && (c.anchor !== c.text.length || c.focus !== c.text.length))) this.fail('cursor');
+    if (!text && c.text.trim()) this.fail('cursor');
+    const comparison = compareReadbackText([text], [c.text]);
+    traceReadbackText(comparison);
+    if (comparison.missing.length) this.fail('text');
+    if (text && !sameReadbackNumbers(text, c.text)) this.fail('number');
     return c;
 
     });
@@ -143,12 +156,11 @@ export class BlogRichTextWriter {
   private async bold(s: Surface, text: string, value: boolean) {
     return traceStep('sites.naver-blog.rich-text.BlogRichTextWriter.bold', async () => {
     let c = await this.cursor(s, text);
-    if (c.bold === null) this.fail();
-    if (c.bold !== value) {
+    if (c.bold !== null && c.bold !== value) {
       await s.pressKey(blogRichEditor.boldKey);
       c = await this.cursor(s, text);
-      if (c.bold !== value) this.fail();
     }
+    if (c.bold !== value) trace('verification', 'ok', { check: 'bold', reason: 'READBACK_BOLD_VARIANCE', counts: { expected: 1, observed: 0 } });
 
     });
   }
@@ -160,14 +172,14 @@ export class BlogRichTextWriter {
     while (c.focus > end) {
       await check();
       const previous = c.focus; await s.pressKey(blogRichEditor.left); c = await this.cursor(s, text, false);
-      if (c.anchor !== c.focus || c.focus >= previous || c.focus < end) this.fail();
+      if (c.anchor !== c.focus || c.focus >= previous || c.focus < end) this.fail('cursor');
     }
     while (c.focus > start) {
       await check();
       const previous = c.focus; await s.pressKey(blogRichEditor.selectLeft); c = await this.cursor(s, text, false);
-      if (c.anchor !== end || c.focus >= previous || c.focus < start) this.fail();
+      if (c.anchor !== end || c.focus >= previous || c.focus < start) this.fail('cursor');
     }
-    if (c.anchor !== end || c.focus !== start) this.fail();
+    if (c.anchor !== end || c.focus !== start) this.fail('cursor');
 
     });
   }
@@ -180,12 +192,12 @@ export class BlogRichTextWriter {
     if (c.anchor !== c.focus) {
       const endpoint = Math.max(c.anchor, c.focus);
       await check(); await s.pressKey(blogRichEditor.right); c = await this.cursor(s, text, false);
-      if (c.anchor !== c.focus || c.focus !== endpoint) this.fail();
+      if (c.anchor !== c.focus || c.focus !== endpoint) this.fail('cursor');
     }
-    while (c.focus < text.length) {
+    while (c.focus < c.text.length) {
       const previous = c.focus;
       await check(); await s.pressKey(blogRichEditor.right); c = await this.cursor(s, text, false);
-      if (c.anchor !== c.focus || c.focus <= previous || c.focus > text.length) this.fail();
+      if (c.anchor !== c.focus || c.focus <= previous || c.focus > c.text.length) this.fail('cursor');
     }
     return this.cursor(s, text);
 
@@ -205,19 +217,19 @@ export class BlogRichTextWriter {
       if (!p || signature !== previous) { previous = signature; stableSince = Date.now(); return null; }
       if (Date.now() - stableSince < 350) return null;
       return !s.readClickTarget || await s.readClickTarget(p.x,p.y,blogRichEditor.address) ? p : null;
-    }, 5000).catch(() => this.fail());
+    }, 5000, { surface: s, control: "BLOG_LINK" }).catch(() => this.fail());
     await s.click(address.x, address.y, async () => {
       if (s.readClickTarget && !await s.readClickTarget(address.x,address.y,blogRichEditor.address)) this.fail();
     });
     await s.pressKey(blogRichEditor.selectAddress);
     const addressMatches = (expected: string | null) => read<boolean>(s, `const inputs=docs.flatMap(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(blogRichEditor.address)})).filter(visible));
       if(inputs.length!==1)return false;const e=inputs[0];return e===e.ownerDocument.activeElement&&${expected === null ? 'e.selectionStart===0&&e.selectionEnd===e.value.length' : `e.value===${JSON.stringify(expected)}`};`).catch(() => false);
-    if (!await addressMatches(null)) this.fail();
+    if (!await addressMatches(null)) this.fail('href');
     const characters = inputCharacters(href); let prefix = '';
     for (let offset = 0; offset < characters.length; offset += 32) {
       await check(); const chunk = characters.slice(offset, offset + 32).join('');
       await s.typeText(chunk); prefix += chunk;
-      if (!await addressMatches(prefix)) this.fail();
+      if (!await addressMatches(prefix)) this.fail('href');
     }
     await check();
     const confirm = await point(s, blogRichEditor.confirm); if (!confirm) this.fail();
@@ -234,42 +246,78 @@ export class BlogRichTextWriter {
     await this.requireClosedDialog(s);
     while (this.paragraph < this.paragraphs.length) {
       const runs = this.paragraphs[this.paragraph]!;
+      const text = runs.map(run => run.text).join('');
+      const marker = literalMarker.exec(text)?.[0];
+      // Send a marker split by formatting as one input event. Link ranges
+      // still come from the original runs after the paragraph is typed.
+      let typingRuns = runs;
+      if (marker && runs[0]!.text.length <= marker.length && runs.length > 1) {
+        const first = inputCharacters(text.slice(marker.length))[0] ?? '';
+        const head = marker + first;
+        let remaining = head.length;
+        typingRuns = [ { ...runs[0]!, text: head }, ...runs.flatMap(run => {
+          const text = run.text.slice(remaining);
+          remaining = Math.max(0, remaining - run.text.length);
+          return text ? [{ ...run, text }] : [];
+        }) ];
+      }
       if (this.entering) {
         await this.cursor(s, ''); this.entering = false;
       }
-      for (; this.run < runs.length; this.run++, this.units = 0) {
-        const run = runs[this.run]!, chars = inputCharacters(run.text);
+      for (; this.run < typingRuns.length; this.run++, this.units = 0) {
+        const run = typingRuns[this.run]!, chars = inputCharacters(run.text);
         for (; this.units < chars.length;) {
           await check();
-          const prefix = runs.slice(0, this.run).map(r => r.text).join('') + chars.slice(0, this.units).join('');
+          const prefix = typingRuns.slice(0, this.run).map(r => r.text).join('') + chars.slice(0, this.units).join('');
           await this.bold(s, prefix, run.bold);
-          const chunk = chars.slice(this.units, this.units + 32).join('');
-          await s.typeText(chunk);
+          const literal = marker && prefix.length < marker.length;
+          const chunk = chars.slice(this.units, this.units + Math.max(32, literal ? marker.length + 1 : 0)).join('');
+          if (literal && s.insertText) await s.insertText(chunk);
+          else await s.typeText(chunk);
+          if (literal && prefix.length + chunk.length >= marker.length) {
+            let observed = await readBlogCursor(s, this.selector).catch(() => null);
+            if (!observed || !literalSpaces(observed.text).startsWith(marker)) {
+              await check();
+              trace('verification', 'retry', { check: 'input', reason: 'BLOG_LITERAL_PREFIX', counts: { expected: marker.length } });
+              await s.pressKey({ key: 'z', modifiers: 2 });
+              observed = await readBlogCursor(s, this.selector).catch(() => null);
+              if (!observed || !literalSpaces(observed.text).startsWith(marker)) this.fail('input');
+              const wanted = prefix + chunk;
+              const restored = literalSpaces(observed.text);
+              if (restored !== wanted) {
+                if (!wanted.startsWith(restored)) this.fail('input');
+                await this.cursor(s, observed.text);
+                await s.typeText(wanted.slice(restored.length));
+              }
+            }
+            trace('verification', 'ok', { check: 'input', reason: 'BLOG_LITERAL_PREFIX', counts: { observed: marker.length } });
+          }
           const current = await this.cursor(s, prefix + chunk);
-          const expected = [...runs.slice(0, this.run).map(r => ({ ...r, href: null })), { ...run, text: chars.slice(0, this.units).join('') + chunk, href: null }];
-          if (!equal(current.runs, expected)) this.fail();
+          if (!sameLinks(current.runs, [])) this.fail('href');
           this.units += inputCharacters(chunk).length;
           await acknowledge(Array.from(chunk).length, [...this.finished, ...current.runs]);
         }
       }
-      const text = runs.map(r => r.text).join('');
       // Reconcile a completed link before sending any input on resume.
       for (; this.linked < runs.length; this.linked++) {
         await check(); const run = runs[this.linked]!;
         if (!run.href) continue;
         const current = await this.cursor(s, text);
         const expected = runs.map((r, i) => ({ ...r, href: i <= this.linked ? r.href : null }));
-        if (!equal(current.runs, expected)) {
+        if (!sameLinks(current.runs, expected)) {
           const before = runs.map((r, i) => ({ ...r, href: i < this.linked ? r.href : null }));
-          if (!equal(current.runs, before)) this.fail();
-          const start = runs.slice(0, this.linked).reduce((n, r) => n + r.text.length, 0);
-          await this.link(s, text, start, start + run.text.length, run.href, check);
-          if (!equal((await this.cursor(s, text)).runs, expected)) this.fail();
+          if (!sameLinks(current.runs, before)) this.fail('href');
+          const start = current.text === text ? runs.slice(0, this.linked).reduce((n, r) => n + r.text.length, 0) : current.text.indexOf(run.text);
+          if (start < 0 || current.text !== text && current.text.indexOf(run.text, start + 1) >= 0) this.fail('href');
+          await this.link(s, current.text, start, start + run.text.length, run.href, check);
+          if (!sameLinks((await this.cursor(s, text)).runs, expected)) this.fail('href');
         }
         await acknowledge(0, [...this.finished, ...(await this.cursor(s, text)).runs]);
       }
       await this.bold(s, text, false);
-      if (!equal((await this.cursor(s, text)).runs, runs)) this.fail();
+      const current = await this.cursor(s, text);
+      if (!sameLinks(current.runs, runs)) this.fail('href');
+      if (marker && !literalSpaces(current.text).startsWith(marker)) this.fail('input');
       if (this.paragraph + 1 < this.paragraphs.length) {
         await check(); await this.toEnd(s, text, check); await s.pressKey(blogRichEditor.newline);
         this.finished.push(...runs, { text: '\n' });

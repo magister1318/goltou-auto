@@ -34,7 +34,7 @@ export async function verifyInterruptedPrivatePublish(context: PrivatePublishRec
     if (!surface.blockRequests) refuse();
     await surface.blockRequests!(['/RabbitWrite.naver', '/RabbitUpdate.naver', '/RabbitTempPostWrite.naver', '/RabbitTempPostUpdate.naver'].map(pathname => ({ hostname: 'blog.naver.com', pathname })));
     await surface.open({ url: receipt!.url, session: 'naver', width: 1280, height: 900, userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36' });
-    const pages = await waitFor(async () => { const value = await read<DeletePage[]>(surface, deletePageSource); return value.some(p => p.titles.length) ? value : false; }, 15000);
+    const pages = await waitFor(async () => { const value = await read<DeletePage[]>(surface, deletePageSource); return value.some(p => p.titles.length) ? value : false; }, 15000, { surface, control: "BLOG_TITLE" });
     if (deleteIdentity(pages, { url: receipt!.url, title: context.title }).some(i => i.pass !== 1)) refuse();
     const execution = new BlogExecution(preview.blog, context.files, { host, mode: 'publish', visibility: 'private', beforeSave: refuse, check() {}, progress() {}, verify(actual) {
       if (!compareDocuments(expected, blogObservation(preview.blog, context.files, actual)).matches) throw new Error('BLOG_PUBLISH_RECOVERY_READBACK_MISMATCH');
@@ -73,7 +73,7 @@ export async function inspectRecordedPost(file: string, api: ApiClient, token: s
     const present = pages.some(p => postIdentity(p.url)?.url === receipt.url && p.titles.length === 1 && p.titles[0] === context.title);
     const blog = new URL(receipt.url).pathname.split('/')[1]!;
     await surface.open(deleteOpenOptions(`https://blog.naver.com/PostList.naver?blogId=${encodeURIComponent(blog)}&from=postList&categoryNo=0`));
-    await waitFor(() => read<boolean>(surface, `return docs.some(({d})=>d.querySelector('.blog2_post_function,.post-list,.list_post,.blog2_list,[data-post-list]'));`), 10000);
+    await waitFor(() => read<boolean>(surface, `return docs.some(({d})=>d.querySelector('.blog2_post_function,.post-list,.list_post,.blog2_list,[data-post-list]'));`), 10000, { surface, control: "BLOG_POST_LIST" });
     const links = await read<string[]>(surface, `return docs.flatMap(({d})=>Array.from(d.querySelectorAll('a[href]')).map(e=>e.href));`);
     const titlePresent = await read<boolean>(surface, `return docs.some(({d})=>(d.body?.innerText||'').includes(${JSON.stringify(context.title)}));`);
     const result = { present, missingAlert, listPostMatches: links.filter(url => postIdentity(url)?.url === receipt.url).length, listTitlePresent: titlePresent, drafts: null as null | { count: number; sameTitle: number; savedTimes: string[] } };
@@ -81,10 +81,10 @@ export async function inspectRecordedPost(file: string, api: ApiClient, token: s
       // Open only the list. Never select, edit or delete a saved draft.
       await surface.open(deleteOpenOptions('https://blog.naver.com/GoBlogWrite.naver'));
       const selector = 'button[data-click-area="tpb*s.count"]';
-      const target = await waitFor(() => point(surface, selector), 15000);
+      const target = await waitFor(() => point(surface, selector), 15000, { surface, control: "BLOG_DRAFT_LIST" });
       const safe = async () => { await ready(); if (!await surface.readClickTarget?.(target.x, target.y, selector) || await surface.readDialog?.()) throw new Error('BLOG_DRAFT_LIST_READ_REFUSED'); };
       await safe(); await surface.click(target.x, target.y, safe);
-      result.drafts = await waitFor(() => read<{ count: number; sameTitle: number; savedTimes: string[] } | false>(surface, `const list=docs.flatMap(({d})=>Array.from(d.querySelectorAll('[aria-label="임시저장된 글"] > li')));if(!list.length)return false;return {count:list.length,sameTitle:list.filter(e=>(e.querySelector('strong')?.textContent||'').trim()===${JSON.stringify(context.title)}).length,savedTimes:list.map(e=>(e.textContent||'').match(/\\d{4}[.\\/-]\\s?\\d{1,2}[.\\/-]\\s?\\d{1,2}\\.?\\s+\\d{1,2}:\\d{2}(?::\\d{2})?/)?.[0]||'')};`), 10000);
+      result.drafts = await waitFor(() => read<{ count: number; sameTitle: number; savedTimes: string[] } | false>(surface, `const list=docs.flatMap(({d})=>Array.from(d.querySelectorAll('[aria-label="임시저장된 글"] > li')));if(!list.length)return false;return {count:list.length,sameTitle:list.filter(e=>(e.querySelector('strong')?.textContent||'').trim()===${JSON.stringify(context.title)}).length,savedTimes:list.map(e=>(e.textContent||'').match(/\\d{4}[.\\/-]\\s?\\d{1,2}[.\\/-]\\s?\\d{1,2}\\.?\\s+\\d{1,2}:\\d{2}(?::\\d{2})?/)?.[0]||'')};`), 10000, { surface, control: "BLOG_DRAFT_ITEM" });
     }
     await writeFile(file + '.result', JSON.stringify(result), { mode: 0o600 });
   } finally { await host.destroy(surface); }

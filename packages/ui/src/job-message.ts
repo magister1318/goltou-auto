@@ -5,13 +5,22 @@ import { bandPostBlocked } from '@goltou/sites';
 /** Never show engine codes, page messages, identifiers or transport errors. */
 export function jobMessage(job: Job): [string, string] {
   const code = job.failureCode ?? '';
+  if (code === 'BAND_WRITE_NOT_ALLOWED') return ['이 밴드에서 글을 쓸 권한이 없습니다.', '밴드 관리자에게 글쓰기 권한을 확인해 주세요.'];
+  if (code === 'BAND_COMPOSER_UNAVAILABLE') return ['밴드 글쓰기 화면을 열지 못했습니다.', '밴드에서 글쓰기 화면이 열리는지 확인해 주세요.'];
+  if (code === 'BAND_APP_PROMPT_NOT_DISMISSED') return ['밴드 앱 사용 안내가 닫히지 않았습니다.', '밴드에서 ‘모바일 웹에서 계속하기’를 선택한 뒤 다시 시도해 주세요.'];
+  if (code === 'BAND_TARGET_INVALID') return [
+    '밴드 목록이 바뀌었습니다. 새로고침 후 다시 골라 주세요.',
+    existingServiceResult(job) ? '앞서 저장하거나 발행한 글은 등록 기록에서 확인해 주세요.' : '밴드에는 게시하지 않았습니다.',
+  ];
+  if (code === 'POST_RECORD_START_FAILED') return ['등록 기록을 시작하지 못했습니다.', '연결과 등록 기록을 확인해 주세요.'];
+  if (code === 'BAND_INPUT_MISMATCH:input') return ['밴드 작성기에 입력한 내용을 확인하지 못했습니다.', '작성 화면을 확인해 주세요.'];
   if (job.readbackIssues?.length) {
-    const names = {table:'표',title:'제목',text:'본문 글자',line_breaks:'줄바꿈 수',photos:'사진 수 또는 순서',order:'본문과 사진 순서',hashtags:'태그',links:'링크 주소',bold:'문단 굵기',visibility:'공개 범위',stability:'화면 로딩 상태'};
+    const names = {number:'가격 또는 출발일 숫자',cursor:'커서 위치',input:'입력 결과',href:'링크 주소',photo:'사진 수 또는 순서',table:'표',title:'제목',text:'본문 글자',line_breaks:'줄바꿈 수',photos:'사진 수 또는 순서',order:'본문과 사진 순서',hashtags:'태그',links:'링크 주소',bold:'문단 굵기',visibility:'공개 범위',stability:'화면 로딩 상태'};
     const details = [...new Set(job.readbackIssues.map(issue=>`${issue.paragraph ? `${issue.paragraph}번 문단의 ` : ''}${names[issue.field]}${issue.index ? ` ${issue.index}번째가` : issue.field==='title'?'이':'가'} 계획과 다릅니다.`))].join(' ');
     return [details, existingServiceResult(job) ? '등록 기록에서 저장 또는 게시된 글을 확인해 주세요. 같은 글을 다시 올리지 마세요.' : '저장 또는 게시 전에 멈췄습니다. 내용을 확인해 주세요.'];
   }
   if (/^BLOG_(SAVED|PUBLISHED)_READBACK_/.test(code)) return [
-    code.endsWith('MISMATCH') ? '저장 또는 발행된 글에서 계획과 다른 내용이 있습니다.' : '저장 또는 발행된 글을 끝까지 다시 읽지 못했습니다.',
+    code.includes('MISMATCH') ? '저장 또는 발행된 글에서 계획과 다른 내용이 있습니다.' : '저장 또는 발행된 글을 끝까지 다시 읽지 못했습니다.',
     '등록 기록에서 해당 글을 확인해 주세요. 같은 글을 다시 올리지 마세요.',
   ];
   if (code.startsWith('BAND_POST_UNCONFIRMED:')) return [
@@ -19,7 +28,7 @@ export function jobMessage(job: Job): [string, string] {
     '등록 기록에서 확인해 주세요. 같은 글을 다시 올리지 마세요.',
   ];
   if (code.startsWith('BAND_PUBLISHED_READBACK_')) return [
-    code.endsWith('MISMATCH') ? '게시한 글에서 계획과 다른 내용이 있습니다.' : '게시한 글의 상세 내용을 끝까지 읽지 못했습니다.',
+    code.includes('MISMATCH') ? '게시한 글에서 계획과 다른 내용이 있습니다.' : '게시한 글의 상세 내용을 끝까지 읽지 못했습니다.',
     '글 주소는 등록 기록에 저장했습니다. 해당 글을 확인해 주세요. 같은 글을 다시 올리지 마세요.',
   ];
   if (code === 'BAND_CREATE_REJECTED') return ['밴드가 게시 요청을 거절했습니다.', '등록 기록을 확인해 주세요. 자동으로 다시 게시하지 않습니다.'];
