@@ -41,17 +41,17 @@ describe('mandatory struck text omission', () => {
     for (const channel of ['blog', 'band'] as const) expect(preview.verification[channel]).toMatchObject({ matches: true, counts: { paragraphs: 2 } });
   });
 
-  it('collapses only spaces joined by a removal, retaining unrelated run spacing and formatting', () => {
+  it('collapses HTML spaces across formatting and omissions', () => {
     const parsed = parseContents('<p>기존 <b> </b> 간격 / 앞 <del>옛</del><b> </b><i>뒤</i> / 붙<del>옛</del>임</p>');
-    expect(parsed.blocks.map(blockText)).toEqual(['기존   간격 / 앞 뒤 / 붙임']);
+    expect(parsed.blocks.map(blockText)).toEqual(['기존 간격 / 앞 뒤 / 붙임']);
     const formatted = parseContents('<p><b>앞 </b><s>옛 9</s><a href="https://example.invalid/info"> 뒤</a></p>');
     expect(formatted.blocks[0]).toMatchObject({ kind: 'paragraph', runs: [{ text: '앞 ', bold: true }, { text: '뒤', href: 'https://example.invalid/info' }] });
   });
 
-  it('retains spaces already duplicated on either side of an omission', () => {
-    expect(parseContents('<p>앞<del>옛</del> <b> </b>뒤</p>').blocks.map(blockText)).toEqual(['앞  뒤']);
-    expect(parseContents('<p>앞 <b> </b><del>옛</del> 뒤</p>').blocks.map(blockText)).toEqual(['앞  뒤']);
-    expect(parseContents('<p>앞 <del>옛</del> <b> </b>뒤</p>').blocks.map(blockText)).toEqual(['앞  뒤']);
+  it('renders ordinary spaces adjacent to omissions once', () => {
+    expect(parseContents('<p>앞<del>옛</del> <b> </b>뒤</p>').blocks.map(blockText)).toEqual(['앞 뒤']);
+    expect(parseContents('<p>앞 <b> </b><del>옛</del> 뒤</p>').blocks.map(blockText)).toEqual(['앞 뒤']);
+    expect(parseContents('<p>앞 <del>옛</del> <b> </b>뒤</p>').blocks.map(blockText)).toEqual(['앞 뒤']);
     expect(parseContents('<p>앞 <del>옛</del> <s>옛</s> 뒤</p>').blocks.map(blockText)).toEqual(['앞 뒤']);
   });
 

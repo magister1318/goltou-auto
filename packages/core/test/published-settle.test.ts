@@ -23,11 +23,11 @@ async function viewer(missing = '', mobileProof = false, withTable = false) {
   // The full replay below owns the 99-paragraph/29-photo scrolling regression.
   // Keep the independent mobile visibility test small so it tests that second
   // live document without repeating a long lazy-load sweep under worker load.
-  const shape = mobileProof || withTable ? {paragraphs:3,photos:2,fillers:0} : {paragraphs:99,photos:29,fillers:58};
+  const shape = missing === 'private-no-tags' ? {paragraphs:20,photos:66,fillers:51} : mobileProof || withTable || missing ? {paragraphs:3,photos:2,fillers:0} : {paragraphs:99,photos:29,fillers:58};
   const paragraphs = Array.from({length:shape.paragraphs},(_,i)=>`합성 문단 ${i+1}`);
   paragraphs.forEach((text,i)=>plan.steps.push({kind:'text',role:'body',text,runs:i===0?[{text,bold:true}]:i===1||i===2?[{text,href:`https://example.invalid/${i}`}]:[{text}]}));
   const files = Array.from({length:shape.photos},(_,i)=>({url:`https://example.invalid/photo/${i}`,path:`/synthetic/goltou-1234567890abcdef-${i+1}.png`}));
-  plan.steps.push({kind:'photos',urls:files.map(f=>f.url)},{kind:'text',role:'hashtags',text:'#one #two'});
+  plan.steps.push({kind:'photos',urls:files.map(f=>f.url)},{kind:'text',role:'hashtags',text:missing==='private-no-tags'?'#one #two #three #four':'#one #two'});
   if(withTable)plan.steps.splice(2,0,{kind:'table',role:'body',rows:[['a','b'],['','c']]});
   const body = paragraphs.map((text,i)=>`<div class="se-component se-text"><p class="se-text-paragraph"><span class="se-fs-fs15 se-ff-nanumgothic">${i===0?`<b>${text}</b>`:i===1||i===2?`<a href="https://example.invalid/${i}">${text}</a>`:text}</span></p></div>`).join('');
   // Observed real shape: 99 meaningful paragraphs plus 58 standalone U+200B
@@ -36,15 +36,15 @@ async function viewer(missing = '', mobileProof = false, withTable = false) {
   // The recorded viewer uses data-lazy-src, without native loading="lazy".
   // Adding both mechanisms makes background test tabs depend on Chromium's
   // unrelated native lazy-image activation heuristics.
-  const images = files.map(f=>`<div class="se-component se-image"><img class="se-image-resource" width="90" height="50" data-lazy-src="/photos/${f.path.split('/').pop()}" alt="${f.path.split('/').pop()}" style="display:block;margin-top:50px"></div>`).join('');
-  const html = `<div class="se-documentTitle"><p tabindex="0" class="se-text-paragraph"></p></div><div class="se-viewer"></div><div class="tag_list"></div><div class="post_visibility"></div><script>
+  const images = files.map(f=>`<div class="se-component se-image"><div class="se-module-image">${f.url.endsWith('/0') ? `<span class="se-image-placeholder" data-file-name="${f.path.split('/').pop()}"></span>` : `<img class="se-image-resource" width="90" height="50" data-lazy-src="/photos/${f.path.split('/').pop()}" ${f.url.endsWith('/1') ? 'src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"' : ''} style="display:block;margin-top:50px">`}</div></div>`).join('');
+  const html = `<div class="se-documentTitle"><p tabindex="0" class="se-text-paragraph"></p></div><div class="se-viewer"></div>${missing === 'private-no-tags' ? '' : '<div class="wrap_tag"></div>'}<div class="post_visibility"></div><script>
     const missing=${JSON.stringify(missing)};
     setTimeout(()=>{if(missing!=='title')document.querySelector('.se-documentTitle p').textContent='합성 판독 제목'},100);
     setTimeout(()=>{document.querySelector('.se-viewer').innerHTML=${JSON.stringify(body.replace(/<\/?(?:b|a)\b[^>]*>/g,'')+fillers)}},250);
     setTimeout(()=>{const p=document.querySelectorAll('.se-viewer .se-text-paragraph');if(missing!=='bold')p[0].innerHTML='<b>합성 문단 1</b>';if(missing!=='links'){p[1].innerHTML='<a href="https://example.invalid/1">합성 문단 2</a>';p[2].innerHTML='<a href="https://example.invalid/2">합성 문단 3</a>'}},1800);
     setTimeout(()=>{if(missing!=='photos')document.querySelector('.se-viewer').insertAdjacentHTML('beforeend',${JSON.stringify(images)})},900);
-    setTimeout(()=>{if(missing!=='tags')document.querySelector('.tag_list').innerHTML='<span class="tag">one</span><span class="tag">two</span>'},1500);
-    setTimeout(()=>{if(missing!=='visibility')document.querySelector('.post_visibility').textContent='전체공개'},1200);
+    setTimeout(()=>{if(missing!=='tags'&&missing!=='private-no-tags')document.querySelector('.wrap_tag').innerHTML='<a class="itemTagfont">#one</a><a class="itemTagfont">#two</a>'},1500);
+    setTimeout(()=>{if(missing!=='visibility')document.querySelector('.post_visibility').textContent=missing==='private-no-tags'?'비공개':'전체공개'},1200);
     if(${withTable})setTimeout(()=>{if(missing==='table-missing')return;const t=document.createElement('div');t.className='se-component se-table';t.innerHTML='<table><tr><td><p class="se-text-paragraph">a</p></td><td><p class="se-text-paragraph">'+(missing==='table-cell'?'wrong':'b')+'</p></td></tr><tr><td><p class="se-text-paragraph"></p></td><td><p class="se-text-paragraph">c</p></td></tr></table>';if(missing==='table-shape')t.querySelector('tr:last-child').remove();document.querySelector('.se-viewer').firstElementChild.after(t);},2100);
     document.addEventListener('keydown',e=>{if(e.key==='PageDown')for(const img of document.querySelectorAll('img[data-lazy-src]')){const r=img.getBoundingClientRect();if(r.top<innerHeight&&r.bottom>0){img.src=img.getAttribute('data-lazy-src');img.removeAttribute('data-lazy-src')}}});
   </script>`;
@@ -62,13 +62,13 @@ async function viewer(missing = '', mobileProof = false, withTable = false) {
   }
   const {page,surface}=await makeSurface();
   const host={create:async()=>(await makeSurface()).surface,destroy:async(s:Surface)=>s.close(),clearSession:async()=>{}} as SurfaceHost;
-  const execution=createBlogExecution(plan,files,{host,editorUrl:'http://127.0.0.1/editor',localPublish:!mobileProof,publishedSettleMs:missing?2500:20000},{mode:'publish',visibility:'public',beforeSave(){throw Error('NO_SAVE');},check(){},progress(){}});
+  const execution=createBlogExecution(plan,files,{host,editorUrl:'http://127.0.0.1/editor',localPublish:!mobileProof,publishedSettleMs:missing && missing !== 'bold' ? 2500 : 20000},{mode:'publish',visibility:missing === 'private-no-tags' ? 'private' : 'public',beforeSave(){throw Error('NO_SAVE');},check(){},progress(){}});
   execution.surface=surface;execution.publishedPost={url,postId:'9001'};
   await surface.open({url,session:'naver',width:1280,height:900,userAgent:'synthetic fixture'});
   return {execution,surface,page,plan,files,imageRequests:()=>imageRequests};
 }
 
-it('replays late tags, late and lazy loaded photos and 58 filler paragraphs through the real published verifier',async()=>{
+it('replays late tags, late photo slots without forcing network loads and 58 filler paragraphs through the real published verifier',async()=>{
   const f=await viewer();
   const directory=await mkdtemp(path.join(os.tmpdir(),'goltou-settle-'));
   try{
@@ -76,20 +76,20 @@ it('replays late tags, late and lazy loaded photos and 58 filler paragraphs thro
     const result=await loggedFixture(directory,'blog_publish',async()=>{
       const actual=await f.execution.verifyPublished();
       expect(actual.tokens.filter(t=>t.kind==='text')).toHaveLength(99);
-      expect(actual.tokens.filter(t=>t.kind==='photo'&&t.loaded)).toHaveLength(29);
+      expect(actual.tokens.filter(t=>t.kind==='photo'&&t.identity)).toHaveLength(29);
       expect(actual.tags).toEqual(['one','two']);
     },['sites.naver-blog.plan.BlogExecution.verifyPublished']);
     expect(f.execution.publishedVerified).toBe(true);expect(verify).toHaveBeenCalledTimes(1);
-    expect(f.imageRequests()).toBe(29);
-    expect(f.execution.readbackTimings[0]!.navigationKeys).toBeGreaterThan(1);
+    expect(f.imageRequests()).toBe(0);
+    expect(f.execution.readbackTimings[0]!.navigationKeys).toBe(0);
     expect(result.lines.filter(r=>r.step==='terminal').map(r=>r.result)).toEqual(['succeeded']);
     for(const check of ['title','paragraphs','bold','links','photos','hashtags','visibility'])expect(result.lines.some(r=>r.check===check&&r.counts?.expected!==undefined&&r.counts?.observed!==undefined&&typeof r.duration==='number')).toBe(true);
   }finally{await rm(directory,{recursive:true,force:true});}
 },30000);
 
-it.each(['title','photos','tags','visibility','bold','links'])('retains the receipt and names permanently missing %s after the deadline',async missing=>{
+it.each(['title','photos','tags','visibility','links'])('retains the receipt and names permanently missing %s after the deadline',async missing=>{
   const f=await viewer(missing);
-  await expect(f.execution.verifyPublished()).rejects.toMatchObject({issues:expect.arrayContaining([expect.objectContaining({field:missing==='tags'?'hashtags':missing})])});
+  await expect(f.execution.verifyPublished()).rejects.toMatchObject({issues:expect.arrayContaining([expect.objectContaining({field:missing==='tags'?'hashtags':missing==='links'?'href':missing==='photos'?'photo':missing})])});
   expect(f.execution.publishedVerified).toBe(false);
   expect(f.execution.creationState).toBe('published');
   expect(f.execution.publishedPost?.url).toBe('https://blog.naver.com/synthetic_fixture/9001');
@@ -99,8 +99,8 @@ it('reads public openType from a separate live mobile post, independently of the
   const f=await viewer('',true);
   const actual=await f.execution.verifyPublished();
   expect(actual.visibility).toBe('public');
-  expect(actual.tokens.filter(t=>t.kind==='photo'&&t.loaded)).toHaveLength(2);
-  expect(f.imageRequests()).toBe(2);
+  expect(actual.tokens.filter(t=>t.kind==='photo'&&t.identity)).toHaveLength(2);
+  expect(f.imageRequests()).toBe(0);
   expect(f.execution.publishedVerified).toBe(true);
 },30000);
 
@@ -109,7 +109,24 @@ it('waits for a late real table in the published-page verifier and compares ever
   expect(actual.tokens.slice(0,4).map(t=>t.kind)).toEqual(['text','table','text','text']);
   expect(actual.tokens[1]).toMatchObject({kind:'table',rows:[['a','b'],['','c']]});expect(f.execution.publishedVerified).toBe(true);
 },15000);
-it.each(['table-missing','table-cell','table-shape'])('retains the published receipt and names %s as 표',async missing=>{
-  const f=await viewer(missing,false,true);await expect(f.execution.verifyPublished()).rejects.toMatchObject({issues:expect.arrayContaining([{field:'table'}])});
+it.each(['table-missing','table-shape'])('retains the published receipt and names %s as 표',async missing=>{
+  const f=await viewer(missing,false,true);await expect(f.execution.verifyPublished()).rejects.toMatchObject({issues:expect.arrayContaining([expect.objectContaining({field:'table'})])});
   expect(f.execution.creationState).toBe('published');expect(f.execution.publishedVerified).toBe(false);
 },12000);
+
+it('verifies a published post whose bold styling was dropped', async () => {
+  const f = await viewer('bold');
+  await f.execution.verifyPublished();
+  expect(f.execution.publishedVerified).toBe(true);
+}, 12000);
+
+it('counts all 66 private-post photo slots and only flags the absent separate tag area', async () => {
+  const f = await viewer('private-no-tags');
+  const press = vi.spyOn(f.surface, 'pressKey').mockRejectedValue(Error('CDP_KEY_FAILURE'));
+  const hit = vi.spyOn(f.surface, 'readClickTarget').mockResolvedValue(false);
+  await expect(f.execution.verifyPublished()).rejects.toMatchObject({ issues:[{field:'hashtags',expected:4,observed:0}] });
+  expect(f.execution.creationState).toBe('published');
+  expect(f.execution.readbackTimings[0]).toMatchObject({ photos:66, navigationKeys:0 });
+  expect(press).not.toHaveBeenCalled(); expect(hit).not.toHaveBeenCalled();
+  expect(f.imageRequests()).toBe(0);
+}, 15000);

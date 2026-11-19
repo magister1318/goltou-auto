@@ -1,10 +1,15 @@
 import { ApiError } from '@goltou/api-client';
-import type { Job, JobInput, Simulation } from './protocol';
+import type { Job, JobInput, Simulation, TargetResult } from './protocol';
 import type { PreparationWork } from './preparation';
+import type { TraceJob } from '@goltou/surface/telemetry';
+export interface RegistrationStart {
+  retry: boolean; startFailures: TargetResult[];
+  traceForTarget?: (target: JobInput['targets'][number]) => TraceJob | undefined;
+}
 export interface RegistrationRunner {
   readonly job: Job | null;
   readonly serviceLogin?: import('./service-login').ServiceLoginController;
-  start(input: JobInput, title: string, photos: number, preparation?: PreparationWork): Promise<void>;
+  start(input: JobInput, title: string, photos: number, preparation?: PreparationWork, context?: RegistrationStart): Promise<void>;
   stop(): Promise<void>;
   cancel?(): Promise<void>;
   resume(): Promise<void>;
@@ -35,12 +40,14 @@ export class FakeRegistrationRunner implements RegistrationRunner {
   private photos = 5;
   private loginTriggered = false;
   private failureTriggered = false;
+  private startFailures: TargetResult[] = [];
   private preparation: PreparationWork | undefined;
   private abort = new AbortController();
   private inFlight: Promise<void> | undefined;
   constructor(private readonly configuration: () => Simulation, private readonly checkpoint: Checkpoint, private readonly notify: (job: Job) => void) {}
-  async start(input: JobInput, title: string, photos: number, preparation?: PreparationWork): Promise<void> {
-    if (this.job && ['running', 'login_paused', 'user_paused', 'failed'].includes(this.job.status)) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
+  async start(input: JobInput, title: string, photos: number, preparation?: PreparationWork, context?: RegistrationStart): Promise<void> {
+    if (this.job && ['running', 'login_paused', 'user_paused', 'failed'].includes(this.job.status) && !context?.retry) throw new ApiError('conflict', '진행하던 작업을 먼저 마쳐 주세요.');
+    this.startFailures = context?.startFailures ?? [];
     this.photos = photos; this.loginTriggered = false; this.failureTriggered = false;
     this.preparation = preparation; this.abort = new AbortController();
     this.job = { startedAt: Date.now(), id: ++this.serial, productNo: input.productNo, title, mode: input.mode, targets: input.targets, status: 'running', step: 1, current: 0, total: 1, completedSteps: [], service: null, message: '' };
@@ -64,6 +71,13 @@ export class FakeRegistrationRunner implements RegistrationRunner {
   private schedule(): void { clearTimeout(this.timer); this.timer = setTimeout(() => { this.inFlight = this.tick().finally(() => { this.inFlight = undefined; }); }, this.configuration().tickMs); }
   private async publish(): Promise<void> {
     if (!this.job) return;
+    const status = this.job.status;
+    if (status === 'published' || status === 'draft_saved' || status === 'failed') {
+      const targetResults = this.job.targets.map(target => this.startFailures.find(result => result.channel === target.channel && result.key === target.key) ??
+        ({ ...target, status, outcome: status === 'failed' ? 'failed' as const : 'ok' as const, ...(status === 'failed' ? { reason: 'CHANNEL_FAILED' } : {}) }));
+      this.job.targetResults = targetResults;
+      if (targetResults.some(result => result.status === 'failed')) this.job.status = 'failed';
+    }
     await this.checkpoint(structuredClone(this.job));
     this.notify(structuredClone(this.job));
   }

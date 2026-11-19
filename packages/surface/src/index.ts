@@ -32,6 +32,19 @@ export interface KeyInput {
   modifiers?: number;
 }
 export interface SurfaceDialog { id: string; kind: 'alert' | 'confirm'; message: string; url?: string }
+export const clickHitTags = ['button', 'span', 'div', 'a', 'svg', 'path', 'iframe', 'body', 'html', 'section', 'p', 'label', 'input', 'img', 'textarea', '[other]'] as const;
+export const clickHitRelations = ['ancestor', 'descendant', 'unrelated', 'same'] as const;
+export interface ViewportRect { x: number; y: number; width: number; height: number }
+export interface ClickHitElement {
+  tag: string; classes: string[]; ariaLabel?: string | null;
+  ancestorClasses?: string[];
+  rect?: ViewportRect; relation?: typeof clickHitRelations[number];
+}
+export interface ClickTargetMiss { scrollX: number; scrollY: number; rejectedHit?: ClickHitElement }
+export interface ClickTargetOptions {
+  exactText?: string;
+  onMiss?: { classes: readonly string[]; ancestorClasses?: readonly string[]; ariaLabels: readonly string[]; report(miss: ClickTargetMiss): void };
+}
 export interface RequestRule { hostname: string; pathname: string; prefix?: boolean }
 /** Ephemeral transport data. Callers must never persist bodies or headers. */
 export interface GuardedRequest {
@@ -50,7 +63,6 @@ export interface Surface {
   waitForNavigation(options?: NavigationOptions): Promise<SurfaceState>;
   /** Read-only expression, including element geometry. Never use to edit the page. */
   evaluateReadOnly<T>(expression: string): Promise<T>;
-  /** Read the actual hit-tested element, including occluding elements and frames. */
   /** Native foreground, window focus and screen-on signals. Read only. */
   readAppFocus?(): Promise<boolean>;
   /** Shell-enforced, before first navigation; applies to redirects, frames and new windows. */
@@ -58,14 +70,17 @@ export interface Surface {
   onUserHidden?(listener: () => void): () => void;
   /** Shell hid a landing or blocked main-frame navigation, including child windows. */
   onNavigationHidden?(listener: () => void): () => void;
-  readClickTarget?(x: number, y: number, selector: string): Promise<boolean>;
+  /** Test the click's viewport point, including occlusion and same-origin frames. */
+  readClickTarget?(x: number, y: number, selector: string, options?: ClickTargetOptions): Promise<boolean>;
   /** Re-read a safety condition immediately before mousePressed, after hover/delay. */
   click(x: number, y: number, beforePress?: () => Promise<void>): Promise<void>;
   typeText(text: string): Promise<void>;
+  /** One native text input event, for a literal editor prefix. */
+  insertText?(text: string): Promise<void>;
   pressKey(input: KeyInput, beforePress?: () => Promise<void>): Promise<void>;
   attachFiles(selector: string, absolutePaths: readonly string[]): Promise<void>;
   /** Shell-enforced request barrier, installed before navigation; persists until close. */
-  blockRequests?(rules: readonly { hostname: string; pathname: string }[]): Promise<void>;
+  blockRequests?(rules: readonly { hostname: string; pathname: string; expected?: boolean }[]): Promise<void>;
   guardRequests?(rules: readonly RequestRule[], inspect: (request: GuardedRequest) => boolean | Promise<boolean>,
     response: (response: GuardedResponse) => void,
     observeResponse?: (request: Pick<GuardedRequest, 'url' | 'method'>) => boolean,

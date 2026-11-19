@@ -123,7 +123,8 @@ export function blogFixture(mode = '') {
     if(mode==='duplicate')drafts.push(drafts[drafts.length-1]);localStorage.setItem('drafts',JSON.stringify(drafts));
     if(mode==='autosave-readback')localStorage.removeItem('leftover');
     localStorage.setItem('saves',String(Number(localStorage.getItem('saves')||0)+1));
-    if(mode==='body-change-after-save')main.querySelector('.se-text-paragraph').textContent+=' 바뀜';
+    if(mode==='body-change-after-save')main.querySelector('.se-text-paragraph').remove();
+    if(mode==='small-change-after-save')main.querySelector('.se-text-paragraph').textContent=main.querySelector('.se-text-paragraph').textContent.replace('합성','합싱');
     if(mode==='format-drop-after-save')for(const e of main.querySelectorAll('b,strong,a'))e.replaceWith(...e.childNodes);
     if(mode!=='ambiguous')document.querySelector('[data-click-area="tpb*s.count"]').textContent=drafts.length;
     if(mode==='dialog')confirm('로컬 저장 확인');
@@ -134,6 +135,7 @@ export function blogFixture(mode = '') {
       const li=document.createElement('li'), b=document.createElement('button'), strong=document.createElement('strong');
       b.dataset.clickArea='tpb*s.tlist';strong.textContent=draft.title;b.append(strong);const date=document.createElement('span');date.className='date__fixture';date.textContent=draft.stamp||'';b.append(date);li.append(b);list.append(li);
       b.onclick=()=>{title.textContent=draft.title;main.innerHTML=draft.html;document.querySelector('.tag_list').innerHTML=draft.tags;metadataTags=draft.metadataTags||[];list.hidden=true;
+        if(mode==='small-change-after-save')main.querySelector('.se-text-paragraph').textContent=main.querySelector('.se-text-paragraph').textContent.replace('합성','합싱');
         if(mode==='format-drop-reopen')for(const e of main.querySelectorAll('b,strong,a'))e.replaceWith(...e.childNodes);
         if(mode==='autosave-readback')setTimeout(()=>{
           localStorage.setItem('autosaveAttempted','yes');
@@ -156,5 +158,20 @@ export function blogFixture(mode = '') {
     const prompt=document.createElement('div');prompt.className='se-popup-alert-confirm';prompt.innerHTML='작성 중인 글이 있습니다. 이어서 작성하시겠습니까?<button class="se-popup-button-cancel">취소</button>';
     prompt.querySelector('button').onclick=()=>{localStorage.setItem('declined','yes');prompt.remove()};document.body.append(prompt);
   }
+
+    if(mode==='auto-list' || mode==='auto-list-undo-fails')document.addEventListener('beforeinput',e=>{
+      if(e.inputType!=='insertText'||(mode==='auto-list'&&e.data!==' '))return;
+      const anchor=getSelection()?.anchorNode;
+      const p=(anchor?.nodeType===1?anchor:anchor?.parentElement)?.closest('.se-text-paragraph');
+      if(mode==='auto-list' && !/^(?:[0-9]+[.)]|[-*+>])$/.test(p?.textContent??''))return;
+      if(!p?.closest('.se-main-container')||!/^(?:[0-9]+[.)]|[-*+>])\\s/.test(p.textContent+e.data))return;
+      e.preventDefault();
+      const list=document.createElement('ol'),item=document.createElement('li');
+      p.before(list);list.append(item);item.append(p);p.replaceChildren();
+      const range=document.createRange();range.selectNodeContents(p);range.collapse();
+      const selection=getSelection();selection.removeAllRanges();selection.addRange(range);
+      window.markerConversions=(window.markerConversions??0)+1;
+    });
+    if(mode==='auto-list-undo-fails')document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key.toLowerCase()==='z')e.preventDefault()});
   </script>`;
 }

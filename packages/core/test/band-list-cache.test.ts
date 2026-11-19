@@ -3,8 +3,9 @@ import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { JSDOM } from 'jsdom';
+import { BandExecution } from '@goltou/sites';
 import type { Surface, SurfaceHost } from '@goltou/surface';
-import { configureTrace } from '@goltou/surface/telemetry';
+import { configureTrace, inTrace } from '@goltou/surface/telemetry';
 import { ChannelRegistrationRunner } from '../src/band-runner';
 import { bandListMaxAge, fileBandListStore, type BandListStore, type SavedBandList, type BandListResult } from '../src/band-list-cache';
 import { JobLogStore, sanitizeDetail } from '../src/job-logs';
@@ -47,7 +48,7 @@ describe('WP35 app-private Band list cache', () => {
     f.page.reconfigure({ url: 'https://band.us/band/987654321/post' });
     for (const state of ['', '<div class="uploadProgress">사진 업로드 중</div>']) {
       f.page.window.document.body.innerHTML = '<textarea class="_postTextArea"></textarea><button class="_btnPostWrite" disabled>게시</button>' + state;
-      await expect(f.runner.directory.guardCachedTarget('987654321')).resolves.toBeUndefined();
+      await expect(f.runner.directory.guardTarget('987654321')).resolves.toBeUndefined();
     }
     expect(await f.store.read()).not.toBeNull();
   });
@@ -180,7 +181,7 @@ describe('WP35 app-private Band list cache', () => {
     await new Promise(r => setTimeout(r, 10));
     expect(await f.store.read()).toBeNull(); expect(f.runner.directory.choices).toEqual([]);
   });
-  it.each(['not-member', 'member-korean', 'not-found', 'permission', 'disabled', 'route', 'dialog'])('fails a cached target before any input/post, drops the cache and never tries the next target (%s)', async mode => {
+  it.each(['not-member', 'member-korean', 'not-found', 'permission', 'disabled', 'route', 'dialog'])('fails a single cached target before any input or post and invalidates the cache (%s)', async mode => {
     const f = fixture(); await f.runner.listBands();
     vi.mocked(f.surface.open).mockImplementation(async options => {
       if (mode === 'dialog') { vi.mocked(f.surface.evaluateReadOnly).mockRejectedValue(Error('DIALOG_BLOCKS_RUNTIME')); vi.mocked(f.surface.readState).mockRejectedValue(Error('DIALOG_BLOCKS_RUNTIME')); }
@@ -188,11 +189,13 @@ describe('WP35 app-private Band list cache', () => {
       f.page.window.document.body.innerHTML = mode === 'disabled' ? '<button class="_btnPostWrite" disabled>글쓰기</button>' : '<p class="errorPage">' + ({ 'not-member': '가입하지 않은 밴드입니다.', 'member-korean': '이 밴드의 멤버가 아닙니다.', 'not-found': '존재하지 않는 밴드입니다.', permission: '글쓰기 권한이 없습니다.' }[mode] ?? '') + '</p>';
     });
     if (mode === 'dialog') vi.mocked(f.surface.readDialog!).mockResolvedValue({ id: 'denied', kind: 'alert', message: '글쓰기 권한이 없습니다.' });
-    await f.runner.start(input, '합성 시험', 0, work());
+    await f.runner.start({ ...input, targets: [input.targets[0]!] }, '합성 시험', 0, work());
     await until(() => f.runner.job?.status === 'failed');
-    const message = '밴드 목록이 바뀌었습니다. 새로고침 후 다시 골라 주세요.';
-    expect(f.runner.job).toMatchObject({ status: 'failed', failureCode: 'BAND_TARGET_INVALID', message, publicationUncertain: false });
-    expect(f.runner.job?.targetResults).toMatchObject([{ status: 'failed', reason: message }, { status: 'stopped' }]);
+    const denied = ['permission', 'disabled', 'dialog'].includes(mode);
+    const message = denied ? '이 밴드에서 글을 쓸 권한이 없습니다.' : '밴드 목록이 바뀌었습니다. 새로고침 후 다시 골라 주세요.';
+    const failureCode = denied ? 'BAND_WRITE_NOT_ALLOWED' : 'BAND_TARGET_INVALID';
+    expect(f.runner.job).toMatchObject({ status: 'failed', failureCode, message, publicationUncertain: false });
+    expect(f.runner.job?.targetResults).toMatchObject([{ status: 'failed', reason: failureCode }]);
     expect(await f.store.read()).toBeNull();
     expect(f.surface.open).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ url: 'https://band.us/band/987654321/post' }));
     for (const call of [f.surface.click, f.surface.typeText, f.surface.pressKey, f.surface.attachFiles]) expect(call).not.toHaveBeenCalled();
@@ -217,4 +220,117 @@ describe('WP35 app-private Band list cache', () => {
     expect(lines.some(l => l.bandList?.cacheSource === 'band')).toBe(true);
     expect(sanitizeDetail({ bandList: { cacheSource: 'PRIVATE_NAME', cacheAgeMinutes: -1, stale: 'PRIVATE_NAME', cacheCleared: true, names: raw } } as never)).toEqual({ bandList: { cacheCleared: true } });
   });
+});
+
+it.each(['alternate-composer','timeout','permission-after-click'])('names the fourth Band wait on a band with two spaces (%s)', async mode => {
+  const f = fixture();
+  const directory = f.runner.directory, band = { key:'987654321', name:'합성 밴드  이름' };
+  directory.seedChoices([band]);
+  vi.spyOn(directory,'freshFeed').mockReturnValue(true);
+  vi.mocked(f.surface.open).mockImplementation(async options=>{
+    f.page.reconfigure({ url:options.url + '?private=HIDDEN_QUERY' });
+    f.page.window.document.body.innerHTML = '<button class="_btnPostWrite" aria-label="글쓰기"><span>✎</span></button>';
+  });
+  vi.mocked(f.surface.click).mockImplementation(async (_x,_y,before)=>{
+    await before?.();
+    if (mode === 'alternate-composer') f.page.window.document.body.innerHTML = '<section class="postWriteSection"><textarea aria-label="본문"></textarea></section>';
+    if (mode === 'permission-after-click') f.page.window.document.body.innerHTML = '<div role="alertdialog">이 밴드에서 글쓰기 권한이 없습니다.</div>';
+  });
+  const folder = await mkdtemp(path.join(os.tmpdir(),'goltou-composer-'));
+  cleanups.push(()=>rm(folder,{recursive:true,force:true}));
+  const logs = new JobLogStore(folder); configureTrace(logs);
+  const record = logs.begin('band_post','band');
+  const execution = new BandExecution({channel:'band',steps:[]},[],{
+    directory,key:band.key,check(){},verify(){},progress(){},sourceDimensions:async()=>({width:1,height:1}),
+  });
+  vi.useFakeTimers();
+  try {
+    const pending = inTrace(record,()=>execution.ensureReady());
+    const expectation = mode === 'alternate-composer' ? expect(pending).resolves.toBeUndefined() :
+      expect(pending).rejects.toThrow(mode === 'timeout' ? 'BAND_COMPOSER_UNAVAILABLE' : 'BAND_WRITE_NOT_ALLOWED');
+    await vi.advanceTimersByTimeAsync(15500);
+    await expectation;
+  } finally { vi.useRealTimers(); record.end('stopped'); }
+  const uploaded = logs.uploadTail(record.id);
+  const waits = uploaded.trim().split('\n').map(line=>JSON.parse(line)).filter(line=>line.step==='sites.dom.waitFor');
+  expect(waits.filter(line=>line.event==='start').map(line=>line.selector)).toEqual([
+    'BAND_SESSION','BAND_FEED','BAND_WRITE_CONTROL','BAND_COMPOSER',
+  ]);
+  expect(waits.every(line=>line.counts.timeoutMs>0)).toBe(true);
+  if (mode === 'timeout') expect(waits.at(-1)).toMatchObject({ selector:'BAND_COMPOSER',reason:'OBSERVATION_TIMEOUT',
+    counts:{editables:0,writeButtons:1},navigation:{path:'/band/[id]/post'} });
+  expect(uploaded).not.toMatch(/HIDDEN_QUERY|합성 밴드|987654321/);
+  expect(f.surface.click).toHaveBeenCalledTimes(1);
+  expect(f.surface.typeText).not.toHaveBeenCalled();
+});
+
+it.each(['covered', 'hidden', 'no-label', 'outside-viewport', 'feed-timeout', 'covered-before-press'])('names and diagnoses a Band opening failure (%s)', async mode => {
+  const f = fixture();
+  const directory = f.runner.directory, key = '987654321';
+  directory.seedChoices([{ key, name: '합성 이름' }]);
+  vi.spyOn(directory, 'freshFeed').mockReturnValue(mode !== 'feed-timeout');
+  vi.mocked(f.surface.open).mockImplementation(async options => {
+    f.page.reconfigure({ url: options.url + '?private=HIDDEN_QUERY' });
+    const aria = mode === 'no-label' ? 'PRIVATE_LABEL' : '글쓰기';
+    f.page.window.document.body.innerHTML = `<button class="uFloatingButton _btnPostWrite" aria-label="${aria}"${mode === 'hidden' ? ' hidden' : ''}>PRIVATE_BODY</button>`;
+    if (mode === 'outside-viewport') f.page.window.document.querySelector('button')!.getBoundingClientRect = () =>
+      new f.page.window.DOMRect(1, f.page.window.innerHeight + 20, 100, 40);
+  });
+  const readHit = vi.fn<NonNullable<Surface['readClickTarget']>>();
+  f.surface.readClickTarget = readHit.mockImplementation(async (_x, _y, _selector, options) => {
+    const attempt = readHit.mock.calls.length;
+    if (mode === 'covered-before-press' && attempt === 2) return true;
+    const afterHover = mode === 'covered-before-press' && attempt === 3;
+    options?.onMiss?.report({ scrollX: -10, scrollY: 250, rejectedHit: {
+      tag: afterHover ? 'span' : 'div', classes: ['lyWrap', 'PRIVATE_CLASS'], ariaLabel: 'PRIVATE_LABEL',
+      ancestorClasses: ['modalWrap_800', 'PRIVATE_ANCESTOR'],
+      rect: Object.assign({ x: -5, y: 50.5, width: 100, height: 40 }, { extra: 'PRIVATE_GEOMETRY' }),
+      relation: afterHover ? 'ancestor' : 'unrelated',
+    } });
+    return false;
+  });
+  const press = vi.fn();
+  vi.mocked(f.surface.click).mockImplementation(async (_x, _y, beforePress) => { await beforePress?.(); press(); });
+  const folder = await mkdtemp(path.join(os.tmpdir(), 'goltou-band-write-'));
+  cleanups.push(() => rm(folder, { recursive: true, force: true }));
+  const logs = new JobLogStore(folder); configureTrace(logs);
+  const record = logs.begin('band_post', 'band');
+  const execution = new BandExecution({ channel: 'band', steps: [] }, [], {
+    directory, key, check() {}, verify() {}, progress() {}, sourceDimensions: async () => ({ width: 1, height: 1 }),
+  });
+  vi.useFakeTimers();
+  try {
+    const expectation = expect(inTrace(record, () => execution.ensureReady())).rejects.toThrow(
+      mode === 'feed-timeout' ? 'OBSERVATION_TIMEOUT' : 'BAND_COMPOSER_UNAVAILABLE',
+    );
+    await vi.advanceTimersByTimeAsync(20500);
+    await expectation;
+  } finally { vi.useRealTimers(); record.end('stopped'); }
+  const uploaded = logs.uploadTail(record.id);
+  const lines = uploaded.trim().split('\n').map(line => JSON.parse(line));
+  const failure = lines.find(line => line.event === 'fail' && ['sites.dom.waitFor', 'sites.band.write-control'].includes(line.step));
+  if (mode === 'feed-timeout') {
+    expect(failure).toMatchObject({ selector: 'BAND_FEED', reason: 'OBSERVATION_TIMEOUT' });
+    expect(lines.some(line => line.selector === 'BAND_WRITE_CONTROL')).toBe(false);
+  } else {
+    const missed = mode === 'covered' || mode === 'covered-before-press';
+    expect(failure).toMatchObject({ selector: 'BAND_WRITE_CONTROL', bandWrite: {
+      legacyFloating: { matches: mode === 'no-label' ? 0 : 1, visible: ['no-label', 'hidden'].includes(mode) ? 0 : 1,
+        inViewport: missed ? 1 : 0, readClickTarget: missed ? 'miss' : 'not_checked',
+        ...(missed ? { scrollX: -10, scrollY: 250, candidateRect: { x: 1, y: 1, width: 100, height: 40 },
+          rejectedHit: { tag: mode === 'covered-before-press' ? 'span' : 'div', classes: ['lyWrap'], ariaLabel: '[other]',
+            ancestorClasses: ['modalWrap_800'],
+            rect: { x: -5, y: 50.5, width: 100, height: 40 }, relation: mode === 'covered-before-press' ? 'ancestor' : 'unrelated' } } : {}) },
+      legacyText: { matches: 1, textMatches: 0, ariaMatches: mode === 'no-label' ? 0 : 1, readClickTarget: 'not_checked' },
+      labelled: { matches: mode === 'no-label' ? 0 : 1 },
+    } });
+    if (mode !== 'covered-before-press') expect(failure).toMatchObject({ counts: { writeButtons: 1, editables: 0 }, navigation: { path: '/band/[id]/post' } });
+    else expect(lines.find(line => line.step === 'sites.band.write-control' && line.event === 'retry')).toMatchObject({ bandWrite: { legacyFloating: { rejectedHit: { tag: 'div' } } } });
+  }
+  const [day] = (await readdir(folder)).filter(name => /^\d{8}$/.test(name));
+  const [file] = await readdir(path.join(folder, day!));
+  const local = await readFile(path.join(folder, day!, file!), 'utf8');
+  expect(uploaded + local).not.toMatch(/PRIVATE_|HIDDEN_QUERY|합성 이름|987654321/);
+  expect(press).not.toHaveBeenCalled();
+  expect(f.surface.typeText).not.toHaveBeenCalled();
 });

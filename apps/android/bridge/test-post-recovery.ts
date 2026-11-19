@@ -38,7 +38,7 @@ export async function recoverTestPostCleanup(file: string, api: ApiClient, token
   }
   if (checkOnly) throw new Error('BLOG_TEST_POST_STILL_PRESENT');
   await surface.show();
-  await waitFor(async () => (await read<TestPostPage[]>(surface, testPostPageSource)).some(p => p.titles.length) || false, 15000);
+  await waitFor(async () => (await read<TestPostPage[]>(surface, testPostPageSource)).some(p => p.titles.length) || false, 15000, { surface, control: "BLOG_TITLE" });
   const identity = identifyTestPost(await read<TestPostPage[]>(surface, testPostPageSource), context.title);
   const actual = await waitFor(async () => {
     const value = await readBlogDocument(surface);
@@ -47,7 +47,7 @@ export async function recoverTestPostCleanup(file: string, api: ApiClient, token
     if (!await read<boolean>(surface, testPostFocusSource) || !await surface.readClickTarget?.(center.x, center.y, 'body')) refuse();
     await surface.pressKey({ key: 'PageDown' }); await sleep(150);
     return false;
-  }, 30000);
+  }, 30000, { surface, control: "BLOG_TITLE" });
   const comparison = compareDocuments(observePlan(preview.blog), blogObservation(preview.blog, context.files, actual));
   type CleanupStep = Parameters<NonNullable<Parameters<typeof deleteTestPost>[1]>>[0];
   const evidence = {

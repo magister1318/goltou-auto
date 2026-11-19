@@ -115,7 +115,7 @@ const app = {
   async handle({ command, input }) {
     commands.push(command);
     if (command === 'session.get') return snapshot();
-    if (command === 'preferences.get') return { polish: false, closing: false, linkCard: false, lastBandKey: '' };
+    if (command === 'preferences.get') return { polish: false, closing: false, linkCard: false, lastBandKeys: [] };
     if (command === 'preferences.save') return input;
     if (command === 'polish.setting.get' || command === 'polish.setting.save')
       return 'spelling';

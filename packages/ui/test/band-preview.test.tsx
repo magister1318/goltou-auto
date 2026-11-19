@@ -26,4 +26,11 @@ describe('Band preview matches the full post and folded feed', () => {
     expect(logReasonLabel('UNEXPECTED_FAILURE')).not.toContain('UNEXPECTED_FAILURE');
     expect(renderToStaticMarkup(<JobLogFailure reason="BAND_POST_UNCONFIRMED" step={6} />)).toContain('게시와 게시 확인');
   });
+  it('shows Band composer opening for an old record logged as body input', () => {
+    const expected = '밴드 글쓰기 화면 열기 · 밴드 글쓰기 화면을 열지 못했습니다.';
+    expect(renderToStaticMarkup(<JobLogFailure reason="BAND_COMPOSER_UNAVAILABLE" step={6} />)).toContain(expected);
+    const log = { jobId: 'fixture', at: 0, kind: 'band_post', site: 'band', result: 'failed', reason: 'BAND_COMPOSER_UNAVAILABLE', failedStep: 'runner.band_write' } as const;
+    expect(renderToStaticMarkup(<JobLogFailure log={log} />)).toContain(expected);
+    expect(renderToStaticMarkup(<JobLogFailure log={{ ...log, reason: 'UNEXPECTED_FAILURE' }} reason="BAND_COMPOSER_UNAVAILABLE" />)).toContain(expected);
+  });
 });

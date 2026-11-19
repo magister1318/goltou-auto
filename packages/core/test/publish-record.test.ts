@@ -28,7 +28,7 @@ async function fixture(kind: 'blog' | 'channel', failStatus?: string, probe = fa
   const app = new AppCore(api, tokens, (checkpoint, notify) => {
     const services = { host, publishEnabled: true, ...(probe ? { publishProbe: { visibility: 'private' as const, record: async () => {} } } : {}) };
     runner = kind === 'blog' ? new BlogRegistrationRunner(services, checkpoint, notify) : new ChannelRegistrationRunner({ band: { host }, blog: services }, checkpoint, notify);
-    const start = runner.start.bind(runner); runner.start = (input, title, count) => start(input, title, count, work); return runner;
+    const start = runner.start.bind(runner); runner.start = (input: JobInput, title: string, count: number) => start(input, title, count, work); return runner;
   });
   cleanup.push(() => app.dispose()); await app.restoreSession();
   const call = (command: AppRequest['command'], input: unknown = {}) => app.handle({ id: 1, type: 'app', command, input } as AppRequest);

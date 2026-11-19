@@ -6,10 +6,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chromium, type Browser } from 'playwright-core';
 import type { Surface, SurfaceHost, GuardedRequest, GuardedResponse } from '@goltou/surface';
 import { deleteMobileRecordedBandPost } from '../src/band/mobile-delete';
+import { bandAppPromptFixture } from './band-fixture';
 let browser: Browser;
 afterEach(async () => { await browser?.close(); });
 const target = { url: 'https://band.us/band/111/post/9001', title: '합성 상품', matchesBody: (body: string) => body.replace(/\s+/g, '') === '합성상품본문', createdAfter: 1699999999000, createdBefore: 1700000001000 };
-async function fixture(mode = 'ok') {
+async function fixture(mode = 'ok', receiptOnly = false) {
   browser = await chromium.launch({ executablePath: process.env.CHROMIUM || 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true });
   const context = await browser.newContext();
   let gone = mode === 'already-gone', clicks = 0, sent = 0, blockedReads = 0;
@@ -28,15 +29,17 @@ async function fixture(mode = 'ok') {
       if (!await inspect({ url: r.url(), method: 'GET' })) { blockedReads++; return route.abort('blockedbyclient'); }
       const post = { post_no: 9001, band: { band_no: 111 }, web_url: target.url, content: target.title + (mode === 'body' ? '\n바뀐 본문' : '\n본문'), created_at: 1700000000000 + (mode === 'time' ? 10000 : 0),
         author: { me: mode !== 'owner' }, photo_count: 1, attachment: { photo: [{ photo_url: 'https://example.invalid/one.jpg', width: 100, height: 80 }] } };
-      const body = JSON.stringify({ result_code: 1, result_data: { items: gone || mode === 'feed-miss' ? [] : [{ post }] } });
+      const body = JSON.stringify({ result_code: 1, result_data: { items: gone || mode.startsWith('feed-miss') ? [] : [{ post }] } });
       response({ url: r.url(), method: 'GET', status: 200, body });
       return route.fulfill({ contentType: 'application/json', body, headers: { 'access-control-allow-origin': '*' } });
     }
     if (r.method() === 'OPTIONS') return route.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' } });
     const html = `<style>button{width:110px;height:45px}</style>${gone ? '<p role="alert">삭제된 게시글입니다.</p>' : `<section class="postCard"><p class="postText">${mode === 'title' ? '다른 상품' : target.title}<br>본문</p><a class="postCreatedAt" href="${mode === 'identity' ? target.url + '2' : target.url}">시각</a><button class="_btnPostMore" onclick="document.querySelector('ul').hidden=false">글 옵션</button></section>${mode === 'long-menu' ? '<button class="older">다른 조작</button>'.repeat(140) : ''}
-    <ul class="modalMoreMenu _optionContainer" hidden><button>글 수정</button><button class="_menuLink" onclick="document.querySelector('.lyWrap').hidden=false">삭제하기</button>${mode === 'ambiguous' ? '<button class="_menuLink">삭제하기</button>' : ''}</ul>
+    <ul class="modalMoreMenu _optionContainer" hidden>${mode === 'feed-miss-other-owner' ? '' : '<button>글 수정</button>'}<button class="_menuLink" onclick="document.querySelector('.lyWrap').hidden=false">삭제하기</button>${mode === 'ambiguous' ? '<button class="_menuLink">삭제하기</button>' : ''}</ul>
     <div class="lyWrap" role="alertdialog" hidden><p>${mode === 'dialog' ? '다른 내용' : '글을 삭제하시겠습니까?'}</p>${mode === 'missing-cancel' ? '' : '<button>취소</button>'}<button onclick="fetch('https://api-kr.band.us/v1.5.0/delete_post?version=20140508&ts=1700000000000',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({band_no:'111',post_no:'${mode === 'request' ? '9002' : '9001'}'${mode === 'extra-field' ? ",comment_key:'synthetic'" : ''}}).toString()})">삭제</button></div>`}<script>fetch('https://api-kr.band.us/v2.0.0/get_posts_and_announcements');${mode === 'long-menu' ? "let paged=false;document.addEventListener('focusin',e=>{if(!paged&&e.target.className==='older'){paged=true;fetch('https://api-kr.band.us/v2.0.0/get_posts_and_announcements?page_key=synthetic').catch(()=>{});}});" : ''}</script>`;
-    return route.fulfill({ contentType: 'text/html; charset=utf-8', body: html });
+    const prompt = mode === 'app-prompt-stuck' ? bandAppPromptFixture(mode) :
+      mode === 'feed-miss-app-prompt' && !gone && r.url() === target.url ? bandAppPromptFixture() : '';
+    return route.fulfill({ contentType: 'text/html; charset=utf-8', body: '<!doctype html><meta charset=utf-8>' + html + prompt });
   });
   const page = await context.newPage(), cdp = await context.newCDPSession(page);
   let nativeReady = false;
@@ -64,7 +67,8 @@ async function fixture(mode = 'ok') {
     }, typeText: vi.fn(), attachFiles: vi.fn(), waitForNavigation: vi.fn(), show: vi.fn(), hide: vi.fn(), close: vi.fn() };
   const host: SurfaceHost = { create: async () => s, destroy: vi.fn(async () => {}), clearSession: vi.fn() };
   const events: import('../src/band/delete-log').BandDeleteCode[] = [];
-  return { run: () => deleteMobileRecordedBandPost(host, target, 300, e => events.push(e.code)), counts: () => ({ clicks, sent }), blockedReads: () => blockedReads, s, events, earlyRequests, wrongMethods,
+  return { run: () => deleteMobileRecordedBandPost(host, receiptOnly ? {url:target.url} : target, 300, e => events.push(e.code)), counts: () => ({ clicks, sent }), blockedReads: () => blockedReads, s, events, earlyRequests, wrongMethods,
+    promptPresses: () => page.evaluate(() => localStorage.getItem('promptPresses')),
     request: (r: GuardedRequest) => inspect(r),
     missingResult: () => response({ method: 'POST', url: 'https://bapi-kr.band.us/v2.0.0/batch', status: 200, body: JSON.stringify({ result_code: 1, result_data: [{ result_code: 1000 }, { result_code: 200 }] }) }) };
 }
@@ -109,7 +113,32 @@ describe('real mobile card/menu shape with synthetic identities', () => {
 it('WP20 proves first-try Band deletion through its persistent step log', async () => {
   const f = await fixture(), directory = mkdtempSync(path.join(os.tmpdir(), 'goltou-delete-log-'));
   try {
-    const { result, lines } = await loggedFixture(directory, 'band_delete', f.run, ['sites.band.mobile-delete.deleteMobileRecordedBandPost', 'sites.band.record-read.openRecordedBandFeed']);
+    const { result, lines, payload } = await loggedFixture(directory, 'band_delete', f.run, ['sites.band.mobile-delete.deleteMobileRecordedBandPost', 'sites.band.record-read.openRecordedBandFeed']);
     expect(result).toEqual({ status: 'deleted' }); expect(f.counts().sent).toBe(1); expect(lines.at(-1).result).toBe('succeeded');
+    expect(payload?.summary.checks).toEqual(expect.arrayContaining(['identity', 'missing_read'].map(check => expect.objectContaining({ check, expected: 1, observed: 1, result: 'ok' }))));
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
+
+it('deletes an older failed-with-URL record using its exact owned detail when the first feed page omits it', async () => {
+  const f = await fixture('feed-miss', true);
+  expect(await f.run()).toEqual({status:'deleted'});
+  expect(f.counts()).toEqual({clicks:3,sent:1});
+  expect(f.events).toContain('URL_POST_PRESENT');
+}, 15000);
+it('dismisses the app prompt on the recorded detail before accessing the synthetic delete controls', async () => {
+  const f = await fixture('feed-miss-app-prompt', true);
+  expect(await f.run()).toEqual({ status: 'deleted' });
+  expect(f.counts()).toEqual({ clicks: 5, sent: 1 });
+  await expect(f.promptPresses()).resolves.toBe('web web ');
+}, 15000);
+it('makes no delete request when the feed app prompt stays visible', async () => {
+  const f = await fixture('app-prompt-stuck');
+  expect(await f.run()).toEqual({ status: 'not_started' });
+  expect(f.counts()).toEqual({ clicks: 1, sent: 0 });
+  await expect(f.promptPresses()).resolves.toBe('web ');
+}, 10000);
+it('does not authorize deletion when the exact Band detail lacks its owner edit control', async () => {
+  const f = await fixture('feed-miss-other-owner', true);
+  expect(await f.run()).toEqual({status:'not_started'});
+  expect(f.counts().sent).toBe(0);
+}, 15000);

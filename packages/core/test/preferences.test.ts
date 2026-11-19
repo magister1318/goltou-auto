@@ -13,7 +13,7 @@ describe('WP16 preferences survive core and storage recreation', () => {
     const first = make();
     try {
       expect(await first.handle({ id: 1, type: 'app', command: 'preferences.get', input: {} })).toEqual(defaultPreferences());
-      const value = { polish: true, closing: true, linkCard: true, lastBandKey: 'fixture' };
+      const value = { polish: true, closing: true, linkCard: true, lastBandKeys: ['fixture'] };
       await first.handle({ id: 2, type: 'app', command: 'preferences.save', input: value });
       first.dispose();
       const restarted = make();

@@ -42,13 +42,13 @@ describe('WP18 exact normalized document runs', () => {
       ]);
     } finally { dom.window.close(); }
   });
-  it.each(['bold', 'href', 'text'] as const)('reports %s loss at the correct paragraph even when old compact comparison would match', field => {
+  it.each(['bold', 'href', 'text'] as const)('checks %s without blocking on bold or whitespace', field => {
     const observed = normalizeBlogRuns(runs);
     if (field === 'bold') observed[1]!.bold = false;
     if (field === 'href') observed[2]!.href = 'https://example.invalid/wrong';
     if (field === 'text') observed[0]!.text = '가 ';
     const actual = { title: '', tags: [], tokens: [{ kind: 'text' as const, text: observed.map(r => r.text).join(''), runs: observed }] };
-    expect(compareBlogFormatting(plan, actual)).toContainEqual(expect.objectContaining({ paragraph: 1, fields: expect.arrayContaining([field]) }));
+    expect(compareBlogFormatting(plan, actual)).toEqual(field === 'href' ? [{ paragraph: 1, fields: ['href'] }] : []);
   });
   it('reads exact data-href only from the observed editable link node, including nested bold text', async () => {
     const dom = new JSDOM('<div class="se-documentTitle"><p class="se-text-paragraph">제목</p></div><div class="se-main-container"><div class="se-component se-text"><p class="se-text-paragraph"><span class="se-link __se-node" data-href="https://example.invalid/a%2Fb?x=1&amp;y=2"><b>문의😀</b></span><span data-href="https://example.invalid/ignored"> 일반</span></p></div></div>', { runScripts: 'outside-only' });
@@ -60,14 +60,14 @@ describe('WP18 exact normalized document runs', () => {
       ] }]);
     } finally { dom.window.close(); }
   });
-  it('refuses missing run evidence and identifies each reordered paragraph without discarding spaces', () => {
+  it('refuses missing href evidence, and reports reorder separately from paragraph loss', () => {
     expect(compareBlogFormatting(plan, { title: '', tags: [], tokens: [{ kind: 'text', text: runs.map(r => r.text).join('') }] })).toHaveLength(1);
     const p: BlogPlan = { channel: 'blog', steps: [{ kind: 'text', role: 'body', text: ' 첫째\n둘째 ', runs: [{ text: ' 첫째\n둘째 ', bold: true }] }] };
     const issues = compareBlogFormatting(p, { title: '', tags: [], tokens: [
       { kind: 'text', text: '둘째 ', runs: [{ text: '둘째 ', bold: true }] },
       { kind: 'text', text: ' 첫째', runs: [{ text: ' 첫째', bold: true }] },
     ] });
-    expect(issues.map(i => i.paragraph)).toEqual([1, 2]);
+    expect(issues).toEqual([]);
     expect(safeFailureCode(Error('BLOG_FORMATTING_REOPENED:1,2'), 'FALLBACK')).toBe('BLOG_FORMATTING_REOPENED:1,2');
     expect(safeFailureCode(Error('BLOG_FORMATTING_REOPENED:https://example.invalid'), 'FALLBACK')).toBe('FALLBACK');
   });

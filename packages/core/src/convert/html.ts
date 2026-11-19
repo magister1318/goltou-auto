@@ -9,7 +9,7 @@ const attr = (node: Element, name: string) => node.attrs.find(a => a.name === na
 export function parseContents(html: string, onDroppedStruckText?: (text: string) => void): ParsedContent {
   const document = parseFragment(html, { sourceCodeLocationInfo: true });
   const blocks: Block[] = [], discarded: Discard[] = [], notices: string[] = [];
-  let runs: Run[] = [], serial = 0, droppedStruckCharacters = 0, removedSinceText = false;
+  let runs: Run[] = [], serial = 0, droppedStruckCharacters = 0, lastPreserved = false;
   const struckNodes = new WeakSet<Node>();
   const discard = (node: Node, reason: string) => discarded.push({ reason, tag: 'tagName' in node ? node.tagName : node.nodeName, offset: node.sourceCodeLocation?.startOffset ?? null });
   // Filter before block building so strike on table/row/cell containers is inherited too.
@@ -29,26 +29,21 @@ export function parseContents(html: string, onDroppedStruckText?: (text: string)
     if ('childNodes' in node) for (const child of node.childNodes) dropStruckText(child, struck);
   }
   dropStruckText(document);
-  function flush() {
+  function flush(preserveWhitespace = false) {
     // HTML collapses ordinary whitespace. Preserve all visible letters, punctuation and line breaks.
     if (runs.length) {
-      runs[0]!.text = runs[0]!.text.replace(/^ +/, '');
-      runs[runs.length - 1]!.text = runs[runs.length - 1]!.text.replace(/ +$/, '');
-      if (runText(runs).trim()) blocks.push({ kind: 'paragraph', id: `p${++serial}`, runs });
-      runs = [];
+      if (!preserveWhitespace && !lastPreserved) runs[runs.length - 1]!.text = runs[runs.length - 1]!.text.replace(/ +$/, '');
+      if (runText(runs)) blocks.push({ kind: 'paragraph', id: `p${++serial}`, runs });
+      runs = []; lastPreserved = false;
     }
-    removedSinceText = false;
   }
-  function visit(node: Node, bold = false, href?: string) {
+  function visit(node: Node, bold = false, href?: string, preserveWhitespace = false) {
     if (node.nodeName === '#text' && 'value' in node) {
-      if (struckNodes.has(node)) { removedSinceText = true; return; }
-      let text = node.value.replace(/[\t\n\r\f ]+/g, ' ');
+      if (struckNodes.has(node)) return;
+      let text = preserveWhitespace ? node.value : node.value.replace(/[\t\n\r\f ]+/g, ' ');
+      if (!preserveWhitespace && (!runs.length || /[ \n]$/.test(runs.at(-1)!.text))) text = text.replace(/^ /, '');
       if (!text) return;
-      // Only join spaces across an omission. Other run boundaries keep their spacing.
-      if (removedSinceText && runs[runs.length - 1]?.text.endsWith(' ')) text = text.replace(/^ +/, '');
-      removedSinceText = false;
-      if (!text) return;
-      if (!runs.length && !text.trim()) return;
+      lastPreserved = preserveWhitespace;
       runs.push({ text, ...(bold ? { bold: true } : {}), ...(href ? { href } : {}) }); return;
     }
     if (!('tagName' in node)) { if (node.nodeName === '#comment') discard(node, 'comment-or-tracking'); return; }
@@ -58,25 +53,25 @@ export function parseContents(html: string, onDroppedStruckText?: (text: string)
     if (tag === 'img') {
       const src = attr(node, 'src');
       if (!src || (attr(node, 'width') === '1' && attr(node, 'height') === '1') || /(?:google-analytics|doubleclick\.net|\/tracking[/.?])/i.test(src)) { discard(node, 'tracking-or-empty-image'); return; }
-      flush(); blocks.push({ kind: 'image', url: src }); return;
+      flush(preserveWhitespace); blocks.push({ kind: 'image', url: src }); return;
     }
-    if (tag === 'br') { if (!struckNodes.has(node)) { runs.push({ text: '\n' }); removedSinceText = false; } return; }
+    if (tag === 'br') { if (!struckNodes.has(node)) { if (!preserveWhitespace && !lastPreserved && runs.length) runs.at(-1)!.text = runs.at(-1)!.text.replace(/ $/, ''); runs.push({ text: '\n' }); lastPreserved = preserveWhitespace; } return; }
     if (tag === 'hr') { if (!struckNodes.has(node)) { flush(); blocks.push({ kind: 'rule' }); } return; }
     if (tag === 'table') {
-      flush(); let rows: string[][] = [], cellRuns: Run[][][] = [];
+      flush(preserveWhitespace); let rows: string[][] = [], cellRuns: Run[][][] = [];
       const hasImage = (n: Node): boolean => 'tagName' in n && !forbidden.has(n.tagName) && (n.tagName === 'img' || n.childNodes.some(hasImage));
       const flatten = hasImage(node);
       if (flatten) notices.push('사진이 든 표를 원문 순서의 글자 행과 사진으로 풀어 썼습니다.');
-      const flushRows = () => { if (rows.length) { blocks.push({ kind: 'table', rows, ...(!flatten && cellRuns.some(row => row.some(runs => runs.some(run => run.bold || run.href))) ? { cellRuns } : {}), ...(flatten ? { flattened: true } : {}) }); rows = []; cellRuns = []; } };
+      const flushRows = () => { if (rows.length) { blocks.push({ kind: 'table', rows, ...(cellRuns.some(row => row.some(runs => runs.some(run => run.bold || run.href))) ? { cellRuns } : {}), ...(flatten ? { flattened: true } : {}) }); rows = []; cellRuns = []; } };
       function tableWalk(n: Node) {
         if ('tagName' in n && (n.tagName === 'caption' || forbidden.has(n.tagName))) { flushRows(); visit(n); flush(); return; }
         if (n.nodeName === '#comment') { visit(n); return; }
         if ('tagName' in n && n.tagName === 'tr') {
-          let row: string[] = []; const rowRuns: Run[][] = [];
+          let row: string[] = []; let rowRuns: Run[][] = [];
           for (const cell of n.childNodes) if ('tagName' in cell && ['td', 'th'].includes(cell.tagName)) {
             const before = blocks.length;
-            for (const child of cell.childNodes) visit(child);
-            flush(); const cellBlocks = blocks.splice(before);
+            for (const child of cell.childNodes) visit(child, bold, href, preserveWhitespace);
+            flush(preserveWhitespace); const cellBlocks = blocks.splice(before);
             if (!flatten) {
               row.push(cellBlocks.map(blockText).filter(Boolean).join('\n'));
               const rich: Run[] = [];
@@ -87,12 +82,21 @@ export function parseContents(html: string, onDroppedStruckText?: (text: string)
               rowRuns.push(rich);
             }
             else {
-              let text: string[] = [];
-              const flushCell = () => { if (text.length) { row.push(text.join('\n')); text = []; } };
+              let text: string[] = [], rich: Run[] = [];
+              const flushCell = () => {
+                if (!text.length) return;
+                row.push(text.join('\n')); rowRuns.push(rich); text = []; rich = [];
+              };
               for (const block of cellBlocks) {
                 if (block.kind === 'image') {
-                  flushCell(); if (row.length) { rows.push(row); row = []; } flushRows(); blocks.push(block);
-                } else if (blockText(block)) text.push(blockText(block));
+                  flushCell();
+                  if (row.length) { rows.push(row); cellRuns.push(rowRuns); row = []; rowRuns = []; }
+                  flushRows(); blocks.push(block);
+                } else if (blockText(block)) {
+                  if (text.length) rich.push({ text: '\n' });
+                  text.push(blockText(block));
+                  rich.push(...(block.kind === 'paragraph' ? block.runs : block.kind === 'link' ? [{ text: block.text, href: block.href }] : [{ text: blockText(block) }]));
+                }
               }
               flushCell();
             }
@@ -106,7 +110,8 @@ export function parseContents(html: string, onDroppedStruckText?: (text: string)
       tableWalk(node); flushRows(); return;
     }
     const boundary = containers.has(tag);
-    if (boundary) flush();
+    if (boundary) flush(preserveWhitespace);
+    const preserve = preserveWhitespace || tag === 'pre' || /(?:^|;)\s*white-space\s*:\s*(?:pre(?:-wrap)?|break-spaces)\b/i.test(attr(node, 'style'));
     const count = blocks.length;
     let nextHref = href;
     if (tag === 'a') {
@@ -114,9 +119,9 @@ export function parseContents(html: string, onDroppedStruckText?: (text: string)
       if (/^https?:\/\//i.test(value)) nextHref = value;
       else if (value) discard(node, 'unsafe-or-relative-link');
     }
-    for (const child of node.childNodes) visit(child, bold || ['b', 'strong'].includes(tag), nextHref);
+    for (const child of node.childNodes) visit(child, bold || ['b', 'strong'].includes(tag), nextHref, preserve);
     if (boundary) {
-      flush();
+      flush(preserve);
       if (blocks.length === count) discard(node, 'empty-paragraph');
     }
   }

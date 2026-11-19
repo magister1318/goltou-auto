@@ -51,7 +51,7 @@ describe('memory API contract', () => {
       await api.request('/auto/posts/update', { ...update, postNo, status, postUrl: status === 'published' ? 'https://example.invalid/post' : '' }, token);
     }
   });
-  it('enforces the configured daily limit for the same person and band', async () => {
+  it('counts each destination against the member’s daily Band limit', async () => {
     const api = createFakeApi();
     const { token } = await api.request('/auto/login', { ...login, loginId: 'admin' });
     await api.request('/auto/settings/save', { closingText: '', defaultHashtags: [], bandDailyLimit: 1 }, token);
@@ -59,7 +59,10 @@ describe('memory API contract', () => {
     const post = { productNo: product.productNo, contentHash: product.contentHash, channel: 'band' as const, mode: 'draft' as const, target: { name: '시험 밴드', key: 'new-band' }, options: { polish: false, closing: false, linkCard: false } };
     await api.request('/auto/posts/start', post, token);
     await expect(api.request('/auto/posts/start', post, token)).rejects.toMatchObject({ code: 'conflict' });
-    await expect(api.request('/auto/posts/start', { ...post, target: { name: '다른 밴드', key: 'other-band' } }, token)).resolves.toHaveProperty('postNo');
+    const otherBand = { ...post, target: { name: '다른 밴드', key: 'other-band' } };
+    await expect(api.request('/auto/posts/start', otherBand, token)).rejects.toMatchObject({ code: 'conflict' });
+    const staff = await api.request('/auto/login', { ...login, loginId: 'staff' });
+    await expect(api.request('/auto/posts/start', otherBand, staff.token)).resolves.toHaveProperty('postNo');
   });
   it('supports three roles, blocks ordinary members and revokes logout', async () => {
     const api = createFakeApi();

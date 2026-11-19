@@ -5,11 +5,15 @@ export function Sheet({
   children,
   close,
   dismissible = true,
+  centered = false,
+  footer,
 }: {
   title: string;
   children: ReactNode;
   close(): void;
   dismissible?: boolean;
+  centered?: boolean;
+  footer?: ReactNode;
 }) {
   const ref = useRef<HTMLElement>(null);
   const closeRef = useRef(close);
@@ -79,21 +83,21 @@ export function Sheet({
   }, []);
   const content = (
     <div
-      className="dim"
+      className={centered ? 'dim centered-dialog' : 'dim'}
       onClick={(event) => {
         if (event.target === event.currentTarget) closeRef.current();
       }}
     >
       <section
         ref={ref}
-        className="sheet"
+        className={footer ? 'sheet sheet-with-footer' : 'sheet'}
         role="alertdialog"
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
       >
         <h2>{title}</h2>
-        {children}
+        {footer ? <><div className="sheet-scroll">{children}</div><footer className="sheet-footer">{footer}</footer></> : children}
       </section>
     </div>
   );

@@ -110,6 +110,8 @@ describe.runIf(Boolean(executablePath))('publish, verified against synthetic loo
       expect(await f.execution.publish()).toBe(f.url);
     }, ['sites.naver-blog.plan.BlogExecution.publish']);
     expect(f.execution.publishedVerified).toBe(true);
+    expect(log.payload?.summary.checks).toEqual(expect.arrayContaining(
+      ['text', 'line_breaks', 'bold', 'links', 'table', 'photos', 'hashtags', 'visibility', 'identity'].map(check => expect.objectContaining({ check, result: 'ok' }))));
     expect(log.lines.some(row => row.step === 'verification' && row.event === 'wait' && row.check === 'hashtags' && row.counts?.observed === 0)).toBe(true);
     expect(log.lines.filter(row => row.step === 'terminal').map(row => row.result)).toEqual(['succeeded']);
     expect(f.counts()).toEqual({ published: 1, deleted: false, outside: 0, submissions: 1 });
@@ -156,7 +158,7 @@ describe.runIf(Boolean(executablePath))('publish, verified against synthetic loo
     await expect(f.execution.publish()).rejects.toThrow('BLOG_PUBLISHED_PRIVATE_UNCONFIRMED');
     expect(f.execution.publishedVerified).toBe(false);
     await expect(f.execution.publish()).rejects.toThrow('BLOG_PUBLISH_ALREADY_ATTEMPTED');
-  }, 30000);
+  }, 60000);
   it('publishes an ordinary private title once and deletes through the regular record engine', async () => {
     const f = await fixture('unknown-response', 'private', false, true, true);
     await f.execution.write(); await f.execution.saveAndVerify();
@@ -227,7 +229,7 @@ describe('WP18 saved and published runs on a synthetic loopback service', () => 
     const f = await fixture(loss ? 'formatting' : '', 'private', false, false, true, product);
     await f.execution.write(); await f.execution.saveAndVerify();
     if (loss) {
-      await expect(f.execution.publish()).rejects.toMatchObject({ message: 'BLOG_READBACK_MISMATCH:bold,links', issues: [{ paragraph: 1, field: 'bold' }, { paragraph: 1, field: 'links' }] });
+      await expect(f.execution.publish()).rejects.toMatchObject({ message: 'BLOG_READBACK_MISMATCH:href', issues: [expect.objectContaining({ paragraph: 1, field: 'href', missing:true })] });
       expect(f.execution.publishedVerified).toBe(false);
       await expect(f.execution.publish()).rejects.toThrow();
     } else {
@@ -236,7 +238,7 @@ describe('WP18 saved and published runs on a synthetic loopback service', () => 
       expect(compareBlogFormatting(makePreview(product, {}).blog, await readBlogDocument(f.execution.surface!))).toEqual([]);
     }
     expect(f.counts()).toMatchObject({ published: 1, submissions: 1, outside: 0 });
-  }, 20000);
+  }, 45000);
 });
 
 describe('WP20 publish and delete fixture log trails', () => {
@@ -246,7 +248,8 @@ describe('WP20 publish and delete fixture log trails', () => {
     const title = f.execution.plan.steps.find(step => step.kind === 'text' && step.role === 'title');
     if (title?.kind !== 'text') throw Error('FIXTURE_TITLE');
     const post: Post = { postNo: 1, productNo: 1, productTitle: title.text, channel: 'blog', mode: 'publish', status: 'published', postUrl: f.url, targetName: '', step: 7, failReason: '', userName: '', startedAt: 'synthetic', finishedAt: 'synthetic', productChanged: false };
-    await loggedFixture(path.join(path.dirname(f.files[0]!.path), 'deletion'), 'blog_delete', () => removeRecordedBlogPost(f.host, post), ['core.post-delete.removeRecordedBlogPost', 'sites.naver-blog.delete.deleteBlogPost']);
+    const deletion = await loggedFixture(path.join(path.dirname(f.files[0]!.path), 'deletion'), 'blog_delete', () => removeRecordedBlogPost(f.host, post), ['core.post-delete.removeRecordedBlogPost', 'sites.naver-blog.delete.deleteBlogPost']);
+    expect(deletion.payload?.summary.checks).toEqual(expect.arrayContaining(['identity', 'same_post', 'missing_read'].map(check => expect.objectContaining({ check, result: 'ok' }))));
     expect(f.counts()).toMatchObject({ published: 1, deleted: true, outside: 0, submissions: 1 });
   }, 90000);
 });

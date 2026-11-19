@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ApiClient, Post, PostUpdate } from '@goltou/api-client';
 import type { SurfaceHost } from '@goltou/surface';
 import { bandText, type RecordedBandReadback } from '../../sites/src/index';
+import { bandPhotoEvidence } from '../../sites/src/band/photo-path';
 import { makePreview } from '../src/preparation';
 import { fixtureProduct } from './fixtures/catalog';
 import { verifyInterruptedBandPublish, type BandPublishRecovery } from '../../../apps/android/bridge/band-publish-recovery';
@@ -17,7 +18,7 @@ function fixture() {
   let record: Post = { postNo: 1, productNo: product.productNo, startedAt: context.startedAt, productTitle: context.title, channel: 'band', mode: 'publish', targetName: '합성',
     status: 'failed', step: 6, failReason: 'BAND_POST_UNCONFIRMED', postUrl: '', userName: '합성', finishedAt: '', productChanged: false };
   const actual: RecordedBandReadback = { url: context.url, body: bandText(preview.band), createdAt: context.submittedAt, owned: true,
-    photos: [{ path: '/upload/one.jpg', width: 100, height: 80 }] };
+    photos: [{ ...bandPhotoEvidence(context.uploadedPhotos[0]!)!, width: 100, height: 80 }] };
   readPost.mockResolvedValue(actual);
   const updates: PostUpdate[] = [];
   let lists = 0, race = false;

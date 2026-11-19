@@ -1,12 +1,12 @@
 import type { Product } from '@goltou/api-client';
-import { assemble, parseContents, type ConvertOptions, type InputPlan, type ParsedContent } from './convert';
+import { assemble, parseContents, productTags, type ConvertOptions, type InputPlan, type ParsedContent } from './convert';
 import { compact, compareDocuments, observePlan, verifyPlan, type Verification } from './verify';
 import { applyPolish, polishContent, type PolishResult, type PolishTransport } from './polish';
 import { downloadPhotos, type MediaBatch, type MediaDependencies } from './media';
 
 export interface PreparedPreview {
   productNo: number; contentHash: string; options: ConvertOptions; blog: InputPlan; band: InputPlan;
-  droppedStruckCharacters: number;
+  droppedStruckCharacters: number; tags?: import('./convert').ProductTag[];
   verification: { blog: Verification; band: Verification }; polish?: PolishResult;
 }
 export interface PreparationWork {
@@ -33,7 +33,7 @@ export function makePreview(product: Product, options: ConvertOptions, parsed: P
       source.message += ' · 검증된 문장 다듬기 적용';
     }
   }
-  return { productNo: product.productNo, contentHash: product.contentHash, droppedStruckCharacters: parsed.droppedStruckCharacters, options: structuredClone(options), blog, band, verification, ...(polished ? { polish: { ...polished, paragraphs: polished.paragraphs.map(p => ({ ...p, reverted: reverted.includes(p.id) })) } } : {}) };
+  return { productNo: product.productNo, contentHash: product.contentHash, droppedStruckCharacters: parsed.droppedStruckCharacters, options: structuredClone(options), blog, band, ...(options.tagWords ? { tags: productTags(product, options.tagWords) } : {}), verification, ...(polished ? { polish: { ...polished, paragraphs: polished.paragraphs.map(p => ({ ...p, reverted: reverted.includes(p.id) })) } } : {}) };
 }
 export async function preparePreview(product: Product, options: ConvertOptions & { polish?: boolean }, transport?: PolishTransport): Promise<PreparedPreview> {
   const omitted: string[] = [];

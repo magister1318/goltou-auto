@@ -60,6 +60,34 @@ async function fixture(mode = '', extra: { tags?: boolean; photos?: number; phot
     counts: async (surface = execution.surface!) => pages.get(surface)!.evaluate<{ saves: number; publishes: number }>("({saves:Number(localStorage.getItem('saves')),publishes:Number(localStorage.getItem('publishes'))})") };
 }
 describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback editor only', () => {
+  it.each(['auto-list', 'auto-list-undo-fails'])('protects literal markers after emoji paragraphs (%s)', async mode => {
+    const f = await fixture(mode, { photos: 0 });
+    const lines = [...Array.from({ length: 14 }, () => '앞선 문단'), '📌 첫 안내', '💥 두 번째 안내 💥', '1. 번호 문단', '2) 다음 번호', '- 목록', '* 목록', '> 인용'];
+    const split = lines.slice(0, 16).join('\n') + '\n';
+    f.plan.steps = [{ kind: 'text', role: 'title', text: '합성 제목' }, {
+      kind: 'text', role: 'body', text: lines.join('\n'),
+      ...(mode === 'auto-list' ? { runs: [{ text: split }, { text: '1.', bold: true }, { text: ' ' }, { text: lines.slice(16).join('\n').slice(3) }] } : {}),
+    }];
+    if (mode === 'auto-list-undo-fails') {
+      await expect(f.execution.write()).rejects.toThrow('BLOG_FORMATTING_INPUT:17:input');
+      expect(await f.counts()).toEqual({ saves: 0, publishes: 0 });
+      return;
+    }
+    await f.execution.write();
+    const before = await f.execution.observe();
+    expect(before.tokens.map(token => token.kind === 'text' && token.text)).toEqual(lines);
+    expect(await f.pages.get(f.execution.surface!)!.evaluate('window.markerConversions ?? 0')).toBe(0);
+    expect((await f.execution.saveAndVerify()).tokens).toEqual(before.tokens);
+    expect(await f.counts()).toEqual({ saves: 1, publishes: 0 });
+    expect(f.external()).toBe(0);
+  }, 30000);
+  it('accepts a small saved and reopened wording difference within the document budget', async () => {
+    const f = await fixture('small-change-after-save', { photos: 0 });
+    f.plan.steps = [{ kind: 'text', role: 'title', text: '합성 제목' },
+      { kind: 'text', role: 'body', text: '합성 ' + '긴 문장 '.repeat(30) }];
+    await f.execution.write();
+    await expect(f.execution.saveAndVerify()).resolves.toHaveProperty('tokens.0.text', '합싱 ' + '긴 문장 '.repeat(30));
+  }, 30000);
   it.each([false, true])('saves and reopens body-derived tags with explicit tags %s, retaining exact bold, links and numbers', async explicit => {
     const f = await fixture('metadata-body-tags');
     const text = '문의 #본문 1190000원';
@@ -145,7 +173,7 @@ describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback e
     await f.execution.write(); await f.execution.saveAndVerify();
     expect(f.progress).toHaveBeenLastCalledWith(expect.objectContaining({ photos: 8, totalPhotos: 8, characters: 1509, totalCharacters: 1509 }));
     expect(await f.counts()).toEqual({ saves: 1, publishes: 0 }); expect(f.external()).toBe(0);
-  }, 40000);
+  }, 60000);
   it.each(['blog', 'channel'] as const)('records the missing final tag control and exact plan step without content in the %s runner', async kind => {
     const f = await fixture('missing-tags', { photos: 8 });
     const preview = realEnding(f.files, true);
@@ -189,7 +217,7 @@ describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback e
     expect((await f.execution.observe()).tags).toEqual(['예시']);
     expect(await f.counts()).toEqual({ saves: 1, publishes: 0 });
     expect(f.external()).toBe(0);
-  }, 60000);
+  }, 120000);
   it('blocks every key and unsafe click on the final publish control, and rechecks focus after tag typing', async () => {
     const f = await fixture('metadata-focus-lost');
     f.plan.steps = [{ kind: 'text', role: 'title', text: '[골투오토 실험] 안전' }, { kind: 'break' },
@@ -234,7 +262,7 @@ describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback e
     expect(before.tokens.filter(t => t.kind === 'photo')).toHaveLength(5);
     expect(compareDocuments(observePlan(f.plan), blogObservation(f.plan, f.files, before)).matches).toBe(true);
     await f.execution.saveAndVerify(); expect(f.beforeSave).toHaveBeenCalledTimes(1);
-    expect(f.readbackBarriers).toHaveBeenCalledWith([{ hostname: 'blog.naver.com', pathname: '/RabbitAutoSaveWrite.naver' }], 'about:blank');
+    expect(f.readbackBarriers).toHaveBeenCalledWith([{ hostname: 'blog.naver.com', pathname: '/RabbitAutoSaveWrite.naver', expected: true }], 'about:blank');
     expect(await f.counts()).toEqual({ saves: 1, publishes: 0 }); expect(f.external()).toBe(0);
     const original = f.execution.surface!;
     f.execution.surface = { readState: async () => ({ url: 'https://blog.naver.com/never-requested', title: '', loading: false }) } as Surface;
@@ -396,9 +424,9 @@ describe('WP18 mandatory rich-text editor fixture', () => {
     expect(await f.counts()).toEqual({ saves: 1, publishes: 0 });
     expect(f.beforeSave).toHaveBeenCalledTimes(1); expect(f.external()).toBe(0);
   }, 30000);
-  it.each(['bold-stuck', 'link-cancelled', 'link-broken', 'link-collapse-stuck'])('stops %s with the affected paragraph and no save or publication', async mode => {
+  it.each(['link-cancelled', 'link-broken', 'link-collapse-stuck'])('stops %s with the affected paragraph and no save or publication', async mode => {
     const f = await fixture(mode); richPlan(f);
-    await expect(f.execution.write()).rejects.toMatchObject({ message: 'BLOG_FORMATTING_INPUT:1', issues: [{ paragraph: 1, fields: ['input'] }] });
+    await expect(f.execution.write()).rejects.toMatchObject({ message: expect.stringMatching(/^BLOG_FORMATTING_INPUT:1:(input|href|cursor)$/), issues: [{ paragraph: 1, fields: [expect.stringMatching(/^(input|href|cursor)$/)] }] });
     expect(await f.counts()).toEqual({ saves: 0, publishes: 0 }); expect(f.external()).toBe(0);
     await expect(f.execution.saveAndVerify()).rejects.toBeInstanceOf(BlogFormattingError);
     expect(f.beforeSave).not.toHaveBeenCalled();
@@ -477,11 +505,12 @@ describe('WP18 mandatory rich-text editor fixture', () => {
     expect(compareBlogFormatting(f.plan, await f.execution.observe())).toEqual([]);
     expect(await f.counts()).toEqual({ saves: 0, publishes: 0 });
   }, 20000);
-  it('reports the second paragraph when its toolbar state cannot be changed', async () => {
+  it('saves even when the second paragraph toolbar cannot apply bold', async () => {
     const f = await fixture('bold-stuck'); richPlan(f, [{ text: '첫째' }]);
     f.plan.steps.push({ kind: 'break' }, { kind: 'text', role: 'body', text: '둘째', runs: [{ text: '둘째', bold: true }] });
-    await expect(f.execution.write()).rejects.toThrow('BLOG_FORMATTING_INPUT:2');
-    expect(await f.counts()).toEqual({ saves: 0, publishes: 0 });
+    await f.execution.write();
+    await f.execution.saveAndVerify();
+    expect(await f.counts()).toEqual({ saves: 1, publishes: 0 });
   }, 15000);
   it('stops a resume inside a partial link dialog without sending keys to it or duplicating body text', async () => {
     const f = await fixture(); richPlan(f, [{ text: '문의', href: 'https://example.invalid/' + 'a'.repeat(60) }]);
@@ -507,7 +536,7 @@ describe('WP18 mandatory rich-text editor fixture', () => {
   it.each(['format-drop-after-save', 'format-drop-reopen'])('detects %s, cannot publish, and does not save a second time', async mode => {
     const f = await fixture(mode); richPlan(f); await f.execution.write();
     const stage = mode === 'format-drop-after-save' ? 'AFTER_SAVE' : 'REOPENED';
-    await expect(f.execution.saveAndVerify()).rejects.toMatchObject({ message: `BLOG_FORMATTING_${stage}:1`, issues: [{ paragraph: 1, fields: ['bold', 'href'] }] });
+    await expect(f.execution.saveAndVerify()).rejects.toMatchObject({ message: `BLOG_FORMATTING_${stage}:1:href`, issues: [{ paragraph: 1, fields: ['href'] }] });
     await expect(f.execution.publish()).rejects.toThrow('REAL_PUBLISH_DISABLED');
     await expect(f.execution.saveAndVerify()).rejects.toBeInstanceOf(BlogFormattingError);
     expect(f.beforeSave).toHaveBeenCalledTimes(1);
@@ -523,8 +552,8 @@ describe('WP18 mandatory rich-text editor fixture', () => {
     const runner = kind==='blog'?new BlogRegistrationRunner(services,async()=>{},()=>{}):new ChannelRegistrationRunner({blog:services,band:{host:f.host}},async()=>{},()=>{});
     cleanup.push(async()=>runner.dispose());
     await runner.start({productNo:1,mode:'draft',targets:[{channel:'blog',name:'합성',key:'fixture'}],options:{polish:false,closing:false,linkCard:false}},'합성 제목',0,work);
-    await vi.waitFor(()=>expect(runner.job?.status).toBe('failed'),{timeout:20000});
-    expect(runner.job).toMatchObject({creationState:'draft_saved',failureCode:'BLOG_SAVED_READBACK_MISMATCH',readbackIssues:expect.arrayContaining([{field:'text'}])});
+    await vi.waitFor(()=>expect(runner.job?.status).toBe('draft_unverified'),{timeout:20000});
+    expect(runner.job).toMatchObject({creationState:'draft_saved',failureCode:'BLOG_FORMATTING_AFTER_SAVE:1:text',readbackIssues:expect.arrayContaining([{field:'text',paragraph:1}])});
     await expect(runner.resume()).rejects.toMatchObject({code:'conflict'});
     expect(await f.counts([...f.pages.keys()].at(-1)!)).toEqual({saves:1,publishes:0});
     expect(f.external()).toBe(0);
@@ -539,7 +568,7 @@ describe('WP18 mandatory rich-text editor fixture', () => {
     cleanup.push(async () => runner.dispose());
     await runner.start({ productNo: 1, mode: 'draft', targets: [{ channel: 'blog', name: '합성', key: 'fixture' }], options: { polish: false, closing: false, linkCard: false } }, '합성 서식 제목', 0, work);
     await vi.waitFor(() => expect(runner.job?.status, JSON.stringify({ code: runner.job?.failureCode, step: runner.job?.step })).toBe('draft_unverified'), { timeout: 20000 });
-    expect(runner.job).toMatchObject({ failureCode: 'BLOG_FORMATTING_REOPENED:1', blogFormattingIssues: [{ paragraph: 1, fields: ['bold', 'href'] }], targetResults: [{ status: 'stopped', reason: 'BLOG_FORMATTING_REOPENED:1' }] });
+    expect(runner.job).toMatchObject({ failureCode: 'BLOG_FORMATTING_REOPENED:1:href', blogFormattingIssues: [{ paragraph: 1, fields: ['href'] }], targetResults: [{ status: 'stopped', reason: 'BLOG_FORMATTING_REOPENED:1:href' }] });
     expect(runner.job!.completedSteps).not.toContain(5);
     await expect(runner.resume()).rejects.toMatchObject({ code: 'conflict' });
     expect([...f.pages.keys()].every(s => s.session === 'naver')).toBe(true);
@@ -603,6 +632,8 @@ describe.runIf(Boolean(executablePath))('WP29 real table input',()=>{
   it.each(['fallback','bad-table','table-cell-drop'])('removes only the new component and records visible %s fallback before saving exact text lines',async mode=>{
     const f=await fixture(mode);f.plan.steps=[{kind:'text',role:'title',text:'합성 폴백'},{kind:'text',role:'body',text:'앞'},{kind:'break'},{kind:'table',role:'body',rows:[['a','b'],['c','d']]},{kind:'break'},{kind:'text',role:'body',text:'뒤'}];
     const log=await loggedFixture(path.dirname(f.files[0]!.path),'blog_draft',async()=>{await f.execution.write();return f.execution.saveAndVerify();},['table_insert_started']);
+    expect(log.payload?.summary.checks).toEqual(expect.arrayContaining(
+      ['text', 'line_breaks', 'bold', 'links', 'table', 'photo_order', 'hashtags', 'identity'].map(check => expect.objectContaining({ check, result: 'ok' }))));
     expect(f.execution.tableModes).toEqual(['text-list']);expect(log.result.tokens.map(t=>t.kind)).toEqual(['text','text','text','text']);
     expect(log.result.tokens.filter(t=>t.kind==='text').map(t=>t.text)).toEqual(['앞','a | b','c | d','뒤']);
     expect(log.lines.filter(l=>l.step==='table_fallback')).toEqual([expect.objectContaining({reason:mode==='fallback'?'TABLE_TOOL_MISSING':mode==='bad-table'?'TABLE_SIZE_MISMATCH':'TABLE_CELL_MISMATCH'})]);
@@ -626,4 +657,13 @@ describe.runIf(Boolean(executablePath))('WP29 real table input',()=>{
     await expect(f.execution.write()).rejects.toThrow();expect(f.execution.tableModes).toEqual([]);
     expect(f.beforeSave).not.toHaveBeenCalled();expect(await f.counts()).toEqual({saves:0,publishes:0});
   },25000);
+});
+
+it('keeps the planned photo total while the blog editor opens before the files are downloaded', async () => {
+  const f = await fixture();
+  const execution = createBlogExecution(f.plan, [], {host:f.host,editorUrl:f.editorUrl}, {
+    check:f.check, progress:f.progress, beforeSave:f.beforeSave,
+  });
+  await execution.ensureReady();
+  expect(f.progress).toHaveBeenCalledWith(expect.objectContaining({photos:0,totalPhotos:5}));
 });

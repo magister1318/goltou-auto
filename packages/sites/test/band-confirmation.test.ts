@@ -3,6 +3,7 @@ import { bandBodyHash, bandCreateIdentity, matchesBandCreation } from '../src/ba
 import type { RecordedBandReadback } from '../src/band/record-read';
 import type { Surface, SurfaceHost, GuardedRequest, GuardedResponse } from '@goltou/surface';
 import { BandDirectory } from '../src/band/plan';
+import { bandPhotoEvidence } from '../src/band/photo-path';
 
 describe('Band create receipt and independent identity match', () => {
   // Values are synthetic. The saved create observation proves result_code=1
@@ -30,10 +31,11 @@ describe('Band create receipt and independent identity match', () => {
     directory.disarm();
   });
   const match = { band: '111', title: '합성 제목', body: '합성 제목\n\n내용', uploaded: ['/one.jpg', '/two.jpg'], after: 1000, before: 2000 };
-  const post: RecordedBandReadback = { url: 'https://band.us/band/111/post/9001', body: '합성 제목\n내용', createdAt: 1500, owned: true, photos: [{ path: '/one.jpg', width: 160, height: 90 }] };
+  const photo = { ...bandPhotoEvidence('https://photos.invalid/one.jpg')!, width: 160, height: 90 };
+  const post: RecordedBandReadback = { url: 'https://band.us/band/111/post/9001', body: '합성 제목\n내용', createdAt: 1500, owned: true, photos: [photo] };
   it('matches the observed collapsed feed body and photo prefix, without accepting a hash alone', () => {
     expect(bandBodyHash(match.body)).toBe(bandBodyHash(post.body));
     expect(matchesBandCreation(post, match)).toBe(true);
-    for (const changed of [{ ...post, owned: false }, { ...post, createdAt: 999 }, { ...post, createdAt: 2001 }, { ...post, body: post.body + '다름' }, { ...post, photos: [] }, { ...post, photos: [{ path: '/two.jpg', width: 160, height: 90 }] }]) expect(matchesBandCreation(changed, match)).toBe(false);
+    for (const changed of [{ ...post, owned: false }, { ...post, createdAt: 999 }, { ...post, createdAt: 2001 }, { ...post, body: post.body + '다름' }, { ...post, photos: [] }, { ...post, photos: [{ ...photo, path: '/two.jpg' }] }]) expect(matchesBandCreation(changed, match)).toBe(false);
   });
 });

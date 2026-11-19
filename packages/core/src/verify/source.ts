@@ -70,13 +70,14 @@ export function observePlanSource(plan: InputPlan, leadingPhotos: readonly strin
         append(order, 'text', step.rows.flat().join(''));
       } else {
         let value = step.text;
-        if (step.tableRow && value === step.tableRow.join(' | ')) {
-          tableCells.push(...step.tableRow.map(letters)); value = step.tableRow.join('');
-        } else if (step.runs) {
+        if (step.runs) {
           const plain = step.runs.map(r => r.text).join('');
           const inline = step.runs.map((r, i) => r.text + (r.href && step.runs![i + 1]?.href !== r.href && r.href !== r.text ? ` (${r.href})` : '')).join('');
           const link = step.runs.length === 1 && step.runs[0]!.href ? `${plain}\n${step.runs[0]!.href}` : plain;
           if (value === plain || (plan.channel === 'band' && (value === inline || value === link))) value = plain;
+        }
+        if (step.tableRow && value === step.tableRow.join(' | ')) {
+          tableCells.push(...step.tableRow.map(letters)); value = step.tableRow.join('');
         }
         append(order, 'text', value);
       }

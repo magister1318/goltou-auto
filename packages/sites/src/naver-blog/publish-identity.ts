@@ -1,3 +1,4 @@
+import { sameReadbackIdentityText } from '../readback-checks';
 import type { GuardedResponse } from '@goltou/surface';
 import { jsonNode, type RequestNode } from './request-fields';
 import { postIdentity, type PublishedPost } from './publish-safety';
@@ -43,7 +44,7 @@ export function resolvePublishEvidence(response: ResponseIdentity, navigationUrl
     if (posts.size > 1) throw new Error('BLOG_PUBLISH_ID_AMBIGUOUS');
     return [...posts.values()][0];
   };
-  const matching = pages.filter(p => p.titles.includes(title));
+  const matching = pages.filter(p => p.titles.some(value => sameReadbackIdentityText(title, value)));
   if (matching.some(p => p.titles.length !== 1)) throw new Error('BLOG_PUBLISH_ID_AMBIGUOUS');
   const evidence = [response.post, source(navigationUrls), source(matching.map(p => p.url))];
   const candidates = evidence.filter((p): p is PublishedPost => !!p);

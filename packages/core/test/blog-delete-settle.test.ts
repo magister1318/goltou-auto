@@ -17,7 +17,7 @@ async function fixture(mode='late') {
     const u=new URL(route.request().url());
     if(u.pathname==='/PostList.naver')return route.fulfill({contentType:'text/html; charset=utf-8',body:`<main data-post-list style="min-height:100px"></main><script>
       const root=document.querySelector('main');
-      setTimeout(()=>{root.innerHTML='<a href="/synthetic/9002">다른 합성 글</a>'+${JSON.stringify(mode==='present'?'<a href="/synthetic/9001">합성 삭제 제목</a>':'')};},1500);
+      setTimeout(()=>{root.innerHTML=${JSON.stringify(mode==='empty'?'<p data-post-list-empty>등록된 글이 없습니다.</p>':'<a href="/synthetic/9002">다른 합성 글</a>') }+${JSON.stringify(mode==='present'?'<a href="/synthetic/9001">합성 삭제 제목</a>':'')};},1500);
     </script>`});
     return route.fulfill({contentType:'text/html; charset=utf-8',body:'<div data-post-deleted>삭제된 글입니다</div>'});
   });
@@ -28,8 +28,8 @@ async function fixture(mode='late') {
   const host={create:async()=>surface,destroy:async()=>{},clearSession:async()=>{}} as SurfaceHost;
   return {surface,host,click,key,mutations:()=>mutations};
 }
-it('waits for the real list links after its early marker, then completes the already-deleted record path without another destructive input',async()=>{
-  const f=await fixture(),started=Date.now();
+it.each(['late','empty'])('waits for list hydration before completing the already-deleted record path (%s)',async mode=>{
+  const f=await fixture(mode),started=Date.now();
   await removeRecordedBlogPost(f.host,post);
   expect(Date.now()-started).toBeGreaterThanOrEqual(1500);
   expect(f.click).not.toHaveBeenCalled();expect(f.key).not.toHaveBeenCalled();expect(f.mutations()).toBe(0);

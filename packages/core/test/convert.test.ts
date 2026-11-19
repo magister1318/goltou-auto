@@ -54,7 +54,7 @@ describe('WP4 synthetic HTML conversion', () => {
     expect(observePlan(plain).title).toBe(product.title);
     expect(observePlan(plain).text).not.toContain(product.productUrl);
     expect(observePlan(extra).text).toContain(product.productUrl);
-    expect(observePlan(extra).text).toContain('끝 문구\nhttps://example.invalid/product/4\n#예시');
+    expect(observePlan(extra).text).toContain('https://example.invalid/product/4\n끝 문구\n#예시');
     const bold = parseContents('<p>앞 <b>강조</b><br>뒤</p>').blocks[0];
     expect(bold?.kind === 'paragraph' && runText(bold.runs)).toBe('앞 강조\n뒤');
     expect(bold?.kind === 'paragraph' && bold.runs.some(r => r.bold)).toBe(true);

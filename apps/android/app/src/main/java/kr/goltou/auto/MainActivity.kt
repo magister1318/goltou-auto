@@ -108,6 +108,13 @@ class MainActivity : ComponentActivity() {
                 retained.root.post { retained.root.keepScreenOn = msg.optBoolean("running") }
                 reply(org.json.JSONObject(), null)
             }
+            else if (op == "app.exit") {
+                val event = msg.getString("event")
+                check(event in setOf("hint", "confirm", "cancel", "finish"))
+                android.util.Log.i("GOLTOU", "app.exit.$event")
+                reply(org.json.JSONObject(), null)
+                if (event == "finish") retained.root.post { retained.activity?.finish() }
+            }
             else if (op == "app.openPost") {
                 val uri = android.net.Uri.parse(msg.getString("url"))
                 check(uri.scheme == "https" && uri.userInfo == null && uri.port == -1 &&
