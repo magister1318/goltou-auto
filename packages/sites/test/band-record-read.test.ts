@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bandFeedResponse, bandRecordReadAllowed, bandStoredText, parseBandDetailPhotos, parseRecordedBandFeed } from '../src/band/record-read';
+import { bandFeedResponse, bandRecordReadAllowed, bandStoredText, inspectBandDetailPhotos, parseBandDetailPhotos, parseRecordedBandFeed } from '../src/band/record-read';
 const target = { url: 'https://band.us/band/111/post/9001', title: '합성 상품' };
 const photoEvidence = { path: '/upload/one.jpg', shape: { host: '[other]', fileTail: '', hasSizeSuffix: false } };
 export const syntheticBandPost = () => ({ post_no: 9001, band: { band_no: 111 }, web_url: target.url,
@@ -17,6 +17,18 @@ it('reads ordered detail API paths only for a single exact post with a consisten
     batch(envelope({ ...post, band: { band_no: 222 } })), batch(envelope(post), envelope(post)),
     batch({ ...envelope(post), result_code: 0 }),
   ]) expect(parseBandDetailPhotos(response, target.url)).toBeUndefined();
+});
+it('reports detail API failures without retaining response text or attachment URLs', () => {
+  const read = (value: unknown) => inspectBandDetailPhotos(JSON.stringify(value), target.url);
+  const detail = (post: object) => ({ result_code: 1, result_data: { post } });
+  const post = syntheticBandPost();
+  expect(inspectBandDetailPhotos('invalid JSON with secret', target.url)).toEqual({ reason: 'PHOTO_PARSE_FAILED' });
+  expect(read({ result_code: 0 })).toEqual({ reason: 'PHOTO_RESPONSE_REJECTED', counts: { expected: 1, observed: 0 } });
+  expect(read(detail({ ...post, attachment: undefined }))).toEqual({ reason: 'PHOTO_SOURCE_MISSING', counts: { expected: 1, observed: 0 } });
+  expect(read(detail({ ...post, photo_count: 66 }))).toEqual({ reason: 'PHOTO_COUNT_MISMATCH', counts: { expected: 66, observed: 1 } });
+  expect(read(detail({ ...post, attachment: { photo: [{ photo_url: 'private value' }] } }))).toEqual({
+    reason: 'PHOTO_PATH_UNREADABLE', counts: { photoIndex: 1, expected: 1, observed: 0 },
+  });
 });
 describe('exact recorded Band feed receipt', () => {
   it('allows only the observed mobile session-bootstrap GET, never login documents or writes', () => {

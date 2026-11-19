@@ -1,5 +1,5 @@
 // Reference: ../refs/golfliat/programs/golfliat-workbench/electron/renderer.js, fillBandComposerInWebview (readback and file input selectors only).
-import { createdBandPosts, readFullBandPost, settleFullBandPost, bandBodyIssues, type CreatedBandPost } from './posted';
+import { bandDomPhotos, createdBandPosts, readFullBandPost, settleFullBandPost, bandBodyIssues, type CreatedBandPost } from './posted';
 import { bandPhotoPath, type BandPhotoEvidence } from './photo-path';
 import { currentTrace, traceStep, trace, reasonCode, expectedTelemetryRequest, type ReasonCode, type TraceJob } from '@goltou/surface/telemetry';
 import { bandListLocation, type BandListDiagnostic } from '../../../surface/src/band-list-diagnostics';
@@ -11,7 +11,8 @@ import { PhotoOrder, type PhotoProof, type PhotoSize, type PhotoSlot } from './p
 import { requestFields } from '../naver-blog/request-fields';
 import type { BandBarrierCode } from './barrier-codes';
 import { bandReadBatchTarget } from './read-batch';
-import { bandFeedResponse, readCreatedBandPost, parseBandDetailPhotos, bandRecordReadAllowed } from './record-read';
+import { bandFeedResponse, readCreatedBandPost, inspectBandDetailPhotos, bandRecordReadAllowed } from './record-read';
+import { tracePhotoSource, type ApiPhotoRead, type PhotoReadFailure } from './photo-read';
 import { bandCreateIdentity } from './publish-confirmation';
 import { ReadbackMismatch } from '../readback-checks';
 import { bandWrite, waitForBandWrite } from './write-control';
@@ -124,11 +125,12 @@ export class BandDirectory {
     if (denied === 'membership') throw Error('BAND_TARGET_INVALID');
   }
   private opens = 0;
-  private submit: { key: string; armed: boolean; sent: boolean; succeeded: boolean; received?: boolean; acknowledgedAt?: number; post?: string; onIdentity?: (url: string) => void; blocked?: BandBarrierCode; blockConfirmed: boolean } | undefined;
+  private submit: { key: string; armed: boolean; sent: boolean; succeeded: boolean; received?: boolean; acknowledgedAt?: number; post?: string; onIdentity?: (url: string) => void; blocked?: BandBarrierCode; blockConfirmed: boolean; feedFailure?: PhotoReadFailure } | undefined;
   private codes: BandBarrierCode[] = [];
   private feedPosts: CreatedBandPost[] = [];
   private feedRevision = 0;
   private feedBand = '';
+  private feedPhotoFailures = new Map<string, PhotoReadFailure>();
   private listPhase: { job?: TraceJob | undefined; api?: BandListRow[] } | undefined;
   listReason: ReasonCode | undefined;
   get revision() { return this.feedRevision; }
@@ -159,7 +161,12 @@ export class BandDirectory {
       const u = new URL(request.url);
       if (this.listPhase && this.isCreateCandidate(u)) return deny('NOT_ARMED', true);
       if (request.method === 'OPTIONS') { this.record('PREFLIGHT_ALLOWED'); return true; }
-      if (['GET', 'HEAD'].includes(request.method) && !this.isCreate(u)) return true;
+      if (['GET', 'HEAD'].includes(request.method) && !this.isCreate(u)) {
+        if (this.submit && bandFeedResponse(request) && u.searchParams.get('band_no') === this.submit.key) {
+          this.submit.feedFailure = { reason: 'PHOTO_RESPONSE_UNOBSERVED' };
+        }
+        return true;
+      }
       const trusted = this.localPublish ? u.origin === new URL(this.baseUrl).origin : u.protocol === 'https:' && (u.hostname === 'band.us' || u.hostname.endsWith('.band.us'));
       if (!trusted) return deny('ORIGIN_BLOCKED', this.isCreateCandidate(u), expectedTelemetryRequest(request));
       if (request.method !== 'POST') return deny('METHOD_BLOCKED', this.isCreateCandidate(u));
@@ -218,12 +225,28 @@ export class BandDirectory {
       }
       if (response.url && bandFeedResponse({ method: response.method ?? '', url: response.url })) {
         const band = new URL(response.url).searchParams.get('band_no');
-        if (band) { this.feedPosts = createdBandPosts(response.body, band); this.feedBand = band; this.feedRevision++; }
+        if (band) {
+          const failures = new Map<string, PhotoReadFailure>();
+          try {
+            this.feedPosts = createdBandPosts(response.body, band, (url, failure) => failures.set(url, failure));
+            this.feedPhotoFailures = failures;
+            this.feedBand = band; this.feedRevision++;
+            if (this.submit?.key === band) delete this.submit.feedFailure;
+          } catch (error) {
+            if (this.submit?.key === band) this.submit.feedFailure = {
+              reason: response.status >= 200 && response.status < 300 ? 'PHOTO_PARSE_FAILED' : 'PHOTO_RESPONSE_REJECTED',
+              counts: { status: response.status },
+            };
+            throw error;
+          }
+        }
         return;
       }
       if (!this.submit?.sent || response.method !== 'POST' || !response.url || !this.isCreate(new URL(response.url))) return;
       try {
-        const value = bandCreateIdentity(response.body, this.submit.key);
+        const value = bandCreateIdentity(response.body, this.submit.key, detail => {
+          trace('band.confirm.response', 'wait', { check: 'identity', ...detail });
+        });
         this.submit.received = true; this.submit.acknowledgedAt = Date.now();
         this.submit.succeeded = response.status >= 200 && response.status < 300 && value.succeeded;
         trace('barrier', this.submit.succeeded ? 'ok' : 'fail', { reason: this.submit.succeeded ? 'BAND_PUBLISH_RESPONSE_OK' : 'RESPONSE_REJECTED', counts: { status: response.status } });
@@ -232,8 +255,14 @@ export class BandDirectory {
           this.submit.onIdentity?.(`${this.baseUrl}/band/${this.submit.key}/post/${value.post}`);
         }
         trace('band.confirm.response', this.submit.post ? 'ok' : 'wait', { reason: this.submit.post ? 'BAND_RESPONSE_IDENTITY' : 'BAND_RESPONSE_NO_IDENTITY', counts: { expected: 1, observed: this.submit.post ? 1 : 0 } });
-      } catch { trace('sites.band.plan.BandDirectory.getSurface', 'fail', { reason: 'CAUGHT_FAILURE' });  this.submit.succeeded = false; }
+      } catch {
+        trace('band.confirm.response', 'fail', { check: 'identity', reason: 'BODY_PARSE', counts: { expected: 1, observed: 0, status: response.status } });
+        this.submit.succeeded = false;
+      }
     }, request => !!this.listPhase && ['GET', 'POST'].includes(request.method) && isBandListEndpoint(new URL(request.url)) || request.method === 'POST' && this.isCreate(new URL(request.url)) || bandFeedResponse(request), (request, reason) => {
+      if (this.submit && request && bandFeedResponse(request) && new URL(request.url).searchParams.get('band_no') === this.submit.key) {
+        this.submit.feedFailure = { reason };
+      }
       if (reason !== 'INSPECTOR_DENIED') {
         const code = reason === 'STATIC_BLOCK' ? 'SURFACE_STATIC_BLOCK' : reason === 'INSPECTOR_ERROR' ? 'SURFACE_INSPECTOR_ERROR' : 'SURFACE_REQUEST_INVALID';
         this.listRejected(request, code);
@@ -289,38 +318,79 @@ export class BandDirectory {
   sameOrigin(url: URL) {
     return url.origin === new URL(this.baseUrl).origin || (!this.localPublish && url.origin === 'https://www.band.us');
   }
-  async openPublishedView(url: string, mobile: boolean, readPost: (view: Surface, detailPhotos: () => BandPhotoEvidence[] | undefined) => Promise<void>) {
+  async openPublishedView(url: string, mobile: boolean, expected: number, readPost: (view: Surface, detailPhotos: () => BandPhotoEvidence[] | undefined) => Promise<void>) {
     const identity = new URL(url);
-    if (!this.sameOrigin(identity) || !/^\/band\/\d+\/post\/\d+$/.test(identity.pathname)) throw Error('BAND_LOCATION_UNCONFIRMED');
+    if (!this.sameOrigin(identity) || !/^\/band\/\d+\/post\/\d+$/.test(identity.pathname)) {
+      trace('verification', 'fail', { check: 'identity', reason: 'BAND_LOCATION_UNCONFIRMED', counts: { expected: 1, observed: 0 } });
+      throw Error('BAND_LOCATION_UNCONFIRMED');
+    }
     const [, , band, , post] = identity.pathname.split('/');
     const view = await this.host.create('band');
     const detailBatch = (request: Pick<GuardedRequest, 'method' | 'url'>) => {
       const endpoint = new URL(request.url);
       return request.method === 'POST' && endpoint.origin === 'https://bapi-kr.band.us' && endpoint.pathname === '/v2.0.0/batch';
     };
+    const source = 'band.photo.detail_api', attempt = mobile ? 2 : 1;
     let photos: BandPhotoEvidence[] | undefined;
+    let failure: PhotoReadFailure | undefined = { reason: 'PHOTO_REQUEST_UNOBSERVED' };
+    let denied: ReasonCode | undefined;
+    const reportedBlocks = new Set<ReasonCode>();
+    trace(source, 'start', { counts: { expected, attempt } });
     try {
       if (!view.guardRequests) throw Error('BAND_BARRIER_UNAVAILABLE');
       await view.guardRequests([{ hostname:'*', pathname:'/', prefix:true }], request => {
         if (bandRecordReadAllowed(request)) return true;
+        if (!detailBatch(request)) return false;
         const batch = bandReadBatchTarget(request);
-        return batch?.band === band && batch?.post === post;
-      }, response => {
-        if (response.url && detailBatch({ url: response.url, method: response.method ?? '' }) && response.status >= 200 && response.status < 300) {
-          photos = parseBandDetailPhotos(response.body, url);
+        if (batch?.band !== band || batch?.post !== post) {
+          denied = batch ? 'TARGET_MISMATCH' : 'ROUTE_BLOCKED';
+          return false;
         }
-      }, detailBatch);
+        if (failure?.reason === 'PHOTO_REQUEST_UNOBSERVED') {
+          trace(source, 'wait', { reason: 'REQUEST_ALLOWED', counts: { expected, observed: 0, attempt } });
+        }
+        failure = { reason: 'PHOTO_RESPONSE_UNOBSERVED' };
+        return true;
+      }, response => {
+        if (!response.url || !detailBatch({ url: response.url, method: response.method ?? '' })) return;
+        if (response.status < 200 || response.status >= 300) {
+          failure = { reason: 'PHOTO_RESPONSE_REJECTED', counts: { status: response.status } };
+          return;
+        }
+        const result = inspectBandDetailPhotos(response.body, url);
+        photos = 'photos' in result ? result.photos : undefined;
+        failure = 'reason' in result ? { ...result, counts: { ...result.counts, status: response.status } } : undefined;
+      }, detailBatch, (request, reason) => {
+        if (!request || !detailBatch(request)) return;
+        const code = reason === 'INSPECTOR_DENIED' ? denied ?? reason : reason;
+        failure = { reason: code };
+        if (!reportedBlocks.has(code)) tracePhotoSource(source, expected, 0, failure, attempt);
+        reportedBlocks.add(code);
+      });
       await view.open({ url, session:'band', width:1280, height:900, userAgent:mobile ? bandMobileUA :
         'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36' });
       await dismissBandAppPrompt(view, url);
       await readPost(view, () => photos);
-    } finally { await this.host.destroy(view); }
+    } finally {
+      try {
+        const count = photos?.length ?? 0;
+        tracePhotoSource(source, expected, count, photos ? (count === expected ? undefined : { reason: 'PHOTO_COUNT_MISMATCH' }) : failure, attempt);
+      } finally { await this.host.destroy(view); }
+    }
   }
-  publishedFeedPhotos(url: string, expected: number, submittedAt: number) {
+  publishedFeedPhotos(url: string, expected: number, submittedAt: number): ApiPhotoRead {
     // The mobile feed may cap both fields at its preview size. It can confirm a
     // full match, while a short feed alone cannot prove an attachment missing.
-    const matches = this.feedPosts.filter(post => post.url === url && post.owned && post.createdAt >= submittedAt - 5000);
-    return matches.length === 1 && matches[0]!.photoCount === expected ? matches[0]!.apiPhotos : undefined;
+    const candidates = this.feedPosts.filter(post => post.url === url);
+    const owned = candidates.filter(post => post.owned);
+    const matches = owned.filter(post => post.createdAt >= submittedAt - 5000);
+    if (matches.length > 1) return { reason: 'BAND_POST_IDENTITY_AMBIGUOUS', counts: { expected: 1, observed: matches.length } };
+    const post = matches[0];
+    if (!post) return this.submit?.feedFailure ?? (candidates.length
+      ? { reason: owned.length ? 'BAND_FEED_TIME_MISMATCH' : 'BAND_FEED_OWNER_MISMATCH', counts: { expected: 1, observed: 0 } }
+      : { reason: this.feedBand === this.submit?.key ? 'IDENTITY_NOT_FOUND' : 'PHOTO_REQUEST_UNOBSERVED' });
+    if (post.photoCount !== expected) return { reason: 'PHOTO_COUNT_MISMATCH', counts: { expected, observed: post.photoCount } };
+    return post.apiPhotos ? { photos: post.apiPhotos } : this.feedPhotoFailures.get(url) ?? { reason: 'PHOTO_SOURCE_MISSING' };
   }
   async list(retryRead = true): Promise<BandChoice[]> {
     return traceStep('sites.band.plan.BandDirectory.list', async () => {
@@ -554,7 +624,8 @@ export class BandExecution {
     if (files.length && !this.photoAttempted) {
       const sizes = await Promise.all(files.map(file => this.env.sourceDimensions(file)));
       this.photoOrder = new PhotoOrder(urls, sizes);
-      if ((await readBandDocument(s)).slots.length) this.photoOrder.fail();
+      const before = (await readBandDocument(s)).slots.length;
+      if (before) this.photoOrder.fail('PHOTO_COUNT_MISMATCH', { expected: 0, observed: before });
       if (!await read<boolean>(s, `return docs.some(({d})=>d.querySelector('input[type="file"]'));`)) await click(s, 'BAND_PHOTO_BUTTON', 'button,label,a', '사진');
       this.photoAttempted = true;
       for (const [index, file] of files.entries()) {
@@ -579,6 +650,7 @@ export class BandExecution {
     return traceStep('sites.band.plan.BandExecution.settlePhoto', async () => {
     const s = this.surface!, order = this.photoOrder!;
     const check = async () => { await this.guard(); order.check((await readBandDocument(s)).slots, true); };
+    let loaded = 0;
     try {
       // Desktop Band has a separate upload dialog; each invocation contains ONE new file.
       await confirmBandPhotos(s, count, check, 1, this.env.photoTimeoutMs);
@@ -587,13 +659,14 @@ export class BandExecution {
         await check(); const actual = await readBandDocument(s);
         order.check(actual.slots, true);
         const signature = JSON.stringify(actual.slots);
-        if (signature !== previous || actual.uploading || actual.slots.some(p => !p.loaded)) { previous = signature; stableSince = Date.now(); }
-        return actual.slots.length === count && !actual.uploading && actual.slots.every(p => p.loaded) && Date.now() - stableSince >= 500 ? actual.slots : null;
+        loaded = actual.slots.filter(p => p.loaded).length;
+        if (signature !== previous || actual.uploading || loaded !== actual.slots.length) { previous = signature; stableSince = Date.now(); }
+        return actual.slots.length === count && !actual.uploading && loaded === count && Date.now() - stableSince >= 500 ? actual.slots : null;
       }, this.env.photoTimeoutMs ?? 60000, { surface: s, control: "BAND_UPLOAD_SLOTS" });
       order.commit(slots);
       this.checkpoint = await readBandDocument(s);
     } catch (error) { trace('sites.band.plan.BandExecution.settlePhoto', 'fail', { reason: reasonCode(error) });
-      if (error instanceof Error && error.message === 'OBSERVATION_TIMEOUT') order.fail();
+      if (error instanceof Error && error.message === 'OBSERVATION_TIMEOUT') order.fail('PHOTO_UPLOAD_NOT_SETTLED', { expected: count, observed: loaded });
       throw error;
     }
 
@@ -603,8 +676,15 @@ export class BandExecution {
   async observe(): Promise<BandReadback> {
     return traceStep('sites.band.plan.BandExecution.observe', async () => {
     const actual = await readBandDocument(this.surface!);
-    if (actual.composer && this.photoUrls().length) {
-      if (!this.photoOrder || actual.uploading || actual.slots.some(s => !s.loaded)) throw new Error('BAND_READBACK_MISMATCH:photos');
+    const expected = this.photoUrls().length;
+    if (actual.composer && expected) {
+      const loaded = actual.slots.filter(s => s.loaded).length;
+      if (!this.photoOrder || actual.uploading || loaded !== actual.slots.length) {
+        trace('verification', 'fail', { check: 'photos',
+          reason: this.photoOrder ? 'PHOTO_UPLOAD_NOT_SETTLED' : 'PHOTO_UPLOAD_PROOF_INVALID',
+          counts: { expected, observed: loaded, photoSlots: actual.slots.length } });
+        throw new Error('BAND_READBACK_MISMATCH:photos');
+      }
       actual.photoProof = this.photoOrder.prove(actual.slots);
     }
     return actual;
@@ -649,15 +729,25 @@ export class BandExecution {
       }, timeout, { surface: this.surface!, control: "BAND_CREATE_RECEIPT" });
     } catch (error) {
       if (!(error instanceof Error) || error.message !== 'OBSERVATION_TIMEOUT') throw error;
-      trace('band.confirm.response', 'wait', { reason: 'BAND_RESPONSE_UNOBSERVED' });
+      trace('band.confirm.response', 'wait', { reason: 'BAND_RESPONSE_UNOBSERVED', counts: { expected: 1, observed: 0 } });
     }
     const result = directory.responseResult(this.env.key);
-    if (result?.received && !result.succeeded) throw Error('BAND_CREATE_REJECTED');
+    if (result?.received && !result.succeeded) {
+      trace('band.confirm.response', 'fail', { reason: 'BAND_CREATE_REJECTED', counts: { expected: 1, observed: 0 } });
+      throw Error('BAND_CREATE_REJECTED');
+    }
     const uploaded = this.checkpoint?.slots.map(slot => { try { return JSON.parse(slot.signature)[0] as string; } catch { return ''; } }) ?? [];
     let url = directory.createdReceipt(this.env.key);
     let recoveredPhotos: BandPhotoEvidence[] | undefined;
     if (url) await this.storeIdentity(url);
-    if (uploaded.length !== this.photoUrls().length || uploaded.some(value => !bandPhotoPath(value))) throw new ReadbackMismatch('BAND_PUBLISHED_READBACK_MISMATCH:photo', [{ field: 'photo' }]);
+    const expectedPhotos = this.photoUrls().length;
+    const unreadable = uploaded.findIndex(value => !bandPhotoPath(value));
+    if (uploaded.length !== expectedPhotos || unreadable >= 0) {
+      trace('verification', 'fail', { check: 'photo_order',
+        reason: uploaded.length !== expectedPhotos ? 'PHOTO_COUNT_MISMATCH' : 'PHOTO_PATH_UNREADABLE',
+        counts: { expected: expectedPhotos, observed: uploaded.length, ...(unreadable >= 0 ? { photoIndex: unreadable + 1 } : {}) } });
+      throw new ReadbackMismatch('BAND_PUBLISHED_READBACK_MISMATCH:photo', [{ field: 'photo' }]);
+    }
     if (!url) {
       try {
         const post = await directory.readCreated({ band: this.env.key, title: bandText(this.plan).split('\n')[0] ?? '',
@@ -667,7 +757,7 @@ export class BandExecution {
         if (post?.photos.length === uploaded.length) recoveredPhotos = post.photos;
       } catch (error) {
         this.env.check();
-        trace('band.confirm.feed', 'fail', { reason: reasonCode(error) });
+        trace('band.confirm.feed', 'fail', { check: 'identity', reason: reasonCode(error), counts: { expected: 1, observed: 0 } });
         url = directory.createdReceipt(this.env.key);
         if (!url) throw Error(error instanceof Error && error.message === 'BAND_POST_IDENTITY_AMBIGUOUS' ? 'BAND_POST_UNCONFIRMED:IDENTITY_AMBIGUOUS' : 'BAND_POST_UNCONFIRMED:IDENTITY_READ_FAILED');
       }
@@ -675,25 +765,71 @@ export class BandExecution {
       const receipt = directory.createdReceipt(this.env.key);
       const latest = directory.responseResult(this.env.key);
       if (latest?.received && !latest.succeeded) throw Error('BAND_CREATE_REJECTED');
-      if (receipt && url && receipt !== url) throw Error('BAND_POST_UNCONFIRMED:IDENTITY_AMBIGUOUS');
+      if (receipt && url && receipt !== url) {
+        trace('verification', 'fail', { check: 'identity', reason: 'BAND_POST_IDENTITY_AMBIGUOUS', counts: { expected: 1, observed: 2 } });
+        throw Error('BAND_POST_UNCONFIRMED:IDENTITY_AMBIGUOUS');
+      }
       url = receipt ?? url;
-      if (!url) throw Error('BAND_POST_UNCONFIRMED:IDENTITY_NOT_FOUND');
+      if (!url) {
+        trace('verification', 'fail', { check: 'identity', reason: 'IDENTITY_NOT_FOUND', counts: { expected: 1, observed: 0 } });
+        throw Error('BAND_POST_UNCONFIRMED:IDENTITY_NOT_FOUND');
+      }
       await this.storeIdentity(url);
+    } else {
+      trace('band.photo.recovery_feed', 'skip', { reason: 'BAND_RESPONSE_IDENTITY', counts: { photoTotal: expectedPhotos } });
     }
     trace('band.confirm.detail', 'start');
     const expectedUrl = url;
-    const inspect = (mobile: boolean) => directory.openPublishedView(expectedUrl, mobile, async (view, detailPhotos) => {
-      await settleFullBandPost(view, bandText(this.plan), uploaded, this.env.check, this.env.submitTimeoutMs ?? 12000, async () => {
-        this.env.check();
-        if (await view.readDialog?.()) throw Error('USER_DIALOG_REQUIRED');
-        const state = new URL((await view.readState()).url);
-        if (!directory.sameOrigin(state) || state.pathname.replace(/\/$/, '') !== new URL(expectedUrl).pathname) return null;
-        const actual = await readFullBandPost(view);
-        if (!actual) return null;
-        const apiPhotos = detailPhotos() ?? directory.publishedFeedPhotos(expectedUrl, uploaded.length, this.submittedAt) ?? recoveredPhotos;
-        return apiPhotos ? { ...actual, apiPhotos } : actual;
-      }, bandPlanLinks(this.plan));
-    });
+    const expectedPath = new URL(expectedUrl).pathname;
+    const inspect = async (mobile: boolean) => {
+      const attempt = mobile ? 2 : 1;
+      let domFailure: PhotoReadFailure | undefined = { reason: 'PHOTO_SOURCE_MISSING' };
+      let domPhotos = 0;
+      let cached: ApiPhotoRead | undefined;
+      let routeMatches: boolean | undefined;
+      trace('band.photo.detail_dom', 'start', { counts: { expected: expectedPhotos, attempt } });
+      try {
+        await directory.openPublishedView(expectedUrl, mobile, expectedPhotos, async (view, detailPhotos) => {
+          await settleFullBandPost(view, bandText(this.plan), uploaded, this.env.check, this.env.submitTimeoutMs ?? 12000, async () => {
+            this.env.check();
+            if (await view.readDialog?.()) throw Error('USER_DIALOG_REQUIRED');
+            const state = new URL((await view.readState()).url);
+            const sameRoute = directory.sameOrigin(state) && state.pathname.replace(/\/$/, '') === expectedPath;
+            if (routeMatches !== sameRoute) trace('verification', sameRoute ? 'ok' : 'wait', {
+              check: 'identity', reason: sameRoute ? 'BAND_RESPONSE_IDENTITY' : 'BAND_DETAIL_ROUTE_MISMATCH',
+              counts: { expected: 1, observed: Number(sameRoute), attempt },
+            });
+            routeMatches = sameRoute;
+            domFailure = { reason: sameRoute ? 'PHOTO_SOURCE_MISSING' : 'BAND_DETAIL_ROUTE_MISMATCH' };
+            domPhotos = 0;
+            if (!sameRoute) return null;
+            const actual = await readFullBandPost(view, failure => { domFailure = failure; });
+            if (!actual) return null;
+            const dom = bandDomPhotos(actual, expectedPhotos);
+            domPhotos = dom.readable;
+            domFailure = dom.reason ? { reason: dom.reason, counts: { photoSlots: actual.photos.length } } : undefined;
+            let apiPhotos = detailPhotos();
+            if (apiPhotos === undefined) {
+              if (!cached) trace('band.photo.cached_feed', 'start', { counts: { expected: expectedPhotos, attempt } });
+              cached = directory.publishedFeedPhotos(expectedUrl, expectedPhotos, this.submittedAt);
+              apiPhotos = 'photos' in cached ? cached.photos : recoveredPhotos;
+            }
+            return apiPhotos ? { ...actual, apiPhotos } : actual;
+          }, bandPlanLinks(this.plan));
+        });
+      } catch (error) {
+        if (routeMatches === false) trace('verification', 'fail', {
+          check: 'identity', reason: 'BAND_DETAIL_ROUTE_MISMATCH', counts: { expected: 1, observed: 0, attempt },
+        });
+        if (!(error instanceof ReadbackMismatch)) domFailure = { reason: reasonCode(error) };
+        throw error;
+      } finally {
+        tracePhotoSource('band.photo.detail_dom', expectedPhotos, domPhotos, domFailure, attempt);
+        if (!cached) trace('band.photo.cached_feed', 'skip', { reason: 'PHOTO_SOURCE_SKIPPED', counts: { photoTotal: expectedPhotos, attempt } });
+        else if ('photos' in cached) tracePhotoSource('band.photo.cached_feed', expectedPhotos, cached.photos.length, undefined, attempt);
+        else tracePhotoSource('band.photo.cached_feed', expectedPhotos, 0, cached, attempt);
+      }
+    };
     try {
       try { await inspect(false); }
       catch (error) {
@@ -725,7 +861,11 @@ export class BandExecution {
     this.createdIdentity = url;
     this.identitySave = (async () => {
       trace('band.confirm.record', 'start');
-      await this.env.onIdentity?.(url);
+      try { await this.env.onIdentity?.(url); }
+      catch (error) {
+        trace('band.confirm.record', 'fail', { check: 'record', reason: reasonCode(error), counts: { expected: 1, observed: 0 } });
+        throw error;
+      }
       trace('band.confirm.record', 'ok', { reason: 'BAND_IDENTITY_STORED' });
     })();
     // Response observation cannot await persistence while the request is paused.
@@ -735,14 +875,18 @@ export class BandExecution {
   }
   async publish() {
     return traceStep('sites.band.plan.BandExecution.publish', async () => {
+    const submitFailure = (reason: ReasonCode): never => {
+      trace('verification', 'fail', { check: 'input', reason, selector: 'submit', counts: { expected: 1, observed: 0 } });
+      throw Error(reason);
+    };
     const state = await this.surface!.readState();
-    if (
-      (!this.env.directory.localPublish &&
-        !this.env.directory.publishEnabled &&
-        !this.env.directory.publishAllowance) ||
-      !this.env.directory.sameOrigin(new URL(state.url))
-    )
-      throw new Error('REAL_BAND_PUBLISH_DISABLED');
+    if (!this.env.directory.localPublish && !this.env.directory.publishEnabled && !this.env.directory.publishAllowance) {
+      submitFailure('REAL_BAND_PUBLISH_DISABLED');
+    }
+    if (!this.env.directory.sameOrigin(new URL(state.url))) {
+      trace('verification', 'fail', { check: 'identity', reason: 'BAND_LOCATION_UNCONFIRMED', counts: { expected: 1, observed: 0 } });
+      throw Error('REAL_BAND_PUBLISH_DISABLED');
+    }
     if (this.postAttempted) {
       const url = this.env.directory.submitted(this.env.key)
         ? await this.detectPublished()
@@ -752,7 +896,7 @@ export class BandExecution {
     }
     await this.guard();
     this.env.verify(await this.observe());
-    if (!this.verified) throw new Error('BAND_NOT_VERIFIED');
+    if (!this.verified) submitFailure('BAND_NOT_VERIFIED');
     const control =
       (await point(
         this.surface!,
@@ -764,7 +908,7 @@ export class BandExecution {
         bandSubmit,
         '게시',
       ));
-    if (!control) throw new Error('BAND_POST_CONTROL_MISSING');
+    if (!control) return submitFailure('BAND_POST_CONTROL_MISSING');
     try {
       await this.surface!.click(control.x, control.y, async () => {
         await this.guard();
@@ -775,9 +919,9 @@ export class BandExecution {
             bandSubmit,
           ))
         )
-          throw new Error('BAND_POST_CONTROL_CHANGED');
+          submitFailure('BAND_POST_CONTROL_CHANGED');
         if (!this.env.directory.localPublish && !this.env.directory.publishEnabled) {
-          if (!(await this.env.directory.publishAllowance?.consume())) throw new Error('REAL_BAND_PUBLISH_DISABLED');
+          if (!(await this.env.directory.publishAllowance?.consume())) submitFailure('REAL_BAND_PUBLISH_DISABLED');
           this.env.directory.allowanceConsumed();
         }
         this.submittedAt = Date.now(); this.postAttempted = true;

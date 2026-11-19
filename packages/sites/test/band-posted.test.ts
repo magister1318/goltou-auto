@@ -166,6 +166,31 @@ it('compares API attachment order and checks displayed collage photos as a subse
   expect(() => verifyFullBandPost(title, uploaded, { ...actual, apiPhotos: [...apiPhotos].reverse() })).toThrow('BAND_PUBLISHED_READBACK_MISMATCH:order');
 });
 
+it('requires every ordered and readable collage path when API evidence is absent', () => {
+  const uploaded = Array.from({ length: 66 }, (_, i) => `https://coresos-phinf.pstatic.net/a/3a2888/f_${String(i).padStart(23, '0')}_ovkdi3.png`);
+  const photos = uploaded.map(path => `${path}?type=w520`);
+  const actual = { body: title, photos, collage: true, lineBreaks: 0, hashtags: 0, links: 0, tagTexts: [], linkUrls: [], tagTokens: [], linkTokens: [] };
+  const trace = vi.spyOn(telemetry, 'trace');
+  try {
+    expect(() => verifyFullBandPost(title, uploaded, actual)).not.toThrow();
+    expect(() => verifyFullBandPost(title, uploaded, { ...actual, photos: photos.slice(0, 65) }))
+      .toThrow(expect.objectContaining({ issues: [{ field: 'photo', expected: 66, observed: 65 }] }));
+    expect(trace).toHaveBeenCalledWith('verification', 'fail', {
+      check: 'photo_order', reason: 'PHOTO_COUNT_MISMATCH', counts: { expected: 66, observed: 65 },
+    });
+    expect(() => verifyFullBandPost(title, uploaded, { ...actual, photos: ['', ...photos.slice(1)] }))
+      .toThrow(expect.objectContaining({ issues: [{ field: 'photo', expected: 66, observed: 65 }] }));
+    expect(trace).toHaveBeenCalledWith('verification', 'fail', {
+      check: 'photo_order', reason: 'PHOTO_PATH_UNREADABLE', counts: { expected: 66, observed: 65, photoSlots: 66 },
+    });
+    for (const changed of [[photos[1]!, photos[0]!, ...photos.slice(2)], [photos[0]!.replace('/3a2888/', '/3a2889/'), ...photos.slice(1)]]) {
+      expect(() => verifyFullBandPost(title, uploaded, { ...actual, photos: changed }))
+        .toThrow(expect.objectContaining({ issues: [{ field: 'order', index: 1, expected: 66, observed: 66 }] }));
+    }
+    expect(JSON.stringify(trace.mock.calls)).not.toMatch(/w520|\/a\/3a2888/);
+  } finally { trace.mockRestore(); }
+});
+
 const cdnPath = '/a/abc123/a_01234567890123456789012_id0001';
 const cdnHost = 'coresos-phinf.pstatic.net';
 const cdnAlias = 'coresos.phinf.naver.net';

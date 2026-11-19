@@ -14,7 +14,7 @@ import { sanitizeUpdate } from '../../surface/src/update-diagnostics';
 const kinds: readonly JobKind[] = ['blog_draft', 'blog_publish', 'blog_delete', 'unfinished_cleanup', 'band_post', 'band_delete', 'login_check', 'band_list', 'app_update'];
 const sites: readonly LogSite[] = ['naver', 'band', 'app'];
 const events: readonly TraceEvent[] = ['start', 'ok', 'fail', 'retry', 'skip', 'wait', 'blocked_expected'];
-const countKeys = ['rows', 'columns', 'cells', 'step', 'paragraphIndex', 'paragraphTotal', 'photoIndex', 'photoTotal', 'bytes', 'runs', 'attempt', 'expected', 'observed', 'status', 'timeoutMs', 'documents', 'editables', 'fileInputs', 'writeButtons', 'dialogs', 'composers', 'postBodies', 'differences', 'paragraphs', 'lineBreaks', 'hashtags', 'links'] as const;
+const countKeys = ['rows', 'columns', 'cells', 'step', 'paragraphIndex', 'paragraphTotal', 'photoIndex', 'photoTotal', 'photoSlots', 'bytes', 'runs', 'attempt', 'expected', 'observed', 'status', 'timeoutMs', 'documents', 'editables', 'fileInputs', 'writeButtons', 'dialogs', 'composers', 'postBodies', 'differences', 'paragraphs', 'lineBreaks', 'hashtags', 'links'] as const;
 const hosts = ['band.us', 'www.band.us', 'auth.band.us', 'api.band.us', 'api-kr.band.us', 'bapi-kr.band.us', 'up.band.us', 'blog.naver.com', 'm.blog.naver.com', 'nid.naver.com', '127.0.0.1'];
 const fieldNames = ['version', 'ts', 'band_no', 'post_no', 'band_key', 'post_key', 'body', 'content', 'contents', 'text', 'photos', 'photo_list', 'file', 'fileList', 'attachment', 'attachments', 'data', 'requests', 'url', 'method', 'params', 'access_token', 'token', 'signature', 'key', 'blogId', 'logNo', 'title', 'tags', 'is_public', 'schedule', 'device_type', 'set_band_notice', 'set_major_band_notice', 'set_linked_band_notice', 'copiable_state', 'should_disable_comment', 'band_notice_unset_at', 'photo', 'purpose', 'format', 'locale', 'app_id', 'documentJson', 'documentModel', 'mediaResources', 'populationParams', 'productApiVersion', 'tokenId', 'cpage', 'categoryNo', 'parentCategoryNo', 'viewDate', 'sourceCode', 'currentPage'];
 const fixedPaths = ['/RabbitAutoSaveWrite.naver', '/PostDelete.naver', '/v1.5.0/delete_post', '/v2.0.0/batch', '/v2.3.0/get_band_list', '/v2.0.2/create_post', '/v3/upload_photo', '/RabbitWrite.naver', '/RabbitUpdate.naver', '/RabbitTempPostWrite.naver', '/RabbitTempPostUpdate.naver', '/PostWriteForm.naver', '/PostView.naver', '/PostList.naver', '/', '/my/home', '/my', '/login'];
@@ -68,6 +68,7 @@ interface LogTiming {
 function failedStep(step: TraceStep, counts?: TraceDetail['counts']): TraceStep {
   return step === 'job' && counts?.step ? (['runner.ready', 'runner.download', 'runner.arrange', 'runner.blog_write', 'runner.blog_save', 'runner.band_write', 'runner.record'] as const)[counts.step - 1] ?? step : step;
 }
+const isJobFailure = (step: string, event: string) => event === 'fail' && step !== 'terminal' && !step.startsWith('band.photo.');
 export class JobLogStore implements TraceProvider {
   private readonly context = new AsyncLocalStorage<TraceJob>();
   private rows: StoredRow[] = [];
@@ -208,7 +209,7 @@ export class JobLogStore implements TraceProvider {
       if (event === 'fail' && !detail?.reason) data.reason = 'UNEXPECTED_FAILURE';
       if (step === 'barrier' && event === 'start') decisionReason = undefined;
       else if (['barrier', 'delete'].includes(step) && detail?.reason && !detail.network) decisionReason = reasonCode(detail.reason);
-      if (event === 'fail' && step !== 'terminal') {
+      if (isJobFailure(step, event)) {
         row.failedStep = failedStep(step, detail?.counts);
         row.reason = reasonCode(detail?.reason);
       }
@@ -250,7 +251,7 @@ export class JobLogStore implements TraceProvider {
           }
         }
         if (!first || !kinds.includes(first.kind) || !sites.includes(first.site) || !/^[a-f0-9-]{36}$/.test(first.jobId) || !Number.isFinite(first.timestamp)) continue;
-        const failure = lines.filter(line => line.event === 'fail' && line.step !== 'terminal').at(-1);
+        const failure = lines.filter(line => isJobFailure(line.step, line.event)).at(-1);
         const row: StoredRow = { at: first.timestamp, jobId: first.jobId, kind: first.kind, site: first.site, file: `${date}/${file}`,
           ...(lines.some(line => line.event === 'blocked_expected' && line.network?.decision === 'blocked') ? { blockedExpected: lines.filter(line => line.event === 'blocked_expected' && line.network?.decision === 'blocked').length } : {}),
           ...(lines.some(line=>line.step==='table_fallback'&&line.event==='ok') ? {tableFallback:true} : {}),

@@ -51,9 +51,10 @@ export function createBandExecution(plan: InputPlan, files: readonly Pick<MediaF
     const expected = observePlan(plan);
     const observed = bandObservation(plan, execution.files, actual);
     const issues = bandBodyIssues(bandText(plan), actual.body);
-    if (bandPlanLinks(plan).some(href => !hasBandLink(actual.body, href))) {
+    const links = bandPlanLinks(plan), matchedLinks = links.filter(href => hasBandLink(actual.body, href)).length;
+    if (matchedLinks !== links.length) {
       issues.push({ field: 'href' });
-      trace('verification', 'fail', { check: 'href', reason: 'READBACK_HREF' });
+      trace('verification', 'fail', { check: 'href', reason: 'READBACK_HREF', counts: { expected: links.length, observed: matchedLinks } });
     }
     if (JSON.stringify(expected.photos) !== JSON.stringify(observed.photos)) {
       issues.push({ field: 'photo' });

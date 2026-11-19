@@ -23,7 +23,7 @@ export interface TraceCounts {
   bytes?: number; runs?: number; attempt?: number; expected?: number; observed?: number; status?: number;
   rows?: number; columns?: number; cells?: number;
   timeoutMs?: number; documents?: number; editables?: number; fileInputs?: number; writeButtons?: number; dialogs?: number; composers?: number; postBodies?: number;
-  differences?: number; paragraphs?: number; lineBreaks?: number; hashtags?: number; links?: number;
+  differences?: number; paragraphs?: number; lineBreaks?: number; hashtags?: number; links?: number; photoSlots?: number;
 }
 export interface TraceDetail {
   update?: import('./update-diagnostics').UpdateDiagnostic;

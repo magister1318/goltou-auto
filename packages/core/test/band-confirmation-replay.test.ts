@@ -61,6 +61,7 @@ async function fixture(mode: string) {
     if (u.pathname === '/v2.0.0/batch') {
       detailReads++;
       if (!collage) return json({ result_code: 1 });
+      if (mode === 'collage-dom-only') return json({ result_code: 1, result_data: { responses: [{ result_code: 1, result_data: {} }] } });
       const stored = photos.slice(0, mode === 'collage-missing' ? 65 : 66);
       const post = { post_no: 9001, band: { band_no: 111 }, web_url: url, photo_count: stored.length,
         attachment: { photo: stored.map(src => ({ photo_url: `http://${attachmentCdn}${new URL(src).pathname}` })) } };
@@ -74,11 +75,14 @@ async function fixture(mode: string) {
       }
       const text = escapeHtml(mode === 'mismatch' ? body.replace('둘째 줄\n','') : body).replace(/#합성|#태그/g, '<button class="hashTag">$&</button>').replace(/https:\/\/example.invalid\/[ab]/g, '<a href="$&">$&</a>');
       const root = mode === 'delayed' ? '<div class="postWrap -postDetailPage"><div class="cContentsCard"><div class="postBody"><div class="dPostTextView"><div class="postText">' : '<div class="postsDetailArea"><div class="_contentListRegion"><div class="postTextBox"><div class="postText _postTxt">';
+      const domOnly = mode === 'collage-dom-only';
+      const visiblePhotos = domOnly ? request.headers()['user-agent']?.includes('Android') ? photos : []
+        : photos.filter((_, i) => i % 2 === 0).slice(0, 31);
       const postHtml = collage
-        ? `<div class="postContent"><p class="postText _postTxt">${text}</p><div class="_photoArea"></div><div class="attachedImageWrap _photoList"></div><div class="uWidget -expanded"><ul class="uCollage">${photos.filter((_, i) => i % 2 === 0).slice(0, 31).map((src, i) => {
+        ? `<div class="postContent"><p class="postText _postTxt">${text}</p><div class="_photoArea"></div><div class="attachedImageWrap _photoList"></div><div class="uWidget -expanded"><ul class="uCollage">${visiblePhotos.map((src, i) => {
           // The archived detail uses a type query. Also exercise that size recipe as a path suffix.
-          const sized = i % 2 ? src.replace(/\.png$/, '_e1920_std.png') : src;
-          return `<li class="collageItem"><div class="collageImage"><img src="${sized}?type=e1920_std" alt="" width="160" height="90"></div></li>`;
+          const sized = !domOnly && i % 2 ? src.replace(/\.png$/, '_e1920_std.png') : src;
+          return `<li class="collageItem"><div class="collageImage"><img src="${sized}?type=${domOnly ? 'w520' : 'e1920_std'}" alt="" width="160" height="90"></div></li>`;
         }).join('')}</ul></div></div>`
         : root + text + '</div></div>' + photos.map(src => `<img class="mediaImg" data-lazy-src="${src}" src="/placeholder.gif">`).join('') + '</div></div>';
       const payload = [{ svc_id: 'synthetic', method: 'GET', path: '/v2.0.0/get_post?band_no=111&post_no=9001&resolution_type=synthetic&token=synthetic' }, { svc_id: 'synthetic', method: 'GET', path: '/v2.0.0/get_emotions?band_no=111&post_no=9001&content_key=synthetic&token=synthetic' }];
@@ -114,7 +118,7 @@ async function fixture(mode: string) {
     lines: async () => { const date = (await readdir(store.directory)).find(n => /^\d{8}$/.test(n))!; const file = (await readdir(path.join(store.directory, date))).find(n => n.includes('band_post'))!; return (await readFile(path.join(store.directory, date, file), 'utf8')).trim().split('\n').map(s => JSON.parse(s)); } };
 }
 
-it.each(['identity-held', 'no-identity', 'delayed', 'rejected', 'mismatch', 'not-found', 'mobile-readback', 'collage-complete', 'collage-missing'])('replays the full production Band job offline: %s', async mode => {
+async function replay(mode: string) {
   const f = await fixture(mode);
   await f.runner.start({ productNo: 1, mode: 'publish', publishConfirmed: true, targets: [{ channel: 'band', key: '111', name: '합성' }], options: { polish: false, closing: false, linkCard: false } }, '합성 제목', mode.startsWith('collage-') ? 66 : 29, f.work);
   if (mode === 'identity-held') {
@@ -123,7 +127,9 @@ it.each(['identity-held', 'no-identity', 'delayed', 'rejected', 'mismatch', 'not
       expect(f.runner.job?.status).toBe('running');
     } finally { f.release(); }
   }
-  await vi.waitFor(() => expect(f.runner.job?.status).not.toBe('running'), { timeout: mode.startsWith('collage-') ? 150000 : 60000 });
+  // The DOM-only case uploads all 66 files and waits out the first detail view.
+  const timeout = mode === 'collage-dom-only' ? 220000 : mode.startsWith('collage-') ? 150000 : 60000;
+  await vi.waitFor(() => expect(f.runner.job?.status).not.toBe('running'), { timeout });
   const success = !['rejected', 'not-found'].includes(mode);
   const diagnostic = JSON.stringify({ code: f.runner.job?.failureCode, counts: f.counts(), failures: (await f.lines()).filter(l => l.event === 'fail').slice(-8) });
   expect(f.runner.job?.status, diagnostic).toBe(success ? 'published' : 'failed');
@@ -133,6 +139,10 @@ it.each(['identity-held', 'no-identity', 'delayed', 'rejected', 'mismatch', 'not
     status:'published',reason:'PUBLISHED_CONTENT_MISSING',readbackNotes:[expect.objectContaining({field:'text',missing:true})],
   });
   if (mode === 'collage-complete') expect(f.runner.job?.targetResults?.[0]?.readbackNotes).toBeUndefined();
+  if (mode === 'collage-dom-only') {
+    expect(f.runner.job?.targetResults?.[0]?.readbackNotes).toBeUndefined();
+    expect(f.counts().detailReads).toBe(2);
+  }
   if (mode === 'collage-missing') expect(f.runner.job?.targetResults?.[0]).toMatchObject({
     status:'published',reason:'PUBLISHED_CONTENT_MISSING',readbackNotes:[{field:'photo',expected:66,observed:65,missing:true}],
   });
@@ -151,8 +161,23 @@ it.each(['identity-held', 'no-identity', 'delayed', 'rejected', 'mismatch', 'not
     expect(compact).toContainEqual(expect.objectContaining({ step:'verification',check:'photos',event:'wait',count:expect.any(Number) }));
     expect(compact).toContainEqual(expect.objectContaining({ step:'verification',check:'photo_order',event:mode === 'collage-missing' ? 'fail' : 'ok',
       counts:{expected:66,observed:mode === 'collage-missing' ? 65 : 66} }));
+    if (mode === 'collage-dom-only') {
+      expect(compact).toEqual(expect.arrayContaining([
+        expect.objectContaining({ step:'verification',check:'photo_order',event:'fail',reason:'PHOTO_SOURCE_MISSING',counts:{expected:66,observed:0} }),
+        expect.objectContaining({ step:'band.confirm.detail',event:'retry' }),
+        expect.objectContaining({ step:'band.photo.detail_api',event:'fail',reason:'IDENTITY_NOT_FOUND',counts:expect.objectContaining({attempt:2}) }),
+        expect.objectContaining({ step:'band.photo.cached_feed',event:'fail',reason:'PHOTO_COUNT_MISMATCH',counts:expect.objectContaining({expected:66,observed:10,attempt:2}) }),
+        expect.objectContaining({ step:'band.photo.recovery_feed',event:'skip',reason:'BAND_RESPONSE_IDENTITY' }),
+        expect.objectContaining({ step:'band.photo.detail_dom',event:'ok',reason:'PHOTO_SOURCE_READ',counts:expect.objectContaining({expected:66,observed:66,attempt:2}) }),
+      ]));
+      expect(upload).not.toMatch(/type=w520|\/a\/abc123|\/band\/111\/post\/9001|token=synthetic/);
+    }
   }
   if (mode === 'mobile-readback') expect(lines.some(l => l.step === 'band.confirm.detail' && l.event === 'retry')).toBe(true);
   if (mode === 'delayed') expect(lines.some(l => l.step === 'band.confirm.feed' && l.event === 'retry')).toBe(true);
   await expect(f.runner.resume()).rejects.toMatchObject({ code: 'conflict' });
-}, 180000);
+}
+
+it.each(['identity-held', 'no-identity', 'delayed', 'rejected', 'mismatch', 'not-found', 'mobile-readback', 'collage-complete', 'collage-missing'])(
+  'replays the full production Band job offline: %s', replay, 180000);
+it('replays the full production Band job offline: collage-dom-only', () => replay('collage-dom-only'), 240000);
