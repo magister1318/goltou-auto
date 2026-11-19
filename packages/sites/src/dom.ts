@@ -82,7 +82,7 @@ const observationSummary = (surface: Surface) => read<{ host: string; path: stri
   const count=selector=>docs.reduce((sum,{d})=>sum+d.querySelectorAll(selector).length,0);
   return {host:location.hostname,path:location.pathname,controls:{
     documents:docs.length,editables:count('textarea,[contenteditable="true"]'),fileInputs:count('input[type="file"]'),
-    writeButtons:count('._btnPostWrite,._btnOpenWriteLayer'),dialogs:count('[role="dialog"],[role="alertdialog"],.lyWrap'),
+    writeButtons:count('._btnPostWrite,._btnOpenWriteLayer'),dialogs:count('[role="dialog"],[role="alertdialog"],.lyWrap,.modalLayerView,[class*="modalWrap"]'),
     composers:count('.postWriteSection,.cke_editable,._postTextArea'),postBodies:count('.postTextView,.postText,p.txtBody,.se-main-container')
   }};`);
 export const compact = (text: string) => text.replace(/[\s\u200b-\u200d\ufeff]+/gu, '');

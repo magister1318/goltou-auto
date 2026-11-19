@@ -6,6 +6,7 @@ import { bandPostIdentity } from './delete';
 import type { BandDeleteCode, BandDeleteLog } from './delete-log';
 import { bandReadBatchTarget } from './read-batch';
 import { matchesBandCreation, type BandCreationMatch } from './publish-confirmation';
+import { bandAppPromptFailure, dismissBandAppPrompt } from './app-prompt';
 
 export const bandFeedResponse = (r: Pick<GuardedRequest, 'method' | 'url'>) => {
   const u = new URL(r.url);
@@ -129,14 +130,17 @@ export async function openRecordedBandFeed(host: SurfaceHost, target: FeedTarget
     const refresh = async () => {
       const before = revision;
       checkingUrl = false; reading = true;
-      await s.open({ url: `https://band.us/band/${id.band}/post`, session: 'band', width: 1280, height: 900, userAgent: bandMobileUA });
+      const url = `https://band.us/band/${id.band}/post`;
+      await s.open({ url, session: 'band', width: 1280, height: 900, userAgent: bandMobileUA });
       await waitFor(async () => { if (failure) throw Error(failure); return revision > before; }, readTimeoutMs, { surface: s, control: "BAND_FEED" });
+      await dismissBandAppPrompt(s, url);
       return actual;
     };
     const openDetail = async (mobile: boolean) => {
       checkingUrl = true;
       await s.open({ url:id.url, session:'band', width:1280, height:900, userAgent:mobile ? bandMobileUA :
         'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36' });
+      await dismissBandAppPrompt(s, id.url);
     };
     const verifyGone = async () => {
       checkingUrl = true;
@@ -164,6 +168,7 @@ export async function openRecordedBandFeed(host: SurfaceHost, target: FeedTarget
           try { state = await s.readState(); }
           catch { trace('sites.band.record-read.openRecordedBandFeed', 'fail', { reason: 'CAUGHT_FAILURE' });  return false; } // An alert can arrive between the native read and Runtime.
           if (bandPostIdentity(state.url)?.url !== id.url || state.loading) { reason = 'URL_WRONG_ROUTE'; return false; }
+          await dismissBandAppPrompt(s, id.url);
           const result = await read<{ post: boolean; notice: boolean }>(s, `return {post:docs.some(({d})=>!!d.querySelector('.postView,.postsDetailArea p.txtBody,article.cContentsCard p.txtBody,section.postCard p.postText')),notice:docs.some(({d})=>/(?:삭제된 게시글|게시글이 삭제되었|삭제되었거나 존재하지 않는 게시글|존재하지 않는 게시글|게시글이 존재하지 않|게시글을 찾을 수 없)/.test(d.body?.innerText||''))};`);
           reason = result.post ? 'URL_POST_PRESENT' : 'URL_NO_DELETE_NOTICE';
           if (result.post) throw Error('BAND_URL_POST_PRESENT');
@@ -171,7 +176,10 @@ export async function openRecordedBandFeed(host: SurfaceHost, target: FeedTarget
         }, 30000, { surface: s, control: "BAND_POST_ABSENT" });
         log({ code: 'URL_ABSENT' });
         return true;
-      } catch { trace('sites.band.record-read.openRecordedBandFeed', 'fail', { reason: 'CAUGHT_FAILURE' });  log({ code: reason }); return false; }
+      } catch (error) {
+        if (error instanceof Error && error.message === bandAppPromptFailure) throw error;
+        trace('sites.band.record-read.openRecordedBandFeed', 'fail', { reason: 'CAUGHT_FAILURE' }); log({ code: reason }); return false;
+      }
       finally { checkingUrl = false; }
     };
     await refresh();

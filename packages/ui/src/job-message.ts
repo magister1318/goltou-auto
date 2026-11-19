@@ -7,6 +7,7 @@ export function jobMessage(job: Job): [string, string] {
   const code = job.failureCode ?? '';
   if (code === 'BAND_WRITE_NOT_ALLOWED') return ['이 밴드에서 글을 쓸 권한이 없습니다.', '밴드 관리자에게 글쓰기 권한을 확인해 주세요.'];
   if (code === 'BAND_COMPOSER_UNAVAILABLE') return ['밴드 글쓰기 화면을 열지 못했습니다.', '밴드에서 글쓰기 화면이 열리는지 확인해 주세요.'];
+  if (code === 'BAND_APP_PROMPT_NOT_DISMISSED') return ['밴드 앱 사용 안내가 닫히지 않았습니다.', '밴드에서 ‘모바일 웹에서 계속하기’를 선택한 뒤 다시 시도해 주세요.'];
   if (code === 'BAND_TARGET_INVALID') return [
     '밴드 목록이 바뀌었습니다. 새로고침 후 다시 골라 주세요.',
     existingServiceResult(job) ? '앞서 저장하거나 발행한 글은 등록 기록에서 확인해 주세요.' : '밴드에는 게시하지 않았습니다.',

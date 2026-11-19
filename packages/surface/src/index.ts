@@ -37,12 +37,13 @@ export const clickHitRelations = ['ancestor', 'descendant', 'unrelated', 'same']
 export interface ViewportRect { x: number; y: number; width: number; height: number }
 export interface ClickHitElement {
   tag: string; classes: string[]; ariaLabel?: string | null;
+  ancestorClasses?: string[];
   rect?: ViewportRect; relation?: typeof clickHitRelations[number];
 }
 export interface ClickTargetMiss { scrollX: number; scrollY: number; rejectedHit?: ClickHitElement }
 export interface ClickTargetOptions {
   exactText?: string;
-  onMiss?: { classes: readonly string[]; ariaLabels: readonly string[]; report(miss: ClickTargetMiss): void };
+  onMiss?: { classes: readonly string[]; ancestorClasses?: readonly string[]; ariaLabels: readonly string[]; report(miss: ClickTargetMiss): void };
 }
 export interface RequestRule { hostname: string; pathname: string; prefix?: boolean }
 /** Ephemeral transport data. Callers must never persist bodies or headers. */

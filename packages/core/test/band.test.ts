@@ -8,6 +8,7 @@ import http from 'node:http';
 import { chromium, type Page } from 'playwright-core';
 import { CdpConnection, CdpSurface } from '@goltou/surface/cdp';
 import type { Surface, SurfaceHost } from '@goltou/surface';
+import { bandWriteHitClasses, bandWritePromptClasses } from '../../surface/src/band-write-diagnostics';
 import { BandDirectory, readBandDocument } from '@goltou/sites';
 import { bandFixture } from '../../sites/test/band-fixture';
 import { point } from '../../sites/src/dom';
@@ -39,7 +40,7 @@ async function fixture(mode = 'mobile', beforeHit?: (page: Page) => Promise<void
       const square = mode === 'cropped' || mode === 'ratio-mismatch';
       res.writeHead(200, { 'content-type': 'image/png' }).end(png(square ? 90 : 160, 90)); return;
     }
-    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(req.url === '/login' ? '<input type="password"><p>로컬 로그인 풀림</p>' : req.url?.startsWith('/blog') ? blogFixture(mode === 'blog-fail' ? 'duplicate' : '') : mode === 'new-dropdown' && req.url === '/' ? dropdown : mode === 'new-home' && req.url === '/' ? '<section class="globalMyBandWrap"><a class="_allMyBandList" href="/my/bands">전체보기</a></section>' : mode === 'new-home' && req.url === '/my/bands' ? newList : bandFixture(mode));
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(req.url === '/login' ? '<input type="password"><p>로컬 로그인 풀림</p>' : req.url?.startsWith('/blog') ? blogFixture(mode === 'blog-fail' ? 'duplicate' : '') : mode === 'new-dropdown' && req.url === '/' ? dropdown : mode === 'new-home' && req.url === '/' ? '<section class="globalMyBandWrap"><a class="_allMyBandList" href="/my/bands">전체보기</a></section>' : mode === 'new-home' && req.url === '/my/bands' ? newList : bandFixture(mode.startsWith('app-prompt') && req.url === '/' ? 'mobile' : mode));
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   cleanup.push(() => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }));
@@ -95,6 +96,43 @@ function workFor(plan: InputPlan, files: { url: string; path: string }[]) {
 const input: JobInput = { productNo: 1, mode: 'draft', targets: [{ channel: 'band', name: '밴드 A', key: '111' }], options: { polish: false, closing: false, linkCard: false } };
 
 describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pages', () => {
+  it.each([['app-prompt', 'web ', 'BAND_APP_PROMPT_WEB'], ['app-prompt-close', 'close ', 'BAND_APP_PROMPT_CLOSE']])(
+    'dismisses the full-viewport BAND app prompt before opening the floating composer (%s)', async (mode, action, control) => {
+    const f = await fixture(mode);
+    const surface = f.directory.surface!;
+    await surface.open({ url: `${f.baseUrl}/band/111/post`, session: 'band', width: 1280, height: 900, userAgent: 'Band fixture' });
+    const selector = 'button.uFloatingButton._btnPostWrite[aria-label="글쓰기"]';
+    expect(await point(surface, selector)).toEqual({ x: 1238, y: 856 });
+    const report = vi.fn();
+    expect(await surface.readClickTarget!(1238, 856, selector, {
+      onMiss: { classes: bandWriteHitClasses, ancestorClasses: bandWritePromptClasses, ariaLabels: [], report },
+    })).toBe(false);
+    expect(report).toHaveBeenCalledExactlyOnceWith({ scrollX: 0, scrollY: 0, rejectedHit: {
+      tag: 'button', classes: ['buttonModalClose', '_closeBtn'], ariaLabel: null, relation: 'unrelated',
+      rect: { x: 0, y: 0, width: 1280, height: 900 }, ancestorClasses: ['modalWrap_800', '_appUsagePromptModalRegion', 'modalLayerView'],
+    } });
+    const { lines } = await loggedFixture(path.dirname(f.files[0]!.path), 'band_post', () => f.execution.ensureReady(), ['sites.band.app-prompt']);
+    expect(lines.filter(line => line.step === 'sites.band.app-prompt')).toMatchObject([
+      { event: 'start', counts: { observed: 1 } }, { event: 'wait', selector: control }, { event: 'ok', selector: control, counts: { observed: 0 } },
+    ]);
+    expect(await f.page().evaluate(() => localStorage.getItem('promptPresses'))).toBe(action);
+    await expect(f.counts()).resolves.toMatchObject({ opens: 1, posts: 0 });
+    expect(f.external()).toBe(0);
+  }, 25000);
+
+  it('stops after a single dismissal if the BAND app prompt stays over the composer', async () => {
+    const f = await fixture('app-prompt-stuck');
+    const { lines } = await loggedFixture(path.dirname(f.files[0]!.path), 'band_post', async () => {
+      await expect(f.execution.ensureReady()).rejects.toThrow('BAND_APP_PROMPT_NOT_DISMISSED');
+    }, ['sites.band.app-prompt']);
+    expect(lines).toContainEqual(expect.objectContaining({ step: 'sites.band.app-prompt', event: 'fail', reason: 'BAND_APP_PROMPT_NOT_DISMISSED' }));
+    expect(lines).toContainEqual(expect.objectContaining({ step: 'sites.dom.waitFor', event: 'fail', selector: 'BAND_APP_PROMPT_WEB',
+      counts: expect.objectContaining({ dialogs: 2, writeButtons: 1 }),
+    }));
+    expect(await f.page().evaluate(() => localStorage.getItem('promptPresses'))).toBe('web ');
+    await expect(f.counts()).resolves.toMatchObject({ opens: 0, posts: 0 });
+    expect(f.external()).toBe(0);
+  }, 10000);
   it('hits a fixed write button while the scrolled Band feed moves before hit testing', async () => {
     let moved = false;
     const f = await fixture('scrolled-feed', async page => {

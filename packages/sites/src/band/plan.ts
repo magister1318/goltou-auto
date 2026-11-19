@@ -14,6 +14,7 @@ import { readCreatedBandPost, bandPhotoPath, bandRecordReadAllowed } from './rec
 import { bandCreateIdentity } from './publish-confirmation';
 import { ReadbackMismatch } from '../readback-checks';
 import { bandWrite, waitForBandWrite } from './write-control';
+import { bandAppPromptFailure, dismissBandAppPrompt } from './app-prompt';
 
 export const bandMobileUA = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
 export const bandEditor = 'textarea._postTextArea, .postWriteSection textarea, .postWriteSection [contenteditable="true"], .cke_editable[contenteditable="true"], [contenteditable="true"][role="textbox"]';
@@ -301,6 +302,7 @@ export class BandDirectory {
       }, () => {}, () => false);
       await view.open({ url, session:'band', width:1280, height:900, userAgent:mobile ? bandMobileUA :
         'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36' });
+      await dismissBandAppPrompt(view, url);
       await readPost(view);
     } finally { await this.host.destroy(view); }
   }
@@ -325,8 +327,10 @@ export class BandDirectory {
         s = await this.getSurface();
         if (this.submit?.armed || (await readBandDocument(s)).composer) throw new Error('BAND_COMPOSER_ACTIVE');
         this.listPhase = phase;
-        await s.open({ url: `${this.baseUrl}/`, session: 'band', width: 1280, height: 900, userAgent: bandMobileUA });
+        const homeUrl = `${this.baseUrl}/`;
+        await s.open({ url: homeUrl, session: 'band', width: 1280, height: 900, userAgent: bandMobileUA });
         await this.guard(false);
+        await dismissBandAppPrompt(s, homeUrl);
         const deadline = Date.now() + 15000;
         let rows: BandListRow[];
         try {
@@ -442,7 +446,8 @@ export class BandExecution {
     if (this.owned && current.composer) { await this.guard(); return; }
     if (current.composer) throw new Error('BAND_EXISTING_COMPOSER');
     const beforeFeed = this.env.directory.revision;
-    await s.open({ url: `${this.env.directory.baseUrl}/band/${this.env.key}/post`, session: 'band', width: 1280, height: 900, userAgent: bandMobileUA });
+    const feedUrl = `${this.env.directory.baseUrl}/band/${this.env.key}/post`;
+    await s.open({ url: feedUrl, session: 'band', width: 1280, height: 900, userAgent: bandMobileUA });
     await this.env.directory.guardTarget(this.env.key);
     await this.env.directory.guard(false);
     if (!this.env.directory.localPublish) await waitFor(async () => { await this.env.directory.guardTarget(this.env.key); return this.env.directory.freshFeed(this.env.key, beforeFeed); }, 20000, { surface: s, control: "BAND_FEED" });
@@ -452,10 +457,10 @@ export class BandExecution {
     if (!this.env.directory.localPublish && !this.env.directory.publishEnabled && this.env.directory.existingTitle(title)) throw Error('BAND_EXISTING_TEST_POST');
     trace('verification', 'ok', { check: 'identity', counts: { expected: 0, observed: 0 } });
     this.env.check();
-    const control = await waitForBandWrite(s, bandEditor, async () => {
+    const control = await waitForBandWrite(s, bandEditor, feedUrl, async () => {
       this.env.check();
       await this.env.directory.guardTarget(this.env.key);
-    });
+    }, this.env.check);
     this.env.directory.beforeOpen(this.env.key);
     await s.click(control.x, control.y, control.recheck);
     try {
@@ -674,6 +679,7 @@ export class BandExecution {
         this.env.check();
         // An unreadable desktop layout gets one independent mobile detail read.
         // Retain concrete desktop observations without a second navigation.
+        if (error instanceof Error && error.message === bandAppPromptFailure) throw error;
         if (error instanceof ReadbackMismatch && error.issues.some(issue=>issue.missing || (issue.observed ?? 0) > 0)) throw error;
         trace('band.confirm.detail', 'retry', { reason:reasonCode(error) });
         await inspect(true);

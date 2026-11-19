@@ -1,7 +1,8 @@
 import type { Surface, ViewportRect } from '@goltou/surface';
 import { reasonCode, trace } from '@goltou/surface/telemetry';
-import { bandWriteHitClasses, bandWriteHitLabels, type BandWriteCandidateDiagnostic, type BandWriteDiagnostic } from '../../../surface/src/band-write-diagnostics';
+import { bandWriteHitClasses, bandWriteHitLabels, bandWritePromptClasses, type BandWriteCandidateDiagnostic, type BandWriteDiagnostic } from '../../../surface/src/band-write-diagnostics';
 import { read, waitFor } from '../dom';
+import { dismissBandAppPrompt } from './app-prompt';
 
 export const bandWrite = 'button._btnPostWrite, button._btnOpenWriteLayer';
 const writeControls = [
@@ -54,7 +55,7 @@ function observeWriteControls(surface: Surface, editor: string) {
     return {composer,groups};`);
 }
 
-export async function waitForBandWrite(surface: Surface, editor: string, guard: () => Promise<void>) {
+export async function waitForBandWrite(surface: Surface, editor: string, feedUrl: string, guard: () => Promise<void>, check: () => void) {
   const bandWrite: BandWriteDiagnostic = {};
   let loggedMiss = false;
   async function hits(at: Point, control: WriteControl, summary: BandWriteCandidateDiagnostic) {
@@ -67,7 +68,7 @@ export async function waitForBandWrite(surface: Surface, editor: string, guard: 
       const hit = await surface.readClickTarget(at.x, at.y, `:is(${control.selector})${eligibleControl}`, {
         ...('exactText' in control ? { exactText: control.exactText } : {}),
         onMiss: {
-          classes: bandWriteHitClasses, ariaLabels: bandWriteHitLabels,
+          classes: bandWriteHitClasses, ancestorClasses: bandWritePromptClasses, ariaLabels: bandWriteHitLabels,
           report: ({ scrollX, scrollY, rejectedHit }) => {
             summary.scrollX = scrollX;
             summary.scrollY = scrollY;
@@ -87,6 +88,7 @@ export async function waitForBandWrite(surface: Surface, editor: string, guard: 
   try {
     return await waitFor(async () => {
       await guard();
+      await dismissBandAppPrompt(surface, feedUrl, check);
       const { composer, groups } = await observeWriteControls(surface, editor);
       if (composer) throw Error('BAND_EXISTING_COMPOSER');
       writeControls.forEach(({ kind }, i) => { bandWrite[kind] = groups[i]!.summary; });

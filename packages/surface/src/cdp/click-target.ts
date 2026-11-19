@@ -1,7 +1,9 @@
 import { clickHitTags, type ClickTargetOptions } from '../index';
 
 export function clickTargetExpression(x: number, y: number, selector: string, options?: ClickTargetOptions) {
-  const allowed = options?.onMiss ? { tags: clickHitTags, classes: options.onMiss.classes, labels: options.onMiss.ariaLabels } : null;
+  const allowed = options?.onMiss ? {
+    tags: clickHitTags, classes: options.onMiss.classes, ancestorClasses: options.onMiss.ancestorClasses, labels: options.onMiss.ariaLabels,
+  } : null;
   const args = [x, y, selector, options?.exactText ?? null, allowed].map(value => JSON.stringify(value)).join(',');
   return String.raw`((x, y, selector, exactText, allowed) => {
     let d = document, offsetX = 0, offsetY = 0;
@@ -59,10 +61,17 @@ export function clickTargetExpression(x: number, y: number, selector: string, op
     }
     const tag = hit.localName;
     const classes = (hit.getAttribute('class') || '').split(/\s+/);
+    const ancestors = new Set();
+    if (allowed.ancestorClasses?.length) {
+      for (let e = hit.parentElement || hit.getRootNode().host; e; e = e.parentElement || e.getRootNode().host) {
+        for (const name of allowed.ancestorClasses) if (e.classList.contains(name)) ancestors.add(name);
+      }
+    }
     const label = hit.getAttribute('aria-label');
     return { scrollX, scrollY, rejectedHit: {
       tag: allowed.tags.includes(tag) ? tag : '[other]',
       classes: allowed.classes.filter(name => classes.includes(name)),
+      ...(ancestors.size ? { ancestorClasses: Array.from(ancestors) } : {}),
       ariaLabel: label ? (allowed.labels.includes(label) ? label : '[other]') : null,
       rect: rect(hit), relation,
     } };

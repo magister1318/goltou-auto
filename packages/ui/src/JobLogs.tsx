@@ -40,6 +40,7 @@ export function logReasonLabel(reason = '') {
   if (reason === 'BAND_PUBLISHED_READBACK_UNAVAILABLE') return '게시한 글 주소는 저장했지만 상세 내용을 끝까지 읽지 못했습니다.';
   if (reason === 'BAND_CREATE_REJECTED') return '밴드가 게시 요청을 거절했습니다.';
   if (reason === 'BAND_COMPOSER_UNAVAILABLE') return '밴드 글쓰기 화면을 열지 못했습니다.';
+  if (reason === 'BAND_APP_PROMPT_NOT_DISMISSED') return '밴드 앱 사용 안내가 닫히지 않았습니다.';
   if (reason === 'INTERRUPTED') return '앱이 종료되어 작업이 중단됐습니다.';
   if (reason === 'LOG_STORAGE_LIMIT') return '작업 로그 보관 한도에 도달해 멈췄습니다. 로그를 내보낸 뒤 작업 결과를 확인해 주세요.';
   if (reason === 'STOPPED_BEFORE_POST') return '게시 전 내용을 확인하도록 멈췄습니다.';

@@ -283,6 +283,7 @@ it.each(['covered', 'hidden', 'no-label', 'outside-viewport', 'feed-timeout', 'c
     const afterHover = mode === 'covered-before-press' && attempt === 3;
     options?.onMiss?.report({ scrollX: -10, scrollY: 250, rejectedHit: {
       tag: afterHover ? 'span' : 'div', classes: ['lyWrap', 'PRIVATE_CLASS'], ariaLabel: 'PRIVATE_LABEL',
+      ancestorClasses: ['modalWrap_800', 'PRIVATE_ANCESTOR'],
       rect: Object.assign({ x: -5, y: 50.5, width: 100, height: 40 }, { extra: 'PRIVATE_GEOMETRY' }),
       relation: afterHover ? 'ancestor' : 'unrelated',
     } });
@@ -318,6 +319,7 @@ it.each(['covered', 'hidden', 'no-label', 'outside-viewport', 'feed-timeout', 'c
         inViewport: missed ? 1 : 0, readClickTarget: missed ? 'miss' : 'not_checked',
         ...(missed ? { scrollX: -10, scrollY: 250, candidateRect: { x: 1, y: 1, width: 100, height: 40 },
           rejectedHit: { tag: mode === 'covered-before-press' ? 'span' : 'div', classes: ['lyWrap'], ariaLabel: '[other]',
+            ancestorClasses: ['modalWrap_800'],
             rect: { x: -5, y: 50.5, width: 100, height: 40 }, relation: mode === 'covered-before-press' ? 'ancestor' : 'unrelated' } } : {}) },
       legacyText: { matches: 1, textMatches: 0, ariaMatches: mode === 'no-label' ? 0 : 1, readClickTarget: 'not_checked' },
       labelled: { matches: mode === 'no-label' ? 0 : 1 },

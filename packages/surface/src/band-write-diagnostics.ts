@@ -1,7 +1,8 @@
 import { clickHitRelations, clickHitTags, type ClickHitElement, type ViewportRect } from './index';
 
 export const bandWriteKinds = ['legacyFloating', 'legacyText', 'labelled'] as const;
-export const bandWriteHitClasses = ['uFloatingButton', '_btnPostWrite', '_btnOpenWriteLayer', 'cPostWriteEventWrapper', 'postWriteSection', 'lyWrap'] as const;
+export const bandWritePromptClasses = ['_appUsagePromptModalRegion', 'modalLayerView', 'modalWrap_800', 'buttonModalClose', '_closeBtn'] as const;
+export const bandWriteHitClasses = ['uFloatingButton', '_btnPostWrite', '_btnOpenWriteLayer', 'cPostWriteEventWrapper', 'postWriteSection', 'lyWrap', ...bandWritePromptClasses] as const;
 export const bandWriteHitLabels = ['글쓰기', '닫기', '취소', '게시'] as const;
 const hitResults = ['not_checked', 'unavailable', 'match', 'miss', 'error'] as const;
 
@@ -51,9 +52,11 @@ export function sanitizeBandWrite(value: BandWriteDiagnostic) {
     const hit = candidate.rejectedHit;
     if (hit && typeof hit === 'object') {
       const rect = sanitizeRect(hit.rect);
+      const ancestorClasses = bandWritePromptClasses.filter(name => Array.isArray(hit.ancestorClasses) && hit.ancestorClasses.includes(name));
       fields.rejectedHit = {
         tag: clickHitTags.some(tag => tag === hit.tag) ? hit.tag : '[other]',
         classes: bandWriteHitClasses.filter(name => Array.isArray(hit.classes) && hit.classes.includes(name)),
+        ...(ancestorClasses.length ? { ancestorClasses } : {}),
         ...(hit.ariaLabel ? { ariaLabel: bandWriteHitLabels.some(label => label === hit.ariaLabel) ? hit.ariaLabel : '[other]' } : {}),
         ...(rect ? { rect } : {}),
         ...(clickHitRelations.some(relation => relation === hit.relation) ? { relation: hit.relation } : {}),

@@ -1,8 +1,34 @@
+export function bandAppPromptFixture(mode = 'app-prompt') {
+  return `<style>
+    ._appUsagePromptModalRegion.modalLayerView{position:absolute;inset:0;z-index:10000}
+    .modalWrap_800{position:fixed;inset:0;z-index:1000;background:#0005}
+    .buttonModalClose._closeBtn{position:fixed;inset:0;width:100%;height:100%}
+    .promptPanel{position:relative;top:50%;transform:translateY(-50%);margin:auto;width:360px;background:white;padding:20px}
+    .gSrOnly{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
+  </style>
+  <div class="_appUsagePromptModalRegion modalLayerView _iOSMin100vh">
+    <div class="modalWrap_800 _iOS100vh -modalAnimateIn">
+      <button class="buttonModalClose _closeBtn" onclick="closeAppPrompt('close')"><span class="gSrOnly">닫기</span></button>
+      <div class="promptPanel"><h2>BAND</h2><p>앱에서 더 편리하게 이용할 수 있어요!</p>
+        <button onclick="closeAppPrompt('app');location.href='bandapp://open'">BAND 앱에서 보기</button>
+        ${mode === 'app-prompt-close' ? '' : '<button onclick="closeAppPrompt(\'web\')">모바일 웹에서 계속하기</button>'}
+      </div>
+    </div>
+  </div><script>
+    function closeAppPrompt(action) {
+      localStorage.setItem('promptPresses', (localStorage.getItem('promptPresses') || '') + action + ' ');
+      if (${mode !== 'app-prompt-stuck'}) document.querySelector('._appUsagePromptModalRegion').remove();
+    }
+  </script>`;
+}
+
 /** Synthetic Band pages change their own DOM in response to real input commands. */
 export function bandFixture(mode = 'mobile') {
   const desktop = mode === 'desktop';
   const covered = mode === 'center-covered';
   const scrolled = mode === 'scrolled-feed';
+  const appPrompt = mode.startsWith('app-prompt');
+  const write = `<button class="${desktop ? '_btnOpenWriteLayer' : 'uFloatingButton _btnPostWrite'}" aria-label="글쓰기"${covered || scrolled ? ' style="position:fixed;left:100px;top:300px;width:120px;z-index:2"' : ''}>${desktop ? '글쓰기' : scrolled ? '' : '+'}</button>`;
   return `<!doctype html><meta charset="utf-8"><style>
     body{margin:12px;font:16px sans-serif}button{min-width:70px;height:40px}textarea,.cke_editable{display:block;width:95%;height:500px;border:1px solid #888;white-space:pre-wrap}.mediaImg{width:40px;height:30px}section.lyWrap,.modalLayerView{position:fixed;top:40px;left:50px;background:white;border:1px solid #aaa;z-index:9}
     </style><button>로그아웃</button><div class="_myBandListWrap">
@@ -10,7 +36,9 @@ export function bandFixture(mode = 'mobile') {
     <a class="bandCover" href="/band/222/post"><span class="bandName">밴드 B</span></a>
     <a class="bandCover _adBandCover" href="/band/333/post">광고</a><a class="bandCover" href="/band/111/post">중복</a></div>
     <div class="recommended"><a class="bandCover" href="/band/444/post">추천</a></div>
-    <button class="${desktop ? '_btnOpenWriteLayer' : 'uFloatingButton _btnPostWrite'}" aria-label="글쓰기"${covered || scrolled ? ' style="position:fixed;left:100px;top:300px;width:120px;z-index:2"' : ''}>${desktop ? '글쓰기' : scrolled ? '' : '+'}</button><div id="view"></div>
+    ${appPrompt ? `<div class="uFloatingButtonBox" style="position:fixed;right:14px;bottom:16px;z-index:1000">
+      <button class="uFloatingButton sf_bg _btnPostWrite" style="display:block;width:56px;min-width:0;height:56px" aria-label="글쓰기"></button>
+      </div>${bandAppPromptFixture(mode)}` : write}<div id="view"></div>
     ${covered ? '<div class="lyWrap synthetic-private-class" aria-label="닫기" style="position:fixed;left:150px;top:300px;width:20px;height:40px;z-index:3" onclick="localStorage.setItem(\'wrongPress\',\'1\')">합성 본문</div>' + '<p class="postTextView">합성 게시물</p>'.repeat(20) : ''}
     ${scrolled ? '<section style="min-height:2200px">' + '<p class="postTextView">합성 게시물</p>'.repeat(20) +
       '<button style="position:absolute;left:100px;top:640px;width:120px" aria-label="PRIVATE_LABEL" onclick="localStorage.setItem(\'wrongPress\',\'1\')">피드 메뉴</button>' +

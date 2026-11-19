@@ -3,6 +3,7 @@ import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
 import type { Surface } from '@goltou/surface';
 import { click, compact, point, read, sleep, typeParagraphs, waitFor } from '../dom';
 import type { exampleArticle } from '../fixture';
+import { dismissBandAppPrompt } from './app-prompt';
 
 export async function listBands(surface: Surface, timeoutMs = 15000) {
     return traceStep('sites.band.index.listBands', async () => {
@@ -33,10 +34,16 @@ export async function listBands(surface: Surface, timeoutMs = 15000) {
       }
       if (!target) throw Error('BAND_LIST_INCOMPLETE');
       await surface.click(target.x, target.y);
-      const key = await observe(async () => /^[/]band[/]([0-9]+)(?:[/]post)?[/]?$/.exec(new URL((await surface.readState()).url).pathname)?.[1] ?? null);
+      const feed = await observe(async () => {
+        const url = new URL((await surface.readState()).url);
+        const key = /^[/]band[/]([0-9]+)(?:[/]post)?[/]?$/.exec(url.pathname)?.[1];
+        return key ? { key, path: url.pathname } : null;
+      });
+      await dismissBandAppPrompt(surface, new URL(feed.path, listUrl).href);
       const permission = await observe(() => read<{ writable: boolean } | null>(surface, `const es=docs.flatMap(({d})=>Array.from(d.querySelectorAll('._btnPostWrite,._btnOpenWriteLayer')));return es.length?{writable:es.some(e=>visible(e)&&!e.disabled&&e.getAttribute('aria-disabled')!=='true')}:null;`));
-      if (permission.writable) result.push({ key, name: tile.name });
+      if (permission.writable) result.push({ key: feed.key, name: tile.name });
       await surface.open({ url: listUrl, session: 'band', width: 1280, height: 900, userAgent: 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36' });
+      await dismissBandAppPrompt(surface, listUrl);
       const landing = await observe(() => read<'list' | 'home' | null>(surface, `if(docs.some(({d})=>Array.from(d.querySelectorAll('.myBandGroupList .globalMyBandName')).some(visible)))return 'list';return docs.some(({d})=>Array.from(d.querySelectorAll('.globalMyBandWrap a._allMyBandList')).some(visible))?'home':null;`));
       // On the current mobile site, 전체보기 opens a dropdown without changing
       // the URL. Reopening that URL leaves its tiles hidden until this click.
@@ -73,7 +80,9 @@ export async function bandSnapshot(surface: Surface, expected: string) {
   }
 export async function openBandComposer(surface: Surface) {
     return traceStep('sites.band.index.openBandComposer', async () => {
-  if (!/^https:\/\/(?:www\.)?band\.us\/band\/\d+\/post\/?(?:[?#].*)?$/.test((await surface.readState()).url)) throw new Error('NOT_BAND_COMPOSE_ROUTE');
+  const url = (await surface.readState()).url;
+  if (!/^https:\/\/(?:www\.)?band\.us\/band\/\d+\/post\/?(?:[?#].*)?$/.test(url)) throw new Error('NOT_BAND_COMPOSE_ROUTE');
+  await dismissBandAppPrompt(surface, url);
   // Never type into an existing composition or a search/comment box.
   if (!await read<boolean>(surface, `return docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(editor)})).some(visible));`)) {
     const mobileSelector = 'button.uFloatingButton._btnPostWrite[aria-label="글쓰기"]';

@@ -382,7 +382,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     return traceJob('unfinished_cleanup', this.job?.step === 6 ? 'band' : 'naver', async () => {
     if (!this.job || !['running', 'login_paused', 'user_paused', 'failed', 'channel_paused', 'recovery_paused'].includes(this.job.status) || this.job.publicationUncertain || this.job.activity?.stage === 'submit' || this.job.failureCode === 'BAND_POST_UNCONFIRMED') throw new ApiError('conflict', '저장 또는 게시 결과를 먼저 확인해 주세요.');
     await this.stop();
-    const noComposer = ['BAND_TARGET_INVALID','BAND_WRITE_NOT_ALLOWED','BAND_COMPOSER_UNAVAILABLE'].includes(this.job.failureCode ?? '');
+    const noComposer = ['BAND_TARGET_INVALID','BAND_WRITE_NOT_ALLOWED','BAND_COMPOSER_UNAVAILABLE','BAND_APP_PROMPT_NOT_DISMISSED'].includes(this.job.failureCode ?? '');
     if (this.band && (!noComposer || this.band.hasOwnedComposer && this.job.failureCode !== 'BAND_WRITE_NOT_ALLOWED')) await this.band.discard();
     await this.blog?.close(); await this.work?.cleanup();
     for (const target of this.job.targetResults ?? []) if (!['draft_saved', 'published'].includes(target.status)) target.status = 'stopped';
