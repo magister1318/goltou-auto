@@ -58,6 +58,7 @@ export const traceSteps = [
   "sites.band.plan.BandExecution.answerDialog",
   "sites.band.plan.BandExecution.show",
   "sites.band.plan.BandExecution.hide",
+  "sites.band.write-control",
   "sites.band.record-read.openRecordedBandFeed",
   "sites.band.record-read.readRecordedBandPost",
   "sites.naver-blog.delete.preparePostDelete",

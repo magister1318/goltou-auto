@@ -42,7 +42,7 @@ export async function typeParagraphs(surface: Surface, paragraphs: readonly stri
 
     });
   }
-type ControlObservation = { surface: Surface; control: NonNullable<TraceDetail['selector']> };
+type ControlObservation = { surface: Surface; control: NonNullable<TraceDetail['selector']>; diagnostics?: () => Pick<TraceDetail, 'bandWrite'> };
 
 export function waitFor<T>(readValue: () => Promise<T | null | false>, timeoutMs = 15000, observation?: ControlObservation): Promise<T> {
   return pollControl(readValue, timeoutMs, observation, 'sites.dom.waitFor', () => Error('OBSERVATION_TIMEOUT'));
@@ -72,6 +72,7 @@ async function pollControl<T>(readValue: () => Promise<T | null | false>, timeou
   } catch { /* A detached or dialog-blocked document has no summary. */ }
   const error = timeout();
   trace(step, 'fail', { ...detail, reason: reasonCode(error),
+    ...observation?.diagnostics?.(),
     ...(summary ? { navigation: { host: summary.host, path: summary.path } } : {}),
     counts: { timeoutMs, attempt, ...summary?.controls } }, Date.now() - start);
   throw error;

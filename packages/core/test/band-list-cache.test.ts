@@ -263,3 +263,66 @@ it.each(['alternate-composer','timeout','permission-after-click'])('names the fo
   expect(f.surface.click).toHaveBeenCalledTimes(1);
   expect(f.surface.typeText).not.toHaveBeenCalled();
 });
+
+it.each(['covered', 'hidden', 'no-label', 'outside-viewport', 'feed-timeout', 'covered-before-press'])('names and diagnoses a Band opening failure (%s)', async mode => {
+  const f = fixture();
+  const directory = f.runner.directory, key = '987654321';
+  directory.seedChoices([{ key, name: '합성 이름' }]);
+  vi.spyOn(directory, 'freshFeed').mockReturnValue(mode !== 'feed-timeout');
+  vi.mocked(f.surface.open).mockImplementation(async options => {
+    f.page.reconfigure({ url: options.url + '?private=HIDDEN_QUERY' });
+    const aria = mode === 'no-label' ? 'PRIVATE_LABEL' : '글쓰기';
+    f.page.window.document.body.innerHTML = `<button class="uFloatingButton _btnPostWrite" aria-label="${aria}"${mode === 'hidden' ? ' hidden' : ''}>PRIVATE_BODY</button>`;
+    if (mode === 'outside-viewport') f.page.window.document.querySelector('button')!.getBoundingClientRect = () =>
+      new f.page.window.DOMRect(1, f.page.window.innerHeight + 20, 100, 40);
+  });
+  const readHit = vi.fn<NonNullable<Surface['readClickTarget']>>();
+  f.surface.readClickTarget = readHit.mockImplementation(async (_x, _y, _selector, options) => {
+    const attempt = readHit.mock.calls.length;
+    if (mode === 'covered-before-press' && attempt === 2) return true;
+    const afterHover = mode === 'covered-before-press' && attempt === 3;
+    options?.onMiss?.report({ tag: afterHover ? 'span' : 'div', classes: ['lyWrap', 'PRIVATE_CLASS'], ariaLabel: 'PRIVATE_LABEL' });
+    return false;
+  });
+  const press = vi.fn();
+  vi.mocked(f.surface.click).mockImplementation(async (_x, _y, beforePress) => { await beforePress?.(); press(); });
+  const folder = await mkdtemp(path.join(os.tmpdir(), 'goltou-band-write-'));
+  cleanups.push(() => rm(folder, { recursive: true, force: true }));
+  const logs = new JobLogStore(folder); configureTrace(logs);
+  const record = logs.begin('band_post', 'band');
+  const execution = new BandExecution({ channel: 'band', steps: [] }, [], {
+    directory, key, check() {}, verify() {}, progress() {}, sourceDimensions: async () => ({ width: 1, height: 1 }),
+  });
+  vi.useFakeTimers();
+  try {
+    const expectation = expect(inTrace(record, () => execution.ensureReady())).rejects.toThrow(
+      mode === 'feed-timeout' ? 'OBSERVATION_TIMEOUT' : 'BAND_COMPOSER_UNAVAILABLE',
+    );
+    await vi.advanceTimersByTimeAsync(20500);
+    await expectation;
+  } finally { vi.useRealTimers(); record.end('stopped'); }
+  const uploaded = logs.uploadTail(record.id);
+  const lines = uploaded.trim().split('\n').map(line => JSON.parse(line));
+  const failure = lines.find(line => line.event === 'fail' && ['sites.dom.waitFor', 'sites.band.write-control'].includes(line.step));
+  if (mode === 'feed-timeout') {
+    expect(failure).toMatchObject({ selector: 'BAND_FEED', reason: 'OBSERVATION_TIMEOUT' });
+    expect(lines.some(line => line.selector === 'BAND_WRITE_CONTROL')).toBe(false);
+  } else {
+    const missed = mode === 'covered' || mode === 'covered-before-press';
+    expect(failure).toMatchObject({ selector: 'BAND_WRITE_CONTROL', bandWrite: {
+      legacyFloating: { matches: mode === 'no-label' ? 0 : 1, visible: ['no-label', 'hidden'].includes(mode) ? 0 : 1,
+        inViewport: missed ? 1 : 0, readClickTarget: missed ? 'miss' : 'not_checked',
+        ...(missed ? { rejectedHit: { tag: mode === 'covered-before-press' ? 'span' : 'div', classes: ['lyWrap'], ariaLabel: '[other]' } } : {}) },
+      legacyText: { matches: 1, textMatches: 0, ariaMatches: mode === 'no-label' ? 0 : 1, readClickTarget: 'not_checked' },
+      labelled: { matches: mode === 'no-label' ? 0 : 1 },
+    } });
+    if (mode !== 'covered-before-press') expect(failure).toMatchObject({ counts: { writeButtons: 1, editables: 0 }, navigation: { path: '/band/[id]/post' } });
+    else expect(lines.find(line => line.step === 'sites.band.write-control' && line.event === 'retry')).toMatchObject({ bandWrite: { legacyFloating: { rejectedHit: { tag: 'div' } } } });
+  }
+  const [day] = (await readdir(folder)).filter(name => /^\d{8}$/.test(name));
+  const [file] = await readdir(path.join(folder, day!));
+  const local = await readFile(path.join(folder, day!, file!), 'utf8');
+  expect(uploaded + local).not.toMatch(/PRIVATE_|HIDDEN_QUERY|합성 이름|987654321/);
+  expect(press).not.toHaveBeenCalled();
+  expect(f.surface.typeText).not.toHaveBeenCalled();
+});

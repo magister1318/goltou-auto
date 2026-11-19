@@ -10,6 +10,7 @@ import { CdpConnection, CdpSurface } from '@goltou/surface/cdp';
 import type { Surface, SurfaceHost } from '@goltou/surface';
 import { BandDirectory, readBandDocument } from '@goltou/sites';
 import { bandFixture } from '../../sites/test/band-fixture';
+import { point } from '../../sites/src/dom';
 import { blogFixture } from '../../sites/test/blog-fixture';
 import { createBandExecution, bandObservation } from '../src/band';
 import { ChannelRegistrationRunner } from '../src/band-runner';
@@ -89,6 +90,25 @@ function workFor(plan: InputPlan, files: { url: string; path: string }[]) {
 const input: JobInput = { productNo: 1, mode: 'draft', targets: [{ channel: 'band', name: '밴드 A', key: '111' }], options: { polish: false, closing: false, linkCard: false } };
 
 describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pages', () => {
+  it('finds the sole legacy floating button and opens from an unobstructed point when the WP39 center misses', async () => {
+    const f = await fixture('center-covered');
+    const surface = f.directory.surface!;
+    await surface.open({ url: `${f.baseUrl}/band/111/post`, session: 'band', width: 1280, height: 900, userAgent: 'Band fixture' });
+    await expect(f.directory.guardTarget('111')).resolves.toBeUndefined();
+    const wp38 = await point(surface, 'button.uFloatingButton._btnPostWrite[aria-label="글쓰기"]');
+    const wp39Selector = 'button._btnPostWrite[aria-label="글쓰기"], button._btnOpenWriteLayer[aria-label="글쓰기"]';
+    const wp39 = await point(surface, wp39Selector);
+    expect(wp39).toEqual(wp38);
+    expect(await point(surface, 'button._btnPostWrite, button._btnOpenWriteLayer', '글쓰기')).toBeNull();
+    const rejected = vi.fn();
+    expect(await surface.readClickTarget!(wp39!.x, wp39!.y, wp39Selector, {
+      onMiss: { classes: ['lyWrap'], ariaLabels: ['닫기'], report: rejected },
+    })).toBe(false);
+    expect(rejected).toHaveBeenCalledExactlyOnceWith({ tag: 'div', classes: ['lyWrap'], ariaLabel: '닫기' });
+    await f.execution.ensureReady();
+    await expect(f.counts()).resolves.toMatchObject({ opens: 1, posts: 0 });
+    expect(await f.page().evaluate(() => localStorage.getItem('wrongPress'))).toBeNull();
+  });
   it('release owner publishing does not consume a debug allowance and still enforces the request barrier', async () => {
     const f = await fixture();
     await f.execution.write();

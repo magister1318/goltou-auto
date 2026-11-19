@@ -13,10 +13,10 @@ import { bandReadBatchTarget } from './read-batch';
 import { readCreatedBandPost, bandPhotoPath, bandRecordReadAllowed } from './record-read';
 import { bandCreateIdentity } from './publish-confirmation';
 import { ReadbackMismatch } from '../readback-checks';
+import { bandWrite, waitForBandWrite } from './write-control';
 
 export const bandMobileUA = 'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
 export const bandEditor = 'textarea._postTextArea, .postWriteSection textarea, .postWriteSection [contenteditable="true"], .cke_editable[contenteditable="true"], [contenteditable="true"][role="textbox"]';
-const bandWrite = 'button._btnPostWrite, button._btnOpenWriteLayer';
 const bandSubmit = 'button._btnPostSubmit, button._btnSubmitPost, .postWriteSection .topBarGnbActionButtons button._btnPostWrite';
 export interface BandPlan {
   channel: 'blog' | 'band';
@@ -452,25 +452,12 @@ export class BandExecution {
     if (!this.env.directory.localPublish && !this.env.directory.publishEnabled && this.env.directory.existingTitle(title)) throw Error('BAND_EXISTING_TEST_POST');
     trace('verification', 'ok', { check: 'identity', counts: { expected: 0, observed: 0 } });
     this.env.check();
-    const mobileSelector = 'button._btnPostWrite[aria-label="글쓰기"], button._btnOpenWriteLayer[aria-label="글쓰기"]';
-    const control = await waitFor(async () => {
+    const control = await waitForBandWrite(s, bandEditor, async () => {
       this.env.check();
       await this.env.directory.guardTarget(this.env.key);
-      for (const [selector, label] of [[mobileSelector, undefined], [bandWrite, '글쓰기']] as const) {
-        const target = await point(s, selector, label);
-        if (target && (!s.readClickTarget || await s.readClickTarget(target.x, target.y, selector))) return { ...target, selector };
-      }
-      return null;
-    }, undefined, { surface: s, control: 'BAND_WRITE_CONTROL' }).catch(error => {
-      if (error instanceof Error && error.message === 'OBSERVATION_TIMEOUT') throw Error('BAND_COMPOSER_UNAVAILABLE');
-      throw error;
     });
     this.env.directory.beforeOpen(this.env.key);
-    await s.click(control.x, control.y, async () => {
-      this.env.check();
-      await this.env.directory.guardTarget(this.env.key);
-      if (s.readClickTarget && !await s.readClickTarget(control.x, control.y, control.selector)) throw Error('BAND_COMPOSER_UNAVAILABLE');
-    });
+    await s.click(control.x, control.y, control.recheck);
     try {
       await waitFor(async () => {
         this.env.check();

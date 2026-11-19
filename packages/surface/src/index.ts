@@ -32,6 +32,12 @@ export interface KeyInput {
   modifiers?: number;
 }
 export interface SurfaceDialog { id: string; kind: 'alert' | 'confirm'; message: string; url?: string }
+export const clickHitTags = ['button', 'span', 'div', 'a', 'svg', 'path', 'iframe', 'body', 'html', 'section', 'p', 'label', 'input', 'img', 'textarea', '[other]'] as const;
+export interface ClickHitElement { tag: string; classes: string[]; ariaLabel?: string | null }
+export interface ClickTargetOptions {
+  exactText?: string;
+  onMiss?: { classes: readonly string[]; ariaLabels: readonly string[]; report(element: ClickHitElement): void };
+}
 export interface RequestRule { hostname: string; pathname: string; prefix?: boolean }
 /** Ephemeral transport data. Callers must never persist bodies or headers. */
 export interface GuardedRequest {
@@ -50,7 +56,6 @@ export interface Surface {
   waitForNavigation(options?: NavigationOptions): Promise<SurfaceState>;
   /** Read-only expression, including element geometry. Never use to edit the page. */
   evaluateReadOnly<T>(expression: string): Promise<T>;
-  /** Read the actual hit-tested element, including occluding elements and frames. */
   /** Native foreground, window focus and screen-on signals. Read only. */
   readAppFocus?(): Promise<boolean>;
   /** Shell-enforced, before first navigation; applies to redirects, frames and new windows. */
@@ -58,7 +63,8 @@ export interface Surface {
   onUserHidden?(listener: () => void): () => void;
   /** Shell hid a landing or blocked main-frame navigation, including child windows. */
   onNavigationHidden?(listener: () => void): () => void;
-  readClickTarget?(x: number, y: number, selector: string): Promise<boolean>;
+  /** Read the actual hit-tested element, including occluding elements and frames. */
+  readClickTarget?(x: number, y: number, selector: string, options?: ClickTargetOptions): Promise<boolean>;
   /** Re-read a safety condition immediately before mousePressed, after hover/delay. */
   click(x: number, y: number, beforePress?: () => Promise<void>): Promise<void>;
   typeText(text: string): Promise<void>;

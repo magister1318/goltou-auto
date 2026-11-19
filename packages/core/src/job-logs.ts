@@ -6,6 +6,7 @@ import type { LogJobKind as JobKind, JobResult, LogSite, ReasonCode, TraceDetail
 import { reasonCode, traceOperations } from '@goltou/surface/telemetry';
 import { traceSteps, traceSelectors } from '../../surface/src/telemetry-catalog';
 import { sanitizeBandList } from '../../surface/src/band-list-diagnostics';
+import { sanitizeBandWrite } from '../../surface/src/band-write-diagnostics';
 import { sanitizeConnection } from '../../surface/src/connection-diagnostics';
 import { sanitizeUpdate } from '../../surface/src/update-diagnostics';
 
@@ -37,6 +38,7 @@ export function sanitizeDetail(detail: TraceDetail = {}) {
   if (detail.navigation) out.navigation = { host: safeHost(detail.navigation.host), path: safePath(detail.navigation.path) };
   if (detail.connection) out.connection = sanitizeConnection(detail.connection);
   if (detail.bandList) out.bandList = sanitizeBandList(detail.bandList);
+  if (detail.bandWrite) out.bandWrite = sanitizeBandWrite(detail.bandWrite);
   if (detail.network) {
     const n = detail.network;
     out.network = { method: ['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(n.method) ? n.method : 'other',
@@ -114,7 +116,7 @@ export class JobLogStore implements TraceProvider {
       try { value = JSON.parse(line); } catch { continue; }
       if (!traceSteps.includes(value.step) || !events.includes(value.event)) continue;
       const safe = sanitizeDetail({ reason: value.reason, counts: value.counts, check: value.check, selector: value.selector,
-        navigation: value.navigation, operation: value.operation, network: value.network });
+        navigation: value.navigation, operation: value.operation, network: value.network, bandWrite: value.bandWrite });
       const duration = Number.isFinite(value.duration) && value.duration >= 0 ? value.duration : 0;
       const transport = /^(?:cdp$|native$|surface\.cdp\.)/.test(value.step);
       const background = value.step === 'barrier' && (value.event === 'start' || value.network?.method === 'GET' && value.event === 'ok');
