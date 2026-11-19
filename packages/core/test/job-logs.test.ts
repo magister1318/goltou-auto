@@ -229,3 +229,29 @@ it('summarizes repeated Band detail reads and preserves both ends of each verifi
   expect(rows).toContainEqual(expect.objectContaining({ step:'verification', event:'fail', check:'photo_order', counts:{ expected:66, observed:65 } }));
   expect(f.lines().filter(row => row.step === step)).toHaveLength(200);
 });
+
+it('keeps a bounded Band order diagnostic in both local and uploaded logs', () => {
+  const f = fixture(), job = f.store.begin('band_post', 'band');
+  const expected = { host: 'coresos.phinf.naver.net', fileTail: '1234.jpg', hasSizeSuffix: false };
+  const observed = { host: 'coresos-phinf.pstatic.net', fileTail: '_std.jpg', hasSizeSuffix: true };
+  const poison = { url: 'https://example.invalid/secret-photo?token=secret-token', cookie: 'secret-cookie' };
+  const detail = { check:'photo_order', reason:'DOM_ORDER_MISMATCH', counts:{ expected:66, observed:66 },
+    photoOrder: { index:31, expected: { ...expected, ...poison }, observed: { ...observed, ...poison }, ...poison } } as TraceDetail;
+  job.line('verification', 'fail', detail);
+  const malformed = { ...detail, reason: 'UPLOAD_PATH_MISMATCH', photoOrder: { index: 1,
+    expected: { ...expected, fileTail: poison.url }, observed: { ...observed, host: poison.url } } };
+  job.line('verification', 'fail', malformed as unknown as TraceDetail);
+  job.end('succeeded');
+
+  const local = readFileSync(f.files()[0]!, 'utf8'), uploaded = f.store.uploadTail(job.id);
+  for (const log of [local, uploaded]) {
+    expect(log).not.toContain('secret-');
+    const failures = log.trim().split('\n').map(line => JSON.parse(line)).filter(row => row.event === 'fail');
+    expect(failures).toHaveLength(2);
+    expect(failures[0]).toMatchObject({ check: 'photo_order', reason: 'DOM_ORDER_MISMATCH', counts: { expected: 66, observed: 66 } });
+    expect(failures[0].photoOrder).toEqual({ index: 31, expected, observed });
+    expect(failures[1].photoOrder).toEqual({ index: 1, expected: { ...expected, fileTail: '' },
+      observed: { host: '[other]', fileTail: '', hasSizeSuffix: true } });
+  }
+  expect(Buffer.byteLength(uploaded)).toBeLessThan(512 * 1024);
+});

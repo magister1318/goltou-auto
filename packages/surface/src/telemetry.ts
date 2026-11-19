@@ -38,6 +38,7 @@ export interface TraceDetail {
   connection?: import('./connection-diagnostics').ConnectionDiagnostic;
   bandList?: import('./band-list-diagnostics').BandListDiagnostic;
   bandWrite?: import('./band-write-diagnostics').BandWriteDiagnostic;
+  photoOrder?: import('./band-photo-diagnostics').BandPhotoOrderDiagnostic;
 }
 export const traceOperations = ['surface.create', 'surface.destroy', 'surface.dialog', 'surface.dialog.answer', 'surface.visible', 'surface.navigation', 'profile.clear', 'app.inputState', 'app.jobState', 'logs.export', 'logs.environment', 'session.read', 'session.write', 'session.device', 'Page.navigate', 'Page.enable', 'Runtime.evaluate', 'Input.dispatchMouseEvent', 'Input.dispatchKeyEvent', 'Input.insertText', 'DOM.setFileInputFiles', 'Fetch.continueRequest', 'Fetch.failRequest', 'Fetch.getResponseBody', 'Network.getRequestPostData', 'other'] as const;
 /** Ephemeral request metadata goes through a bounded name-only projection first. */

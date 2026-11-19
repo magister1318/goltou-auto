@@ -7,8 +7,9 @@ import type { BandDeleteCode, BandDeleteLog } from './delete-log';
 import { bandReadBatchTarget } from './read-batch';
 import { matchesBandCreation, type BandCreationMatch } from './publish-confirmation';
 import { bandAppPromptFailure, dismissBandAppPrompt } from './app-prompt';
-import { bandApiPhotoPaths, bandPhotoPath } from './posted';
-export { bandPhotoPath } from './posted';
+import { bandApiPhotos } from './posted';
+import { bandPhotoEvidence, type BandPhotoEvidence } from './photo-path';
+export { bandPhotoPath } from './photo-path';
 
 export const bandFeedResponse = (r: Pick<GuardedRequest, 'method' | 'url'>) => {
   const u = new URL(r.url);
@@ -29,10 +30,10 @@ export function bandStoredText(value: string) {
   return value.replace(/<\/?band:hashtag>/g, '').replace(/&(?:amp|lt|gt|quot|#39);/g, entity => entities[entity]!);
 }
 /** Read only successful post results from the detail page's guarded batch. */
-export function parseBandDetailPhotos(body: string, url: string): string[] | undefined {
+export function parseBandDetailPhotos(body: string, url: string): BandPhotoEvidence[] | undefined {
   const id = bandPostIdentity(url);
   if (!id) return undefined;
-  const matches: Array<string[] | undefined> = [];
+  const matches: Array<BandPhotoEvidence[] | undefined> = [];
   const visit = (value: unknown, depth: number, successful = false) => {
     if (!value || typeof value !== 'object' || depth === 0) return;
     if (Array.isArray(value)) {
@@ -48,7 +49,7 @@ export function parseBandDetailPhotos(body: string, url: string): string[] | und
       const post = (entry.post ?? entry) as Record<string, unknown>;
       if (String(post.post_no) === id.post && String((post.band as { band_no?: unknown } | undefined)?.band_no ?? post.band_no) === id.band &&
         (post.web_url === undefined || typeof post.web_url === 'string' && bandPostIdentity(post.web_url)?.url === id.url)) {
-        matches.push(bandApiPhotoPaths(post));
+        matches.push(bandApiPhotos(post));
         return;
       }
     }
@@ -59,7 +60,7 @@ export function parseBandDetailPhotos(body: string, url: string): string[] | und
 }
 export interface RecordedBandReadback {
   url: string; body: string; createdAt: number; owned: boolean;
-  photos: { path: string; width: number; height: number }[];
+  photos: (BandPhotoEvidence & { width: number; height: number })[];
 }
 /** Parse only the exact recorded post. No account fields or authentication data escape. */
 export function parseRecordedBandFeed(body: string, target: { url: string; title?: string }): RecordedBandReadback | null {
@@ -77,9 +78,9 @@ export function parseRecordedBandFeed(body: string, target: { url: string; title
   const text = typeof p.content === 'string' ? bandStoredText(p.content) : '';
   if (target.title && compact(text.split('\n')[0] ?? '') !== compact(target.title)) throw Error('BAND_RECORD_READ_TITLE');
   const photos = (!target.title ? [] : p.attachment.photo).map((photo: { photo_url: string; width: number; height: number }) => {
-    const path = typeof photo.photo_url === 'string' ? bandPhotoPath(photo.photo_url) : '';
-    if (!path || !(photo.width > 0 && photo.height > 0)) throw Error('BAND_RECORD_READ_PHOTO');
-    return { path, width: photo.width, height: photo.height };
+    const evidence = typeof photo.photo_url === 'string' ? bandPhotoEvidence(photo.photo_url) : undefined;
+    if (!evidence || !(photo.width > 0 && photo.height > 0)) throw Error('BAND_RECORD_READ_PHOTO');
+    return { ...evidence, width: photo.width, height: photo.height };
   });
   return { url: id.url, body: text, createdAt: p.created_at, owned: p.author?.me === true, photos };
 }

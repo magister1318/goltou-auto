@@ -1,5 +1,6 @@
 // Reference: ../refs/golfliat/programs/golfliat-workbench/electron/renderer.js, fillBandComposerInWebview (readback and file input selectors only).
-import { bandPhotoPath, createdBandPosts, readFullBandPost, settleFullBandPost, bandBodyIssues, type CreatedBandPost } from './posted';
+import { createdBandPosts, readFullBandPost, settleFullBandPost, bandBodyIssues, type CreatedBandPost } from './posted';
+import { bandPhotoPath, type BandPhotoEvidence } from './photo-path';
 import { currentTrace, traceStep, trace, reasonCode, expectedTelemetryRequest, type ReasonCode, type TraceJob } from '@goltou/surface/telemetry';
 import { bandListLocation, type BandListDiagnostic } from '../../../surface/src/band-list-diagnostics';
 import type { GuardedRequest, Surface, SurfaceDialog, SurfaceHost } from '@goltou/surface';
@@ -288,7 +289,7 @@ export class BandDirectory {
   sameOrigin(url: URL) {
     return url.origin === new URL(this.baseUrl).origin || (!this.localPublish && url.origin === 'https://www.band.us');
   }
-  async openPublishedView(url: string, mobile: boolean, readPost: (view: Surface, detailPhotos: () => string[] | undefined) => Promise<void>) {
+  async openPublishedView(url: string, mobile: boolean, readPost: (view: Surface, detailPhotos: () => BandPhotoEvidence[] | undefined) => Promise<void>) {
     const identity = new URL(url);
     if (!this.sameOrigin(identity) || !/^\/band\/\d+\/post\/\d+$/.test(identity.pathname)) throw Error('BAND_LOCATION_UNCONFIRMED');
     const [, , band, , post] = identity.pathname.split('/');
@@ -297,7 +298,7 @@ export class BandDirectory {
       const endpoint = new URL(request.url);
       return request.method === 'POST' && endpoint.origin === 'https://bapi-kr.band.us' && endpoint.pathname === '/v2.0.0/batch';
     };
-    let paths: string[] | undefined;
+    let photos: BandPhotoEvidence[] | undefined;
     try {
       if (!view.guardRequests) throw Error('BAND_BARRIER_UNAVAILABLE');
       await view.guardRequests([{ hostname:'*', pathname:'/', prefix:true }], request => {
@@ -306,20 +307,20 @@ export class BandDirectory {
         return batch?.band === band && batch?.post === post;
       }, response => {
         if (response.url && detailBatch({ url: response.url, method: response.method ?? '' }) && response.status >= 200 && response.status < 300) {
-          paths = parseBandDetailPhotos(response.body, url);
+          photos = parseBandDetailPhotos(response.body, url);
         }
       }, detailBatch);
       await view.open({ url, session:'band', width:1280, height:900, userAgent:mobile ? bandMobileUA :
         'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36' });
       await dismissBandAppPrompt(view, url);
-      await readPost(view, () => paths);
+      await readPost(view, () => photos);
     } finally { await this.host.destroy(view); }
   }
   publishedFeedPhotos(url: string, expected: number, submittedAt: number) {
     // The mobile feed may cap both fields at its preview size. It can confirm a
     // full match, while a short feed alone cannot prove an attachment missing.
     const matches = this.feedPosts.filter(post => post.url === url && post.owned && post.createdAt >= submittedAt - 5000);
-    return matches.length === 1 && matches[0]!.photoCount === expected ? matches[0]!.photoPaths : undefined;
+    return matches.length === 1 && matches[0]!.photoCount === expected ? matches[0]!.apiPhotos : undefined;
   }
   async list(retryRead = true): Promise<BandChoice[]> {
     return traceStep('sites.band.plan.BandDirectory.list', async () => {
@@ -654,7 +655,7 @@ export class BandExecution {
     if (result?.received && !result.succeeded) throw Error('BAND_CREATE_REJECTED');
     const uploaded = this.checkpoint?.slots.map(slot => { try { return JSON.parse(slot.signature)[0] as string; } catch { return ''; } }) ?? [];
     let url = directory.createdReceipt(this.env.key);
-    let recoveredPaths: string[] | undefined;
+    let recoveredPhotos: BandPhotoEvidence[] | undefined;
     if (url) await this.storeIdentity(url);
     if (uploaded.length !== this.photoUrls().length || uploaded.some(value => !bandPhotoPath(value))) throw new ReadbackMismatch('BAND_PUBLISHED_READBACK_MISMATCH:photo', [{ field: 'photo' }]);
     if (!url) {
@@ -663,7 +664,7 @@ export class BandExecution {
           body: bandText(this.plan), uploaded: uploaded.map(bandPhotoPath), after: this.submittedAt - 5000,
           before: (result?.at ?? this.submittedAt + timeout) + 5000 }, timeout, this.env.check);
         url = post?.url;
-        if (post?.photos.length === uploaded.length) recoveredPaths = post.photos.map(photo => photo.path);
+        if (post?.photos.length === uploaded.length) recoveredPhotos = post.photos;
       } catch (error) {
         this.env.check();
         trace('band.confirm.feed', 'fail', { reason: reasonCode(error) });
@@ -689,8 +690,8 @@ export class BandExecution {
         if (!directory.sameOrigin(state) || state.pathname.replace(/\/$/, '') !== new URL(expectedUrl).pathname) return null;
         const actual = await readFullBandPost(view);
         if (!actual) return null;
-        const apiPhotoPaths = detailPhotos() ?? directory.publishedFeedPhotos(expectedUrl, uploaded.length, this.submittedAt) ?? recoveredPaths;
-        return apiPhotoPaths ? { ...actual, apiPhotoPaths } : actual;
+        const apiPhotos = detailPhotos() ?? directory.publishedFeedPhotos(expectedUrl, uploaded.length, this.submittedAt) ?? recoveredPhotos;
+        return apiPhotos ? { ...actual, apiPhotos } : actual;
       }, bandPlanLinks(this.plan));
     });
     try {

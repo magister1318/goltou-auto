@@ -19,6 +19,8 @@ afterEach(async () => { configureTrace(undefined); for (const close of cleanup.s
 const create = 'https://api-kr.band.us/v2.0.2/create_post';
 const feed = 'https://api-kr.band.us/v2.0.0/get_posts_and_announcements?band_no=111';
 const url = 'https://band.us/band/111/post/9001';
+const photoCdn = 'coresos-phinf.pstatic.net';
+const attachmentCdn = 'coresos.phinf.naver.net';
 const escapeHtml = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 async function fixture(mode: string) {
@@ -34,7 +36,8 @@ async function fixture(mode: string) {
   let releaseDetail!: () => void;
   const heldDetail = new Promise<void>(resolve => { releaseDetail = resolve; });
   let hold = mode === 'identity-held';
-  const composer = bandFixture('mobile-service').replace(
+  const composerFixture = bandFixture('mobile-service');
+  const composer = (collage ? composerFixture.replace("img.src='/photos/'+f.name", `img.src='https://${photoCdn}/a/abc123/a_'+String(sequence).padStart(23,'0')+'_id0001.png'`) : composerFixture).replace(
     "fetch('/band-post-create',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(mode==='post-blocked'?{}:{band_key:location.pathname.split('/')[2]})})",
     `fetch(${JSON.stringify(create)},{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({band_no:'111',content:text(),photo:JSON.stringify(Array.from(view.querySelectorAll('img')).map(n=>n.src))})})`,
   ).replace("location.href=location.pathname.replace(/\\/$/,'')+'/'+(1000+Number(localStorage.getItem('posts')));", "location.href='/band/111/post';")
@@ -42,6 +45,7 @@ async function fixture(mode: string) {
   await context.route('**/*', async route => {
     const request = route.request(), u = new URL(request.url());
     const json = (value: unknown) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(value), headers: { 'access-control-allow-origin': '*' } });
+    if (u.hostname === photoCdn && u.pathname.startsWith('/a/')) return route.fulfill({ status: 200, contentType: 'image/png', body: png(160, 90) });
     if (!['band.us', 'www.band.us', 'api-kr.band.us', 'bapi-kr.band.us'].includes(u.hostname)) { forbidden++; return route.abort(); }
     if (request.method() === 'OPTIONS') return route.fulfill({ status: 204, headers: { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'POST,GET,OPTIONS', 'access-control-allow-headers': 'content-type' } });
     if (u.pathname === '/v2.0.2/create_post') {
@@ -59,7 +63,7 @@ async function fixture(mode: string) {
       if (!collage) return json({ result_code: 1 });
       const stored = photos.slice(0, mode === 'collage-missing' ? 65 : 66);
       const post = { post_no: 9001, band: { band_no: 111 }, web_url: url, photo_count: stored.length,
-        attachment: { photo: stored.map(photo_url => ({ photo_url })) } };
+        attachment: { photo: stored.map(src => ({ photo_url: `http://${attachmentCdn}${new URL(src).pathname}` })) } };
       return json({ result_code: 1, result_data: { responses: [{ result_code: 1, result_data: { post } }, { result_code: 1, result_data: {} }] } });
     }
     if (u.pathname.startsWith('/photos/')) return route.fulfill({ status: 200, contentType: 'image/png', body: png(160, 90) });
@@ -71,7 +75,11 @@ async function fixture(mode: string) {
       const text = escapeHtml(mode === 'mismatch' ? body.replace('둘째 줄\n','') : body).replace(/#합성|#태그/g, '<button class="hashTag">$&</button>').replace(/https:\/\/example.invalid\/[ab]/g, '<a href="$&">$&</a>');
       const root = mode === 'delayed' ? '<div class="postWrap -postDetailPage"><div class="cContentsCard"><div class="postBody"><div class="dPostTextView"><div class="postText">' : '<div class="postsDetailArea"><div class="_contentListRegion"><div class="postTextBox"><div class="postText _postTxt">';
       const postHtml = collage
-        ? `<div class="postContent"><p class="postText _postTxt">${text}</p><div class="_photoArea"></div><div class="attachedImageWrap _photoList"></div><div class="uWidget -expanded"><ul class="uCollage">${photos.slice(0, 31).map((src, i) => `<li class="collageItem"><div class="collageImage"><img src="${i % 2 ? src : src + '?type=thumb'}" alt="" width="160" height="90"></div></li>`).join('')}</ul></div></div>`
+        ? `<div class="postContent"><p class="postText _postTxt">${text}</p><div class="_photoArea"></div><div class="attachedImageWrap _photoList"></div><div class="uWidget -expanded"><ul class="uCollage">${photos.filter((_, i) => i % 2 === 0).slice(0, 31).map((src, i) => {
+          // The archived detail uses a type query. Also exercise that size recipe as a path suffix.
+          const sized = i % 2 ? src.replace(/\.png$/, '_e1920_std.png') : src;
+          return `<li class="collageItem"><div class="collageImage"><img src="${sized}?type=e1920_std" alt="" width="160" height="90"></div></li>`;
+        }).join('')}</ul></div></div>`
         : root + text + '</div></div>' + photos.map(src => `<img class="mediaImg" data-lazy-src="${src}" src="/placeholder.gif">`).join('') + '</div></div>';
       const payload = [{ svc_id: 'synthetic', method: 'GET', path: '/v2.0.0/get_post?band_no=111&post_no=9001&resolution_type=synthetic&token=synthetic' }, { svc_id: 'synthetic', method: 'GET', path: '/v2.0.0/get_emotions?band_no=111&post_no=9001&content_key=synthetic&token=synthetic' }];
       return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: `<meta charset="utf-8"><style>.postText{white-space:pre-wrap}</style><div id="root"></div><script>fetch('https://bapi-kr.band.us/v2.0.0/batch',{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({payload:${JSON.stringify(JSON.stringify(payload))}})}).then(r=>{if(r.ok)document.querySelector('#root').innerHTML=${JSON.stringify(postHtml)}})</script>` });

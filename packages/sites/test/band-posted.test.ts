@@ -2,8 +2,10 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { chromium, type Browser } from 'playwright-core';
 import type { Surface } from '@goltou/surface';
 import type { SurfaceHost, GuardedRequest, GuardedResponse } from '@goltou/surface';
+import * as telemetry from '@goltou/surface/telemetry';
 import { BandDirectory } from '../src/band/plan';
 import { createdBandPosts, normalizedBandBody, readFullBandPost, verifyFullBandPost, settleFullBandPost } from '../src/band/posted';
+import { bandPhotoEvidence, bandPhotoPath } from '../src/band/photo-path';
 
 let browser: Browser | undefined;
 afterEach(async () => { await browser?.close(); });
@@ -155,11 +157,52 @@ it('replays a nested mobile post with 66 lazy photo slots and four tags, then re
 
 it('compares API attachment order and checks displayed collage photos as a subsequence', () => {
   const uploaded = ['one', 'two', 'three'].map(name => `https://photos.invalid/${name}.jpg`);
-  const paths = ['/one.jpg', '/two.jpg', '/three.jpg'];
+  const apiPhotos = uploaded.map(src => bandPhotoEvidence(src)!);
   const photos = [uploaded[0]!, uploaded[2]!];
   const actual = { body: title, photos, collage: true, lineBreaks: 0, hashtags: 0, links: 0, tagTexts: [], linkUrls: [], tagTokens: [], linkTokens: [] };
-  expect(() => verifyFullBandPost(title, uploaded, { ...actual, apiPhotoPaths: paths })).not.toThrow();
+  expect(() => verifyFullBandPost(title, uploaded, { ...actual, apiPhotos })).not.toThrow();
   expect(() => verifyFullBandPost(title, uploaded, actual)).toThrow(expect.objectContaining({ issues: [{ field:'photo', expected:3, observed:2 }] }));
-  expect(() => verifyFullBandPost(title, uploaded, { ...actual, photos: [...photos].reverse(), apiPhotoPaths: paths })).toThrow('BAND_PUBLISHED_READBACK_MISMATCH:order');
-  expect(() => verifyFullBandPost(title, uploaded, { ...actual, apiPhotoPaths: [...paths].reverse() })).toThrow('BAND_PUBLISHED_READBACK_MISMATCH:order');
+  expect(() => verifyFullBandPost(title, uploaded, { ...actual, photos: [...photos].reverse(), apiPhotos })).toThrow('BAND_PUBLISHED_READBACK_MISMATCH:order');
+  expect(() => verifyFullBandPost(title, uploaded, { ...actual, apiPhotos: [...apiPhotos].reverse() })).toThrow('BAND_PUBLISHED_READBACK_MISMATCH:order');
+});
+
+const cdnPath = '/a/abc123/a_01234567890123456789012_id0001';
+const cdnHost = 'coresos-phinf.pstatic.net';
+const cdnAlias = 'coresos.phinf.naver.net';
+it('normalizes CDN host, scheme, size query and bounded path suffix while preserving the photo identity', () => {
+  expect(bandPhotoPath(`https://${cdnHost}${cdnPath}.jpg`)).toBe(cdnPath + '.jpg');
+  expect(bandPhotoPath(`http://${cdnAlias}${cdnPath}.jpg?type=e1920_std`)).toBe(cdnPath + '.jpg');
+  expect(bandPhotoPath(`//${cdnHost}${cdnPath}_e1920_std.jpg?type=e1920_std`)).toBe(cdnPath + '.jpg');
+  expect(bandPhotoPath(`https://${cdnHost}${cdnPath}.jpg!e1920_std`)).toBe(cdnPath + '.jpg');
+  expect(bandPhotoPath(`https://${cdnHost}${cdnPath}.jpg_other`)).toBe(cdnPath + '.jpg_other');
+  expect(bandPhotoPath(`https://${cdnHost}${cdnPath}_anything_e1920_std.jpg`)).toBe(cdnPath + '_anything_e1920_std.jpg');
+  expect(bandPhotoPath(`https://${cdnHost}.invalid${cdnPath}_e1920_std.jpg`)).toBe(cdnPath + '_e1920_std.jpg');
+  expect(bandPhotoPath(`https://${cdnAlias}${cdnPath.replace('abc123', 'abc124')}.jpg`)).not.toBe(cdnPath + '.jpg');
+});
+
+it('reports the first API mismatch or the first out-of-order collage slot with only photo shapes', () => {
+  const trace = vi.spyOn(telemetry, 'trace');
+  try {
+    const paths = [cdnPath, cdnPath.replace('id0001', 'id0002'), cdnPath.replace('id0001', 'id0003')];
+    const uploaded = paths.map(path => `https://${cdnHost}${path}.jpg?token=upload-private`);
+    const apiPhotos = paths.map(path => bandPhotoEvidence(`http://${cdnAlias}${path}.jpg?token=api-private`)!);
+    const photos = [paths[2]!, paths[0]!].map(path => `https://${cdnHost}${path}_e1920_std.jpg?token=dom-private`);
+    const actual = { body: title, photos, apiPhotos, collage: true, lineBreaks: 0, hashtags: 0, links: 0, tagTexts: [], linkUrls: [], tagTokens: [], linkTokens: [] };
+    expect(() => verifyFullBandPost(title, uploaded, { ...actual, apiPhotos: [apiPhotos[0]!, apiPhotos[2]!, apiPhotos[1]!] }))
+      .toThrow(expect.objectContaining({ issues: [{ field:'order', index:2, expected:3, observed:3 }] }));
+    expect(trace).toHaveBeenCalledWith('verification', 'fail', {
+      check: 'photo_order', reason: 'UPLOAD_PATH_MISMATCH', counts: { expected: 3, observed: 3 },
+      photoOrder: { index: 2, expected: { host: cdnHost, fileTail: '0002.jpg', hasSizeSuffix: false },
+        observed: { host: cdnAlias, fileTail: '0003.jpg', hasSizeSuffix: false } },
+    });
+    trace.mockClear();
+    expect(() => verifyFullBandPost(title, uploaded, actual))
+      .toThrow(expect.objectContaining({ issues: [{ field:'order', index:2, expected:3, observed:3 }] }));
+    expect(trace).toHaveBeenCalledWith('verification', 'fail', {
+      check: 'photo_order', reason: 'DOM_ORDER_MISMATCH', counts: { expected: 3, observed: 3 },
+      photoOrder: { index: 2, expected: { host: cdnAlias, fileTail: '0003.jpg', hasSizeSuffix: false },
+        observed: { host: cdnHost, fileTail: '_std.jpg', hasSizeSuffix: true } },
+    });
+    expect(JSON.stringify(trace.mock.calls)).not.toMatch(/-private|\/a\//);
+  } finally { trace.mockRestore(); }
 });
