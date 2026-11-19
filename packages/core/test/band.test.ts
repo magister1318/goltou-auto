@@ -25,7 +25,7 @@ import { png } from './image-fixture';
 const executablePath = [process.env.CHROMIUM, 'C:/Program Files/Google/Chrome/Application/chrome.exe', '/usr/bin/chromium'].find(p => p && existsSync(p));
 const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const fn of cleanup.splice(0).reverse()) await fn(); });
-async function fixture(mode = 'mobile') {
+async function fixture(mode = 'mobile', beforeHit?: (page: Page) => Promise<void>) {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'goltou-wp6-'));
   cleanup.push(() => rm(dir, { recursive: true, force: true }));
   const files = [1, 2, 3, 4, 5].map(i => ({ url: `https://example.invalid/${i}`, path: path.join(dir, `goltou-1234567890abcdef-${i}.png`) }));
@@ -56,7 +56,12 @@ async function fixture(mode = 'mobile') {
     async create(session) {
       const page = await context.newPage(); page.on('dialog', () => {});
       const cdp = await context.newCDPSession(page);
-      const shim = { send: async (method: string, params: object) => { const reply = await cdp.send(method as never, params as never) as { exceptionDetails?: { exception?: { description?: string } } }; if (reply.exceptionDetails) throw new Error(reply.exceptionDetails.exception?.description ?? 'FIXTURE_READ_FAILED'); return reply; },
+      const shim = { send: async (method: string, params: { expression?: string }) => {
+        if (method === 'DOM.getNodeForLocation' || params?.expression?.includes('elementFromPoint(')) await beforeHit?.(page);
+        const reply = await cdp.send(method as never, params as never) as { exceptionDetails?: { exception?: { description?: string } } };
+        if (reply.exceptionDetails) throw new Error(reply.exceptionDetails.exception?.description ?? 'FIXTURE_READ_FAILED');
+        return reply;
+      },
         on: (method: string, listener: (params: Record<string, unknown>) => void) => { cdp.on(method as never, listener); return () => cdp.off(method as never, listener); },
         close: () => { void cdp.detach().catch(() => {}); }, isOpen: true };
       const s = new CdpSurface(session, shim as unknown as CdpConnection, { setVisible: async visible => { if (visible) shown++; }, close: async () => page.close() }, 0);
@@ -90,6 +95,34 @@ function workFor(plan: InputPlan, files: { url: string; path: string }[]) {
 const input: JobInput = { productNo: 1, mode: 'draft', targets: [{ channel: 'band', name: '밴드 A', key: '111' }], options: { polish: false, closing: false, linkCard: false } };
 
 describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pages', () => {
+  it('hits a fixed write button while the scrolled Band feed moves before hit testing', async () => {
+    let moved = false;
+    const f = await fixture('scrolled-feed', async page => {
+      if (moved) return;
+      moved = true;
+      await page.evaluate(() => window.scrollTo(0, 100));
+    });
+    const surface = f.directory.surface!;
+    await surface.open({ url: `${f.baseUrl}/band/111/post`, session: 'band', width: 1280, height: 900, userAgent: 'Band fixture' });
+    expect(await f.page().evaluate(() => window.scrollY)).toBe(350);
+    const selector = 'button.uFloatingButton._btnPostWrite[aria-label="글쓰기"]';
+    const at = await point(surface, selector);
+    expect(at).toEqual({ x: 160, y: 320 });
+    expect(await point(surface, selector, '글쓰기')).toBeNull();
+    expect(await surface.readClickTarget!(at!.x, at!.y, selector)).toBe(true);
+    expect(moved).toBe(true);
+    expect(await f.page().evaluate(() => window.scrollY)).toBe(100);
+    const report = vi.fn();
+    await expect(surface.readClickTarget!(160, 560, selector, { onMiss: { classes: [], ariaLabels: ['글쓰기'], report } })).resolves.toBe(false);
+    expect(report).toHaveBeenCalledExactlyOnceWith({ scrollX: 0, scrollY: 100, rejectedHit: {
+      tag: 'button', classes: [], ariaLabel: '[other]', rect: { x: 100, y: 540, width: 120, height: 40 }, relation: 'unrelated',
+    } });
+    await f.execution.ensureReady();
+    await expect(f.counts()).resolves.toMatchObject({ opens: 1, posts: 0 });
+    expect(await f.page().evaluate(() => localStorage.getItem('wrongPress'))).toBeNull();
+    expect(f.external()).toBe(0);
+  });
+
   it('finds the sole legacy floating button and opens from an unobstructed point when the WP39 center misses', async () => {
     const f = await fixture('center-covered');
     const surface = f.directory.surface!;
@@ -104,7 +137,9 @@ describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pa
     expect(await surface.readClickTarget!(wp39!.x, wp39!.y, wp39Selector, {
       onMiss: { classes: ['lyWrap'], ariaLabels: ['닫기'], report: rejected },
     })).toBe(false);
-    expect(rejected).toHaveBeenCalledExactlyOnceWith({ tag: 'div', classes: ['lyWrap'], ariaLabel: '닫기' });
+    expect(rejected).toHaveBeenCalledExactlyOnceWith({ scrollX: 0, scrollY: 0, rejectedHit: {
+      tag: 'div', classes: ['lyWrap'], ariaLabel: '닫기', rect: { x: 150, y: 300, width: 20, height: 40 }, relation: 'unrelated',
+    } });
     await f.execution.ensureReady();
     await expect(f.counts()).resolves.toMatchObject({ opens: 1, posts: 0 });
     expect(await f.page().evaluate(() => localStorage.getItem('wrongPress'))).toBeNull();

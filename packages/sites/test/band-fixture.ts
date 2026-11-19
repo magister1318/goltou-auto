@@ -2,6 +2,7 @@
 export function bandFixture(mode = 'mobile') {
   const desktop = mode === 'desktop';
   const covered = mode === 'center-covered';
+  const scrolled = mode === 'scrolled-feed';
   return `<!doctype html><meta charset="utf-8"><style>
     body{margin:12px;font:16px sans-serif}button{min-width:70px;height:40px}textarea,.cke_editable{display:block;width:95%;height:500px;border:1px solid #888;white-space:pre-wrap}.mediaImg{width:40px;height:30px}section.lyWrap,.modalLayerView{position:fixed;top:40px;left:50px;background:white;border:1px solid #aaa;z-index:9}
     </style><button>로그아웃</button><div class="_myBandListWrap">
@@ -9,10 +10,14 @@ export function bandFixture(mode = 'mobile') {
     <a class="bandCover" href="/band/222/post"><span class="bandName">밴드 B</span></a>
     <a class="bandCover _adBandCover" href="/band/333/post">광고</a><a class="bandCover" href="/band/111/post">중복</a></div>
     <div class="recommended"><a class="bandCover" href="/band/444/post">추천</a></div>
-    <button class="${desktop ? '_btnOpenWriteLayer' : 'uFloatingButton _btnPostWrite'}" aria-label="글쓰기"${covered ? ' style="position:fixed;left:100px;top:300px;width:120px"' : ''}>${desktop ? '글쓰기' : '+'}</button><div id="view"></div>
+    <button class="${desktop ? '_btnOpenWriteLayer' : 'uFloatingButton _btnPostWrite'}" aria-label="글쓰기"${covered || scrolled ? ' style="position:fixed;left:100px;top:300px;width:120px;z-index:2"' : ''}>${desktop ? '글쓰기' : scrolled ? '' : '+'}</button><div id="view"></div>
     ${covered ? '<div class="lyWrap synthetic-private-class" aria-label="닫기" style="position:fixed;left:150px;top:300px;width:20px;height:40px;z-index:3" onclick="localStorage.setItem(\'wrongPress\',\'1\')">합성 본문</div>' + '<p class="postTextView">합성 게시물</p>'.repeat(20) : ''}
+    ${scrolled ? '<section style="min-height:2200px">' + '<p class="postTextView">합성 게시물</p>'.repeat(20) +
+      '<button style="position:absolute;left:100px;top:640px;width:120px" aria-label="PRIVATE_LABEL" onclick="localStorage.setItem(\'wrongPress\',\'1\')">피드 메뉴</button>' +
+      '<button style="position:absolute;left:100px;top:430px;width:120px">피드 메뉴</button></section>' : ''}
     <script>
     const mode=${JSON.stringify(mode)}, desktop=${desktop}, view=document.querySelector('#view');
+    if (mode === 'scrolled-feed') window.scrollTo(0, 350);
     const count=k=>localStorage.setItem(k,String(Number(localStorage.getItem(k)||0)+1));
     const text=()=>{const e=view.querySelector('textarea,.cke_editable');return e?.value??e?.innerText??''};
     let sequence=0;

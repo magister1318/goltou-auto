@@ -281,7 +281,11 @@ it.each(['covered', 'hidden', 'no-label', 'outside-viewport', 'feed-timeout', 'c
     const attempt = readHit.mock.calls.length;
     if (mode === 'covered-before-press' && attempt === 2) return true;
     const afterHover = mode === 'covered-before-press' && attempt === 3;
-    options?.onMiss?.report({ tag: afterHover ? 'span' : 'div', classes: ['lyWrap', 'PRIVATE_CLASS'], ariaLabel: 'PRIVATE_LABEL' });
+    options?.onMiss?.report({ scrollX: -10, scrollY: 250, rejectedHit: {
+      tag: afterHover ? 'span' : 'div', classes: ['lyWrap', 'PRIVATE_CLASS'], ariaLabel: 'PRIVATE_LABEL',
+      rect: Object.assign({ x: -5, y: 50.5, width: 100, height: 40 }, { extra: 'PRIVATE_GEOMETRY' }),
+      relation: afterHover ? 'ancestor' : 'unrelated',
+    } });
     return false;
   });
   const press = vi.fn();
@@ -312,7 +316,9 @@ it.each(['covered', 'hidden', 'no-label', 'outside-viewport', 'feed-timeout', 'c
     expect(failure).toMatchObject({ selector: 'BAND_WRITE_CONTROL', bandWrite: {
       legacyFloating: { matches: mode === 'no-label' ? 0 : 1, visible: ['no-label', 'hidden'].includes(mode) ? 0 : 1,
         inViewport: missed ? 1 : 0, readClickTarget: missed ? 'miss' : 'not_checked',
-        ...(missed ? { rejectedHit: { tag: mode === 'covered-before-press' ? 'span' : 'div', classes: ['lyWrap'], ariaLabel: '[other]' } } : {}) },
+        ...(missed ? { scrollX: -10, scrollY: 250, candidateRect: { x: 1, y: 1, width: 100, height: 40 },
+          rejectedHit: { tag: mode === 'covered-before-press' ? 'span' : 'div', classes: ['lyWrap'], ariaLabel: '[other]',
+            rect: { x: -5, y: 50.5, width: 100, height: 40 }, relation: mode === 'covered-before-press' ? 'ancestor' : 'unrelated' } } : {}) },
       legacyText: { matches: 1, textMatches: 0, ariaMatches: mode === 'no-label' ? 0 : 1, readClickTarget: 'not_checked' },
       labelled: { matches: mode === 'no-label' ? 0 : 1 },
     } });

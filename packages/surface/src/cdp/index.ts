@@ -1,6 +1,7 @@
 import { traceStep, trace, reasonCode, requestTrace, currentTrace, inTrace, expectedTelemetryRequest } from '../telemetry';
-import type { ClickHitElement, ClickTargetOptions, GuardedRequest, GuardedResponse, RequestBlockReason, RequestRule, KeyInput, NavigationOptions, NavigationPolicy, Surface, SurfaceDialog, SurfaceOpenOptions, SurfaceSession, SurfaceState } from '../index';
-import { clickHitTags, inputCharacters } from '../index';
+import type { ClickTargetMiss, ClickTargetOptions, GuardedRequest, GuardedResponse, RequestBlockReason, RequestRule, KeyInput, NavigationOptions, NavigationPolicy, Surface, SurfaceDialog, SurfaceOpenOptions, SurfaceSession, SurfaceState } from '../index';
+import { inputCharacters } from '../index';
+import { clickTargetExpression } from './click-target';
 import { CdpConnection } from './connection';
 export { CdpConnection } from './connection';
 export { redactionGeometry } from './redaction';
@@ -241,42 +242,21 @@ export class CdpSurface implements Surface {
 
   async readClickTarget(x: number, y: number, selector: string, options?: ClickTargetOptions): Promise<boolean> {
     return traceStep('surface.cdp.index.CdpSurface.readClickTarget', async () => {
-    this.jobTrace = currentTrace() ?? this.jobTrace;
-    // Points from read() use the outer document's layout viewport. Android CDP
-    // can report the focused iframe's scroll in Page.getLayoutMetrics instead.
-    // Adding that offset double-counts its scroll and can hit outside the view.
-    const scroll = await this.evaluateReadOnly<{ x: number; y: number }>('({x:scrollX,y:scrollY})');
-    if (![x, y, scroll?.x, scroll?.y].every(Number.isFinite)) throw new Error('SURFACE_HIT_TEST_FAILED');
-    const node = await this.cdp.send<{ backendNodeId?: number }>('DOM.getNodeForLocation', { x: Math.round(x + scroll.x), y: Math.round(y + scroll.y), includeUserAgentShadowDOM: false, ignorePointerEventsNone: false });
-    if (!node.backendNodeId) return false;
-    const { object } = await this.cdp.send<{ object: { objectId?: string } }>('DOM.resolveNode', { backendNodeId: node.backendNodeId });
-    if (!object.objectId) return false;
-    try {
-      const result = await this.cdp.send<{ result: { value?: boolean | ClickHitElement }; exceptionDetails?: unknown }>('Runtime.callFunctionOn', {
-        objectId: object.objectId, functionDeclaration: `function(selector, exactText, allowed) {
-          const top = this.nodeType === 1 ? this : this.parentElement;
-          if (!top) return false;
-          const targets = Array.from(top.ownerDocument.querySelectorAll(selector));
-          for (let e = top; e; e = e.parentElement) {
-            if (targets.includes(e) && (exactText === null || (e.textContent || '').trim() === exactText)) return true;
-          }
-          if (!allowed) return false;
-          const tag = top.localName;
-          const classes = (top.getAttribute('class') || '').split(/\\s+/);
-          const label = top.getAttribute('aria-label');
-          return { tag: allowed.tags.includes(tag) ? tag : '[other]',
-            classes: allowed.classes.filter(name => classes.includes(name)),
-            ariaLabel: label ? (allowed.labels.includes(label) ? label : '[other]') : null };
-        }`,
-        arguments: [{ value: selector }, { value: options?.exactText ?? null }, { value: options?.onMiss ? {
-          tags: clickHitTags, classes: options.onMiss.classes, labels: options.onMiss.ariaLabels,
-        } : null }], returnByValue: true, throwOnSideEffect: true,
+      this.jobTrace = currentTrace() ?? this.jobTrace;
+      if (![x, y].every(Number.isFinite)) throw new Error('SURFACE_HIT_TEST_FAILED');
+      const { frameTree } = await this.cdp.send<{ frameTree: { frame: { id: string } } }>('Page.getFrameTree');
+      const { executionContextId } = await this.cdp.send<{ executionContextId: number }>('Page.createIsolatedWorld', {
+        frameId: frameTree.frame.id, worldName: 'goltou-click-target',
       });
-      if (result.exceptionDetails) throw new Error('SURFACE_HIT_TEST_FAILED');
-      if (result.result.value && typeof result.result.value === 'object') options?.onMiss?.report(result.result.value);
-      return result.result.value === true;
-    } finally { await this.cdp.send('Runtime.releaseObject', { objectId: object.objectId }); }
-
+      // Blink may flush layout for elementFromPoint, which V8 rejects with
+      // throwOnSideEffect. Only this fixed reader runs in the isolated world.
+      const { result, exceptionDetails } = await this.cdp.send<{ result: { value?: boolean | ClickTargetMiss }; exceptionDetails?: unknown }>('Runtime.evaluate', {
+        expression: clickTargetExpression(x, y, selector, options), contextId: executionContextId,
+        returnByValue: true, timeout: 5000,
+      });
+      if (exceptionDetails) throw new Error('SURFACE_HIT_TEST_FAILED');
+      if (result.value && typeof result.value === 'object') options?.onMiss?.report(result.value);
+      return result.value === true;
     });
   }
 
