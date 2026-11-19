@@ -632,6 +632,8 @@ describe.runIf(Boolean(executablePath))('WP29 real table input',()=>{
   it.each(['fallback','bad-table','table-cell-drop'])('removes only the new component and records visible %s fallback before saving exact text lines',async mode=>{
     const f=await fixture(mode);f.plan.steps=[{kind:'text',role:'title',text:'합성 폴백'},{kind:'text',role:'body',text:'앞'},{kind:'break'},{kind:'table',role:'body',rows:[['a','b'],['c','d']]},{kind:'break'},{kind:'text',role:'body',text:'뒤'}];
     const log=await loggedFixture(path.dirname(f.files[0]!.path),'blog_draft',async()=>{await f.execution.write();return f.execution.saveAndVerify();},['table_insert_started']);
+    expect(log.payload?.summary.checks).toEqual(expect.arrayContaining(
+      ['text', 'line_breaks', 'bold', 'links', 'table', 'photo_order', 'hashtags', 'identity'].map(check => expect.objectContaining({ check, result: 'ok' }))));
     expect(f.execution.tableModes).toEqual(['text-list']);expect(log.result.tokens.map(t=>t.kind)).toEqual(['text','text','text','text']);
     expect(log.result.tokens.filter(t=>t.kind==='text').map(t=>t.text)).toEqual(['앞','a | b','c | d','뒤']);
     expect(log.lines.filter(l=>l.step==='table_fallback')).toEqual([expect.objectContaining({reason:mode==='fallback'?'TABLE_TOOL_MISSING':mode==='bad-table'?'TABLE_SIZE_MISMATCH':'TABLE_CELL_MISMATCH'})]);

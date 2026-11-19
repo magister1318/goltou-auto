@@ -118,8 +118,8 @@ export function compareReadbackText(expected: readonly string[], actual: readonl
 }
 
 export function traceReadbackText(result: TextReadback) {
-  if (result.tolerated || result.changed !== 0 || result.missing.length) trace('verification', result.missing.length ? 'fail' : 'ok', {
-    check: 'text', reason: result.missing.length ? 'READBACK_TEXT' : result.tolerated ? 'READBACK_TOLERATED' : 'READBACK_TEXT_VARIANCE',
+  trace('verification', result.missing.length ? 'fail' : 'ok', {
+    check: 'text', reason: result.missing.length ? 'READBACK_TEXT' : result.tolerated ? 'READBACK_TOLERATED' : result.changed ? 'READBACK_TEXT_VARIANCE' : 'READBACK_TEXT',
     counts: { expected: result.expected, observed: result.observed, ...(result.changed === null ? {} : { differences: result.changed }), paragraphs: result.missing.length },
   });
 }

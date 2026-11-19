@@ -137,8 +137,9 @@ export function compareBlogFormatting(plan: BlogPlan, actual: BlogReadback, mode
   };
   const planned = projections(expected);
   const observed = projections(saved.map(t => t.runs ?? []));
-  if (JSON.stringify(planned.bold) !== JSON.stringify(observed.bold)) trace('verification', 'ok', {
-    check: 'bold', reason: 'READBACK_BOLD_VARIANCE', counts: { expected: planned.bold.length, observed: observed.bold.length },
+  trace('verification', 'ok', {
+    check: 'bold', reason: JSON.stringify(planned.bold) !== JSON.stringify(observed.bold) ? 'READBACK_BOLD_VARIANCE' : 'READBACK_BOLD',
+    counts: { expected: planned.bold.length, observed: observed.bold.length },
   });
   const source = plannedText.join('\n'), output = observedText.join('\n');
   const explicit = [...planned.links];
@@ -154,6 +155,12 @@ export function compareBlogFormatting(plan: BlogPlan, actual: BlogReadback, mode
   }
   const cards = plan.steps.flatMap(step => step.kind === 'text' && step.role === 'linkCard' ? [step.text] : []);
   if ((explicit.length || cards.some(url => !observedText.includes(url))) && !issues.some(i => i.fields.includes('href'))) issues.push({ paragraph: 1, fields: ['href'] });
+  trace('verification', issues.some(issue => issue.fields.includes('href')) ? 'fail' : 'ok', {
+    check: 'links', reason: 'READBACK_LINKS', counts: { expected: planned.links.length + cards.length, observed: observed.links.length + cards.filter(url => observedText.includes(url)).length },
+  });
+  trace('verification', issues.some(issue => issue.fields.includes('text')) && plannedText.length !== observedText.length ? 'fail' : 'ok', {
+    check: 'line_breaks', reason: 'READBACK_TEXT', counts: { expected: Math.max(0, plannedText.length - 1), observed: Math.max(0, observedText.length - 1) },
+  });
   return issues;
 }
 
@@ -166,7 +173,12 @@ export function blogTablesMatch(plan: BlogPlan, actual: BlogReadback, modes: rea
   });
 }
 export function verifyBlogTables(plan: BlogPlan, actual: BlogReadback, modes: readonly ('native'|'text-list')[] = []) {
-  if (!blogTablesMatch(plan,actual,modes)) throw new ReadbackMismatch('BLOG_READBACK_MISMATCH:table',[{field:'table'}]);
+  const matches = blogTablesMatch(plan, actual, modes);
+  trace('verification', matches ? 'ok' : 'fail', { check: 'table', reason: 'READBACK_TABLE', counts: {
+    expected: plan.steps.filter(step => step.kind === 'table').filter((_, index) => modes[index] !== 'text-list').length,
+    observed: actual.tokens.filter(token => token.kind === 'table').length,
+  } });
+  if (!matches) throw new ReadbackMismatch('BLOG_READBACK_MISMATCH:table',[{field:'table'}]);
 }
 
 export class BlogExecution {
@@ -182,11 +194,15 @@ export class BlogExecution {
   private inputFormattingFailure: BlogFormattingError | undefined;
   private verifyDocument(value: BlogReadback, stage: FormattingStage) {
     if (this.formattingFailure) throw this.formattingFailure;
-    if (!blogTablesMatch(this.plan, value, this.tableModes)) trace('verification', 'wait', { check:'table', reason:'READBACK_TABLE' });
+    const tablesMatch = blogTablesMatch(this.plan, value, this.tableModes);
+    trace('verification', tablesMatch ? 'ok' : 'wait', { check: 'table', reason: 'READBACK_TABLE', counts: {
+      expected: this.plan.steps.filter(step => step.kind === 'table').filter((_, index) => this.tableModes[index] !== 'text-list').length,
+      observed: value.tokens.filter(token => token.kind === 'table').length,
+    } });
     this.env.verify(value, stage);
     const issues = compareBlogFormatting(this.plan, value, this.tableModes);
     if (issues.length) {
-      for (const issue of issues) for (const field of issue.fields) trace('verification', 'fail', { check: field, reason: blogFieldReason[field], counts: { paragraphIndex: issue.paragraph } });
+      for (const issue of issues) for (const field of issue.fields) trace('verification', 'fail', { check: field, reason: blogFieldReason[field], counts: { expected: 1, observed: 0, paragraphIndex: issue.paragraph } });
       const error = new BlogFormattingError(stage, issues);
       if (['AFTER_SAVE', 'REOPENED', 'PUBLISHED'].includes(stage)) this.formattingFailure = error;
       throw error;
@@ -682,6 +698,7 @@ export class BlogExecution {
       this.signal({ stage: 'submit', phase: 'start', submission: 'draft' });
       try {
         await requireTagLayerClosed(this.surface!);
+        trace('job.checkpoint', 'ok', { checkpoint: 'before_submit' });
         await click(this.surface!, 'BLOG_SAVE', 'button[data-click-area="tpb.save"]');
       }
       catch (error) { trace('sites.naver-blog.plan.BlogExecution.saveAndVerifyPlan', 'fail', { reason: reasonCode(error) });
@@ -700,6 +717,7 @@ export class BlogExecution {
     try { after = await openDraftEntries(s, true); }
     catch { trace('sites.naver-blog.plan.BlogExecution.saveAndVerifyPlan', 'fail', { reason: 'CAUGHT_FAILURE' });  throw new Error(this.saveAcknowledged ? 'BLOG_DRAFT_SAVED_UNVERIFIED' : 'DRAFT_SAVE_UNCONFIRMED'); }
     const identity = identifySavedDraft(this.draftsBefore, after, this.title.text, this.savedDraftId);
+    if (!identity) trace('verification', 'fail', { check: 'identity', reason: 'DRAFT_SAVE_UNCONFIRMED', counts: { expected: 1, observed: 0 } });
     if (!identity) throw new Error(this.saveAcknowledged || after.filter(e => e.title === this.title.text).length > this.draftsBefore.filter(e => e.title === this.title.text).length ? 'BLOG_DRAFT_SAVED_UNVERIFIED' : 'DRAFT_SAVE_UNCONFIRMED');
     this.draftIdentity = { existingSameTitle: this.draftsBefore.filter(e => e.title === this.title.text).length, source: identity.source };
     await this.guard();
@@ -713,7 +731,10 @@ export class BlogExecution {
     if (!target) throw new Error('BLOG_DRAFT_SAVED_UNVERIFIED');
     await s.click(target.x, target.y, matches);
     await waitFor(async () => sameReadbackIdentityText(this.title.text, (await readBlogDocument(s)).title), 15000, { surface: s, control: "BLOG_DRAFT_ITEM" });
-    const observed = await this.observe(); this.verifyDocument(observed, 'REOPENED'); this.verified = true; return observed;
+    const observed = await this.observe(); this.verifyDocument(observed, 'REOPENED'); this.verified = true;
+    trace('verification', 'ok', { check: 'identity', counts: { expected: 1, observed: 1 } });
+    trace('job.checkpoint', 'ok', { checkpoint: 'readback_complete' });
+    return observed;
 
     });
   }
@@ -732,6 +753,7 @@ export class BlogExecution {
       this.requestProof = await readVisibility(s, this.visibility);
       requireVisibility(this.requestProof, this.visibility);
       this.publishArmed = true;
+      trace('job.checkpoint', 'ok', { checkpoint: 'before_submit' });
       // Latch before input; failures, timeouts, stop/resume never republish.
       this.publishAttempted = true;
       await guardedPublishClick(s, this.visibility, this.env.check, proof => { this.requestProof = proof; });
@@ -782,7 +804,8 @@ export class BlogExecution {
         { check: 'links', reason: 'READBACK_LINKS', expected: plannedRuns.filter(r=>r.href).length, observed: observedRuns.filter(r=>r.href).length, present: observedRuns.filter(r=>r.href).length >= plannedRuns.filter(r=>r.href).length },
         { check: 'photos', reason: 'READBACK_PHOTOS', expected: expectedPhotos, observed: photos.length, present: photos.length >= expectedPhotos },
         { check: 'hashtags', reason: 'READBACK_TAGS', expected: plannedBlogTags(this.plan).length, observed: value?.tags.length ?? 0, present: !!value && (!value.tagArea || value.tags.length >= plannedBlogTags(this.plan).length) },
-        { check: 'visibility', reason: 'READBACK_VISIBILITY', expected: 1, observed: value?.visibility ? 1 : 0, present: !!value?.visibility },
+        { check: 'visibility', reason: 'READBACK_VISIBILITY', expected: this.visibility === 'public' ? 2 : 1,
+          observed: value?.visibility === 'public' ? 2 : value?.visibility === 'private' ? 1 : 0, present: !!value?.visibility },
       ];
     };
     let mobile: Surface | undefined;
@@ -814,9 +837,10 @@ export class BlogExecution {
         },
       });
       const value = settled.value;
+      const issueField = (check: ReadbackClass['check']): ReadbackIssue['field'] =>
+        check === 'paragraphs' ? 'text' : check === 'links' ? 'href' : check === 'photos' ? 'photo' : check as ReadbackIssue['field'];
       const issues: ReadbackIssue[] = settled.classes.filter(item => !item.present).map(({ check, expected, observed }) => ({
-        field: check === 'paragraphs' ? 'text' : check === 'links' ? 'href' : check === 'photos' ? 'photo' : check as ReadbackIssue['field'],
-        expected, observed,
+        field: issueField(check), expected, observed,
       }));
       if (!value || !settled.stable) throw new ReadbackMismatch('BLOG_PUBLISHED_READBACK_UNAVAILABLE', [{ field: 'stability' }, ...issues]);
       if (value.visibility !== this.visibility && !issues.some(issue=>issue.field==='visibility')) issues.push({field:'visibility'});
@@ -842,7 +866,8 @@ export class BlogExecution {
       }
       this.readbackTimings.push({ photos: value.tokens.filter(t => t.kind === 'photo').length, milliseconds: Date.now() - started, navigationKeys: 0 });
       if (issues.length) {
-        for(const item of settled.classes) trace('verification', issues.some(issue=>issue.field===(item.check==='paragraphs'?'text':item.check))?'fail':'ok', {check:item.check,reason:item.reason,counts:{expected:item.expected,observed:item.observed}},Date.now()-started);
+        for (const item of settled.classes) trace('verification', issues.some(issue => issue.field === issueField(item.check)) ? 'fail' : 'ok',
+          { check: item.check, reason: item.reason, counts: { expected: item.expected, observed: item.observed } }, Date.now() - started);
         trace('verification', settled.stable?'ok':'fail', {check:'stability',reason:'READBACK_STABILITY',counts:{expected:2,observed:settled.stable?2:1}},Date.now()-started);
         if (issues.length === 1 && issues[0]?.field === 'visibility' && this.visibility === 'private') {
           throw new ReadbackMismatch('BLOG_PUBLISHED_PRIVATE_UNCONFIRMED', issues);
@@ -851,10 +876,13 @@ export class BlogExecution {
       }
     const pages = await read<PublishedPage[]>(s, `return docs.map(({d})=>({url:d.location.href,titles:Array.from(d.querySelectorAll('.se-documentTitle .se-text-paragraph')).map(e=>(e.textContent||'').trimStart().trimEnd())}));`);
     const evidence = resolvePublishEvidence(this.responsePost, [(await s.readState()).url], pages, this.title.text);
-    if (evidence.post?.url !== this.publishedPost.url) throw Error('BLOG_PUBLISH_ID_UNCONFIRMED');
+    const sameIdentity = evidence.post?.url === this.publishedPost.url;
+    trace('verification', sameIdentity ? 'ok' : 'fail', { check: 'identity', reason: 'BLOG_PUBLISH_ID_UNCONFIRMED', counts: { expected: 1, observed: Number(sameIdentity) } });
+    if (!sameIdentity) throw Error('BLOG_PUBLISH_ID_UNCONFIRMED');
     this.publishedIdentitySources = evidence.sources;
     trace('verification','ok',{check:'stability',reason:'READBACK_STABILITY',counts:{expected:2,observed:2}},Date.now()-started);
     this.publishedVerified = true;
+    trace('job.checkpoint', 'ok', { checkpoint: 'readback_complete' });
     return value;
     } finally { if (mobile) await this.env.host.destroy(mobile); }
 

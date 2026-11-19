@@ -10,7 +10,7 @@ import { MemoryPolishStrengthStore, type PolishStrengthStore } from './polish/se
 import { updateJobBusy } from './app-update';
 import { MemoryPreferencesStore, migratePreferences, type PreferencesStore } from './preferences';
 import { fillMyText, validMyText } from './convert';
-import { uploadFailedPostLog } from './failed-log-upload';
+import { PostTraceQueue } from './post-trace-queue';
 import { canRetryJob } from './job-safety';
 import { MemoryPostMetadata, type PostMetadataStore } from './post-metadata';
 export class MemoryTokenStore implements TokenStore {
@@ -40,7 +40,8 @@ export class AppCore {
   private earlierResults: TargetResult[] | undefined;
   private uncertainStart = false;
   private jobPreview: PreparedPreview | null = null;
-  private records: { postNo: number; channel: Channel; key: string; status: PostStatus; logUploaded?: boolean; deferred?: { update: PostUpdate; error: RecordError }; updates: Map<string, RecordError | null> }[] = [];
+  private records: { postNo: number; channel: Channel; key: string; status: PostStatus; log?: TraceJob; claimed?: boolean; deferred?: { update: PostUpdate; error: RecordError }; updates: Map<string, RecordError | null> }[] = [];
+  private readonly postTraces: PostTraceQueue | undefined;
   private recordPrivateText: string[] = [];
   private deletionRecording: import('./record-checkpoint').RecordingCheckpoint | undefined;
   private readonly polishSetting: PolishStrengthStore;
@@ -50,6 +51,11 @@ export class AppCore {
     this.polishSetting = runtime?.polishStrength ?? new MemoryPolishStrengthStore();
     this.postMetadata = runtime?.postMetadata ?? new MemoryPostMetadata();
     this.preferences = runtime?.preferences ?? new MemoryPreferencesStore();
+    this.postTraces = runtime?.logs && new PostTraceQueue(runtime.logs, api, async () => {
+      const user = this.state.user;
+      const token = await this.tokens.read();
+      if (user && token && user === this.state.user) return { userNo: user.userNo, token };
+    });
     const notify = (job: Job) => { if (!this.state.user) return; this.state.job = this.aggregateJob(job); if (!this.runner.serviceLogin && job.status === 'login_paused' && job.service) { this.state.services[job.service] = 'expired'; this.state.visibleService = job.service; } this.emit(); };
     this.createRunner = () => factory ? factory((job, retry) => this.record(job, retry), notify) : new FakeRegistrationRunner(() => this.state.simulation, job => this.record(job), notify);
     this.runner = this.createRunner();
@@ -107,12 +113,13 @@ export class AppCore {
     const { user, settings, myText } = await this.call('/auto/me', {}, await this.token());
     this.state.user = user; this.state.settings = settings; this.state.myText = { ...defaultMyText(), ...myText }; this.emit();
     this.scheduleServiceChecks();
+    this.postTraces?.retry();
   }
   private emit() {
     this.runtime?.updater?.setBlocked(!this.state.user || this.starting || this.preparing || this.deleting || updateJobBusy(this.state.job));
     if (this.runtime?.updater) this.state.update = this.runtime.updater.snapshot();
     for (const listener of this.listeners) listener(this.snapshot()); }
-  dispose() { this.disposed = true; this.runtime?.updater?.dispose(); this.deleteConfirmation?.log?.end('stopped', 'USER_STOPPED'); this.deleteConfirmation = undefined; clearTimeout(this.serviceTimer); this.serviceUnsubscribe?.(); this.runner.dispose(); this.listeners.clear(); }
+  dispose() { this.disposed = true; this.runtime?.updater?.dispose(); this.deleteConfirmation?.log?.end('stopped', 'USER_STOPPED'); this.postTraces?.dispose(); this.deleteConfirmation = undefined; clearTimeout(this.serviceTimer); this.serviceUnsubscribe?.(); this.runner.dispose(); this.listeners.clear(); }
   /** Debug entry supplies the deletion capability; release exposes no command. */
   async cleanupTestPost(remove: (execution: import('@goltou/sites').BlogExecution) => Promise<void>) {
     const job = this.runner.job, execution = this.runner.blogExecution?.();
@@ -224,6 +231,7 @@ export class AppCore {
         await this.tokens.write(result.token);
         const me = await this.call('/auto/me', {}, result.token);
         this.initialization = Promise.resolve(); this.state.user = me.user; this.state.settings = me.settings; this.state.myText = { ...defaultMyText(), ...me.myText };
+        this.postTraces?.retry();
         this.scheduleServiceChecks();
         this.emit(); return this.snapshot();
       } finally { request.input.password = ''; request.input.loginId = ''; this.authenticating = false; }
@@ -270,10 +278,12 @@ export class AppCore {
       }
       case 'posts.delete.prepare': {
         this.requireDeleteIdle();
+        this.postTraces?.retry();
         const post = await this.ownedPost(request.input.postNo, token);
         requireDeletablePost(post);
         this.deleteConfirmation?.log?.end('stopped', 'USER_STOPPED');
         const log = beginTrace(post.channel === 'band' ? 'band_delete' : 'blog_delete', post.channel === 'band' ? 'band' : 'naver');
+        if (log && this.state.user) this.postTraces?.track(log, post.postNo, post.channel, this.state.user.userNo, post.channel === 'band' ? new URL(post.postUrl).pathname.split('/')[2] ?? '' : post.targetName);
         const key = randomUUID(); this.deleteConfirmation = { key, post, ...(log ? { log } : {}) };
         log?.line('delete', 'wait', { reason: 'APP_PREPARED' });
         if (post.channel === 'band') this.runtime?.bandDeleteLog?.({ code: 'APP_PREPARED' });
@@ -297,7 +307,6 @@ export class AppCore {
           requireDeletablePost(post);
           if (['postUrl', 'productTitle', 'startedAt', 'productNo', 'channel', 'targetName'].some(key => post[key as keyof typeof post] !== confirmation.post[key as keyof typeof post])) throw new ApiError('conflict', '기록이 바뀌었습니다. 삭제할 글을 다시 확인해 주세요.');
           if (!this.runtime?.deleteHost) throw new ApiError('invalid', '글 삭제 기능을 사용할 수 없습니다.');
-          this.runtime?.logs?.associate(String(post.postNo));
           let alreadyAbsent = false;
           if (post.channel === 'band') {
             this.runtime.bandDeleteLog?.({ code: 'APP_CONFIRMED' });
@@ -309,6 +318,7 @@ export class AppCore {
             }
             alreadyAbsent = result.alreadyAbsent === true;
           } else await removeRecordedBlogPost(this.runtime.deleteHost, post, this.runtime.deleteLog);
+          trace('verification', 'ok', { check: 'missing_read', counts: { expected: 1, observed: 1 } });
           this.pendingDeleteUpdate = deletedUpdate(post, alreadyAbsent);
           this.state.postDeletion = { postNo: post.postNo, verifiedGone: true, recorded: false, outcome: 'deleted' };
           this.emit();
@@ -325,7 +335,13 @@ export class AppCore {
         this.runtime?.logs?.associate(String(this.pendingDeleteUpdate!.postNo));
         trace('runner.record', 'retry', { reason: 'RECORD_FAILED' });
         this.deleting = true;
-        try { await this.saveDeletion(token); } finally { this.deleting = false; }
+        try {
+          const log = currentTrace();
+          const postNo = this.pendingDeleteUpdate!.postNo;
+          if (log && this.state.user) this.postTraces?.track(log, postNo, band ? 'band' : 'blog', this.state.user.userNo, String(postNo));
+          trace('verification', 'ok', { check: 'missing_read', counts: { expected: 1, observed: 1 } });
+          await this.saveDeletion(token);
+        } finally { this.deleting = false; }
         return this.snapshot();
         });
       }
@@ -399,10 +415,12 @@ export class AppCore {
         await this.runner.discardBand(); return this.snapshot();
       case 'job.continueBand':
         if (!this.runner.continueBand) throw new ApiError('invalid', '진행할 밴드 단계가 없습니다.');
+        this.postTraces?.retry();
         await this.runner.continueBand(); return this.snapshot();
       case 'job.resume':
         if (this.runner.serviceLogin?.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
         if (this.runner.job?.status === 'login_paused' && this.runner.job.service && this.state.services[this.runner.job.service] !== 'confirmed') throw new ApiError('auth', '로그인 상태를 먼저 확인해 주세요.');
+        this.postTraces?.retry();
         this.state.visibleService = null; await this.runner.resume(); return this.snapshot();
       case 'job.retryRecord':
         if (this.deletionRecording && this.runner.job?.testPostDeleted) { await this.deletionRecording.retry(this.runner.job); return this.snapshot(); }
@@ -489,6 +507,7 @@ export class AppCore {
     if (input.mode === 'publish' && input.publishConfirmed !== true) throw new ApiError('invalid', '발행 전에 한 번 더 확인해 주세요.');
     if (!['draft', 'publish'].includes(input.mode) || input.blogVisibility !== undefined && !['public', 'private'].includes(input.blogVisibility)) throw new ApiError('invalid', '등록 방식과 공개 범위를 확인해 주세요.');
     this.starting = true; this.records = [];
+    this.postTraces?.retry();
     const previousResults = this.earlierResults;
     try {
       const bandKeys = input.targets.filter(target => target.channel === 'band').map(target => target.key);
@@ -507,13 +526,19 @@ export class AppCore {
       const startFailures: TargetResult[] = [];
       for (const target of input.targets) {
         let postNo: number;
-        try { this.uncertainStart = true; ({ postNo } = await this.call('/auto/posts/start', { productNo: input.productNo, channel: target.channel, mode: input.mode, target: { name: target.name, key: target.key }, options: { ...input.options, closing: input.options.closing! }, contentHash: product.contentHash }, token)); this.uncertainStart = false; }
+        try {
+          this.uncertainStart = true;
+          ({ postNo } = await this.call('/auto/posts/start', { productNo: input.productNo, channel: target.channel, mode: input.mode, target: { name: target.name, key: target.key }, options: { ...input.options, closing: input.options.closing! }, contentHash: product.contentHash }, token));
+          if (!Number.isSafeInteger(postNo) || postNo < 1) throw new ApiError('server', '등록 기록 번호를 확인하지 못했습니다.');
+          this.uncertainStart = false;
+        }
         catch (error) {
+          const log = beginTrace('record', target.channel === 'band' ? 'band' : 'naver');
+          log?.line('runner.record', 'fail', { reason: 'POST_RECORD_START_FAILED' });
+          log?.end('failed', 'POST_RECORD_START_FAILED');
           if (input.targets.length > 1 && target.channel === 'band' && this.state.user) {
             this.uncertainStart = false;
             const reason = 'POST_RECORD_START_FAILED';
-            const log = beginTrace('band_post', 'band');
-            log?.line('runner.record', 'fail', { reason }); log?.end('failed', reason);
             startFailures.push({ ...target, status: 'failed', outcome: 'failed', reason });
             continue;
           }
@@ -521,12 +546,23 @@ export class AppCore {
           if (target.channel === 'band' && error instanceof ApiError && error.code === 'conflict') throw new ApiError('conflict', `${target.name}: ${error.message}`);
           throw error;
         }
-        this.records.push({ postNo, channel: target.channel, key: target.key, status: 'running', updates: new Map() });
+        const record = { postNo, channel: target.channel, key: target.key, status: 'running' as const, updates: new Map() };
+        this.records.push(record);
+        this.startRecordLog(record, input.mode);
         if (target.channel === 'blog') await this.postMetadata.set(postNo, input.blogVisibility ?? 'public');
       }
       this.recordPrivateText = [product.title, ...product.golfCourses, ...preview.blog.steps.flatMap(step => step.kind === 'text' ? [step.text] : step.kind === 'table' ? step.rows.flat() : [])];
       this.earlierResults = retry ? this.state.job?.targetResults : undefined;
-      await this.runner.start(input, product.title, product.images.length, this.preparation ? preparationWork(product, preview, this.preparation) : undefined, { retry, startFailures });
+      const records = this.records;
+      await this.runner.start(input, product.title, product.images.length, this.preparation ? preparationWork(product, preview, this.preparation) : undefined, {
+        retry, startFailures, traceForTarget: target => {
+          const record = records.find(value => value.channel === target.channel && value.key === target.key);
+          if (!record) return;
+          if (!record.log || !this.runtime?.logs?.runningKind(record.log.id)) this.startRecordLog(record, input.mode);
+          record.claimed = true;
+          return record.log;
+        },
+      });
       if (!retry) this.lastInput = structuredClone(input);
       if (!retry && input.mode === 'publish' && bandKeys.length) {
         await this.preferences.read().then(selected => this.preferences.write({ ...selected, lastBandKeys: bandKeys })).catch(() => {});
@@ -534,14 +570,9 @@ export class AppCore {
     } catch (error) {
       this.earlierResults = previousResults;
       for (const record of this.records) {
-        const log = beginTrace(record.channel === 'band' ? 'band_post' : input.mode === 'draft' ? 'blog_draft' : 'blog_publish', record.channel === 'band' ? 'band' : 'naver');
-        await inTrace(log, async () => {
-          this.runtime?.logs?.associate(String(record.postNo));
-          trace('runner.record', 'fail', { reason: 'POST_RECORD_START_FAILED' });
-          await this.api.request('/auto/posts/update', { postNo: record.postNo, status: 'stopped', step: 1, failReason: 'POST_RECORD_START_FAILED', postUrl: '' }, token).catch(() => {});
-          if (log) await this.uploadLog(record, log, token);
-        });
-        log?.end('failed', 'POST_RECORD_START_FAILED');
+        record.log?.line('runner.record', 'fail', { reason: 'POST_RECORD_START_FAILED' });
+        await this.api.request('/auto/posts/update', { postNo: record.postNo, status: 'stopped', step: 1, failReason: 'POST_RECORD_START_FAILED', postUrl: '' }, token).catch(() => {});
+        record.log?.end('failed', 'POST_RECORD_START_FAILED');
       }
       throw error;
     } finally { this.starting = false; }
@@ -552,13 +583,12 @@ export class AppCore {
     return { closing: options.closing ?? myText.closingOn, closingText: fillMyText(myText.closing, user), prefixText: fillMyText(myText.prefix, user),
       linkCard: options.linkCard, tagWords: this.state.settings?.defaultHashtags ?? [], polishStrength: options.polishStrength ?? 'spelling' };
   }
-  private async uploadLog(record: AppCore['records'][number], log: TraceJob, token: string) {
-    if (record.logUploaded || !this.runtime?.logs) return;
-    record.logUploaded = true;
-    try {
-      const tail = this.runtime.logs.uploadTail(log.id);
-      if (tail) await uploadFailedPostLog(this.api, record.postNo, tail, token);
-    } catch { trace('runner.log_upload', 'skip', { reason: 'POST_LOG_UPLOAD_FAILED' }); }
+  private startRecordLog(record: AppCore['records'][number], mode: JobInput['mode']) {
+    const band = record.channel === 'band';
+    const log = beginTrace(band ? 'band_post' : mode === 'draft' ? 'blog_draft' : 'blog_publish', band ? 'band' : 'naver');
+    if (!log) return;
+    record.log = log;
+    if (this.state.user) this.postTraces?.track(log, record.postNo, record.channel, this.state.user.userNo, record.key);
   }
   private async record(job: Job, retry = false) {
     trace('runner.record', retry ? 'retry' : 'start', { counts: { step: job.step } });
@@ -567,7 +597,8 @@ export class AppCore {
     const active = job.step < 6 ? this.records.find(record => record.channel === 'blog') ?? this.records[0]
       : job.step === 6 ? this.records.find(record => record.channel === 'band' && record.key === job.activeTargetKey) : undefined;
     for (const record of this.records) {
-      if (record === active) this.runtime?.logs?.associate(String(record.postNo));
+      if (this.runner instanceof FakeRegistrationRunner && record.log && !this.runtime?.logs?.runningKind(record.log.id) && job.status === 'running')
+        this.startRecordLog(record, job.mode);
       if (record.deferred && !retry) {
         if (job.completedSteps.includes(7)) throw record.deferred.error;
         continue;
@@ -578,22 +609,6 @@ export class AppCore {
       if (record.status === 'failed' && result?.status === 'failed') continue;
       const status: PostStatus = (result?.status === 'running' && job.status === 'user_paused' ? 'stopped' : result?.status) ?? (saved ? (record.channel === 'band' && job.mode === 'draft' ? 'stopped_before_post' : job.mode === 'draft' ? 'draft_saved' : 'published') : job.status === 'failed' ? 'failed' : job.status === 'user_paused' ? 'stopped' : 'running');
       const update = record.deferred?.update ?? { postNo: record.postNo, status, step: job.step, failReason: ['failed', 'stopped'].includes(status) || result?.readbackNotes?.length ? (result?.reason ?? job.message) : '', postUrl: result?.postUrl ? result.postUrl : status === 'published' ? (result?.postUrl ?? job.postUrl ?? (this.runner instanceof FakeRegistrationRunner ? `https://example.invalid/posts/${record.postNo}` : '')) : '' };
-      const terminalFailure = !!result?.readbackNotes?.length || result?.outcome === 'unconfirmed' || status === 'failed' ||
-        record === active && (job.status === 'draft_unverified' || job.status === 'stopped' && !!job.failureCode) ||
-        status === 'stopped' && !!(result?.reason ?? job.failureCode) && job.status !== 'user_paused' ||
-        record === active && job.publicationUncertain && job.status !== 'running';
-      if (terminalFailure && !record.logUploaded && log) {
-        if (record === active) await this.uploadLog(record, log, token);
-        else {
-          const targetLog = beginTrace(record.channel === 'band' ? 'band_post' : job.mode === 'draft' ? 'blog_draft' : 'blog_publish', record.channel === 'band' ? 'band' : 'naver');
-          if (targetLog) await inTrace(targetLog, async () => {
-            this.runtime?.logs?.associate(String(record.postNo));
-            trace('runner.record', 'fail', { reason: reasonCode(result?.reason ?? job.failureCode), counts: { step: job.step } });
-            await this.uploadLog(record, targetLog, token);
-            targetLog.end('failed', reasonCode(result?.reason ?? job.failureCode));
-          });
-        }
-      }
       const identity = JSON.stringify(update);
       if (record.updates.has(identity)) {
         const failure = record.updates.get(identity);
@@ -607,10 +622,8 @@ export class AppCore {
       catch (error) {
         const failure = new RecordError(error, [token, job.title, ...this.recordPrivateText]);
         record.updates.set(identity, failure);
-        if (record === active && log) {
-          trace('runner.record', 'fail', { reason: 'RECORD_FAILED', counts: { step: job.step } });
-          await this.uploadLog(record, log, token);
-        }
+        (record === active ? log ?? record.log : record.log)?.line('runner.record', 'fail', { reason: 'RECORD_FAILED', counts: { step: job.step } });
+        if (!record.claimed) record.log?.end('failed', 'RECORD_FAILED');
         if (record.channel === 'band' && job.targets.length > 1 && result?.outcome && job.step < 7 && this.state.user) {
           record.deferred = { update, error: failure };
           continue;
@@ -620,6 +633,14 @@ export class AppCore {
       record.updates.set(identity, null);
       record.status = update.status;
       delete record.deferred;
+      if (!record.claimed && status === 'running' && job.status === 'login_paused') record.log?.end('stopped', 'LOGIN_REQUIRED');
+      if (!record.claimed && ['failed', 'draft_saved', 'published', 'stopped', 'stopped_before_post'].includes(status)) {
+        const reason = reasonCode(result?.reason ?? job.failureCode ?? (job.status === 'user_paused' ? 'USER_STOPPED' : 'NOT_STARTED'));
+        record.log?.line('runner.record', status === 'failed' ? 'fail' : 'ok', { reason, counts: { step: job.step } });
+        if (result?.outcome === 'unconfirmed') record.log?.end('uncertain', reason);
+        else if (status === 'published' || status === 'draft_saved') record.log?.end('succeeded');
+        else record.log?.end(status === 'failed' ? 'failed' : 'stopped', reason);
+      }
     }
   }
 }

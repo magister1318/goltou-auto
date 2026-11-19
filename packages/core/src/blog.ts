@@ -87,11 +87,14 @@ function verifyBlogContent(plan: InputPlan, files: readonly MediaFile[], actual:
     const identity = photoIdentity(files.find(file => file.url === url)?.path.split(/[\\/]/).pop() ?? '');
     return !identity || photoIdentity(photos[i]?.identity ?? '') !== identity;
   })) issues.push({ field: 'photo' });
-  if (!(saved ? sameServiceBlogTags(plan, actual.tags) : sameBlogTags(expectedBlogTags(plan), actual.tags))) trace('verification', 'wait', { check: 'hashtags', reason: 'READBACK_TAGS', counts: { expected: expectedBlogTags(plan).length, observed: actual.tags.length } });
-  const reasons = { title: 'READBACK_TITLE', number: 'READBACK_NUMBER', photo: 'READBACK_PHOTO', hashtags: 'READBACK_TAGS' } as const;
-  for (const { field } of issues) {
-    if (field === 'photo' || field === 'number' || field === 'title' || field === 'hashtags') trace('verification', 'fail', { check: field, reason: reasons[field] });
-  }
+  const checked = (check: 'title' | 'number' | 'photo' | 'photo_order' | 'hashtags', same: boolean, expected: number, observed: number, reason: import('@goltou/surface/telemetry').ReasonCode) =>
+    trace('verification', same ? 'ok' : 'fail', { check, reason, counts: { expected, observed } });
+  checked('title', !title.missing.length, expected.title.length, actual.title.length, 'READBACK_TITLE');
+  checked('number', !issues.some(issue => issue.field === 'number'), 1, Number(!issues.some(issue => issue.field === 'number')), 'READBACK_NUMBER');
+  checked('photo', photos.length === expected.photos.length, expected.photos.length, photos.length, 'READBACK_PHOTO');
+  checked('photo_order', !issues.some(issue => issue.field === 'photo'), expected.photos.length, photos.length, 'READBACK_PHOTO');
+  const tagsMatch = saved ? sameServiceBlogTags(plan, actual.tags) : sameBlogTags(expectedBlogTags(plan), actual.tags);
+  trace('verification', tagsMatch ? 'ok' : 'wait', { check: 'hashtags', reason: 'READBACK_TAGS', counts: { expected: expectedBlogTags(plan).length, observed: actual.tags.length } });
   return issues;
 }
 export function createBlogExecution(plan: InputPlan, files: readonly MediaFile[], services: BlogServices,

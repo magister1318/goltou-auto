@@ -4,6 +4,7 @@ import { request } from './store';
 
 export const jobKindLabel: Record<JobLogRow['kind'], string> = {
   app_update: '앱 업데이트',
+  record: '등록 기록 시작',
   blog_draft: '블로그 임시저장', blog_publish: '블로그 발행', blog_delete: '블로그 글 삭제',
   unfinished_cleanup: '작성 중인 글 정리', band_post: '밴드 게시', band_delete: '밴드 글 삭제', login_check: '로그인 확인', band_list: '밴드 목록 읽기',
 };

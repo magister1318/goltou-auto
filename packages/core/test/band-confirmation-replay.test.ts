@@ -9,6 +9,7 @@ import { configureTrace, reasonCode, trace } from '@goltou/surface/telemetry';
 import { bandFixture } from '../../sites/test/band-fixture';
 import { ChannelRegistrationRunner } from '../src/band-runner';
 import { JobLogStore } from '../src/job-logs';
+import { tracePayload } from '../src/post-trace-payload';
 import { compareDocuments, observePlan } from '../src/verify';
 import type { InputPlan } from '../src/convert';
 import type { Job } from '../src/protocol';
@@ -150,10 +151,25 @@ async function replay(mode: string) {
   expect(f.counts()).toMatchObject({ creates: 1, forbidden: 0 });
   if (success) expect(f.counts().detailReads).toBeGreaterThan(0);
   await vi.waitFor(async () => expect((await f.lines()).filter(l => l.step === 'terminal')).toHaveLength(1));
-  const lines = await f.lines(); expect(lines.at(-1).result).toBe(success ? 'succeeded' : mode === 'not-found' ? 'uncertain' : 'failed');
+  const lines = await f.lines();
+  expect(lines.at(-1).result).toBe(['not-found', 'mismatch', 'collage-missing'].includes(mode) ? 'uncertain' : success ? 'succeeded' : 'failed');
   if (success && !['mismatch', 'collage-missing'].includes(mode)) for (const check of ['text', 'line_breaks', 'photo_order', 'hashtags', 'links']) expect(lines.some(l => l.step === 'verification' && l.check === check && l.event === 'ok')).toBe(true);
   if (mode.startsWith('collage-')) {
     const jobId = f.store.list().find(job => job.kind === 'band_post')!.jobId;
+    const payload = tracePayload(f.store, jobId, 1, 'band', f.store.identity('fixture'));
+    expect(payload?.result).toBe(mode === 'collage-missing' ? 'incomplete' : 'success');
+    if (mode !== 'collage-missing') {
+      expect(payload?.summary.photos).toMatchObject({ used: mode === 'collage-dom-only' ? 'dom' : 'api' });
+      expect(payload?.summary.checks).toEqual(expect.arrayContaining(
+        ['text', 'line_breaks', 'links', 'photos', 'photo_order', 'hashtags'].map(check => expect.objectContaining({ check, result: 'ok' }))));
+    }
+    const detailed = payload!.log.trim().split('\n').map(line => JSON.parse(line));
+    expect(detailed).toContainEqual(expect.objectContaining({ step: 'band.photo.detail_api', event: 'decision', t: expect.any(Number) }));
+    for (const row of detailed.filter(line => line.step === 'verification' && line.event === 'fail')) {
+      expect(row.counts).toEqual(expect.objectContaining({ expected: expect.any(Number), observed: expect.any(Number) }));
+      expect(detailed).toContainEqual(expect.objectContaining({ step: 'verification', event: 'decision', choice: 'fail',
+        check: row.check, reason: row.reason, counts: row.counts }));
+    }
     const upload = f.store.uploadTail(jobId);
     const compact = upload.trim().split('\n').map(line => JSON.parse(line));
     expect(Buffer.byteLength(upload), `transmitted ${mode} log bytes`).toBeLessThan(64_000);

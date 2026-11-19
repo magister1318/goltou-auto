@@ -62,11 +62,18 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     return rows;
     }, () => ({ result: 'succeeded', ...(this.directory.listReason ? { reason: this.directory.listReason } : {}) }));
   }
+  private traceForTarget: RegistrationStart['traceForTarget'];
+  private logTarget: JobInput['targets'][number] | undefined;
+  private registrationLog(mode: JobInput['mode'], target: JobInput['targets'][number] | undefined) {
+    return (target && this.traceForTarget?.(target)) ?? registrationLog({ mode, targets: target ? [target] : [] });
+  }
   async start(input: JobInput, title: string, photos: number, work?: PreparationWork, context?: RegistrationStart) {
     if (input.targets.some(target => target.channel === 'blog') && input.targets[0]?.channel !== 'blog') {
       input = { ...input, targets: [...input.targets.filter(target => target.channel === 'blog'), ...input.targets.filter(target => target.channel === 'band')] };
     }
-    this.log = registrationLog(input);
+    this.traceForTarget = context?.traceForTarget;
+    this.logTarget = input.targets[0];
+    this.log = this.registrationLog(input.mode, this.logTarget);
     return inTrace(this.log, async () => {
     try {
     if (this.serviceLogin.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
@@ -110,10 +117,10 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
   private rootOutcome() {
     const job = this.job;
     if (!job?.completedSteps.includes(7) || job.targets.length === 1) return job;
-    const target = job.targetResults?.[0];
+    const target = job.targetResults?.find(target => target.channel === this.logTarget?.channel && target.key === this.logTarget.key);
     if (!target?.outcome) return job;
     const { failureCode: _aggregateCode, ...snapshot } = job;
-    return { ...snapshot, status: target.outcome === 'ok' ? target.status as 'published' | 'draft_saved' : 'failed' as const,
+    return { ...snapshot, targetResults: [target], status: target.outcome === 'ok' ? target.status as 'published' | 'draft_saved' : 'failed' as const,
       publicationUncertain: target.outcome === 'unconfirmed', ...(target.reason ? { failureCode: target.reason } : {}) };
   }
   private launch() {
@@ -137,7 +144,11 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
         }
         if (j.step === 2) await this.work!.download(this.abort.signal, n => { j.current = n; this.notify(structuredClone(j)); });
         if (j.step === 3) await this.work!.arrange();
-        if (j.step === 4 && this.blog) { this.blog.files = this.work!.prepared!.files; await this.blog.write(); }
+        if (j.step === 4 && this.blog) {
+          this.blog.files = this.work!.prepared!.files;
+          await this.blog.write();
+          trace('job.checkpoint', 'ok', { checkpoint: 'photos_uploaded' });
+        }
         if (j.step === 5 && this.blog) {
           await this.blog.saveAndVerify();
           if (this.blog.draftIdentity) j.blogDraftIdentity = this.blog.draftIdentity;
@@ -204,7 +215,8 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     for (; this.bandIndex < bands.length; this.bandIndex++, this.band = undefined) {
       const result = bands[this.bandIndex]!;
       if (result.outcome || ['published', 'stopped'].includes(result.status)) continue;
-      const child = j.targets[0]?.channel === 'blog' || this.bandIndex > 0 ? registrationLog({ targets: [result], mode: j.mode }) : undefined;
+      const child = this.logTarget?.channel === result.channel && this.logTarget.key === result.key
+        ? undefined : this.registrationLog(j.mode, result);
       const proceed = await inTrace(child, async () => {
         if (j.activeTargetKey && j.activeTargetKey !== result.key) {
           delete j.activity;
@@ -226,7 +238,8 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
           }
           if (!this.directory.choices.some(band => band.key === result.key)) throw Error('BAND_TARGET_INVALID');
           const finished = await this.runBand(result);
-          child?.end(finished ? 'succeeded' : 'stopped', finished ? undefined : 'STOPPED_BEFORE_POST');
+          if (result.readbackNotes?.length) child?.end('uncertain', reasonCode(result.reason ?? 'PUBLISHED_READBACK_INCOMPLETE'));
+          else child?.end(finished ? 'succeeded' : 'stopped', finished ? undefined : 'STOPPED_BEFORE_POST');
           return finished;
         } catch (error) {
           delete j.bandPause;
@@ -269,6 +282,7 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
     const existingPost = await this.band.detectPublished();
     if (existingPost) { result.status = 'published'; result.outcome = 'ok'; result.postUrl = existingPost; await this.emit(); return true; }
     await this.band.write();
+    trace('job.checkpoint', 'ok', { checkpoint: 'photos_uploaded' });
     const proof = (await this.band.observe()).photoProof;
     if (proof) j.bandPhotoVerification = { order: 'matched', ratio: proof.ratio, counts: proof.counts, sources: proof.sources, thumbnails: proof.thumbnails };
     const choice = this.directory.choices.find(b => b.key === result.key);
@@ -403,7 +417,10 @@ export class ChannelRegistrationRunner implements RegistrationRunner {
       const active = this.job.step <= 3 ? !(this.blogSkipped && result.channel === 'blog') : this.job.step <= 5 ? result.channel === 'blog' : result === this.result();
       if (active && result.status === 'failed') { result.status = 'running'; delete result.reason; }
     }
-    this.log = registrationLog(this.job); this.log?.line('job', 'retry'); await this.emit(); this.launch();
+    const nextBand = this.job.targetResults?.find(target => target.channel === 'band' && !target.outcome && !['published', 'stopped'].includes(target.status));
+    this.logTarget = this.job.step === 6 || this.blogSkipped ? nextBand : this.job.targets[0];
+    this.log = this.registrationLog(this.job.mode, this.logTarget);
+    this.log?.line('job', 'retry'); await inTrace(this.log, () => this.emit()); this.launch();
   }
   async continueBand() {
     if (this.job?.status !== 'channel_paused') throw new ApiError('conflict', '밴드 진행을 선택할 작업이 없습니다.');

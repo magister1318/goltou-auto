@@ -786,6 +786,8 @@ export class BandExecution {
       let domFailure: PhotoReadFailure | undefined = { reason: 'PHOTO_SOURCE_MISSING' };
       let domPhotos = 0;
       let cached: ApiPhotoRead | undefined;
+      let used: 'api' | 'cached_feed' | 'recovery_feed' | 'dom' | undefined;
+      let sourceCount = 0;
       let routeMatches: boolean | undefined;
       trace('band.photo.detail_dom', 'start', { counts: { expected: expectedPhotos, attempt } });
       try {
@@ -809,11 +811,14 @@ export class BandExecution {
             domPhotos = dom.readable;
             domFailure = dom.reason ? { reason: dom.reason, counts: { photoSlots: actual.photos.length } } : undefined;
             let apiPhotos = detailPhotos();
+            used = 'api';
             if (apiPhotos === undefined) {
               if (!cached) trace('band.photo.cached_feed', 'start', { counts: { expected: expectedPhotos, attempt } });
               cached = directory.publishedFeedPhotos(expectedUrl, expectedPhotos, this.submittedAt);
               apiPhotos = 'photos' in cached ? cached.photos : recoveredPhotos;
+              used = 'photos' in cached ? 'cached_feed' : recoveredPhotos ? 'recovery_feed' : 'dom';
             }
+            sourceCount = apiPhotos?.length ?? domPhotos;
             return apiPhotos ? { ...actual, apiPhotos } : actual;
           }, bandPlanLinks(this.plan));
         });
@@ -828,6 +833,7 @@ export class BandExecution {
         if (!cached) trace('band.photo.cached_feed', 'skip', { reason: 'PHOTO_SOURCE_SKIPPED', counts: { photoTotal: expectedPhotos, attempt } });
         else if ('photos' in cached) tracePhotoSource('band.photo.cached_feed', expectedPhotos, cached.photos.length, undefined, attempt);
         else tracePhotoSource('band.photo.cached_feed', expectedPhotos, 0, cached, attempt);
+        if (used) trace('band.photo.selected', 'ok', { photoSource: used, counts: { expected: expectedPhotos, observed: sourceCount, attempt } });
       }
     };
     try {
@@ -854,7 +860,7 @@ export class BandExecution {
       if (error instanceof ReadbackMismatch) throw error;
       throw Error('BAND_PUBLISHED_READBACK_UNAVAILABLE');
     }
-    this.verifiedPublished = url; trace('band.confirm.detail', 'ok'); return url;
+    this.verifiedPublished = url; trace('band.confirm.detail', 'ok'); trace('job.checkpoint', 'ok', { checkpoint: 'readback_complete' }); return url;
   }
   private storeIdentity(url: string): Promise<void> {
     if (this.createdIdentity === url && this.identitySave) return this.identitySave;
@@ -925,6 +931,7 @@ export class BandExecution {
           this.env.directory.allowanceConsumed();
         }
         this.submittedAt = Date.now(); this.postAttempted = true;
+        trace('job.checkpoint', 'ok', { checkpoint: 'before_submit' });
         this.signal({ stage: 'submit', phase: 'start', submission: 'publish' });
         this.env.directory.arm(this.env.key, this.env.directory.localPublish ? undefined : url => { void this.storeIdentity(url); });
       });

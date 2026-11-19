@@ -27,13 +27,15 @@ export class BlogRegistrationRunner implements RegistrationRunner {
   private disposed = false;
   private saves = 0;
   private readonly recording: RecordingCheckpoint;
+  private traceForTarget: RegistrationStart['traceForTarget'];
   constructor(private readonly services: BlogServices, checkpoint: Checkpoint, private readonly notify: (job: Job) => void) {
     this.recording = new RecordingCheckpoint(checkpoint, notify);
     this.serviceLogin = new ServiceLoginController(services.host);
     if (services.localPublish && (!services.editorUrl || new URL(services.editorUrl).hostname !== '127.0.0.1')) throw new Error('LOCAL_EDITOR_REQUIRED');
   }
   async start(input: JobInput, title: string, photos: number, work?: PreparationWork, context?: RegistrationStart) {
-    this.log = registrationLog(input);
+    this.traceForTarget = context?.traceForTarget;
+    this.log = this.registrationLog(input);
     return inTrace(this.log, async () => {
     try {
     if (this.serviceLogin.active) throw new ApiError('conflict', '로그인 확인을 먼저 마쳐 주세요.');
@@ -53,6 +55,10 @@ export class BlogRegistrationRunner implements RegistrationRunner {
     });
   }
   private async emit() { if (this.job) await this.recording.emit(this.job); }
+  private registrationLog(input: Pick<JobInput, 'targets' | 'mode'>) {
+    const target = input.targets[0];
+    return (target && this.traceForTarget?.(target)) ?? registrationLog(input);
+  }
   async retryRecord() {
     await this.active; if (!this.job) return;
     this.log = registrationLog(this.job); this.log?.line('runner.record', 'retry');
@@ -70,7 +76,7 @@ export class BlogRegistrationRunner implements RegistrationRunner {
     if (!this.job || !['user_paused', 'login_paused', 'failed'].includes(this.job.status)) throw new ApiError('conflict', '먼저 화면의 선택을 마쳐 주세요.');
     await this.execution?.hide(); this.abort = new AbortController(); this.job.status = 'running'; this.job.message = ''; this.job.service = null;
     for (const result of this.job.targetResults ?? []) if (result.status === 'failed') { result.status = 'running'; delete result.reason; }
-    this.log = registrationLog(this.job); this.log?.line('job', 'retry'); await this.emit(); this.launch();
+    this.log = this.registrationLog(this.job); this.log?.line('job', 'retry'); await inTrace(this.log, () => this.emit()); this.launch();
   }
   async recover(discard: boolean) {
     if (this.job?.status !== 'recovery_paused') throw new ApiError('conflict', '자동복구 안내가 없습니다.');
@@ -126,6 +132,7 @@ export class BlogRegistrationRunner implements RegistrationRunner {
           if (!this.execution) throw new Error('PREPARATION_REQUIRED');
           this.execution.files = prepared.files;
           await this.execution.write();
+          trace('job.checkpoint', 'ok', { checkpoint: 'photos_uploaded' });
         }
         if (job.step === 5) {
           await this.execution!.saveAndVerify();

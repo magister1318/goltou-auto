@@ -130,7 +130,7 @@ export class BlogRichTextWriter {
   private fail(field: BlogFormattingField = 'input'): never {
     const preceding = this.paragraphs.slice(0, this.paragraph).filter(r => r.length > 0).length;
     const paragraph = this.ordinal + preceding;
-    trace('verification', 'fail', { check: field, reason: blogFieldReason[field], counts: { paragraphIndex: paragraph } });
+    trace('verification', 'fail', { check: field, reason: blogFieldReason[field], counts: { expected: 1, observed: 0, paragraphIndex: paragraph } });
     throw new BlogFormattingError('INPUT', [{ paragraph, fields: [field] }]);
   }
   async requireClosedDialog(s: Surface) {

@@ -110,6 +110,8 @@ describe.runIf(Boolean(executablePath))('publish, verified against synthetic loo
       expect(await f.execution.publish()).toBe(f.url);
     }, ['sites.naver-blog.plan.BlogExecution.publish']);
     expect(f.execution.publishedVerified).toBe(true);
+    expect(log.payload?.summary.checks).toEqual(expect.arrayContaining(
+      ['text', 'line_breaks', 'bold', 'links', 'table', 'photos', 'hashtags', 'visibility', 'identity'].map(check => expect.objectContaining({ check, result: 'ok' }))));
     expect(log.lines.some(row => row.step === 'verification' && row.event === 'wait' && row.check === 'hashtags' && row.counts?.observed === 0)).toBe(true);
     expect(log.lines.filter(row => row.step === 'terminal').map(row => row.result)).toEqual(['succeeded']);
     expect(f.counts()).toEqual({ published: 1, deleted: false, outside: 0, submissions: 1 });
@@ -246,7 +248,8 @@ describe('WP20 publish and delete fixture log trails', () => {
     const title = f.execution.plan.steps.find(step => step.kind === 'text' && step.role === 'title');
     if (title?.kind !== 'text') throw Error('FIXTURE_TITLE');
     const post: Post = { postNo: 1, productNo: 1, productTitle: title.text, channel: 'blog', mode: 'publish', status: 'published', postUrl: f.url, targetName: '', step: 7, failReason: '', userName: '', startedAt: 'synthetic', finishedAt: 'synthetic', productChanged: false };
-    await loggedFixture(path.join(path.dirname(f.files[0]!.path), 'deletion'), 'blog_delete', () => removeRecordedBlogPost(f.host, post), ['core.post-delete.removeRecordedBlogPost', 'sites.naver-blog.delete.deleteBlogPost']);
+    const deletion = await loggedFixture(path.join(path.dirname(f.files[0]!.path), 'deletion'), 'blog_delete', () => removeRecordedBlogPost(f.host, post), ['core.post-delete.removeRecordedBlogPost', 'sites.naver-blog.delete.deleteBlogPost']);
+    expect(deletion.payload?.summary.checks).toEqual(expect.arrayContaining(['identity', 'same_post', 'missing_read'].map(check => expect.objectContaining({ check, result: 'ok' }))));
     expect(f.counts()).toMatchObject({ published: 1, deleted: true, outside: 0, submissions: 1 });
   }, 90000);
 });

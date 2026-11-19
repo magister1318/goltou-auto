@@ -12,7 +12,7 @@ export const traceSteps = [
   "photo.download",
   "photo.cleanup",
   "sites.band.posted.readFullBandPost",
-  "job",
+  "job", "job.checkpoint", "band.photo.selected",
   "terminal",
   "recovery",
   "runner.ready",

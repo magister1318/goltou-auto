@@ -1,4 +1,4 @@
-import { trace, type ReasonCode, type TraceCounts } from '@goltou/surface/telemetry';
+import { trace, type ReasonCode, type ComparisonCounts } from '@goltou/surface/telemetry';
 
 export interface PhotoSize { width: number; height: number }
 export interface PhotoSlot extends PhotoSize { signature: string; loaded: boolean }
@@ -12,7 +12,7 @@ export class PhotoOrder {
   private slots: PhotoSlot[] = [];
   private failed = false;
   constructor(readonly urls: string[], readonly sources: PhotoSize[]) {}
-  fail(reason: ReasonCode, counts: TraceCounts, check: 'photos' | 'photo_order' | 'photo_ratio' = 'photos'): never {
+  fail(reason: ReasonCode, counts: ComparisonCounts, check: 'photos' | 'photo_order' | 'photo_ratio' = 'photos'): never {
     this.failed = true;
     trace('verification', 'fail', { check, reason, counts });
     return mismatch();

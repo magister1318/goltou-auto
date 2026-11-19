@@ -1,5 +1,5 @@
 import type { Surface } from '@goltou/surface';
-import { trace, traceStep, type ReasonCode, type TraceCounts } from '@goltou/surface/telemetry';
+import { trace, traceStep, type ReasonCode, type ComparisonCounts } from '@goltou/surface/telemetry';
 import { read } from '../dom';
 import { settledReadback } from '../settled-readback';
 import { blogHashtagPattern } from '../naver-blog/tag-patterns';
@@ -189,6 +189,7 @@ export function verifyFullBandPost(expected: string, uploaded: readonly string[]
     : actual.apiPhotos === undefined && observedPhotos === 0 ? 'PHOTO_SOURCE_MISSING' : 'PHOTO_COUNT_MISMATCH';
   const orderMismatch = photoReason === undefined ? firstPhotoOrderMismatch(uploaded, dom.evidence, actual.apiPhotos) : undefined;
   const photoCounts = { expected: uploaded.length, observed: observedPhotos };
+  trace('verification', photoReason ? 'fail' : 'ok', { check: 'photos', counts: photoCounts, ...(photoReason ? { reason: photoReason } : {}) });
   if (photoReason) {
     const missing = observedPhotos < uploaded.length && (actual.apiPhotos !== undefined || !actual.collage && actual.declaredPhotos === observedPhotos);
     issues.push({field:'photo', ...photoCounts, ...(missing ? {missing:true} : {})});
@@ -201,7 +202,7 @@ export function verifyFullBandPost(expected: string, uploaded: readonly string[]
     trace('verification', 'fail', { check: 'photo_order', reason, counts: photoCounts, photoOrder });
   } else trace('verification', 'ok', { check: 'photo_order', counts: photoCounts });
 
-  const failToken = (field: 'hashtags' | 'href', reason: ReasonCode, counts: TraceCounts, index?: number) => {
+  const failToken = (field: 'hashtags' | 'href', reason: ReasonCode, counts: ComparisonCounts, index?: number) => {
     issues.push({ field, ...(index !== undefined ? { index } : {}) });
     trace('verification', 'fail', { check: field === 'href' ? 'links' : field, reason, counts: { ...counts, ...(index !== undefined ? { step: index } : {}) } });
   };

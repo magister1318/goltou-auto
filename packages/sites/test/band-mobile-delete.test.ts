@@ -113,8 +113,9 @@ describe('real mobile card/menu shape with synthetic identities', () => {
 it('WP20 proves first-try Band deletion through its persistent step log', async () => {
   const f = await fixture(), directory = mkdtempSync(path.join(os.tmpdir(), 'goltou-delete-log-'));
   try {
-    const { result, lines } = await loggedFixture(directory, 'band_delete', f.run, ['sites.band.mobile-delete.deleteMobileRecordedBandPost', 'sites.band.record-read.openRecordedBandFeed']);
+    const { result, lines, payload } = await loggedFixture(directory, 'band_delete', f.run, ['sites.band.mobile-delete.deleteMobileRecordedBandPost', 'sites.band.record-read.openRecordedBandFeed']);
     expect(result).toEqual({ status: 'deleted' }); expect(f.counts().sent).toBe(1); expect(lines.at(-1).result).toBe('succeeded');
+    expect(payload?.summary.checks).toEqual(expect.arrayContaining(['identity', 'missing_read'].map(check => expect.objectContaining({ check, expected: 1, observed: 1, result: 'ok' }))));
   } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 

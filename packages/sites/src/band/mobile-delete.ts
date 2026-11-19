@@ -37,8 +37,11 @@ export async function deleteMobileRecordedBandPost(host: SurfaceHost, target: Ba
     return traceStep('sites.band.mobile-delete.deleteMobileRecordedBandPost', async () => {
   log({ code: 'START' });
   const id = bandPostIdentity(target.url);
-  if (!id) { log({ code: 'IDENTITY_REJECTED' }); return { status: 'not_started' }; }
-  let armed = false, sent = false, attempted = false, success = false;
+  if (!id) {
+    trace('verification', 'fail', { check: 'identity', reason: 'BAND_DELETE_IDENTITY', counts: { expected: 1, observed: 0 } });
+    log({ code: 'IDENTITY_REJECTED' }); return { status: 'not_started' };
+  }
+  let armed = false, sent = false, attempted = false, success = false, verifiedGone = false;
   let session: Awaited<ReturnType<typeof openRecordedBandFeed>> | undefined;
   try {
     log({ code: 'FEED_OPEN' });
@@ -61,6 +64,7 @@ export async function deleteMobileRecordedBandPost(host: SurfaceHost, target: Ba
       if (await session.verifyGone()) {
         if (review) { if (await session.refresh()) throw Error('BAND_DELETE_IDENTITY'); session.reviewFeed(); await review(s); }
         log({ code: 'ALREADY_ABSENT' });
+        verifiedGone = true;
         return { status: 'deleted', alreadyAbsent: true };
       }
       // A first-page feed omission also occurs for older posts. The exact
@@ -89,6 +93,7 @@ export async function deleteMobileRecordedBandPost(host: SurfaceHost, target: Ba
     if (!original) await waitFor(async () => { try { await identity(); return true; } catch { return false; } },
       5000, { surface:s, control:'BAND_POST_DETAIL' });
     await identity();
+    trace('verification', 'ok', { check: 'identity', counts: { expected: 1, observed: 1 } });
     log({ code: 'IDENTITY_VERIFIED' });
     if (await s.readDialog?.()) throw Error('BAND_DELETE_CONFIRM');
     const press = async (selector: string, label: string, before = async () => {}) => {
@@ -123,7 +128,10 @@ export async function deleteMobileRecordedBandPost(host: SurfaceHost, target: Ba
     catch (e) { trace('sites.band.mobile-delete.deleteMobileRecordedBandPost', 'fail', { reason: reasonCode(e) });  if (!(await s.readDialog?.())) throw e; }
     const dialog = await s.readDialog?.();
     log({ code: 'DELETE_SELECTED' });
-    const arm = async () => { log({ code: 'CONFIRM_VERIFIED' }); attempted = true; armed = true; log({ code: 'ARMED' }); };
+    const arm = async () => {
+      trace('job.checkpoint', 'ok', { checkpoint: 'before_submit' });
+      log({ code: 'CONFIRM_VERIFIED' }); attempted = true; armed = true; log({ code: 'ARMED' });
+    };
     if (dialog) {
       if (dialog.kind !== 'confirm' || dialog.message.length > 300 || !dialog.message.includes('삭제') || !s.respondDialog || !await s.readAppFocus()) throw Error('BAND_DELETE_CONFIRM');
       if (dialog.url) { const u = new URL(dialog.url); if (!['band.us', 'www.band.us'].includes(u.hostname) || u.pathname.replace(/\/$/, '') !== activePath) throw Error('BAND_DELETE_CONFIRM'); }
@@ -144,6 +152,7 @@ export async function deleteMobileRecordedBandPost(host: SurfaceHost, target: Ba
     if (await session.refresh() || !await session.verifyGone()) { log({ code: 'UNCERTAIN' }); return { status: 'uncertain' }; }
     if (review) { if (await session.refresh()) throw Error('BAND_DELETE_IDENTITY'); session.reviewFeed(); await review(s); }
     log({ code: 'DELETED' });
+    verifiedGone = true;
     return { status: 'deleted' };
   } catch (e) { trace('sites.band.mobile-delete.deleteMobileRecordedBandPost', 'fail', { reason: reasonCode(e) });
     const error = e instanceof Error ? e.message : '';
@@ -151,7 +160,12 @@ export async function deleteMobileRecordedBandPost(host: SurfaceHost, target: Ba
     log({ code }); log({ code: attempted ? 'UNCERTAIN' : 'NOT_STARTED' });
     return { status: attempted ? 'uncertain' : 'not_started' };
   }
-  finally { armed = false; log({ code: 'DISARMED' }); await session?.close().catch(() => {}); }
+  finally {
+    armed = false; log({ code: 'DISARMED' });
+    trace('verification', verifiedGone ? 'ok' : 'fail', { check: 'missing_read', counts: { expected: 1, observed: Number(verifiedGone) } });
+    trace('job.checkpoint', 'ok', { checkpoint: 'readback_complete' });
+    await session?.close().catch(() => {});
+  }
 
     });
   }

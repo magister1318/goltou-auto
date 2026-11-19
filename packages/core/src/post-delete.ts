@@ -18,22 +18,25 @@ export async function removeRecordedBlogPost(host: SurfaceHost, post: Post, log:
     return traceStep('core.post-delete.removeRecordedBlogPost', async () => {
   requireDeletablePost(post);
   const surface = await host.create('naver');
+  let verified = false;
   try {
     await guardRecordedBlogDelete(surface, post.postUrl);
     await surface.blockRequests?.(['/RabbitWrite.naver', '/RabbitUpdate.naver', '/RabbitTempPostWrite.naver', '/RabbitTempPostUpdate.naver'].map(pathname => ({ hostname: 'blog.naver.com', pathname })));
     await log({ item: 80, pass: 1 });
-    if (await openPostDeletionRead(surface, post.postUrl)) { await log({ item: 81, pass: 1 }); await verifyPostAbsentFromList(surface, post.postUrl, ''); return; }
+    if (await openPostDeletionRead(surface, post.postUrl)) { await log({ item: 81, pass: 1 }); await verifyPostAbsentFromList(surface, post.postUrl, ''); verified = true; return; }
     // Service automation stays hidden, just like editor input. Native visibility
     // is reserved for guarded manual login; app focus is checked before deletion.
     const pages = await read<DeletePage[]>(surface, deletePageSource);
     if (!pages.some(p => p.titles.length)) {
       await verifyPostGone(surface, { url: post.postUrl, title: '' });
+      verified = true;
       return;
     }
     const target = postIdentity(post.postUrl);
     const title = pages.find(page => postIdentity(page.url)?.url === target?.url && page.titles.length === 1)?.titles[0];
     if (!title) throw Error('BLOG_POST_DELETE_CHECK_1');
     await deleteBlogPost(surface, { url: post.postUrl, title, verifyListTitle: false }, log);
+    verified = true;
   } catch (error) { trace('core.post-delete.removeRecordedBlogPost', 'fail', { reason: reasonCode(error) });
     const code = error instanceof Error ? error.message : '';
     const codes = ['OBSERVATION_TIMEOUT', 'SURFACE_NAVIGATION_TIMEOUT', 'BLOG_POST_DELETE_CONFIRM_UNCONFIRMED', 'BLOG_POST_DELETE_READ_ALERT_UNCONFIRMED', 'BLOG_POST_DELETE_LIST_UNCONFIRMED', 'SURFACE_READ_FAILED_OR_SIDE_EFFECT'];
@@ -51,7 +54,11 @@ export async function removeRecordedBlogPost(host: SurfaceHost, post: Post, log:
       '9': '이미 열린 확인창이 있어 삭제를 멈췄습니다.',
     };
     throw new ApiError('conflict', reason ? `${messages[reason] ?? '삭제할 글을 확인하지 못했습니다.'} 삭제하지 않고 멈췄습니다.` : '글 삭제 결과를 확인하지 못했습니다. 등록 기록은 바꾸지 않았습니다. 다시 시도하면 먼저 글의 존재 여부를 읽습니다.');
-  } finally { await host.destroy(surface); }
+  } finally {
+    trace('verification', verified ? 'ok' : 'fail', { check: 'missing_read', counts: { expected: 1, observed: Number(verified) } });
+    trace('job.checkpoint', 'ok', { checkpoint: 'readback_complete' });
+    await host.destroy(surface);
+  }
 
     });
   }

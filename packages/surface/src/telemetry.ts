@@ -2,11 +2,14 @@ import { traceSteps, traceReasons, traceSelectors } from './telemetry-catalog';
 
 export type JobKind = 'blog_draft' | 'blog_publish' | 'blog_delete' | 'unfinished_cleanup' | 'band_post' | 'band_delete' | 'login_check' | 'band_list';
 /** Maintenance logs do not add a registration operation to existing exhaustive policies. */
-export type LogJobKind = JobKind | 'app_update';
+export type LogJobKind = JobKind | 'app_update' | 'record';
 export type LogSite = 'naver' | 'band' | 'app';
 export type TraceStep = typeof traceSteps[number];
 export type ReasonCode = typeof traceReasons[number];
-export type TraceEvent = 'start' | 'ok' | 'fail' | 'retry' | 'skip' | 'wait' | 'blocked_expected';
+export type TraceEvent = 'start' | 'ok' | 'fail' | 'retry' | 'skip' | 'wait' | 'blocked_expected' | 'decision';
+export const traceCheckpoints = ['photos_uploaded', 'before_submit', 'readback_complete'] as const;
+export const tracePhotoSources = ['api', 'cached_feed', 'recovery_feed', 'dom'] as const;
+export const traceChoices = ['ok', 'fail', 'retry', 'skip', 'blocked_expected'] as const;
 /** Classify only known collection routes, never a generic unknown/service request. */
 export function expectedTelemetryRequest(request: Pick<import('./index').GuardedRequest, 'url' | 'method'>) {
   try {
@@ -25,10 +28,14 @@ export interface TraceCounts {
   timeoutMs?: number; documents?: number; editables?: number; fileInputs?: number; writeButtons?: number; dialogs?: number; composers?: number; postBodies?: number;
   differences?: number; paragraphs?: number; lineBreaks?: number; hashtags?: number; links?: number; photoSlots?: number;
 }
+export type ComparisonCounts = TraceCounts & Required<Pick<TraceCounts, 'expected' | 'observed'>>;
 export interface TraceDetail {
   update?: import('./update-diagnostics').UpdateDiagnostic;
   reason?: ReasonCode; counts?: TraceCounts;
   check?: 'table' | 'title' | 'paragraphs' | 'prices' | 'departures' | 'golf_courses' | 'text' | 'photos' | 'photo_order' | 'photo_ratio' | 'links' | 'hashtags' | 'line_breaks' | 'identity' | 'focus' | 'record' | 'alert_kind' | 'delete_notice' | 'same_post' | 'missing_read' | 'feed_location' | 'bold' | 'number' | 'cursor' | 'input' | 'href' | 'photo' | 'visibility' | 'stability';
+  checkpoint?: typeof traceCheckpoints[number];
+  photoSource?: typeof tracePhotoSources[number];
+  choice?: typeof traceChoices[number];
   dialog?: 'alert' | 'confirm';
   selector?: typeof traceSelectors[number];
   operation?: typeof traceOperations[number];
@@ -88,7 +95,14 @@ export function reasonCode(value: unknown): ReasonCode {
   }
   return traceReasons.includes(code as ReasonCode) ? code as ReasonCode : 'UNEXPECTED_FAILURE';
 }
-export function trace(step: TraceStep, event: TraceEvent, detail?: TraceDetail, duration?: number) { provider?.current()?.line(step, event, detail, duration); }
+type TraceArguments<S extends TraceStep, E extends TraceEvent> =
+  S extends 'verification' ? 'fail' extends E
+    ? [detail: TraceDetail & { check: NonNullable<TraceDetail['check']>; counts: ComparisonCounts }, duration?: number]
+    : [detail?: TraceDetail | undefined, duration?: number | undefined]
+  : [detail?: TraceDetail | undefined, duration?: number | undefined];
+export function trace<S extends TraceStep, E extends TraceEvent>(step: S, event: E, ...[detail, duration]: TraceArguments<S, E>) {
+  provider?.current()?.line(step, event, detail, duration);
+}
 export async function traceStep<T>(step: TraceStep, work: () => Promise<T>): Promise<T> {
   const started = Date.now(); trace(step, 'start');
   try { const result = await work(); trace(step, 'ok', undefined, Date.now() - started); return result; }

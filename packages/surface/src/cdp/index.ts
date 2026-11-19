@@ -85,6 +85,11 @@ export class CdpSurface implements Surface {
       const requestId = String(p.requestId);
       if (p.responseStatusCode !== undefined || p.responseErrorReason !== undefined) {
         const accepted = this.acceptedRequests.get(requestId); this.acceptedRequests.delete(requestId);
+        if (accepted) {
+          const status = Number(p.responseStatusCode);
+          trace('barrier', 'ok', { ...requestTrace(accepted, true),
+            ...(Number.isInteger(status) ? { counts: { status } } : {}), reason: 'REQUEST_ALLOWED' });
+        }
         if (accepted && p.responseErrorReason === undefined &&
           (!['GET', 'HEAD', 'OPTIONS'].includes(accepted.method) ||
             accepted.method === 'GET' && this.requestGuard?.observeResponse?.(accepted) === true)) {

@@ -27,6 +27,7 @@ export function createFakeApi(fixtureSession?: { token: string; user: User; prod
   }));
   type StoredPost = Post & { owner: number; targetKey: string; hash: string };
   const posts: StoredPost[] = [];
+  const traces = new Map<string, ApiRoutes['/auto/posts/trace']['input']>();
   const seed = (product: number, channel: Channel, status: Post['status'], owner = 12, changed = false) => {
     const p = products[product]!;
     const at = `2026-11-${product === 0 ? '12' : product === 1 ? '10' : product === 2 ? '08' : '07'}T09:00:00+09:00`;
@@ -108,6 +109,30 @@ export function createFakeApi(fixtureSession?: { token: string; user: User; prod
           if (!post) throw new ApiError('not_found', '기록을 찾지 못했습니다.');
           if (post.owner !== user.userNo && user.role !== 'admin') throw new ApiError('forbidden', '내 기록만 고칠 수 있습니다.');
           if (typeof data.log !== 'string' || data.log.length > 524288) throw new ApiError('invalid', '로그 길이를 확인해 주세요.');
+          output = {}; break;
+        }
+        case '/auto/posts/trace': {
+          const value = input as ApiRoutes['/auto/posts/trace']['input'];
+          const utc = (stamp: unknown) => typeof stamp === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(stamp) && Number.isFinite(Date.parse(stamp));
+          const fits = (text: unknown, limit: number) => typeof text === 'string' && text.length <= limit;
+          const bytes = (text: string) => new TextEncoder().encode(text).length;
+          if (!Number.isSafeInteger(value.postNo) || value.postNo < 1 || typeof value.jobId !== 'string' || !/^[A-Za-z0-9_-]{1,64}$/.test(value.jobId) ||
+            !['blog_draft', 'blog_publish', 'blog_delete', 'band_post', 'band_delete', 'record'].includes(value.kind) ||
+            !['blog', 'band'].includes(value.channel) || !['partial', 'final'].includes(value.phase) ||
+            !fits(value.appVersion, 20) || !fits(value.device, 60) || !utc(value.startedAt) ||
+            !(value.endedAt === null || utc(value.endedAt)) ||
+            !['running', 'success', 'failed', 'stopped', 'paused', 'incomplete'].includes(value.result) ||
+            !fits(value.reason, 120) || !value.summary || typeof value.summary !== 'object' || Array.isArray(value.summary) ||
+            bytes(JSON.stringify(value.summary)) > 65536 || typeof value.log !== 'string' || bytes(value.log) > 524288 ||
+            typeof value.truncated !== 'boolean' || !Number.isSafeInteger(value.droppedLines) || value.droppedLines < 0) {
+            throw new ApiError('invalid', '추적 로그 입력을 확인해 주세요.');
+          }
+          const post = posts.find(p => p.postNo === value.postNo);
+          if (!post || post.channel !== value.channel) throw new ApiError('invalid', '기록을 찾지 못했습니다.');
+          if (post.owner !== user.userNo && user.role !== 'admin') throw new ApiError('forbidden', '내 기록만 고칠 수 있습니다.');
+          const previous = traces.get(value.jobId);
+          if (previous && previous.postNo !== value.postNo) throw new ApiError('conflict', '작업 번호가 이미 등록됐습니다.');
+          traces.set(value.jobId, copy(value));
           output = {}; break;
         }
         case '/auto/posts/update': {

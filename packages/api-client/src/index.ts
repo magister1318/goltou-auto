@@ -38,6 +38,13 @@ export interface PostInput {
   options: { polish: boolean; polishStrength?: PolishStrength; closing: boolean; linkCard: boolean }; contentHash: string;
 }
 export interface PostUpdate { postNo: number; status: PostStatus; step: number; failReason: string; postUrl: string }
+export type PostTraceKind = 'blog_draft' | 'blog_publish' | 'band_post' | 'blog_delete' | 'band_delete' | 'record';
+export type PostTraceResult = 'running' | 'success' | 'failed' | 'stopped' | 'paused' | 'incomplete';
+export interface PostTrace {
+  postNo: number; jobId: string; kind: PostTraceKind; channel: Channel; phase: 'partial' | 'final';
+  appVersion: string; device: string; startedAt: string; endedAt: string | null; result: PostTraceResult;
+  reason: string; summary: Record<string, unknown>; log: string; truncated: boolean; droppedLines: number;
+}
 export interface Post extends PostUpdate {
   /** Local installation metadata; older records may lack it. */
   blogVisibility?: 'public' | 'private';
@@ -60,6 +67,7 @@ export interface ApiRoutes {
   '/auto/products/get': { input: { productNo: number }; output: Product };
   '/auto/posts/start': { input: PostInput; output: { postNo: number } };
   '/auto/posts/log': { input: { postNo: number; log: string }; output: Record<string, never> };
+  '/auto/posts/trace': { input: PostTrace; output: Record<string, never> };
   '/auto/posts/update': { input: PostUpdate; output: Record<string, never> };
   '/auto/posts/list': { input: PostQuery; output: Page<Post> };
   '/auto/stats/today': { input: Record<string, never>; output: TodayStats };
@@ -85,13 +93,15 @@ export function createApiClient(baseUrl: string, fetcher: FetchLike, timeoutMs =
       const result = async () => {
         const response = await fetcher(`${baseUrl.replace(/\/$/, '')}${path}`, { method: 'POST', headers, body, signal: controller.signal, redirect: 'error', credentials: 'omit' })
           .catch(() => { throw new ApiError('server', '연결하지 못했습니다. 잠시 뒤 다시 해 주세요.', true); });
-        if ((path === '/auto/posts/log' || path === '/auto/stats/today') && [404, 405].includes(response.status ?? 0)) throw new ApiError('not_found', '지원하지 않는 요청입니다.');
+        if ((path === '/auto/posts/trace' || path === '/auto/posts/log' || path === '/auto/stats/today') && [404, 405].includes(response.status ?? 0)) throw new ApiError('not_found', '지원하지 않는 요청입니다.');
         body = '';
         return { response, envelope: await response.json() as { ok?: unknown; data?: unknown; code?: unknown; message?: unknown } | null };
       };
       const { response, envelope } = await Promise.race([result(), new Promise<never>((_, reject) => {
         timer = setTimeout(() => { controller.abort(); reject(new ApiError('server', '요청 시간이 초과됐습니다. 연결을 확인하고 다시 눌러 주세요.', true)); }, timeoutMs);
       })]);
+      if (path === '/auto/posts/trace' && envelope?.ok === false && envelope.code === 'not_found')
+        throw new ApiError('server', '추적 요청을 처리하지 못했습니다.');
       if (envelope?.ok === false && codes.includes(envelope.code as ErrorCode) && typeof envelope.message === 'string')
         throw new ApiError(envelope.code as ErrorCode, envelope.message);
       if (!response.ok || envelope?.ok !== true || !Object.hasOwn(envelope, 'data')) throw new ApiError('server', '응답을 읽지 못했습니다.');

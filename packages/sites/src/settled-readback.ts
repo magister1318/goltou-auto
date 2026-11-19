@@ -36,7 +36,16 @@ export async function settledReadback<T>(options: {
       counts: { expected: item.expected, observed: item.observed },
     }, elapsed);
     trace('verification',done?'ok':'wait',{check:'stability',reason:'READBACK_STABILITY',counts:{expected:2,observed:stable?2:1}},elapsed);
-    if (done || elapsed >= options.timeoutMs) return { value, stable, classes };
+    if (done) return { value, stable, classes };
+    if (elapsed >= options.timeoutMs) {
+      for (const item of classes) if (!item.present) trace('verification', 'fail', {
+        check: item.check, reason: item.reason, counts: { expected: item.expected, observed: item.observed },
+      });
+      if (!stable) trace('verification', 'fail', {
+        check: 'stability', reason: 'READBACK_STABILITY', counts: { expected: 2, observed: value === null ? 0 : 1 },
+      });
+      return { value, stable, classes };
+    }
     previous = signature;
     await pause(Math.min(options.intervalMs ?? 750, Math.max(0, options.timeoutMs - (now() - started))));
   }

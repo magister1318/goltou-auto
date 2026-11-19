@@ -9,7 +9,6 @@ import { AppCore, MemoryTokenStore } from '../src/app';
 import { ChannelRegistrationRunner } from '../src/band-runner';
 import { fillMyText, parseContents, productTags, runText } from '../src/convert';
 import { JobLogStore } from '../src/job-logs';
-import { uploadFailedPostLog } from '../src/failed-log-upload';
 import { migratePreferences, MemoryPreferencesStore } from '../src/preferences';
 import type { AppRequest, Commands, JobInput } from '../src/protocol';
 import { makePreview } from '../src/preparation';
@@ -135,12 +134,17 @@ describe('WP37 상품 등록 계약', () => {
   it('uses separate safe logs and records, waits between bands, and retries only a proven failure', async () => {
     const logs = await logsFixture(), preferences = new MemoryPreferencesStore();
     let logAttempts = 0;
-    const uploads: ApiRoutes['/auto/posts/log']['input'][] = [];
+    let failBlogTrace = true;
+    const uploads: ApiRoutes['/auto/posts/trace']['input'][] = [];
     const api = forward(fakeApi(), (route, input) => {
-      if (route !== '/auto/posts/log') return;
+      if (route !== '/auto/posts/trace') return;
       logAttempts++;
-      if (logAttempts === 1) throw new ApiError('server', 'fixture connection error', true);
-      uploads.push(input as ApiRoutes['/auto/posts/log']['input']);
+      const payload = input as ApiRoutes['/auto/posts/trace']['input'];
+      if (payload.kind === 'blog_publish' && failBlogTrace) {
+        failBlogTrace = false;
+        throw new ApiError('server', 'fixture connection error', true);
+      }
+      uploads.push(payload);
     });
     const { app, call, paused } = await appFixture(api, { logs, preferences });
     const input: JobInput = { productNo, mode: 'publish', publishConfirmed: true, targets: [band('travel'), band('golf'), { channel: 'blog', key: 'blog', name: '합성' }, band('club')], options };
@@ -151,14 +155,16 @@ describe('WP37 상품 등록 계약', () => {
     for (const delay of paused) expect(delay).toBeGreaterThanOrEqual(20000), expect(delay).toBeLessThanOrEqual(40000);
     expect(app.snapshot().job?.targetResults?.map(result => result.outcome)).toEqual(['ok', 'failed', 'unconfirmed', 'ok']);
     expect((await preferences.read()).lastBandKeys).toEqual(['travel', 'golf', 'club']);
-    expect(uploads).toHaveLength(2); expect(logAttempts).toBe(3);
-    expect(new Set(uploads.map(value => value.postNo)).size).toBe(2);
-    expect(uploads[0]?.log).toContain('BAND_PHOTO_LIMIT');
-    expect(uploads[1]?.log).toContain('BAND_POST_UNCONFIRMED:IDENTITY_NOT_FOUND');
+    await vi.waitFor(() => expect(logAttempts).toBe(4));
+    expect(uploads).toHaveLength(3);
+    expect(new Set(uploads.map(value => value.postNo)).size).toBe(3);
+    expect(uploads.find(value => value.result === 'failed')?.log).toContain('BAND_PHOTO_LIMIT');
+    expect(uploads.find(value => value.result === 'incomplete')?.log).toContain('BAND_POST_UNCONFIRMED:IDENTITY_NOT_FOUND');
     expect(JSON.stringify(uploads)).not.toMatch(/fixture-session|방콕|https:/);
     expect(logs.list().filter(log => log.kind === 'band_post').map(log => log.result).sort()).toEqual(['failed', 'succeeded', 'uncertain']);
     await call('job.retryFailed', {});
     await vi.waitFor(() => expect(app.snapshot().job?.targetResults?.map(result => result.outcome)).toEqual(['ok', 'ok', 'unconfirmed', 'ok']));
+    await vi.waitFor(() => expect(uploads).toHaveLength(5));
     expect(site.events.slice(-2)).toEqual(['club', 'travel']);
     expect((await preferences.read()).lastBandKeys).toEqual(['travel', 'golf', 'club']);
     await expect(call('job.retryFailed', {})).rejects.toMatchObject({ code: 'conflict' });
@@ -186,23 +192,18 @@ describe('WP37 상품 등록 계약', () => {
     await expect(call('job.start', { productNo, mode: 'publish', publishConfirmed: true, targets: ['a', 'b', 'c', 'd'].map(band), options })).rejects.toThrow('밴드 하루 한도');
     expect(starts).not.toHaveBeenCalled();
   });
-  it('uploads capped code and count lines and quietly ignores absent routes', async () => {
+  it('keeps the capped diagnostic export readable', async () => {
     const logs = await logsFixture(), log = logs.begin('band_post', 'band');
-    const missing = vi.fn(() => { throw new ApiError('not_found', 'route missing'); });
-    const api = forward(fakeApi(), route => { if (route === '/auto/posts/log') missing(); });
     await inTrace(log, async () => {
-      trace('verification', 'fail', { reason: 'READBACK_HREF', counts: { observed: 1 } });
-      trace('verification', 'fail', { reason: 'READBACK_NUMBER', counts: { observed: 222 } });
+      trace('verification', 'fail', { check: 'href', reason: 'READBACK_HREF', counts: { expected: 2, observed: 1 } });
+      trace('verification', 'fail', { check: 'number', reason: 'READBACK_NUMBER', counts: { expected: 1, observed: 222 } });
       for(let i=0;i<10;i++) trace('verification', 'wait', { reason:'READBACK_PHOTOS', counts:{ observed:i } });
-      trace('verification', 'fail', { reason:'READBACK_NUMBER', counts:{ observed:222 } });
-      const tail = logs.uploadTail(log.id, 260);
-      expect(Buffer.byteLength(tail)).toBeLessThanOrEqual(260);
+      trace('verification', 'fail', { check: 'number', reason:'READBACK_NUMBER', counts:{ expected: 1, observed:222 } });
+      const tail = logs.uploadTail(log.id, 350);
+      expect(Buffer.byteLength(tail)).toBeLessThanOrEqual(350);
       expect(tail).toContain('UPLOAD_TRUNCATED');
       expect(tail.startsWith('{"step":"job","event":"start"')).toBe(true);
       expect(tail).toContain('READBACK_NUMBER'); expect(tail).not.toContain('READBACK_HREF');
-      await uploadFailedPostLog(api, 17, tail, token);
     });
-    expect(missing).toHaveBeenCalledTimes(1);
-    expect(logs.uploadTail(log.id)).toContain('POST_LOG_ROUTE_MISSING');
   });
 });

@@ -1,7 +1,11 @@
 import { ApiError } from '@goltou/api-client';
 import type { Job, JobInput, Simulation, TargetResult } from './protocol';
 import type { PreparationWork } from './preparation';
-export interface RegistrationStart { retry: boolean; startFailures: TargetResult[] }
+import type { TraceJob } from '@goltou/surface/telemetry';
+export interface RegistrationStart {
+  retry: boolean; startFailures: TargetResult[];
+  traceForTarget?: (target: JobInput['targets'][number]) => TraceJob | undefined;
+}
 export interface RegistrationRunner {
   readonly job: Job | null;
   readonly serviceLogin?: import('./service-login').ServiceLoginController;

@@ -67,7 +67,13 @@ const noop: DeleteLog = async () => {};
 export async function preparePostDelete(surface: Surface, target: DeleteTarget, log: DeleteLog = noop, run = 0) {
     return traceStep('sites.naver-blog.delete.preparePostDelete', async () => {
   const check = async (items: DeleteDiagnostic[]) => {
-    for (const item of items) await log({ ...item, run });
+    for (const item of items) {
+      if (item.item <= 4 || item.pass !== 1) trace('verification', item.pass === 1 ? 'ok' : 'fail', {
+        check: item.item <= 4 ? 'identity' : item.item === 8 ? 'focus' : item.item === 9 ? 'alert_kind' : 'input',
+        counts: { expected: item.expected ?? 1, observed: item.actual ?? item.pass, step: item.item },
+      });
+      await log({ ...item, run });
+    }
     const failed = items.find(i => i.pass !== 1);
     if (failed) throw new Error(`BLOG_POST_DELETE_CHECK_${failed.item}`);
   };
@@ -175,7 +181,12 @@ export async function verifyPostAbsentFromList(surface: Surface, url: string, ti
       {check:'same_post',reason:'READBACK_POST_LIST_ABSENCE',expected:0,observed:value?.targetPresent||value?.titlePresent?1:0,present:!!value&&!value.targetPresent&&!value.titlePresent},
     ],
   });
-  if(!settled.stable||settled.classes.some(item=>!item.present))throw Error('BLOG_POST_DELETE_LIST_UNCONFIRMED');
+  if (!settled.stable || settled.classes.some(item => !item.present)) {
+    for (const item of settled.classes) if (!item.present) trace('verification', 'fail', {
+      check: item.check, reason: item.reason, counts: { expected: item.expected, observed: item.observed },
+    });
+    throw Error('BLOG_POST_DELETE_LIST_UNCONFIRMED');
+  }
 
     });
   }
@@ -204,6 +215,7 @@ export async function deleteBlogPost(surface: Surface, target: DeleteTarget, log
   requireDeleteConfirmation(dialog, receipt);
   if (!pressed || !dialog || !surface.respondDialog || await surface.readAppFocus?.() === false) throw new Error('BLOG_POST_DELETE_CONFIRM_UNCONFIRMED');
   await log({ item: 16, pass: 1 });
+  trace('job.checkpoint', 'ok', { checkpoint: 'before_submit' });
   await surface.respondDialog(dialog.id, true); await sleep(800);
   await verifyPostGone(surface, target);
   await log({ item: 17, pass: 1 });
