@@ -8,7 +8,6 @@ export const tagPanelToggle = 'button[data-click-area="tpb.publish"][class*="pub
 // Check both independent layer controls, including a layer whose tag input vanished.
 const layerSelector = '[class^="tag_textarea__"] #tag-input, button[data-click-area="tpb*i.publish"]';
 const areaSelector = 'div[class^="tag_textarea__"]';
-const wheelSelector = `${areaSelector}:has(:is(${tagInputSelector}))`;
 const layerRead = `const open=docs.some(({d})=>Array.from(d.querySelectorAll(${JSON.stringify(layerSelector)})).some(visible));`;
 const inputRead = `const inputs=docs.flatMap(frame=>Array.from(frame.d.querySelectorAll(${JSON.stringify(tagInputSelector)})).filter(visible).map(input=>({input,frame})));`;
 const focusRead = `${inputRead}
@@ -21,11 +20,12 @@ const focusRead = `${inputRead}
   const focusHit=!tag?'[none]':${JSON.stringify(clickHitTags)}.includes(tag)?tag.toUpperCase()+(prefix?'.'+prefix:''):'[other]';`;
 
 type Point = { x: number; y: number };
+type ScrollMethod = NonNullable<BlogTagDiagnostic['method']>;
 type TagGeometry = {
   input: Point;
   inputInside: boolean;
+  windowYs: [number, ...number[]];
   area?: { clientHeight: number; scrollHeight: number; scrollTop: number; chips: number };
-  wheelPoints?: Point[];
 };
 
 function tagGeometry(surface: Surface): Promise<TagGeometry | null> {
@@ -34,10 +34,15 @@ function tagGeometry(surface: Surface): Promise<TagGeometry | null> {
     const {input,frame:{d,x,y}}=inputs[0], r=input.getBoundingClientRect();
     const at={x:x+r.left+r.width/2,y:y+r.top+r.height/2};
     const inViewport=at.x>0&&at.y>0&&at.x<innerWidth&&at.y<innerHeight;
+    const windowYs=[];
+    for(let w=d.defaultView;;w=w.parent){
+      windowYs.push(w.scrollY);
+      if(w===window) break;
+    }
     const areas=Array.from(d.querySelectorAll(${JSON.stringify(areaSelector)}));
     let area=input.parentElement;
     while(area&&!areas.includes(area)) area=area.parentElement;
-    if(!area) return {input:at,inputInside:inViewport};
+    if(!area) return {input:at,inputInside:inViewport,windowYs};
     const box=area.getBoundingClientRect();
     const {clientWidth,clientHeight,clientLeft,clientTop,scrollHeight,scrollTop}=area;
     const x0=x+box.left+clientLeft,y0=y+box.top+clientTop;
@@ -45,31 +50,19 @@ function tagGeometry(surface: Surface): Promise<TagGeometry | null> {
     const top=Math.max(0,y0),bottom=Math.min(innerHeight,y0+clientHeight);
     const inputInside=inViewport&&at.x>=left&&at.x<right&&at.y>=top&&at.y<bottom;
     const chips=area.querySelectorAll('span[class*="tag__"][aria-label]').length;
-    const overflow=area.ownerDocument.defaultView.getComputedStyle(area).overflowY;
-    const wheelPoints=[];
-    if((overflow==='auto'||overflow==='scroll')&&right-left>4&&bottom-top>4){
-      for(const px of [right-2,left+2,(left+right)/2])
-        for(const py of [(top+bottom)/2,top+2,bottom-2]) wheelPoints.push({x:px,y:py});
-    }
-    return {input:at,inputInside,area:{clientHeight,scrollHeight,scrollTop,chips},wheelPoints};`);
+    return {input:at,inputInside,windowYs,area:{clientHeight,scrollHeight,scrollTop,chips}};`);
 }
 
-async function clickTarget(surface: Surface, at: Point, selector: string) {
+async function clickTarget(surface: Surface, at: Point, selector: string, direct = false) {
   let hit = '[other]';
   const matched = await surface.readClickTarget?.(at.x, at.y, selector, {
+    direct,
     onMiss: { classes: [], classPrefixes: blogTagClassPrefixes, ariaLabels: [], report: ({ rejectedHit }) => {
       if (!rejectedHit) hit = '[none]';
       else if (rejectedHit.tag !== '[other]') hit = rejectedHit.tag.toUpperCase() + (rejectedHit.classes[0] ? `.${rejectedHit.classes[0]}` : '');
     } },
   }).catch(() => false);
-  return { matched: matched === true, hit: matched ? 'INPUT' : hit };
-}
-
-async function wheelPoint(surface: Surface, points: readonly Point[]) {
-  const hit = (at: Point, direct: boolean) => surface.readClickTarget?.(at.x, at.y, wheelSelector, { direct });
-  for (const at of points) if (await hit(at, true)) return at;
-  for (const at of points) if (await hit(at, false)) return at;
-  return null;
+  return { matched: matched === true, hit: matched ? 'SELF' : hit };
 }
 
 function tagFocusLost(phase: BlogTagDiagnostic['phase'], hit: string): never {
@@ -77,10 +70,17 @@ function tagFocusLost(phase: BlogTagDiagnostic['phase'], hit: string): never {
   throw new Error('BLOG_TAG_FOCUS_LOST');
 }
 
-function tagClickDecision(phase: 'before_click' | 'after_click', geometry: TagGeometry | null, hit: string, wheels: number, choice: 'ok' | 'retry' | 'fail') {
+function tagClickDecision(phase: 'before_click' | 'after_click', method: ScrollMethod, before: TagGeometry,
+  after: TagGeometry | null, hit: string, choice: 'ok' | 'retry' | 'fail') {
+  const area = after?.area ?? before.area;
   trace('verification', 'decision', { check: 'focus', selector: 'BLOG_TAG_INPUT', choice,
     ...(choice === 'fail' ? { reason: 'BLOG_TAG_FOCUS_LOST' as const } : {}),
-    blogTag: { phase, hit, wheels, inputInside: geometry?.inputInside ?? false, ...geometry?.area } });
+    blogTag: { phase, method, hit, inputInside: after?.inputInside ?? false,
+      ...(before.area && { scrollTopBefore: before.area.scrollTop, chipsBefore: before.area.chips }),
+      ...(area && { clientHeight: area.clientHeight, scrollHeight: area.scrollHeight }),
+      ...(after?.area && { scrollTopAfter: after.area.scrollTop, chipsAfter: after.area.chips }),
+      winYBefore: before.windowYs[0], ...(after && { winYAfter: after.windowYs[0] }),
+    } });
 }
 
 export function tagLayerOpen(surface: Surface): Promise<boolean> {
@@ -129,35 +129,45 @@ export async function clickTagInput(surface: Surface, timeoutMs = 8000, check?: 
       if (error instanceof Error && error.message === 'OBSERVATION_TIMEOUT') throw new ControlNotFoundError('BLOG_TAG_INPUT');
       throw error;
     });
-    for (let wheels = 0; ; wheels++) {
+    let before = geometry;
+    let method: ScrollMethod = 'none';
+    let target = await clickTarget(surface, geometry.input, tagInputSelector, true);
+    for (const nextMethod of ['scrollIntoView', 'scrollTop'] as const) {
+      if (geometry.inputInside && target.matched) break;
+      const { area } = geometry;
+      if (!area || !surface.scrollElement) break;
+      tagClickDecision('before_click', method, before, geometry, target.hit, 'retry');
       await check?.();
-      const { input, inputInside, area, wheelPoints } = geometry;
-      const { matched, hit } = await clickTarget(surface, input, tagInputSelector);
-      if (inputInside && matched) {
-        tagClickDecision('before_click', geometry, hit, wheels, 'ok');
-        await surface.click(input.x, input.y, async () => {
-          const current = await clickTarget(surface, input, tagInputSelector);
-          if (!current.matched) tagFocusLost('click_target', current.hit);
-        });
-        await sleep(350);
-        const after = await tagGeometry(surface);
-        const focused = await readTagFocus(surface);
-        const hitAfter = after ? await clickTarget(surface, after.input, tagInputSelector) : null;
-        tagClickDecision('after_click', after, hitAfter?.hit ?? focused.focusHit, wheels, focused.tagFocused ? 'ok' : 'fail');
-        if (!focused.tagFocused) tagFocusLost('required_focus', focused.focusHit);
-        return;
+      before = geometry;
+      method = nextMethod;
+      const scrolled = await surface.scrollElement(tagInputSelector, areaSelector, method);
+      if (scrolled) await sleep(100);
+      const after = await tagGeometry(surface);
+      target = after ? await clickTarget(surface, after.input, tagInputSelector, true) : { matched: false, hit: '[none]' };
+      if (!scrolled || !after?.area || area.chips !== after.area.chips ||
+        before.windowYs.length !== after.windowYs.length || before.windowYs.some((y, i) => y !== after.windowYs[i])) {
+        tagClickDecision('before_click', method, before, after, target.hit, 'fail');
+        throw new Error('BLOG_TAG_FOCUS_LOST');
       }
-      const remaining = area ? area.scrollHeight - area.clientHeight - area.scrollTop : 0;
-      const at = area && wheelPoints && surface.wheel && wheels < 8 && remaining >= 1 ? await wheelPoint(surface, wheelPoints) : null;
-      tagClickDecision('before_click', geometry, hit, wheels, at ? 'retry' : 'fail');
-      if (!at || !area || !surface.wheel) throw new Error('BLOG_TAG_FOCUS_LOST');
-      // Limit the wheel to the tag area's remaining scroll range.
-      await surface.wheel(at.x, at.y, Math.min(remaining, area.clientHeight * 2));
-      await sleep(100);
-      const next = await tagGeometry(surface);
-      if (!next) throw new ControlNotFoundError('BLOG_TAG_INPUT');
-      geometry = next;
+      geometry = after;
     }
+    if (!geometry.inputInside || !target.matched) {
+      tagClickDecision('before_click', method, before, geometry, target.hit, 'fail');
+      throw new Error('BLOG_TAG_FOCUS_LOST');
+    }
+    await check?.();
+    tagClickDecision('before_click', method, before, geometry, target.hit, 'ok');
+    const { input } = geometry;
+    await surface.click(input.x, input.y, async () => {
+      const current = await clickTarget(surface, input, tagInputSelector, true);
+      if (!current.matched) tagFocusLost('click_target', current.hit);
+    });
+    await sleep(350);
+    const after = await tagGeometry(surface);
+    const focused = await readTagFocus(surface);
+    const hitAfter = after ? await clickTarget(surface, after.input, tagInputSelector, true) : null;
+    tagClickDecision('after_click', method, before, after, hitAfter?.hit ?? focused.focusHit, focused.tagFocused ? 'ok' : 'fail');
+    if (!focused.tagFocused) tagFocusLost('required_focus', focused.focusHit);
   });
 }
 

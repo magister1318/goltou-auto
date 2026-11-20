@@ -247,22 +247,53 @@ export class CdpSurface implements Surface {
 
   async readClickTarget(x: number, y: number, selector: string, options?: ClickTargetOptions): Promise<boolean> {
     return traceStep('surface.cdp.index.CdpSurface.readClickTarget', async () => {
-      this.jobTrace = currentTrace() ?? this.jobTrace;
       if (![x, y].every(Number.isFinite)) throw new Error('SURFACE_HIT_TEST_FAILED');
-      const { frameTree } = await this.cdp.send<{ frameTree: { frame: { id: string } } }>('Page.getFrameTree');
-      const { executionContextId } = await this.cdp.send<{ executionContextId: number }>('Page.createIsolatedWorld', {
-        frameId: frameTree.frame.id, worldName: 'goltou-click-target',
-      });
       // Blink may flush layout for elementFromPoint, which V8 rejects with
       // throwOnSideEffect. Only this fixed reader runs in the isolated world.
-      const { result, exceptionDetails } = await this.cdp.send<{ result: { value?: boolean | ClickTargetMiss }; exceptionDetails?: unknown }>('Runtime.evaluate', {
-        expression: clickTargetExpression(x, y, selector, options), contextId: executionContextId,
-        returnByValue: true, timeout: 5000,
-      });
-      if (exceptionDetails) throw new Error('SURFACE_HIT_TEST_FAILED');
-      if (result.value && typeof result.value === 'object') options?.onMiss?.report(result.value);
-      return result.value === true;
+      const result = await this.evaluateInIsolatedWorld<boolean | ClickTargetMiss>(
+        'goltou-click-target', clickTargetExpression(x, y, selector, options), 'SURFACE_HIT_TEST_FAILED');
+      if (result && typeof result === 'object') options?.onMiss?.report(result);
+      return result === true;
     });
+  }
+
+  async scrollElement(selector: string, containerSelector: string, method: 'scrollIntoView' | 'scrollTop'): Promise<boolean> {
+    return traceStep('surface.cdp.index.CdpSurface.scrollElement', async () => {
+      const args = [selector, containerSelector, method].map(value => JSON.stringify(value)).join(',');
+      const expression = `((selector, containerSelector, method) => {
+        const candidates = [];
+        const visit = d => {
+          for (const element of d.querySelectorAll(selector)) {
+            const rect = element.getBoundingClientRect();
+            const style = d.defaultView.getComputedStyle(element);
+            if (rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden') candidates.push(element);
+          }
+          for (const frame of d.querySelectorAll('iframe')) if (frame.contentDocument) visit(frame.contentDocument);
+        };
+        visit(document);
+        if (candidates.length !== 1 || candidates[0].disabled) return false;
+        const element = candidates[0], container = element.parentElement?.closest(containerSelector);
+        if (!container) return false;
+        if (method === 'scrollIntoView') element.scrollIntoView({block:'nearest',inline:'nearest'});
+        else if (method === 'scrollTop') container.scrollTop = container.scrollHeight;
+        else return false;
+        return true;
+      })(${args})`;
+      return await this.evaluateInIsolatedWorld<boolean>('goltou-scroll-position', expression, 'SURFACE_SCROLL_FAILED') === true;
+    });
+  }
+
+  private async evaluateInIsolatedWorld<T>(worldName: string, expression: string, failure: string): Promise<T | undefined> {
+    this.jobTrace = currentTrace() ?? this.jobTrace;
+    const { frameTree } = await this.cdp.send<{ frameTree: { frame: { id: string } } }>('Page.getFrameTree');
+    const { executionContextId } = await this.cdp.send<{ executionContextId: number }>('Page.createIsolatedWorld', {
+      frameId: frameTree.frame.id, worldName,
+    });
+    const { result, exceptionDetails } = await this.cdp.send<{ result: { value?: T }; exceptionDetails?: unknown }>('Runtime.evaluate', {
+      expression, contextId: executionContextId, returnByValue: true, timeout: 5000,
+    });
+    if (exceptionDetails) throw new Error(failure);
+    return result.value;
   }
 
   async waitForNavigation(options: NavigationOptions = {}): Promise<SurfaceState> {

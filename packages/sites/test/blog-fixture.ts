@@ -8,11 +8,12 @@ export function blogFixture(mode = '') {
   .se-popup-alert-confirm{position:fixed;top:100px;background:white;border:1px solid;z-index:4}
   .rich-toolbar{position:sticky;top:45px;background:white;z-index:2}
   ${mode === 'metadata-heavy' ? '.se-image-resource{height:450px}.se-main-container{height:650px;overflow:auto}' : ''}
-  ${mode === 'metadata-scroll-tags' ? `body{min-height:1800px}
+  ${mode.startsWith('metadata-scroll-tags') ? `body{min-height:1800px}
     .tag_textarea__fixture{width:216px;height:71px;overflow-y:auto}
     .tag_textarea__fixture .tag__fixture{display:inline-block;vertical-align:top;width:65px;height:26px;line-height:26px}
     .tag_textarea__fixture span:has(>input){display:block;height:26px}
     .set_option_detail__fixture{height:420px}` : ''}
+  ${mode === 'metadata-scroll-tags-fallback' ? '#tag-input{scroll-margin-bottom:-100px}' : ''}
   </style><header><button data-click-area="tpb.save">저장</button><button data-click-area="tpb*s.count">0</button><button data-click-area="tpb.publish">발행</button><button data-name="image">사진</button>${mode === 'fallback' ? '' : '<button data-name="table">표</button>'}<input type="file" multiple hidden></header>
   <div class="rich-toolbar"><button data-name="bold" data-type="toggle" class="se-bold-toolbar-button se-property-toolbar-toggle-button">굵게</button><button data-name="text-link">링크</button></div>
   <div class="se-documentTitle"><p class="se-text-paragraph" contenteditable="true"></p></div>
@@ -102,14 +103,20 @@ export function blogFixture(mode = '') {
   }
   const tags=document.querySelector('input[placeholder]');if(tags)tags.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const t=document.createElement('span');t.className='tag';t.textContent=tags.value;document.querySelector('.tag_list').append(t);tags.value=''}};
   let metadataTags=[];
-  const scrollTags=mode==='metadata-scroll-tags';
+  const scrollTags=mode.startsWith('metadata-scroll-tags');
+  let tagScrollChangeArmed=false;
   if(scrollTags){
-    window.tagScroll={opens:[],closes:[],wheels:[],bodyScrolls:0};
+    window.tagScroll={opens:[],closes:[],clicks:[],wheels:[],bodyScrolls:0};
     document.addEventListener('wheel',e=>{
-      const area=e.target.closest('.tag_textarea__fixture');
-      window.tagScroll.wheels.push({area:!!area,direct:e.target===area,deltaY:e.deltaY,trusted:e.isTrusted});
-    });
+      const area=e.target.closest('.tag_textarea__fixture');if(!area)return;
+      e.preventDefault();
+      window.tagScroll.wheels.push({top:area.scrollTop,deltaY:e.deltaY,trusted:e.isTrusted});
+    },{passive:false});
     document.addEventListener('scroll',()=>{if(document.querySelector('[data-metadata-panel]'))window.tagScroll.bodyScrolls++});
+    if(mode==='metadata-scroll-tags-chips'||mode==='metadata-scroll-tags-window'){
+      const arm=document.createElement('button');arm.dataset.armTagScrollChange='';arm.textContent='스크롤 변화 준비';
+      arm.onclick=()=>{tagScrollChangeArmed=true};document.querySelector('header').append(arm);
+    }
   }
   const tagPanel=()=>{
     const open=document.querySelector('[data-metadata-panel]');if(open){if(mode!=='metadata-stuck'){open.remove();document.querySelector('[data-metadata-cover]')?.remove()}return}
@@ -135,6 +142,11 @@ export function blogFixture(mode = '') {
       const detail=document.createElement('div');detail.className='set_option_detail__fixture';area.after(detail);
       const r=input.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
       window.tagScroll.opens.push({chips:metadataTags.length,top:area.scrollTop,hit:hit===input?'input':hit?.className});
+      input.addEventListener('click',e=>window.tagScroll.clicks.push({chips:metadataTags.length,trusted:e.isTrusted}));
+      if(tagScrollChangeArmed&&mode==='metadata-scroll-tags-chips')area.addEventListener('scroll',()=>{
+        area.querySelector('.tag__fixture')?.remove();
+      },{once:true});
+      if(tagScrollChangeArmed&&mode==='metadata-scroll-tags-window')area.addEventListener('scroll',()=>window.scrollTo(0,20),{once:true});
     }
   };
   const store=()=>JSON.parse(localStorage.getItem('drafts')||'[]');

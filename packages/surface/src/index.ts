@@ -74,6 +74,8 @@ export interface Surface {
   onNavigationHidden?(listener: () => void): () => void;
   /** Test the click's viewport point, including occlusion and same-origin frames. */
   readClickTarget?(x: number, y: number, selector: string, options?: ClickTargetOptions): Promise<boolean>;
+  /** Move only the scroll position for a unique visible element in the given container. */
+  scrollElement?(selector: string, containerSelector: string, method: 'scrollIntoView' | 'scrollTop'): Promise<boolean>;
   /** Re-read a safety condition immediately before mousePressed, after hover/delay. */
   click(x: number, y: number, beforePress?: () => Promise<void>): Promise<void>;
   /** Send a native vertical wheel event at a viewport point, in CSS pixels. */

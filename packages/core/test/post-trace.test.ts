@@ -190,8 +190,8 @@ const detail = {
   update: { event: 'check_auto' }, checkpoint: 'photos_uploaded', photoSource: 'cached_feed', choice: 'fail',
   blogInput: { location: 'marker_readback', phase: 'after_undo', markerLength: 3, observedCharacters: 1,
     startsWithMarker: false, firstCharacters: ['emoji'], emojiCount: 1, inList: true },
-  blogTag: { phase: 'before_click', hit: 'DIV.set_option_detail', clientHeight: 71, scrollHeight: 156,
-    scrollTop: 0, chips: 13, inputInside: false, wheels: 0 },
+  blogTag: { phase: 'after_click', method: 'scrollIntoView', hit: 'SELF', clientHeight: 71, scrollHeight: 156,
+    scrollTopBefore: 0, scrollTopAfter: 68.3, chipsBefore: 13, chipsAfter: 13, winYBefore: 0, winYAfter: 0, inputInside: true },
   photoOrder: { index: 1, expected: { host: 'coresos.phinf.naver.net', fileTail: '1234.jpg', hasSizeSuffix: false },
     observed: { host: 'coresos.phinf.naver.net', fileTail: '5678.jpg', hasSizeSuffix: false } },
 } satisfies Required<TraceDetail>;
@@ -231,9 +231,9 @@ it('uploads only bounded blog input diagnostics and never accepts arbitrary stri
 it('uploads only allowlisted tag diagnostics and filters label, class suffix and input text', () => {
   const raw = 'PRIVATE_TAG_TEXT';
   expect(sanitizeDetail({ blogTag: {
-    phase: 'click_target', hit: `DIV.set_option_detail__${raw}`, scrollTop: -1, chips: Number.POSITIVE_INFINITY,
-    clientHeight: 71, inputInside: true, wheels: 0, label: raw, input: raw,
-  } } as unknown as TraceDetail).blogTag).toEqual({ phase: 'click_target', clientHeight: 71, inputInside: true, wheels: 0 });
+    phase: 'before_click', method: raw, hit: `DIV.set_option_detail__${raw}`, scrollTopBefore: -1, chipsAfter: Number.POSITIVE_INFINITY,
+    clientHeight: 71, inputInside: true, winYBefore: 0, winYAfter: raw, wheels: 0, label: raw, input: raw,
+  } } as unknown as TraceDetail).blogTag).toEqual({ phase: 'before_click', clientHeight: 71, inputInside: true, winYBefore: 0 });
   expect(sanitizeDetail({ blogTag: { phase: raw, hit: 'INPUT' } } as unknown as TraceDetail)).toEqual({});
 });
 
