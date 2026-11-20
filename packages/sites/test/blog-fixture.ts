@@ -8,6 +8,11 @@ export function blogFixture(mode = '') {
   .se-popup-alert-confirm{position:fixed;top:100px;background:white;border:1px solid;z-index:4}
   .rich-toolbar{position:sticky;top:45px;background:white;z-index:2}
   ${mode === 'metadata-heavy' ? '.se-image-resource{height:450px}.se-main-container{height:650px;overflow:auto}' : ''}
+  ${mode === 'metadata-scroll-tags' ? `body{min-height:1800px}
+    .tag_textarea__fixture{width:216px;height:71px;overflow-y:auto}
+    .tag_textarea__fixture .tag__fixture{display:inline-block;vertical-align:top;width:65px;height:26px;line-height:26px}
+    .tag_textarea__fixture span:has(>input){display:block;height:26px}
+    .set_option_detail__fixture{height:420px}` : ''}
   </style><header><button data-click-area="tpb.save">저장</button><button data-click-area="tpb*s.count">0</button><button data-click-area="tpb.publish">발행</button><button data-name="image">사진</button>${mode === 'fallback' ? '' : '<button data-name="table">표</button>'}<input type="file" multiple hidden></header>
   <div class="rich-toolbar"><button data-name="bold" data-type="toggle" class="se-bold-toolbar-button se-property-toolbar-toggle-button">굵게</button><button data-name="text-link">링크</button></div>
   <div class="se-documentTitle"><p class="se-text-paragraph" contenteditable="true"></p></div>
@@ -97,6 +102,15 @@ export function blogFixture(mode = '') {
   }
   const tags=document.querySelector('input[placeholder]');if(tags)tags.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();const t=document.createElement('span');t.className='tag';t.textContent=tags.value;document.querySelector('.tag_list').append(t);tags.value=''}};
   let metadataTags=[];
+  const scrollTags=mode==='metadata-scroll-tags';
+  if(scrollTags){
+    window.tagScroll={opens:[],closes:[],wheels:[],bodyScrolls:0};
+    document.addEventListener('wheel',e=>{
+      const area=e.target.closest('.tag_textarea__fixture');
+      window.tagScroll.wheels.push({area:!!area,direct:e.target===area,deltaY:e.deltaY,trusted:e.isTrusted});
+    });
+    document.addEventListener('scroll',()=>{if(document.querySelector('[data-metadata-panel]'))window.tagScroll.bodyScrolls++});
+  }
   const tagPanel=()=>{
     const open=document.querySelector('[data-metadata-panel]');if(open){if(mode!=='metadata-stuck'){open.remove();document.querySelector('[data-metadata-cover]')?.remove()}return}
     if(mode==='metadata-body-tags'){
@@ -109,11 +123,19 @@ export function blogFixture(mode = '') {
     panel.innerHTML='<div class="tag_textarea__fixture"><span><input id="tag-input" role="combobox" placeholder="태그 입력 (최대 30개)"></span></div><button data-click-area="tpb*i.publish">발행</button>';
     const input=panel.querySelector('input'),area=panel.querySelector('div');
     const render=()=>{area.querySelectorAll('[aria-label]').forEach(e=>e.remove());for(const tag of metadataTags){const chip=document.createElement('span');chip.className='tag__fixture';chip.setAttribute('aria-label',tag);chip.textContent='#'+tag;area.insertBefore(chip,input.parentElement)}};
-    input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();if(!metadataTags.includes(input.value))metadataTags.push(input.value);input.value='';render()}};
-    panel.onkeydown=e=>{if(e.key==='Escape'&&e.target===input&&mode!=='metadata-stuck'){panel.remove();cover.remove()}};
+    input.onkeydown=e=>{if(e.key==='Enter'){e.preventDefault();if(!metadataTags.includes(input.value))metadataTags.push(input.value);input.value='';render();if(scrollTags)area.scrollTop=area.scrollHeight}};
+    panel.onkeydown=e=>{if(e.key==='Escape'&&e.target===input&&mode!=='metadata-stuck'){
+      if(scrollTags)window.tagScroll.closes.push({chips:metadataTags.length,top:area.scrollTop});
+      panel.remove();cover.remove();
+    }};
     if(mode==='metadata-focus-lost')input.oninput=()=>panel.querySelector('button').focus();
     panel.querySelector('button').onclick=()=>localStorage.setItem('publishes',String(Number(localStorage.getItem('publishes')||0)+1));
     document.body.append(panel);render();
+    if(scrollTags){
+      const detail=document.createElement('div');detail.className='set_option_detail__fixture';area.after(detail);
+      const r=input.getBoundingClientRect(),hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2);
+      window.tagScroll.opens.push({chips:metadataTags.length,top:area.scrollTop,hit:hit===input?'input':hit?.className});
+    }
   };
   const store=()=>JSON.parse(localStorage.getItem('drafts')||'[]');
   if(mode==='existing-duplicates'&&!store().length)localStorage.setItem('drafts',JSON.stringify([1,2].map(n=>({title:'[골투오토 실험] WP5 로컬',stamp:'2026.01.01. 00:0'+n,html:'older content',tags:''}))));

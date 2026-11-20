@@ -304,6 +304,13 @@ export class CdpSurface implements Surface {
     await this.input('Input.insertText', { text });
     await pause(this.inputDelayMs);
   }
+  async wheel(x: number, y: number, deltaY: number): Promise<void> {
+    return traceStep('surface.cdp.index.CdpSurface.wheel', async () => {
+      if (![x, y, deltaY].every(Number.isFinite)) throw new Error('SURFACE_BAD_COORDINATES');
+      await this.input('Input.dispatchMouseEvent', { type: 'mouseWheel', x, y, deltaX: 0, deltaY });
+      await pause(this.inputDelayMs);
+    });
+  }
   async typeText(text: string): Promise<void> {
     return traceStep('surface.cdp.index.CdpSurface.typeText', async () => {
     for (const char of inputCharacters(text)) { await this.insertText(char); }

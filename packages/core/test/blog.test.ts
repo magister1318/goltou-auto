@@ -223,21 +223,27 @@ describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback e
     const f = await fixture('metadata-focus-lost');
     f.plan.steps = [{ kind: 'text', role: 'title', text: '[골투오토 실험] 안전' }, { kind: 'break' },
       { kind: 'text', role: 'body', text: '본문' }, { kind: 'text', role: 'hashtags', text: '#예시' }];
-    await expect(f.execution.write()).rejects.toThrow('BLOG_TAG_FOCUS_LOST');
-    const s = f.execution.surface!, page = f.pages.get(s)!;
-    expect(await page.locator('[data-metadata-panel]').count()).toBe(0);
-    // The fixture itself moves focus by real UI input. The executor's Surface
-    // must reject Enter before any input, independent of the tag-writing path.
-    await page.locator('[data-click-area="tpb.publish"]').click();
-    await page.locator('[data-click-area="tpb*i.publish"]').click({ trial: true });
-    await page.locator('#tag-input').click();
-    await page.keyboard.press('Tab');
-    expect(await page.evaluate('document.activeElement?.getAttribute("data-click-area")')).toBe('tpb*i.publish');
-    for (const key of ['Enter', 'Tab', 'PageDown', 'Escape']) await expect(s.pressKey({ key })).rejects.toThrow('BLOG_TAG_FOCUS_LOST');
-    const box = (await page.locator('[data-click-area="tpb*i.publish"]').boundingBox())!;
-    await expect(s.click(box.x + box.width / 2, box.y + box.height / 2)).rejects.toThrow('BLOG_TAG_FOCUS_LOST');
-    const save = (await page.locator('[data-click-area="tpb.save"]').boundingBox())!;
-    await expect(s.click(save.x + save.width / 2, save.y + save.height / 2)).rejects.toThrow('BLOG_TAG_FOCUS_LOST');
+    const log = await loggedFixture(path.dirname(f.files[0]!.path), 'blog_draft', async () => {
+      await expect(f.execution.write()).rejects.toThrow('BLOG_TAG_FOCUS_LOST');
+      const s = f.execution.surface!, page = f.pages.get(s)!;
+      expect(await page.locator('[data-metadata-panel]').count()).toBe(0);
+      // Move focus with real UI input independently of the tag-writing path.
+      await page.locator('[data-click-area="tpb.publish"]').click();
+      await page.locator('[data-click-area="tpb*i.publish"]').click({ trial: true });
+      await page.locator('#tag-input').click();
+      await page.keyboard.press('Tab');
+      expect(await page.evaluate('document.activeElement?.getAttribute("data-click-area")')).toBe('tpb*i.publish');
+      for (const key of ['Enter', 'Tab', 'PageDown', 'Escape']) await expect(s.pressKey({ key })).rejects.toThrow('BLOG_TAG_FOCUS_LOST');
+      await expect(s.typeText('PRIVATE_TAG_BLOCKED')).rejects.toThrow('BLOG_TAG_FOCUS_LOST');
+      const box = (await page.locator('[data-click-area="tpb*i.publish"]').boundingBox())!;
+      await expect(s.click(box.x + box.width / 2, box.y + box.height / 2)).rejects.toThrow('BLOG_TAG_FOCUS_LOST');
+      const save = (await page.locator('[data-click-area="tpb.save"]').boundingBox())!;
+      await expect(s.click(save.x + save.width / 2, save.y + save.height / 2)).rejects.toThrow('BLOG_TAG_FOCUS_LOST');
+    }, []);
+    for (const phase of ['click_target', 'key_focus', 'input_before', 'input_after']) {
+      expect(log.lines).toContainEqual(expect.objectContaining({ event: 'decision', reason: 'BLOG_TAG_FOCUS_LOST', blogTag: { phase, hit: 'BUTTON' } }));
+    }
+    expect(log.payload!.log).not.toContain('PRIVATE_TAG_BLOCKED');
     expect(await f.counts()).toEqual({ saves: 0, publishes: 0 });
     expect(f.beforeSave).not.toHaveBeenCalled(); expect(f.external()).toBe(0);
   }, 20000);

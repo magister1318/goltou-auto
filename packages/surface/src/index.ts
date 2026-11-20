@@ -43,7 +43,9 @@ export interface ClickHitElement {
 export interface ClickTargetMiss { scrollX: number; scrollY: number; rejectedHit?: ClickHitElement }
 export interface ClickTargetOptions {
   exactText?: string;
-  onMiss?: { classes: readonly string[]; ancestorClasses?: readonly string[]; ariaLabels: readonly string[]; report(miss: ClickTargetMiss): void };
+  /** Require the hit itself to match the selector. */
+  direct?: boolean;
+  onMiss?: { classes: readonly string[]; classPrefixes?: readonly string[]; ancestorClasses?: readonly string[]; ariaLabels: readonly string[]; report(miss: ClickTargetMiss): void };
 }
 export interface RequestRule { hostname: string; pathname: string; prefix?: boolean }
 /** Ephemeral transport data. Callers must never persist bodies or headers. */
@@ -74,6 +76,8 @@ export interface Surface {
   readClickTarget?(x: number, y: number, selector: string, options?: ClickTargetOptions): Promise<boolean>;
   /** Re-read a safety condition immediately before mousePressed, after hover/delay. */
   click(x: number, y: number, beforePress?: () => Promise<void>): Promise<void>;
+  /** Send a native vertical wheel event at a viewport point, in CSS pixels. */
+  wheel?(x: number, y: number, deltaY: number): Promise<void>;
   typeText(text: string): Promise<void>;
   /** One native text input event. Use only for an editor prefix or a single grapheme. */
   insertText?(text: string): Promise<void>;

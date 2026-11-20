@@ -2,10 +2,11 @@ import { clickHitTags, type ClickTargetOptions } from '../index';
 
 export function clickTargetExpression(x: number, y: number, selector: string, options?: ClickTargetOptions) {
   const allowed = options?.onMiss ? {
-    tags: clickHitTags, classes: options.onMiss.classes, ancestorClasses: options.onMiss.ancestorClasses, labels: options.onMiss.ariaLabels,
+    tags: clickHitTags, classes: options.onMiss.classes, classPrefixes: options.onMiss.classPrefixes,
+    ancestorClasses: options.onMiss.ancestorClasses, labels: options.onMiss.ariaLabels,
   } : null;
-  const args = [x, y, selector, options?.exactText ?? null, allowed].map(value => JSON.stringify(value)).join(',');
-  return String.raw`((x, y, selector, exactText, allowed) => {
+  const args = [x, y, selector, options?.exactText ?? null, options?.direct ?? false, allowed].map(value => JSON.stringify(value)).join(',');
+  return String.raw`((x, y, selector, exactText, direct, allowed) => {
     let d = document, offsetX = 0, offsetY = 0;
     let hit = d.elementFromPoint(x, y);
     const fromShadow = () => {
@@ -44,6 +45,7 @@ export function clickTargetExpression(x: number, y: number, selector: string, op
     const targets = hit && !frameBlocked ? Array.from(d.querySelectorAll(selector)) : [];
     for (let e = hit; e; e = e.parentElement) {
       if (targets.includes(e) && (exactText === null || (e.textContent || '').trim() === exactText)) return true;
+      if (direct) break;
     }
     if (!allowed) return false;
     if (!hit) return { scrollX, scrollY };
@@ -70,7 +72,8 @@ export function clickTargetExpression(x: number, y: number, selector: string, op
     const label = hit.getAttribute('aria-label');
     return { scrollX, scrollY, rejectedHit: {
       tag: allowed.tags.includes(tag) ? tag : '[other]',
-      classes: allowed.classes.filter(name => classes.includes(name)),
+      classes: [...allowed.classes.filter(name => classes.includes(name)),
+        ...(allowed.classPrefixes || []).filter(prefix => classes.some(name => name.startsWith(prefix + '__')))],
       ...(ancestors.size ? { ancestorClasses: Array.from(ancestors) } : {}),
       ariaLabel: label ? (allowed.labels.includes(label) ? label : '[other]') : null,
       rect: rect(hit), relation,

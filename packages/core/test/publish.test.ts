@@ -1,5 +1,5 @@
 import { loggedFixture } from './log-fixture';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -16,6 +16,8 @@ import type { ApiClient, Post, PostUpdate, Product } from '@goltou/api-client';
 import { makePreview } from '../src/preparation';
 import { verifyInterruptedPrivatePublish } from '../../../apps/android/bridge/publish-recovery';
 import { blogFixture } from '../../sites/test/blog-fixture';
+import { closeTagLayer, tagLayerOpen, tagPanelToggle } from '../../sites/src/naver-blog/draft-safety';
+import { point } from '../../sites/src/dom';
 import type { InputPlan } from '../src/convert';
 
 const executablePath = [process.env.CHROMIUM, 'C:/Program Files/Google/Chrome/Application/chrome.exe', '/usr/bin/chromium'].find(p => p && existsSync(p));
@@ -28,7 +30,8 @@ async function fixture(failure = '', visibility: 'public' | 'private' = 'private
   for (const file of files) await writeFile(file.path, new Uint8Array([137, 80, 78, 71]));
   let stored = { title: '', html: '', tags: '' }, published = 0, deleted = false, outside = 0, submissions = 0;
   const url = 'https://blog.naver.com/synthetic_fixture/9001';
-  const editor = blogFixture('metadata-publish').replace('</script>', `
+  const scrollTags = failure === 'tags-scroll';
+  const editor = blogFixture(scrollTags ? 'metadata-scroll-tags' : 'metadata-publish').replace('</script>', `
     document.addEventListener('click',e=>{
       const panel=document.querySelector('[data-metadata-panel]');
       if(!panel||panel.querySelector('[type=radio]'))return;
@@ -92,17 +95,73 @@ async function fixture(failure = '', visibility: 'public' | 'private' = 'private
   const plan: InputPlan = source ? makePreview(source, {}).blog : { channel: 'blog', steps: [
     { kind: 'text', role: 'title', text: ordinary ? '일반 합성 상품' : '[골투오토 실험] WP14 private-once 합성 발행 시험' }, { kind: 'break' },
     { kind: 'text', role: 'body', text: '본문 15 안내' }, { kind: 'break' },
-    { kind: 'photos', urls: files.map(file => file.url) },
-    { kind: 'table', role: 'departures', rows: [['2026-12-03', '1190000원']] },
+    ...(scrollTags ? [] : [
+      { kind: 'photos' as const, urls: files.map(file => file.url) },
+      { kind: 'table' as const, role: 'departures' as const, rows: [['2026-12-03', '1190000원']] },
+    ]),
   ], discarded: [], notices: [] };
   if (failure.startsWith('tags-')) plan.steps.push({ kind: 'text', role: 'hashtags', text: '#one #two' });
   const probed: string[] = [];
   const execution = createBlogExecution(plan, files, { host, editorUrl, localPublish: true, publishedSettleMs: 3500,
     ...(probe ? { publishProbe: { visibility, record: async (request: import('@goltou/surface').GuardedRequest) => { probed.push(new URL(request.url).pathname); if (failure === 'evidence') throw new Error('DISK_FAILED'); } } } : {}),
   }, { mode: 'publish', visibility, beforeSave() {}, check() {}, progress() {} });
-  return { execution, host, url, files, probed, counts: () => ({ published, deleted, outside, submissions }) };
+  return { execution, host, url, files, probed, plan, counts: () => ({ published, deleted, outside, submissions }) };
 }
 describe.runIf(Boolean(executablePath))('publish, verified against synthetic loopback service only', () => {
+  it.each([13, 30, 2])('WP48 reopens, observes, closes and publishes with %i tags in a fixed-height scroll area', async count => {
+    const f = await fixture('tags-scroll', 'public');
+    const tags = Array.from({ length: count }, (_, i) => `tag${i + 1}`);
+    f.plan.steps[f.plan.steps.length - 1] = { kind: 'text', role: 'hashtags', text: tags.map(tag => `#${tag}`).join(' ') };
+    await f.execution.write();
+    const original = f.execution.surface!;
+    expect((await f.execution.observe()).tags).toEqual(tags);
+    expect(await tagLayerOpen(original)).toBe(false);
+    const toggle = await point(original, tagPanelToggle);
+    expect(toggle).not.toBeNull();
+    await original.click(toggle!.x, toggle!.y);
+    if (count === 13) {
+      const wheel = vi.spyOn(original as CdpSurface, 'wheel').mockResolvedValue(undefined);
+      try {
+        await expect(closeTagLayer(original)).rejects.toThrow('BLOG_TAG_LAYER_NOT_CLOSED');
+        expect(wheel).toHaveBeenCalledTimes(8);
+        expect(await tagLayerOpen(original)).toBe(true);
+      } finally { wheel.mockRestore(); }
+      const log = await loggedFixture(path.dirname(f.files[0]!.path), 'blog_publish', () => closeTagLayer(original), []);
+      const decisions = log.payload!.log.trim().split('\n').map(line => JSON.parse(line));
+      expect(decisions).toContainEqual(expect.objectContaining({ event: 'decision', choice: 'retry', blogTag: {
+        phase: 'before_click', hit: 'DIV.set_option_detail', clientHeight: 71, scrollHeight: 156, scrollTop: 0,
+        chips: 13, inputInside: false, wheels: 0,
+      } }));
+      expect(decisions).toContainEqual(expect.objectContaining({ event: 'decision', choice: 'ok', blogTag: expect.objectContaining({
+        phase: 'after_click', hit: 'INPUT', chips: 13, inputInside: true, wheels: expect.any(Number),
+      }) }));
+      expect(log.payload!.log).not.toContain('tag13');
+    } else await closeTagLayer(original);
+    expect(await tagLayerOpen(original)).toBe(false);
+    const metrics = (surface: Surface) => surface.evaluateReadOnly<{
+      opens: { chips: number; top: number; hit: string }[]; closes: { chips: number; top: number }[];
+      wheels: { area: boolean; direct: boolean; deltaY: number; trusted: boolean }[]; bodyScrolls: number;
+    }>('window.tagScroll');
+    const check = async (surface: Surface) => {
+      const { opens, closes, wheels, bodyScrolls } = await metrics(surface);
+      expect(opens).toContainEqual({ chips: count, top: 0, hit: count === 2 ? 'input' : 'set_option_detail__fixture' });
+      expect(closes).toContainEqual({ chips: count, top: count === 2 ? 0 : expect.any(Number) });
+      expect(bodyScrolls).toBe(0);
+      if (count === 2) expect(wheels).toEqual([]);
+      else {
+        expect(closes.every(close => close.top > 0)).toBe(true);
+        expect(wheels.length).toBeGreaterThan(0);
+        expect(wheels.every(wheel => wheel.area && wheel.direct && wheel.deltaY > 0 && wheel.trusted)).toBe(true);
+      }
+    };
+    await check(original);
+    expect((await f.execution.saveAndVerify()).tags).toEqual(tags);
+    await check(f.execution.surface!);
+    expect(await f.execution.publish()).toBe(f.url);
+    expect(f.execution.publishedVerified).toBe(true);
+    expect((await readBlogDocument(f.execution.surface!)).tags).toEqual(tags);
+    expect(f.counts()).toEqual({ published: 1, deleted: false, outside: 0, submissions: 1 });
+  }, 45000);
   it('waits for delayed published tags and ends one successful job without republishing', async () => {
     const f = await fixture('tags-late', 'public', false, false, true);
     const log = await loggedFixture(path.dirname(f.files[0]!.path), 'blog_publish', async () => {

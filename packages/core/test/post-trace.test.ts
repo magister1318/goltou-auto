@@ -190,6 +190,8 @@ const detail = {
   update: { event: 'check_auto' }, checkpoint: 'photos_uploaded', photoSource: 'cached_feed', choice: 'fail',
   blogInput: { location: 'marker_readback', phase: 'after_undo', markerLength: 3, observedCharacters: 1,
     startsWithMarker: false, firstCharacters: ['emoji'], emojiCount: 1, inList: true },
+  blogTag: { phase: 'before_click', hit: 'DIV.set_option_detail', clientHeight: 71, scrollHeight: 156,
+    scrollTop: 0, chips: 13, inputInside: false, wheels: 0 },
   photoOrder: { index: 1, expected: { host: 'coresos.phinf.naver.net', fileTail: '1234.jpg', hasSizeSuffix: false },
     observed: { host: 'coresos.phinf.naver.net', fileTail: '5678.jpg', hasSizeSuffix: false } },
 } satisfies Required<TraceDetail>;
@@ -210,7 +212,7 @@ it('projects all registered detail properties for upload and drops repetition be
   expect(failed).toMatchObject(sanitizeDetail({ ...detail, network: { ...detail.network, queryFields: ['ts', unsafe] } }));
   expect(Object.keys(failed)).toEqual(expect.arrayContaining(Object.keys(detail)));
   expect(lines).toContainEqual(expect.objectContaining({ step: 'verification', event: 'decision', choice: 'fail',
-    counts: detail.counts, blogInput: detail.blogInput }));
+    counts: detail.counts, blogInput: detail.blogInput, blogTag: detail.blogTag }));
   expect(payload.log).not.toContain(unsafe);
 });
 
@@ -224,6 +226,15 @@ it('uploads only bounded blog input diagnostics and never accepts arbitrary stri
     location: 'marker_readback', markerLength: 3, firstCharacters: ['digit', 'other', 'emoji'], inList: true,
   });
   expect(sanitizeDetail({ blogInput: { location: raw, markerLength: 3 } } as unknown as TraceDetail)).toEqual({});
+});
+
+it('uploads only allowlisted tag diagnostics and filters label, class suffix and input text', () => {
+  const raw = 'PRIVATE_TAG_TEXT';
+  expect(sanitizeDetail({ blogTag: {
+    phase: 'click_target', hit: `DIV.set_option_detail__${raw}`, scrollTop: -1, chips: Number.POSITIVE_INFINITY,
+    clientHeight: 71, inputInside: true, wheels: 0, label: raw, input: raw,
+  } } as unknown as TraceDetail).blogTag).toEqual({ phase: 'click_target', clientHeight: 71, inputInside: true, wheels: 0 });
+  expect(sanitizeDetail({ blogTag: { phase: raw, hit: 'INPUT' } } as unknown as TraceDetail)).toEqual({});
 });
 
 it('keeps literal trace steps and detail keys covered by the upload projection', () => {

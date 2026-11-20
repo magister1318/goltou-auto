@@ -11,6 +11,7 @@ import { sanitizeBandPhotoOrder } from '../../surface/src/band-photo-diagnostics
 import { sanitizeConnection } from '../../surface/src/connection-diagnostics';
 import { sanitizeUpdate } from '../../surface/src/update-diagnostics';
 import { sanitizeBlogInput } from '../../surface/src/blog-input-diagnostics';
+import { sanitizeBlogTag } from '../../surface/src/blog-tag-diagnostics';
 
 const kinds: readonly JobKind[] = ['blog_draft', 'blog_publish', 'blog_delete', 'unfinished_cleanup', 'band_post', 'band_delete', 'login_check', 'band_list', 'app_update', 'record'];
 const sites: readonly LogSite[] = ['naver', 'band', 'app'];
@@ -48,6 +49,10 @@ export function sanitizeDetail(detail: TraceDetail = {}): SafeDetail {
   if (detail.blogInput) {
     const blogInput = sanitizeBlogInput(detail.blogInput);
     if (blogInput) out.blogInput = blogInput;
+  }
+  if (detail.blogTag) {
+    const blogTag = sanitizeBlogTag(detail.blogTag);
+    if (blogTag) out.blogTag = blogTag;
   }
   if (detail.photoOrder && out.check === 'photo_order' && (out.reason === 'UPLOAD_PATH_MISMATCH' || out.reason === 'DOM_ORDER_MISMATCH')) {
     const photoOrder = sanitizeBandPhotoOrder(detail.photoOrder);
