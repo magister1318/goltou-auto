@@ -168,10 +168,45 @@ export function blogFixture(mode = '') {
       e.preventDefault();
       const list=document.createElement('ol'),item=document.createElement('li');
       p.before(list);list.append(item);item.append(p);p.replaceChildren();
-      const range=document.createRange();range.selectNodeContents(p);range.collapse();
-      const selection=getSelection();selection.removeAllRanges();selection.addRange(range);
+      if(mode==='auto-list-undo-fails'){
+        const emoji=document.createElement('span');emoji.className='se-emoji';emoji.textContent='💚';
+        p.append(emoji,'가A.');
+      }
+      focus(p);
       window.markerConversions=(window.markerConversions??0)+1;
     });
-    if(mode==='auto-list-undo-fails')document.addEventListener('keydown',e=>{if(e.ctrlKey&&e.key.toLowerCase()==='z')e.preventDefault()});
+    if(mode==='auto-list-undo-fails')document.addEventListener('keydown',e=>{
+      if(e.ctrlKey&&e.key.toLowerCase()==='z'){e.preventDefault();window.markerUndos=(window.markerUndos??0)+1;}
+    });
+    if(mode==='smarteditor-emoji'){
+      const paragraph=()=>{
+        const anchor=getSelection()?.anchorNode;
+        return (anchor?.nodeType===1?anchor:anchor?.parentElement)?.closest('.se-main-container .se-text-paragraph');
+      };
+      main.addEventListener('beforeinput',e=>{
+        if(e.inputType!=='insertText'||!paragraph())return;
+        (window.bodyInsertions??=[]).push(e.data);
+        const emoji=Array.from(e.data??'').filter(point=>point.codePointAt(0)>0xffff&&/\\p{Extended_Pictographic}/u.test(point));
+        if(!emoji.length)return;
+        e.preventDefault();
+        // Use native typing first so the fake editor honors pending bold.
+        const text=emoji.join('');
+        document.execCommand('insertText',false,text);
+        const selection=getSelection(),range=selection.getRangeAt(0);
+        range.setStart(selection.anchorNode,selection.anchorOffset-text.length);
+        const span=document.createElement('span');span.className='se-emoji';span.contentEditable='false';
+        range.surroundContents(span);
+        range.setStartAfter(span);range.collapse(true);
+        selection.removeAllRanges();selection.addRange(range);
+      });
+      main.addEventListener('keydown',e=>{
+        const p=paragraph();
+        if(e.key!==' '||!p||!/^\\d+\\.$/.test(p.textContent))return;
+        e.preventDefault();
+        const list=document.createElement('ol'),item=document.createElement('li');
+        p.before(list);list.append(item);item.append(p);p.replaceChildren();focus(p);
+        window.markerConversions=(window.markerConversions??0)+1;
+      });
+    }
   </script>`;
 }

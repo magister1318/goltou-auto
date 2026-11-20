@@ -70,6 +70,7 @@ describe.runIf(Boolean(executablePath))('WP5 input and save against a loopback e
     }];
     if (mode === 'auto-list-undo-fails') {
       await expect(f.execution.write()).rejects.toThrow('BLOG_FORMATTING_INPUT:17:input');
+      expect(await f.pages.get(f.execution.surface!)!.evaluate('window.markerUndos')).toBe(1);
       expect(await f.counts()).toEqual({ saves: 0, publishes: 0 });
       return;
     }
@@ -408,6 +409,85 @@ function richPlan(f: Awaited<ReturnType<typeof fixture>>, runs = richRuns) {
     { kind: 'text', role: 'body', text: runs.map(r => r.text).join(''), runs }];
 }
 describe('WP18 mandatory rich-text editor fixture', () => {
+  it('uploads only the observed shape of a literal marker after one failed undo', async () => {
+    const f = await fixture('auto-list-undo-fails', { photos: 0 });
+    richPlan(f, [{ text: '1. 💚 가성비 골프' }]);
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'goltou-wp47-'));
+    cleanup.push(() => rm(dir, { recursive: true, force: true }));
+    const { payload } = await loggedFixture(dir, 'blog_draft', async () => {
+      await expect(f.execution.write()).rejects.toThrow('BLOG_FORMATTING_INPUT:1:input');
+    }, []);
+    const lines = payload!.log.trim().split('\n').map(line => JSON.parse(line));
+    const shape = { location: 'marker_readback', markerLength: 3, observedCharacters: 4, startsWithMarker: false,
+      firstCharacters: ['emoji', 'hangul', 'latin'], emojiCount: 1, inList: true };
+    expect(lines).toContainEqual(expect.objectContaining({ step: 'verification', event: 'retry', blogInput: { ...shape, phase: 'insert' } }));
+    for (const event of ['fail', 'decision']) {
+      expect(lines).toContainEqual(expect.objectContaining({ step: 'verification', event, reason: 'READBACK_INPUT',
+        counts: { expected: 3, observed: 4, paragraphIndex: 1 }, blogInput: { ...shape, phase: 'after_undo' } }));
+    }
+    expect(payload!.log).not.toContain('💚가A.');
+    expect(await f.counts()).toEqual({ saves: 0, publishes: 0 });
+  }, 20000);
+
+  it('preserves literal marker text and run boundaries when SmartEditor discards text around inserted emoji', async () => {
+    const f = await fixture('smarteditor-emoji', { photos: 0 });
+    const href = 'https://example.invalid/numbered';
+    const lines = [
+      [{ text: '1. 💚 가성비 골프' }],
+      [{ text: '2. ⛳ 골프' }],
+      [{ text: '- 💚 a' }],
+      [{ text: 'a)', bold: true }, { text: ' 💚 ' }, { text: '골프', bold: true }],
+      [{ text: '3. ', href }, { text: '💚 ' }, { text: '문의', href }],
+    ];
+    const runs = lines.flatMap((line, i) => i ? [{ text: '\n' }, ...line] : line);
+    richPlan(f, runs);
+    await f.execution.write();
+    const original = f.execution.surface!;
+    const page = f.pages.get(original)!;
+    const before = await readBlogDocument(original);
+    expect(before.tokens).toEqual(lines.map(line => ({ kind: 'text', text: line.map(run => run.text).join(''), runs: normalizeBlogRuns(line) })));
+    expect(await page.evaluate('window.bodyInsertions')).toEqual(['1. ', ...Array.from('💚 가성비 골프'),
+      '2. ', ...Array.from('⛳ 골프'), '- ', ...Array.from('💚 a'), 'a) ', ...Array.from('💚 골프'), '3. ', ...Array.from('💚 문의')]);
+    expect(await page.locator('.se-main-container .se-emoji').count()).toBe(4);
+    expect(await page.locator('.se-main-container ol').count()).toBe(0);
+    expect((await f.execution.saveAndVerify()).tokens).toEqual(before.tokens);
+    expect(await f.counts()).toEqual({ saves: 1, publishes: 0 });
+  }, 30000);
+
+  it('resumes after acknowledging a standalone marker without retyping it or miscounting emoji', async () => {
+    const f = await fixture('smarteditor-emoji', { photos: 0 });
+    const runs = [{ text: '1. ', bold: true }, { text: '💚 가성비 골프' }];
+    richPlan(f, runs);
+    let paused = false;
+    f.progress.mockImplementation(value => {
+      if (!paused && value.blogParagraph?.runs.map((r: { text: string }) => r.text).join('') === '1. ') {
+        paused = true;
+        f.check.mockImplementation(() => { throw Error('TEST_LOGIN_DROP'); });
+      }
+    });
+    await expect(f.execution.write()).rejects.toThrow('TEST_LOGIN_DROP');
+    const original = f.execution.surface!;
+    expect((await readBlogDocument(original)).tokens).toEqual([{ kind: 'text', text: '1. ', runs: normalizeBlogRuns(runs.slice(0, 1)) }]);
+    f.check.mockReset();
+    await f.execution.write();
+    expect(f.execution.surface).toBe(original);
+    const text = runs.map(run => run.text).join('');
+    expect((await readBlogDocument(original)).tokens).toEqual([{ kind: 'text', text, runs: normalizeBlogRuns(runs) }]);
+    expect(await f.pages.get(original)!.evaluate('window.bodyInsertions')).toEqual(['1. ', ...Array.from(runs[1]!.text)]);
+    expect(f.progress.mock.calls.at(-1)![0].characters).toBe(Array.from('합성 서식 제목' + text).length);
+  }, 30000);
+
+  it('models automatic list conversion when the marker is completed with a space key', async () => {
+    const f = await fixture('smarteditor-emoji', { photos: 0 });
+    await f.execution.ensureReady();
+    const surface = f.execution.surface!;
+    const page = f.pages.get(surface)!;
+    await page.locator('.se-main-container .se-text-paragraph').click();
+    await surface.typeText('1.');
+    await page.keyboard.press('Space');
+    expect(await page.locator('.se-main-container ol li .se-text-paragraph').count()).toBe(1);
+  }, 20000);
+
   it.each(['', 'link-end-stuck'])('types exact bold/link ranges with Hangul, joined emoji and spaces, then verifies before/after save and fresh reopen (%s)', async mode => {
     const f = await fixture(mode); richPlan(f);
     await f.execution.write();

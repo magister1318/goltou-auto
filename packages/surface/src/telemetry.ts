@@ -1,4 +1,6 @@
 import { traceSteps, traceReasons, traceSelectors } from './telemetry-catalog';
+import type { BlogInputDiagnostic } from './blog-input-diagnostics';
+export type { BlogInputDiagnostic } from './blog-input-diagnostics';
 
 export type JobKind = 'blog_draft' | 'blog_publish' | 'blog_delete' | 'unfinished_cleanup' | 'band_post' | 'band_delete' | 'login_check' | 'band_list';
 /** Maintenance logs do not add a registration operation to existing exhaustive policies. */
@@ -46,6 +48,7 @@ export interface TraceDetail {
   bandList?: import('./band-list-diagnostics').BandListDiagnostic;
   bandWrite?: import('./band-write-diagnostics').BandWriteDiagnostic;
   photoOrder?: import('./band-photo-diagnostics').BandPhotoOrderDiagnostic;
+  blogInput?: BlogInputDiagnostic;
 }
 export const traceOperations = ['surface.create', 'surface.destroy', 'surface.dialog', 'surface.dialog.answer', 'surface.visible', 'surface.navigation', 'profile.clear', 'app.inputState', 'app.jobState', 'logs.export', 'logs.environment', 'session.read', 'session.write', 'session.device', 'Page.navigate', 'Page.enable', 'Runtime.evaluate', 'Input.dispatchMouseEvent', 'Input.dispatchKeyEvent', 'Input.insertText', 'DOM.setFileInputFiles', 'Fetch.continueRequest', 'Fetch.failRequest', 'Fetch.getResponseBody', 'Network.getRequestPostData', 'other'] as const;
 /** Ephemeral request metadata goes through a bounded name-only projection first. */

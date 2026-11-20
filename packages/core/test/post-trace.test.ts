@@ -188,6 +188,8 @@ const detail = {
     queryFields: ['ts'], bodyFields: ['body'], decision: 'allowed' },
   bandList: { source: 'API' }, bandWrite: {}, connection: { host: 'nid.naver.com', path: '/nidlogin.login' },
   update: { event: 'check_auto' }, checkpoint: 'photos_uploaded', photoSource: 'cached_feed', choice: 'fail',
+  blogInput: { location: 'marker_readback', phase: 'after_undo', markerLength: 3, observedCharacters: 1,
+    startsWithMarker: false, firstCharacters: ['emoji'], emojiCount: 1, inList: true },
   photoOrder: { index: 1, expected: { host: 'coresos.phinf.naver.net', fileTail: '1234.jpg', hasSizeSuffix: false },
     observed: { host: 'coresos.phinf.naver.net', fileTail: '5678.jpg', hasSizeSuffix: false } },
 } satisfies Required<TraceDetail>;
@@ -207,8 +209,21 @@ it('projects all registered detail properties for upload and drops repetition be
   const failed = lines.find(line => line.step === 'verification' && line.event === 'fail');
   expect(failed).toMatchObject(sanitizeDetail({ ...detail, network: { ...detail.network, queryFields: ['ts', unsafe] } }));
   expect(Object.keys(failed)).toEqual(expect.arrayContaining(Object.keys(detail)));
-  expect(lines).toContainEqual(expect.objectContaining({ step: 'verification', event: 'decision', choice: 'fail', counts: detail.counts }));
+  expect(lines).toContainEqual(expect.objectContaining({ step: 'verification', event: 'decision', choice: 'fail',
+    counts: detail.counts, blogInput: detail.blogInput }));
   expect(payload.log).not.toContain(unsafe);
+});
+
+it('uploads only bounded blog input diagnostics and never accepts arbitrary strings as shape data', () => {
+  const raw = 'PRIVATE_EDITOR_TEXT';
+  expect(sanitizeDetail({ blogInput: {
+    location: 'marker_readback', phase: raw, markerLength: 3, observedCharacters: -1,
+    startsWithMarker: raw, firstCharacters: ['digit', raw, 'emoji', 'period'],
+    emojiCount: Number.MAX_VALUE, inList: true, text: raw,
+  } } as unknown as TraceDetail).blogInput).toEqual({
+    location: 'marker_readback', markerLength: 3, firstCharacters: ['digit', 'other', 'emoji'], inList: true,
+  });
+  expect(sanitizeDetail({ blogInput: { location: raw, markerLength: 3 } } as unknown as TraceDetail)).toEqual({});
 });
 
 it('keeps literal trace steps and detail keys covered by the upload projection', () => {
