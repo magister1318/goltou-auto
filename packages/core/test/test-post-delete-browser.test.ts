@@ -15,7 +15,7 @@ const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
 const experimentTitle = '[골투오토 실험] WP14 private-once synthetic';
 const url = 'https://blog.naver.com/synthetic/9001';
-type ScrollCover = 'ad-band' | 'ad-full' | 'ad-link' | 'overlay';
+type ScrollCover = 'ad-band' | 'ad-full' | 'ad-link' | 'overlay' | 'ad-shadow';
 async function fixture(changeOnHover = false, message = '삭제된 글은 복구할 수 없습니다.\n삭제하시겠습니까?', ordinary = false, moveOnHover = false, lazyShift = false, scrollCover?: ScrollCover) {
   const title = ordinary ? '일반 합성 상품' : experimentTitle;
   const browser = await chromium.launch({ executablePath: executablePath!, headless: true, args: ['--disable-background-networking', '--no-first-run'] });
@@ -29,6 +29,10 @@ async function fixture(changeOnHover = false, message = '삭제된 글은 복구
     const u = new URL(route.request().url());
     let body: string;
     if (u.hostname === 'ad.example.invalid') body = '<p>fixture-private-ad-text</p>';
+    else if (u.pathname === '/fixture-private-ad') body = `<fixture-ad></fixture-ad><script>
+      document.querySelector('fixture-ad').attachShadow({mode:'open'}).innerHTML =
+        '<div class="fixture-private-class" aria-label="fixture-private-label" style="height:200px">fixture-private-ad-text</div>';
+      </script>`;
     else if (u.pathname === '/deleted') { deleted = true; deletePresses++; body = '<div class="error_content">삭제된 게시물입니다.</div>'; }
     else if (u.pathname === '/PostList.naver') body = '<div class="post-list"><a href="https://blog.naver.com/synthetic/9002">다른 합성 글</a></div>';
     else if (deleted) body = '<div class="error_content">삭제된 게시물입니다.</div>';
@@ -42,10 +46,19 @@ async function fixture(changeOnHover = false, message = '삭제된 글은 복구
       ${changeOnHover ? "a.onmouseover=()=>{document.querySelector('.se-documentTitle p').textContent='다른 합성 글'};" : ''}
       ${moveOnHover ? "a.onmouseover=()=>{a.style.marginLeft='40px'};" : ''}
       ${lazyShift ? "top.addEventListener('scroll',()=>{setTimeout(()=>{a.parentElement.previousElementSibling.style.height='1900px'},100)}, {once:true});" : ''}
-      a.onclick=e=>{e.preventDefault();if(confirm(${JSON.stringify(message)}))top.location='/deleted'};</script>`;
+      a.onclick=e=>{e.preventDefault();if(confirm(${JSON.stringify(message)}))top.location='/deleted'};</script>
+      ${scrollCover === 'ad-shadow' ? `<iframe id="fixture-private-id" src="/fixture-private-ad"
+        style="position:absolute;left:550px;width:180px;height:200px;border:0;visibility:hidden"></iframe>
+        <script>
+        const ad = document.querySelector('#fixture-private-id');
+        top.addEventListener('scroll', () => {
+          ad.style.top = (top.scrollY + 350) + 'px';
+          ad.style.visibility = 'visible';
+        });
+        </script>` : ''}`;
     else {
       body = '<a hidden>삭제</a><iframe id="mainFrame" name="mainFrame" src="/PostView.naver?blogId=synthetic&logNo=9001" style="width:1100px;height:2600px;border:0"></iframe>';
-      if (scrollCover) body += `<script>
+      if (scrollCover && scrollCover !== 'ad-shadow') body += `<script>
         const cover=document.createElement(${JSON.stringify(scrollCover === 'overlay' ? 'div' : 'iframe')});
         cover.id='fixture-private-id';
         cover.className='se-component fixture-private-class';
@@ -134,11 +147,32 @@ describe.runIf(Boolean(executablePath))('PC post cleanup in mainFrame, with sele
       { choice: 'ok', counts: { step: 7, runs: 1, attempt: 1 }, x: 640, y: 450 },
       ...[640, 192, 1088].map(x => ({
         choice: 'retry', counts: { step: 7, runs: 1, attempt: 2 }, x, y: 450, tag: 'iframe', classes: ['se-component'], iframe: true,
+        inShadow: false, frameDepth: 0,
       })),
       { choice: 'ok', counts: { step: 7, runs: 1, attempt: 2 }, x: 640, y: 270 },
     ]);
   }, 25000);
-  it.each(['ad-full', 'overlay'] as const)('WP50 refuses more input when the scroll path is covered (%s)', async cover => {
+  it('WP51 retries when PageDown exposes an open shadow root in an accessible nested ad frame', async () => {
+    const f = await fixture(false, undefined, true, false, false, 'ad-shadow');
+    const keys = vi.spyOn(f.surface, 'pressKey');
+    const clicks = vi.spyOn(f.surface, 'click');
+    const logs = scrollTrace();
+    await logs.run(() => deleteBlogPost(f.surface, { url, title: f.title }));
+    expect(keys.mock.calls.map(([input]) => input.key)).toEqual(['PageDown', 'PageDown']);
+    expect(clicks).toHaveBeenCalledTimes(1);
+    expect(f.presses()).toBe(1);
+    expect(f.deleted()).toBe(true);
+    expect(new URL(f.page.url()).pathname).toBe('/PostList.naver');
+    expect(logs.decisions()).toEqual([
+      { choice: 'ok', counts: { step: 7, runs: 1, attempt: 1 }, x: 640, y: 450 },
+      {
+        choice: 'retry', counts: { step: 7, runs: 1, attempt: 2 },
+        x: 640, y: 450, tag: 'div', classes: [], iframe: false, inShadow: true, frameDepth: 2,
+      },
+      { choice: 'ok', counts: { step: 7, runs: 1, attempt: 2 }, x: 192, y: 450 },
+    ]);
+  }, 25000);
+  it.each(['ad-full', 'overlay'] as const)('refuses more input when all scroll points are covered (%s)', async cover => {
     const f = await fixture(false, undefined, true, false, false, cover);
     const keys = vi.spyOn(f.surface, 'pressKey');
     const clicks = vi.spyOn(f.surface, 'click');
@@ -150,11 +184,12 @@ describe.runIf(Boolean(executablePath))('PC post cleanup in mainFrame, with sele
     expect(clicks).not.toHaveBeenCalled();
     expect(f.presses()).toBe(0);
     expect(diagnostics.at(-1)).toMatchObject({ item: 7, pass: 0 });
-    const points = cover === 'ad-full' ? [[640, 450], [192, 450], [1088, 450], [640, 270], [640, 630]] : [[640, 450]];
+    const points = [[640, 450], [192, 450], [1088, 450], [640, 270], [640, 630]];
     expect(logs.decisions().filter(d => d.counts?.attempt === 2)).toEqual(points.map(([x, y], index) => ({
       choice: index === points.length - 1 ? 'fail' : 'retry',
       counts: { step: 7, runs: 1, attempt: 2 }, x, y,
       tag: cover === 'ad-full' ? 'iframe' : 'div', classes: ['se-component'], iframe: cover === 'ad-full',
+      inShadow: false, frameDepth: 0,
     })));
   }, 25000);
   it('WP50 still refuses a delete link covered by an ad after finding a scroll point', async () => {

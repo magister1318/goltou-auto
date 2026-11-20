@@ -7,7 +7,7 @@ export function clickTargetExpression(x: number, y: number, selector: string, op
   } : null;
   const args = [x, y, selector, options?.exactText ?? null, options?.direct ?? false, allowed].map(value => JSON.stringify(value)).join(',');
   return String.raw`((x, y, selector, exactText, direct, allowed) => {
-    let d = document, offsetX = 0, offsetY = 0;
+    let d = document, offsetX = 0, offsetY = 0, frameDepth = 0;
     let hit = d.elementFromPoint(x, y);
     const fromShadow = () => {
       while (hit?.shadowRoot) {
@@ -43,6 +43,7 @@ export function clickTargetExpression(x: number, y: number, selector: string, op
       offsetX += r.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
       offsetY += r.top + parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop);
       d = child;
+      frameDepth++;
       hit = d.elementFromPoint(x - offsetX, y - offsetY);
       fromShadow();
     }
@@ -52,7 +53,8 @@ export function clickTargetExpression(x: number, y: number, selector: string, op
       if (direct) break;
     }
     if (!allowed) return false;
-    if (!hit) return { scrollX, scrollY };
+    const miss = { scrollX, scrollY, inShadow: !!hit?.getRootNode().host, frameDepth };
+    if (!hit) return miss;
     const rect = e => {
       const r = e.getBoundingClientRect();
       return { x: offsetX + r.left, y: offsetY + r.top, width: r.width, height: r.height };
@@ -74,7 +76,7 @@ export function clickTargetExpression(x: number, y: number, selector: string, op
       }
     }
     const label = hit.getAttribute('aria-label');
-    return { scrollX, scrollY, ...(inaccessibleFrame ? { inaccessibleFrame: true } : {}), rejectedHit: {
+    return { ...miss, ...(inaccessibleFrame ? { inaccessibleFrame: true } : {}), rejectedHit: {
       tag: allowed.tags.includes(tag) ? tag : '[other]',
       classes: [...allowed.classes.filter(name => classes.includes(name)),
         ...(allowed.classPrefixes || []).filter(prefix => classes.some(name => name.startsWith(prefix + '__')))],

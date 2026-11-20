@@ -192,7 +192,7 @@ const detail = {
     startsWithMarker: false, firstCharacters: ['emoji'], emojiCount: 1, inList: true },
   blogTag: { phase: 'after_click', method: 'scrollIntoView', hit: 'SELF', clientHeight: 71, scrollHeight: 156,
     scrollTopBefore: 0, scrollTopAfter: 68.3, chipsBefore: 13, chipsAfter: 13, winYBefore: 0, winYAfter: 0, inputInside: true },
-  blogDeleteScroll: { x: 640, y: 450, tag: 'iframe', classes: ['se-component'], iframe: true },
+  blogDeleteScroll: { x: 640, y: 450, tag: 'div', classes: ['se-component'], iframe: false, inShadow: true, frameDepth: 2 },
   photoOrder: { index: 1, expected: { host: 'coresos.phinf.naver.net', fileTail: '1234.jpg', hasSizeSuffix: false },
     observed: { host: 'coresos.phinf.naver.net', fileTail: '5678.jpg', hasSizeSuffix: false } },
 } satisfies Required<TraceDetail>;
@@ -237,6 +237,14 @@ it('uploads only allowlisted tag diagnostics and filters label, class suffix and
     clientHeight: 71, inputInside: true, winYBefore: 0, winYAfter: raw, wheels: 0, label: raw, input: raw,
   } } as unknown as TraceDetail).blogTag).toEqual({ phase: 'before_click', clientHeight: 71, inputInside: true, winYBefore: 0 });
   expect(sanitizeDetail({ blogTag: { phase: raw, hit: 'INPUT' } } as unknown as TraceDetail)).toEqual({});
+});
+
+it('uploads only a boolean shadow marker and a nonnegative integer frame depth for blog delete scroll', () => {
+  const raw = 'PRIVATE_AD_ATTRIBUTE';
+  for (const frameDepth of [raw, -1, 0.5, Infinity]) {
+    expect(sanitizeDetail({ blogDeleteScroll: { x: 640, y: 450, inShadow: raw, frameDepth } } as unknown as TraceDetail))
+      .toEqual({ blogDeleteScroll: { x: 640, y: 450 } });
+  }
 });
 
 it('keeps literal trace steps and detail keys covered by the upload projection', () => {

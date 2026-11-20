@@ -76,8 +76,8 @@ async function findDeleteScrollPoint(surface: Surface, run: number, attempt: num
       hit = !!await surface.readClickTarget?.(x, y, 'body', {
         onMiss: { classes: blogDeleteScrollHitClasses, ariaLabels: [], report: value => { miss = value; } },
       });
-      // Only an inaccessible center frame enables fallback. The probes never click or change focus.
-      retry = !hit && index < fractions.length - 1 && (index > 0 || miss?.inaccessibleFrame === true);
+      // The probes never click or change focus.
+      retry = !hit && index < fractions.length - 1;
     } finally {
       const rejected = miss?.rejectedHit;
       const hitDetails = rejected && {
@@ -86,7 +86,11 @@ async function findDeleteScrollPoint(surface: Surface, run: number, attempt: num
       trace('sites.naver-blog.delete.preparePostDelete', 'decision', {
         choice: hit ? 'ok' : retry ? 'retry' : 'fail',
         counts: { step: 7, runs: run, attempt },
-        blogDeleteScroll: { x, y, ...hitDetails },
+        blogDeleteScroll: {
+          x, y, ...hitDetails,
+          ...(miss?.inShadow !== undefined ? { inShadow: miss.inShadow } : {}),
+          ...(miss?.frameDepth !== undefined ? { frameDepth: miss.frameDepth } : {}),
+        },
       });
     }
     if (hit) return { x, y };

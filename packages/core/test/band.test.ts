@@ -107,7 +107,7 @@ describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pa
     expect(await surface.readClickTarget!(1238, 856, selector, {
       onMiss: { classes: bandWriteHitClasses, ancestorClasses: bandWritePromptClasses, ariaLabels: [], report },
     })).toBe(false);
-    expect(report).toHaveBeenCalledExactlyOnceWith({ scrollX: 0, scrollY: 0, rejectedHit: {
+    expect(report).toHaveBeenCalledExactlyOnceWith({ scrollX: 0, scrollY: 0, inShadow: false, frameDepth: 0, rejectedHit: {
       tag: 'button', classes: ['buttonModalClose', '_closeBtn'], ariaLabel: null, relation: 'unrelated',
       rect: { x: 0, y: 0, width: 1280, height: 900 }, ancestorClasses: ['modalWrap_800', '_appUsagePromptModalRegion', 'modalLayerView'],
     } });
@@ -152,7 +152,7 @@ describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pa
     expect(await f.page().evaluate(() => window.scrollY)).toBe(100);
     const report = vi.fn();
     await expect(surface.readClickTarget!(160, 560, selector, { onMiss: { classes: [], ariaLabels: ['글쓰기'], report } })).resolves.toBe(false);
-    expect(report).toHaveBeenCalledExactlyOnceWith({ scrollX: 0, scrollY: 100, rejectedHit: {
+    expect(report).toHaveBeenCalledExactlyOnceWith({ scrollX: 0, scrollY: 100, inShadow: false, frameDepth: 0, rejectedHit: {
       tag: 'button', classes: [], ariaLabel: '[other]', rect: { x: 100, y: 540, width: 120, height: 40 }, relation: 'unrelated',
     } });
     await f.execution.ensureReady();
@@ -175,7 +175,7 @@ describe.runIf(Boolean(executablePath))('WP6 real input against loopback Band pa
     expect(await surface.readClickTarget!(wp39!.x, wp39!.y, wp39Selector, {
       onMiss: { classes: ['lyWrap'], ariaLabels: ['닫기'], report: rejected },
     })).toBe(false);
-    expect(rejected).toHaveBeenCalledExactlyOnceWith({ scrollX: 0, scrollY: 0, rejectedHit: {
+    expect(rejected).toHaveBeenCalledExactlyOnceWith({ scrollX: 0, scrollY: 0, inShadow: false, frameDepth: 0, rejectedHit: {
       tag: 'div', classes: ['lyWrap'], ariaLabel: '닫기', rect: { x: 150, y: 300, width: 20, height: 40 }, relation: 'unrelated',
     } });
     await f.execution.ensureReady();

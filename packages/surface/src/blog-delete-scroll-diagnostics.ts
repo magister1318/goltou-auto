@@ -8,15 +8,19 @@ export interface BlogDeleteScrollDiagnostic {
   tag?: string;
   classes?: string[];
   iframe?: boolean;
+  inShadow?: boolean;
+  frameDepth?: number;
 }
 
 export function sanitizeBlogDeleteScroll(value: BlogDeleteScrollDiagnostic): BlogDeleteScrollDiagnostic | undefined {
-  const { x, y, tag, classes, iframe } = value;
+  const { x, y, tag, classes, iframe, inShadow, frameDepth } = value;
   if (![x, y].every(n => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n <= Number.MAX_SAFE_INTEGER)) return;
   return {
     x, y,
     ...(tag !== undefined ? { tag: clickHitTags.some(allowed => allowed === tag) ? tag : '[other]' } : {}),
     ...(Array.isArray(classes) ? { classes: blogDeleteScrollHitClasses.filter(name => classes.includes(name)) } : {}),
     ...(typeof iframe === 'boolean' ? { iframe } : {}),
+    ...(typeof inShadow === 'boolean' ? { inShadow } : {}),
+    ...(typeof frameDepth === 'number' && Number.isSafeInteger(frameDepth) && frameDepth >= 0 ? { frameDepth } : {}),
   };
 }

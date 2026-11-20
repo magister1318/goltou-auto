@@ -40,7 +40,15 @@ export interface ClickHitElement {
   ancestorClasses?: string[];
   rect?: ViewportRect; relation?: typeof clickHitRelations[number];
 }
-export interface ClickTargetMiss { scrollX: number; scrollY: number; rejectedHit?: ClickHitElement; inaccessibleFrame?: true }
+export interface ClickTargetMiss {
+  scrollX: number;
+  scrollY: number;
+  rejectedHit?: ClickHitElement;
+  inaccessibleFrame?: true;
+  inShadow?: boolean;
+  /** Number of frame documents entered from the top document. */
+  frameDepth?: number;
+}
 export interface ClickTargetOptions {
   exactText?: string;
   /** Require the hit itself to match the selector. */
