@@ -1,5 +1,5 @@
-import { traceStep, trace, reasonCode } from '@goltou/surface/telemetry';
-import type { GuardedRequest, Surface, SurfaceDialog } from '@goltou/surface';
+import { blogDeleteScrollHitClasses, traceStep, trace } from '@goltou/surface/telemetry';
+import type { ClickTargetMiss, GuardedRequest, Surface, SurfaceDialog } from '@goltou/surface';
 import { point, read, sleep, waitFor } from '../dom';
 import { postIdentity, type PublishedPost } from './publish-safety';
 import { settledReadback } from '../settled-readback';
@@ -64,6 +64,41 @@ const geometrySource = `return docs.flatMap(({d,x,y})=>Array.from(d.querySelecto
 type Rect = { x: number; y: number; width: number; height: number };
 const same = (a: Rect | undefined, b: Rect | undefined) => !!a && !!b && ['x', 'y', 'width', 'height'].every(k => a[k as keyof Rect] === b[k as keyof Rect]);
 const noop: DeleteLog = async () => {};
+
+async function findDeleteScrollPoint(surface: Surface, run: number, attempt: number) {
+  const { width, height } = await read<{ width: number; height: number }>(surface, 'return {width:innerWidth,height:innerHeight};');
+  const fractions = [[0.5, 0.5], [0.15, 0.5], [0.85, 0.5], [0.5, 0.3], [0.5, 0.7]] as const;
+  for (const [index, [left, top]] of fractions.entries()) {
+    const x = width * left, y = height * top;
+    let miss: ClickTargetMiss | undefined;
+    let hit = false, retry = false;
+    try {
+      hit = !!await surface.readClickTarget?.(x, y, 'body', {
+        onMiss: { classes: blogDeleteScrollHitClasses, ariaLabels: [], report: value => { miss = value; } },
+      });
+      // The probes never click or change focus.
+      retry = !hit && index < fractions.length - 1;
+    } finally {
+      const rejected = miss?.rejectedHit;
+      const hitDetails = rejected && {
+        tag: rejected.tag, classes: rejected.classes, iframe: rejected.tag === 'iframe' || miss?.inaccessibleFrame === true,
+      };
+      trace('sites.naver-blog.delete.preparePostDelete', 'decision', {
+        choice: hit ? 'ok' : retry ? 'retry' : 'fail',
+        counts: { step: 7, runs: run, attempt },
+        blogDeleteScroll: {
+          x, y, ...hitDetails,
+          ...(miss?.inShadow !== undefined ? { inShadow: miss.inShadow } : {}),
+          ...(miss?.frameDepth !== undefined ? { frameDepth: miss.frameDepth } : {}),
+        },
+      });
+    }
+    if (hit) return { x, y };
+    if (!retry) break;
+  }
+  return null;
+}
+
 export async function preparePostDelete(surface: Surface, target: DeleteTarget, log: DeleteLog = noop, run = 0) {
     return traceStep('sites.naver-blog.delete.preparePostDelete', async () => {
   const check = async (items: DeleteDiagnostic[]) => {
@@ -89,8 +124,8 @@ export async function preparePostDelete(surface: Surface, target: DeleteTarget, 
     await noDialog(); await identity(); await focus();
     const rects = await safeRead(5, () => read<Rect[]>(surface, geometrySource));
     await check([{ item: 5, pass: Number(rects.length === 1), actual: rects.length, expected: 1 }]);
-    const center = await read<{ x: number; y: number }>(surface, 'return {x:innerWidth/2,y:innerHeight/2};');
-    await check([{ item: 7, pass: Number(await safeRead(7, async () => surface.readClickTarget?.(center.x, center.y, 'body'))) }]);
+    const scrollPoint = await safeRead(7, () => findDeleteScrollPoint(surface, run, i + 1));
+    await check([{ item: 7, pass: Number(!!scrollPoint), ...(scrollPoint ?? {}) }]);
     await surface.pressKey({ key: rects[0]!.y < 0 ? 'PageUp' : 'PageDown' }); await sleep(300);
     at = await point(surface, deleteSelector, '삭제');
   }

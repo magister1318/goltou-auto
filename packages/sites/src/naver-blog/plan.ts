@@ -5,7 +5,7 @@ import { inputCharacters } from '@goltou/surface';
 import { click, compact, point, read, sleep, waitFor } from '../dom';
 import { confirmBlogPhotos, prepareBlogEditor } from './index';
 import { ControlNotFoundError } from '../control-failure';
-import { closeTagLayer, protectBlogInputs, requireTagFocus, requireTagLayerClosed, tagInputSelector, tagPanelToggle } from './draft-safety';
+import { clickTagInput, closeTagLayer, protectBlogInputs, requireTagFocus, requireTagLayerClosed, tagInputSelector, tagLayerOpen, tagPanelToggle } from './draft-safety';
 import { finalPublishSelector, guardedPublishClick, inspectPrivateRequest, inspectPublicRequestDecision, postIdentity, readVisibility, requireVisibility, selectVisibility, type BlogVisibility, type PublishedPost, type VisibilityProof } from './publish-safety';
 import { parsePublishIdentity, resolvePublishEvidence, type ResponseIdentity, type PublishedPage, type PublishIdentitySource } from './publish-identity';
 import { containsServiceLink, tokenText, compareReadbackText, traceReadbackText, sameReadbackNumbers, sameReadbackIdentityText, ReadbackMismatch, type ReadbackIssue } from '../readback-checks';
@@ -480,10 +480,10 @@ export class BlogExecution {
       await this.guard();
       await click(s, 'BLOG_TAG_PANEL', tagPanelToggle);
     }
-    for (let n = 0; n < 12 && !await point(s, tagInputSelector); n++) {
+    for (let n = 0; n < 12 && !await point(s, tagInputSelector) && !await tagLayerOpen(s); n++) {
       await this.guard(); await s.pressKey({ key: 'PageDown' }); await sleep(100);
     }
-    await click(s, 'BLOG_TAG_INPUT', tagInputSelector);
+    await clickTagInput(s, undefined, () => this.guard());
 
     });
   }

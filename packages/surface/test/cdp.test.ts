@@ -174,7 +174,7 @@ describe('CDP Surface', () => {
     expect(f.commands.map(c => c.method)).toEqual(['Page.getFrameTree', 'Page.createIsolatedWorld', 'Runtime.evaluate']);
     expect(f.commands[1]?.params).toEqual({ frameId: 'outer', worldName: 'goltou-click-target' });
     expect(f.commands[2]?.params).toMatchObject({ contextId: 19, returnByValue: true });
-    expect(f.commands[2]?.params.expression).toContain(`)(${x},${y},"body",null,null)`);
+    expect(f.commands[2]?.params.expression).toContain(`)(${x},${y},"body",null,false,null)`);
   });
   it.each(['missing', 'truncated', 'unavailable'] as const)('obtains omitted/full paused POST data or fails closed (%s)', async mode => {
     const inspect = vi.fn(request => request.postDataComplete === true && request.postData === 'openType=0');
@@ -302,6 +302,13 @@ describe('CDP Surface', () => {
     ]);
     expect(f.commands.slice(3, 5).map(c => c.params.text)).toEqual(['한', '😀']);
     expect(f.commands[7]?.params).toMatchObject({ type: 'keyDown', code: 'KeyA', windowsVirtualKeyCode: 65, modifiers: 2 });
+  });
+
+  it('sends a native vertical wheel event at the requested viewport point', async () => {
+    const f = await fixture();
+    await f.surface.wheel(20, 30, 85);
+    expect(f.commands).toEqual([expect.objectContaining({ method: 'Input.dispatchMouseEvent',
+      params: { type: 'mouseWheel', x: 20, y: 30, deltaX: 0, deltaY: 85 } })]);
   });
 
   it('attaches files through the file input CDP command', async () => {

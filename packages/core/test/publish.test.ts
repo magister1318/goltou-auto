@@ -1,5 +1,5 @@
 import { loggedFixture } from './log-fixture';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { existsSync } from 'node:fs';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
@@ -16,6 +16,8 @@ import type { ApiClient, Post, PostUpdate, Product } from '@goltou/api-client';
 import { makePreview } from '../src/preparation';
 import { verifyInterruptedPrivatePublish } from '../../../apps/android/bridge/publish-recovery';
 import { blogFixture } from '../../sites/test/blog-fixture';
+import { clickTagInput, closeTagLayer, tagInputSelector, tagLayerOpen, tagPanelToggle } from '../../sites/src/naver-blog/draft-safety';
+import { point } from '../../sites/src/dom';
 import type { InputPlan } from '../src/convert';
 
 const executablePath = [process.env.CHROMIUM, 'C:/Program Files/Google/Chrome/Application/chrome.exe', '/usr/bin/chromium'].find(p => p && existsSync(p));
@@ -28,7 +30,8 @@ async function fixture(failure = '', visibility: 'public' | 'private' = 'private
   for (const file of files) await writeFile(file.path, new Uint8Array([137, 80, 78, 71]));
   let stored = { title: '', html: '', tags: '' }, published = 0, deleted = false, outside = 0, submissions = 0;
   const url = 'https://blog.naver.com/synthetic_fixture/9001';
-  const editor = blogFixture('metadata-publish').replace('</script>', `
+  const scrollTags = failure.startsWith('tags-scroll');
+  const editor = blogFixture(scrollTags ? `metadata-scroll-tags${failure.slice('tags-scroll'.length)}` : 'metadata-publish').replace('</script>', `
     document.addEventListener('click',e=>{
       const panel=document.querySelector('[data-metadata-panel]');
       if(!panel||panel.querySelector('[type=radio]'))return;
@@ -52,7 +55,11 @@ async function fixture(failure = '', visibility: 'public' | 'private' = 'private
       let body = ''; req.on('data', chunk => { body += String(chunk); });
       req.on('end', () => { stored = JSON.parse(new URLSearchParams(body).get('documentModel')!); published++;
         res.writeHead(200, { 'content-type': 'application/json' }).end(failure === 'writer-private' ? JSON.stringify({ isSuccess: true, result: { redirectUrl: url } }) : failure === 'unknown-response' || failure === 'title-source' ? '{"undocumented":true}' : failure === 'bad-response' ? 'unknown syntax' : JSON.stringify({ isSuccess: true, result: { logNo: '9001', postUrl: url } })); });
-    } else res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(editor);
+    } else {
+      const page = failure === 'tags-scroll-frame' && req.url === '/editor'
+        ? '<iframe src="/frame" style="position:fixed;inset:0;width:100%;height:100%;border:0"></iframe>' : editor;
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }).end(page);
+    }
   });
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
   cleanup.push(() => new Promise<void>(resolve => { server.closeAllConnections(); server.close(() => resolve()); }));
@@ -92,17 +99,129 @@ async function fixture(failure = '', visibility: 'public' | 'private' = 'private
   const plan: InputPlan = source ? makePreview(source, {}).blog : { channel: 'blog', steps: [
     { kind: 'text', role: 'title', text: ordinary ? '일반 합성 상품' : '[골투오토 실험] WP14 private-once 합성 발행 시험' }, { kind: 'break' },
     { kind: 'text', role: 'body', text: '본문 15 안내' }, { kind: 'break' },
-    { kind: 'photos', urls: files.map(file => file.url) },
-    { kind: 'table', role: 'departures', rows: [['2026-12-03', '1190000원']] },
+    ...(scrollTags ? [] : [
+      { kind: 'photos' as const, urls: files.map(file => file.url) },
+      { kind: 'table' as const, role: 'departures' as const, rows: [['2026-12-03', '1190000원']] },
+    ]),
   ], discarded: [], notices: [] };
   if (failure.startsWith('tags-')) plan.steps.push({ kind: 'text', role: 'hashtags', text: '#one #two' });
   const probed: string[] = [];
   const execution = createBlogExecution(plan, files, { host, editorUrl, localPublish: true, publishedSettleMs: 3500,
     ...(probe ? { publishProbe: { visibility, record: async (request: import('@goltou/surface').GuardedRequest) => { probed.push(new URL(request.url).pathname); if (failure === 'evidence') throw new Error('DISK_FAILED'); } } } : {}),
   }, { mode: 'publish', visibility, beforeSave() {}, check() {}, progress() {} });
-  return { execution, host, url, files, probed, counts: () => ({ published, deleted, outside, submissions }) };
+  return { execution, host, url, files, probed, plan, counts: () => ({ published, deleted, outside, submissions }) };
 }
+
+function tagScrollMetrics(surface: Surface) {
+  return surface.evaluateReadOnly<{
+    opens: { chips: number; top: number; hit: string }[];
+    closes: { chips: number; top: number }[];
+    clicks: { chips: number; trusted: boolean }[];
+    wheels: { top: number; deltaY: number; trusted: boolean }[];
+    bodyScrolls: number;
+  }>(`document.querySelector('iframe')?.contentWindow?.tagScroll ?? window.tagScroll`);
+}
+
+async function writeScrollTags(f: Awaited<ReturnType<typeof fixture>>, count: number) {
+  const tags = Array.from({ length: count }, (_, i) => `tag${i + 1}`);
+  f.plan.steps[f.plan.steps.length - 1] = { kind: 'text', role: 'hashtags', text: tags.map(tag => `#${tag}`).join(' ') };
+  await f.execution.write();
+  return tags;
+}
+
+async function openTagLayer(surface: Surface) {
+  const toggle = await point(surface, tagPanelToggle);
+  expect(toggle).not.toBeNull();
+  await surface.click(toggle!.x, toggle!.y);
+}
+
 describe.runIf(Boolean(executablePath))('publish, verified against synthetic loopback service only', () => {
+  it.each([{ count: 13, method: 'scrollIntoView' }, { count: 30, method: 'scrollTop' }, { count: 2, method: 'none' }])(
+    'WP49 writes, reopens, observes and closes $count tags with $method', async ({ count, method }) => {
+    const f = await fixture(method === 'scrollTop' ? 'tags-scroll-fallback' : 'tags-scroll', 'public');
+    const tags = await writeScrollTags(f, count);
+    const original = f.execution.surface!;
+    expect((await f.execution.observe()).tags).toEqual(tags);
+    expect(await tagLayerOpen(original)).toBe(false);
+    await openTagLayer(original);
+    const log = await loggedFixture(path.dirname(f.files[0]!.path), 'blog_publish', () => closeTagLayer(original), []);
+    const decisions = log.payload!.log.trim().split('\n').map(line => JSON.parse(line));
+    if (count > 2) {
+      expect(decisions).toContainEqual(expect.objectContaining({ event: 'decision', choice: 'retry', blogTag: {
+        phase: 'before_click', method: 'none', hit: 'DIV.set_option_detail', clientHeight: 71,
+        scrollHeight: count === 13 ? 156 : expect.any(Number), scrollTopBefore: 0, scrollTopAfter: 0,
+        chipsBefore: count, chipsAfter: count, winYBefore: 0, winYAfter: 0, inputInside: false,
+      } }));
+    }
+    if (method === 'scrollTop') expect(decisions.filter(row => row.blogTag?.method === 'scrollIntoView')).toEqual([
+      expect.objectContaining({ choice: 'retry', blogTag: expect.objectContaining({ phase: 'before_click', hit: 'DIV.set_option_detail' }) }),
+    ]);
+    expect(decisions).toContainEqual(expect.objectContaining({ event: 'decision', choice: 'ok', blogTag: expect.objectContaining({
+      phase: 'after_click', method, hit: 'SELF', chipsBefore: count, chipsAfter: count, winYBefore: 0, winYAfter: 0,
+      inputInside: true, scrollTopAfter: count === 2 ? 0 : expect.any(Number),
+    }) }));
+    expect(log.payload!.log).not.toContain('tag13');
+    expect(await tagLayerOpen(original)).toBe(false);
+    const check = async (surface: Surface) => {
+      const { opens, closes, clicks, wheels, bodyScrolls } = await tagScrollMetrics(surface);
+      expect(opens).toContainEqual({ chips: count, top: 0, hit: count === 2 ? 'input' : 'set_option_detail__fixture' });
+      expect(closes).toContainEqual({ chips: count, top: count === 2 ? 0 : expect.any(Number) });
+      expect(clicks).toContainEqual({ chips: count, trusted: true });
+      expect(bodyScrolls).toBe(0);
+      expect(wheels).toEqual([]);
+      if (count > 2) expect(closes.every(close => close.top > 0)).toBe(true);
+    };
+    expect((await tagScrollMetrics(original)).clicks[0]).toEqual({ chips: 0, trusted: true });
+    await check(original);
+    expect((await f.execution.saveAndVerify()).tags).toEqual(tags);
+    await check(f.execution.surface!);
+    expect(await f.execution.publish()).toBe(f.url);
+    expect(f.execution.publishedVerified).toBe(true);
+    expect((await readBlogDocument(f.execution.surface!)).tags).toEqual(tags);
+    expect(f.counts()).toEqual({ published: 1, deleted: false, outside: 0, submissions: 1 });
+  }, 45000);
+
+  it('WP49 reproduces the hidden WebView where the eight WP48 wheel events cannot reveal an iframe tag input', async () => {
+    const f = await fixture('tags-scroll-frame');
+    await writeScrollTags(f, 13);
+    const surface = f.execution.surface as CdpSurface;
+    await openTagLayer(surface);
+    const area = await point(surface, '.tag_textarea__fixture');
+    const input = await point(surface, tagInputSelector);
+    expect(area).not.toBeNull();
+    expect(input).not.toBeNull();
+    for (let i = 0; i < 8; i++) await surface.wheel(area!.x, area!.y, 85);
+    expect((await tagScrollMetrics(surface)).wheels).toEqual(Array.from({ length: 8 }, () => ({ top: 0, deltaY: 85, trusted: true })));
+    expect(await point(surface, tagInputSelector)).toEqual(input);
+    expect(await surface.readClickTarget(input!.x, input!.y, tagInputSelector, { direct: true })).toBe(false);
+    await expect(surface.click(input!.x, input!.y)).rejects.toThrow('BLOG_TAG_FOCUS_LOST');
+    expect(await tagLayerOpen(surface)).toBe(true);
+    await closeTagLayer(surface);
+    expect(await tagLayerOpen(surface)).toBe(false);
+  }, 45000);
+
+  it.each(['chips', 'window'])('WP49 stops before a click when scrolling changes the %s', async change => {
+    const f = await fixture(`tags-scroll-${change}`);
+    await writeScrollTags(f, 13);
+    const surface = f.execution.surface!;
+    const arm = await point(surface, '[data-arm-tag-scroll-change]');
+    expect(arm).not.toBeNull();
+    await surface.click(arm!.x, arm!.y);
+    await openTagLayer(surface);
+    const clicksBefore = (await tagScrollMetrics(surface)).clicks;
+    const log = await loggedFixture(path.dirname(f.files[0]!.path), 'blog_publish', async () => {
+      await expect(clickTagInput(surface)).rejects.toThrow('BLOG_TAG_FOCUS_LOST');
+    }, []);
+    expect(log.payload!.log.trim().split('\n').map(line => JSON.parse(line))).toContainEqual(expect.objectContaining({
+      choice: 'fail', reason: 'BLOG_TAG_FOCUS_LOST', blogTag: expect.objectContaining({
+        method: 'scrollIntoView', chipsBefore: 13, chipsAfter: change === 'chips' ? 12 : 13,
+        winYBefore: 0, winYAfter: change === 'window' ? 20 : 0,
+      }),
+    }));
+    expect((await tagScrollMetrics(surface)).clicks).toEqual(clicksBefore);
+    expect(await tagLayerOpen(surface)).toBe(true);
+    expect(f.counts().submissions).toBe(0);
+  }, 45000);
   it('waits for delayed published tags and ends one successful job without republishing', async () => {
     const f = await fixture('tags-late', 'public', false, false, true);
     const log = await loggedFixture(path.dirname(f.files[0]!.path), 'blog_publish', async () => {

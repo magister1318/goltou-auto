@@ -188,6 +188,11 @@ const detail = {
     queryFields: ['ts'], bodyFields: ['body'], decision: 'allowed' },
   bandList: { source: 'API' }, bandWrite: {}, connection: { host: 'nid.naver.com', path: '/nidlogin.login' },
   update: { event: 'check_auto' }, checkpoint: 'photos_uploaded', photoSource: 'cached_feed', choice: 'fail',
+  blogInput: { location: 'marker_readback', phase: 'after_undo', markerLength: 3, observedCharacters: 1,
+    startsWithMarker: false, firstCharacters: ['emoji'], emojiCount: 1, inList: true },
+  blogTag: { phase: 'after_click', method: 'scrollIntoView', hit: 'SELF', clientHeight: 71, scrollHeight: 156,
+    scrollTopBefore: 0, scrollTopAfter: 68.3, chipsBefore: 13, chipsAfter: 13, winYBefore: 0, winYAfter: 0, inputInside: true },
+  blogDeleteScroll: { x: 640, y: 450, tag: 'div', classes: ['se-component'], iframe: false, inShadow: true, frameDepth: 2 },
   photoOrder: { index: 1, expected: { host: 'coresos.phinf.naver.net', fileTail: '1234.jpg', hasSizeSuffix: false },
     observed: { host: 'coresos.phinf.naver.net', fileTail: '5678.jpg', hasSizeSuffix: false } },
 } satisfies Required<TraceDetail>;
@@ -196,19 +201,50 @@ it('projects all registered detail properties for upload and drops repetition be
   const f = fixture(), job = f.logs.begin('band_post', 'band');
   const unsafe = 'should-not-serialize';
   job.line('verification', 'fail', { ...detail, secret: unsafe,
+    blogDeleteScroll: { ...detail.blogDeleteScroll, classes: ['se-component', unsafe], id: unsafe },
     network: { ...detail.network, queryFields: ['ts', unsafe], path: '/v2.0.2/create_post' } } as TraceDetail);
   for (let i = 0; i < 120; i++) job.line('cdp', 'ok', { operation: 'Runtime.evaluate', counts: { bytes: i } });
   job.end('failed', 'DOM_ORDER_MISMATCH');
-  const payload = tracePayload(f.logs, job.id, 101, 'band', f.logs.identity('fixture'), 3000)!;
+  const payload = tracePayload(f.logs, job.id, 101, 'band', f.logs.identity('fixture'), 3300)!;
   expect(payload).toMatchObject({ truncated: true, droppedLines: 119 });
-  expect(Buffer.byteLength(payload.log)).toBeLessThanOrEqual(3000);
+  expect(Buffer.byteLength(payload.log)).toBeLessThanOrEqual(3300);
   const lines = payload.log.trim().split('\n').map(line => JSON.parse(line));
   expect(lines.every(line => Number.isSafeInteger(line.t) && line.t >= 0)).toBe(true);
   const failed = lines.find(line => line.step === 'verification' && line.event === 'fail');
   expect(failed).toMatchObject(sanitizeDetail({ ...detail, network: { ...detail.network, queryFields: ['ts', unsafe] } }));
   expect(Object.keys(failed)).toEqual(expect.arrayContaining(Object.keys(detail)));
-  expect(lines).toContainEqual(expect.objectContaining({ step: 'verification', event: 'decision', choice: 'fail', counts: detail.counts }));
+  expect(lines).toContainEqual(expect.objectContaining({ step: 'verification', event: 'decision', choice: 'fail',
+    counts: detail.counts, blogInput: detail.blogInput, blogTag: detail.blogTag, blogDeleteScroll: detail.blogDeleteScroll }));
   expect(payload.log).not.toContain(unsafe);
+});
+
+it('uploads only bounded blog input diagnostics and never accepts arbitrary strings as shape data', () => {
+  const raw = 'PRIVATE_EDITOR_TEXT';
+  expect(sanitizeDetail({ blogInput: {
+    location: 'marker_readback', phase: raw, markerLength: 3, observedCharacters: -1,
+    startsWithMarker: raw, firstCharacters: ['digit', raw, 'emoji', 'period'],
+    emojiCount: Number.MAX_VALUE, inList: true, text: raw,
+  } } as unknown as TraceDetail).blogInput).toEqual({
+    location: 'marker_readback', markerLength: 3, firstCharacters: ['digit', 'other', 'emoji'], inList: true,
+  });
+  expect(sanitizeDetail({ blogInput: { location: raw, markerLength: 3 } } as unknown as TraceDetail)).toEqual({});
+});
+
+it('uploads only allowlisted tag diagnostics and filters label, class suffix and input text', () => {
+  const raw = 'PRIVATE_TAG_TEXT';
+  expect(sanitizeDetail({ blogTag: {
+    phase: 'before_click', method: raw, hit: `DIV.set_option_detail__${raw}`, scrollTopBefore: -1, chipsAfter: Number.POSITIVE_INFINITY,
+    clientHeight: 71, inputInside: true, winYBefore: 0, winYAfter: raw, wheels: 0, label: raw, input: raw,
+  } } as unknown as TraceDetail).blogTag).toEqual({ phase: 'before_click', clientHeight: 71, inputInside: true, winYBefore: 0 });
+  expect(sanitizeDetail({ blogTag: { phase: raw, hit: 'INPUT' } } as unknown as TraceDetail)).toEqual({});
+});
+
+it('uploads only a boolean shadow marker and a nonnegative integer frame depth for blog delete scroll', () => {
+  const raw = 'PRIVATE_AD_ATTRIBUTE';
+  for (const frameDepth of [raw, -1, 0.5, Infinity]) {
+    expect(sanitizeDetail({ blogDeleteScroll: { x: 640, y: 450, inShadow: raw, frameDepth } } as unknown as TraceDetail))
+      .toEqual({ blogDeleteScroll: { x: 640, y: 450 } });
+  }
 });
 
 it('keeps literal trace steps and detail keys covered by the upload projection', () => {
