@@ -17,7 +17,7 @@ export function clickTargetExpression(x: number, y: number, selector: string, op
       }
     };
     fromShadow();
-    let frameBlocked = false;
+    let frameBlocked = false, inaccessibleFrame = false;
     while (hit?.localName === 'iframe' || hit?.localName === 'frame') {
       const child = hit.contentDocument;
       const style = getComputedStyle(hit);
@@ -35,7 +35,11 @@ export function clickTargetExpression(x: number, y: number, selector: string, op
           break;
         }
       }
-      if (!child || frameBlocked) { frameBlocked = true; break; }
+      if (!child || frameBlocked) {
+        inaccessibleFrame = !child;
+        frameBlocked = true;
+        break;
+      }
       offsetX += r.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
       offsetY += r.top + parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop);
       d = child;
@@ -70,7 +74,7 @@ export function clickTargetExpression(x: number, y: number, selector: string, op
       }
     }
     const label = hit.getAttribute('aria-label');
-    return { scrollX, scrollY, rejectedHit: {
+    return { scrollX, scrollY, ...(inaccessibleFrame ? { inaccessibleFrame: true } : {}), rejectedHit: {
       tag: allowed.tags.includes(tag) ? tag : '[other]',
       classes: [...allowed.classes.filter(name => classes.includes(name)),
         ...(allowed.classPrefixes || []).filter(prefix => classes.some(name => name.startsWith(prefix + '__')))],

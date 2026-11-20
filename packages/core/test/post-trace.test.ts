@@ -192,6 +192,7 @@ const detail = {
     startsWithMarker: false, firstCharacters: ['emoji'], emojiCount: 1, inList: true },
   blogTag: { phase: 'after_click', method: 'scrollIntoView', hit: 'SELF', clientHeight: 71, scrollHeight: 156,
     scrollTopBefore: 0, scrollTopAfter: 68.3, chipsBefore: 13, chipsAfter: 13, winYBefore: 0, winYAfter: 0, inputInside: true },
+  blogDeleteScroll: { x: 640, y: 450, tag: 'iframe', classes: ['se-component'], iframe: true },
   photoOrder: { index: 1, expected: { host: 'coresos.phinf.naver.net', fileTail: '1234.jpg', hasSizeSuffix: false },
     observed: { host: 'coresos.phinf.naver.net', fileTail: '5678.jpg', hasSizeSuffix: false } },
 } satisfies Required<TraceDetail>;
@@ -200,19 +201,20 @@ it('projects all registered detail properties for upload and drops repetition be
   const f = fixture(), job = f.logs.begin('band_post', 'band');
   const unsafe = 'should-not-serialize';
   job.line('verification', 'fail', { ...detail, secret: unsafe,
+    blogDeleteScroll: { ...detail.blogDeleteScroll, classes: ['se-component', unsafe], id: unsafe },
     network: { ...detail.network, queryFields: ['ts', unsafe], path: '/v2.0.2/create_post' } } as TraceDetail);
   for (let i = 0; i < 120; i++) job.line('cdp', 'ok', { operation: 'Runtime.evaluate', counts: { bytes: i } });
   job.end('failed', 'DOM_ORDER_MISMATCH');
-  const payload = tracePayload(f.logs, job.id, 101, 'band', f.logs.identity('fixture'), 3000)!;
+  const payload = tracePayload(f.logs, job.id, 101, 'band', f.logs.identity('fixture'), 3300)!;
   expect(payload).toMatchObject({ truncated: true, droppedLines: 119 });
-  expect(Buffer.byteLength(payload.log)).toBeLessThanOrEqual(3000);
+  expect(Buffer.byteLength(payload.log)).toBeLessThanOrEqual(3300);
   const lines = payload.log.trim().split('\n').map(line => JSON.parse(line));
   expect(lines.every(line => Number.isSafeInteger(line.t) && line.t >= 0)).toBe(true);
   const failed = lines.find(line => line.step === 'verification' && line.event === 'fail');
   expect(failed).toMatchObject(sanitizeDetail({ ...detail, network: { ...detail.network, queryFields: ['ts', unsafe] } }));
   expect(Object.keys(failed)).toEqual(expect.arrayContaining(Object.keys(detail)));
   expect(lines).toContainEqual(expect.objectContaining({ step: 'verification', event: 'decision', choice: 'fail',
-    counts: detail.counts, blogInput: detail.blogInput, blogTag: detail.blogTag }));
+    counts: detail.counts, blogInput: detail.blogInput, blogTag: detail.blogTag, blogDeleteScroll: detail.blogDeleteScroll }));
   expect(payload.log).not.toContain(unsafe);
 });
 

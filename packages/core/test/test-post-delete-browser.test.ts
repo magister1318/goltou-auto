@@ -1,8 +1,13 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { existsSync } from 'node:fs';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { chromium } from 'playwright-core';
 import { CdpConnection, CdpSurface } from '@goltou/surface/cdp';
+import { configureTrace, traceJob, type TraceDetail } from '@goltou/surface/telemetry';
 import { read, readBlogDocument, BlogExecution, deleteBlogPost, type BlogPlan, type DeleteDiagnostic } from '@goltou/sites';
+import { JobLogStore } from '../src/job-logs';
+import { tracePayload } from '../src/post-trace-payload';
 import { deleteTestPost, testPostFocusSource } from '../src/test-post-delete';
 
 const executablePath = [process.env.CHROMIUM, 'C:/Program Files/Google/Chrome/Application/chrome.exe', '/usr/bin/chromium'].find(p => p && existsSync(p));
@@ -10,7 +15,8 @@ const cleanup: (() => Promise<unknown>)[] = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
 const experimentTitle = '[골투오토 실험] WP14 private-once synthetic';
 const url = 'https://blog.naver.com/synthetic/9001';
-async function fixture(changeOnHover = false, message = '삭제된 글은 복구할 수 없습니다.\n삭제하시겠습니까?', ordinary = false, moveOnHover = false, lazyShift = false) {
+type ScrollCover = 'ad-band' | 'ad-full' | 'ad-link' | 'overlay';
+async function fixture(changeOnHover = false, message = '삭제된 글은 복구할 수 없습니다.\n삭제하시겠습니까?', ordinary = false, moveOnHover = false, lazyShift = false, scrollCover?: ScrollCover) {
   const title = ordinary ? '일반 합성 상품' : experimentTitle;
   const browser = await chromium.launch({ executablePath: executablePath!, headless: true, args: ['--disable-background-networking', '--no-first-run'] });
   cleanup.push(() => browser.close());
@@ -22,7 +28,8 @@ async function fixture(changeOnHover = false, message = '삭제된 글은 복구
   await context.route('**/*', async route => {
     const u = new URL(route.request().url());
     let body: string;
-    if (u.pathname === '/deleted') { deleted = true; deletePresses++; body = '<div class="error_content">삭제된 게시물입니다.</div>'; }
+    if (u.hostname === 'ad.example.invalid') body = '<p>fixture-private-ad-text</p>';
+    else if (u.pathname === '/deleted') { deleted = true; deletePresses++; body = '<div class="error_content">삭제된 게시물입니다.</div>'; }
     else if (u.pathname === '/PostList.naver') body = '<div class="post-list"><a href="https://blog.naver.com/synthetic/9002">다른 합성 글</a></div>';
     else if (deleted) body = '<div class="error_content">삭제된 게시물입니다.</div>';
     else if (u.pathname === '/PostView.naver') body = `<div class="se-documentTitle"><p class="se-text-paragraph">${title}</p></div><span>${ordinary ? '전체공개' : '비공개'}</span><div class="se-main-container">${photos}<div class="se-component se-text"><p class="se-text-paragraph">합성 본문</p></div></div>
@@ -36,7 +43,22 @@ async function fixture(changeOnHover = false, message = '삭제된 글은 복구
       ${moveOnHover ? "a.onmouseover=()=>{a.style.marginLeft='40px'};" : ''}
       ${lazyShift ? "top.addEventListener('scroll',()=>{setTimeout(()=>{a.parentElement.previousElementSibling.style.height='1900px'},100)}, {once:true});" : ''}
       a.onclick=e=>{e.preventDefault();if(confirm(${JSON.stringify(message)}))top.location='/deleted'};</script>`;
-    else body = '<a hidden>삭제</a><iframe id="mainFrame" name="mainFrame" src="/PostView.naver?blogId=synthetic&logNo=9001" style="width:1100px;height:2600px;border:0"></iframe>';
+    else {
+      body = '<a hidden>삭제</a><iframe id="mainFrame" name="mainFrame" src="/PostView.naver?blogId=synthetic&logNo=9001" style="width:1100px;height:2600px;border:0"></iframe>';
+      if (scrollCover) body += `<script>
+        const cover=document.createElement(${JSON.stringify(scrollCover === 'overlay' ? 'div' : 'iframe')});
+        cover.id='fixture-private-id';
+        cover.className='se-component fixture-private-class';
+        cover.setAttribute('aria-label','fixture-private-label');
+        cover.style.cssText='position:fixed;border:0;z-index:10;visibility:hidden;'
+          +${JSON.stringify(scrollCover === 'ad-band' ? 'left:10%;width:80%;top:35vh;height:30vh;' :
+            scrollCover === 'ad-link' ? 'left:0;width:100%;top:35vh;height:30vh;' : 'left:0;width:100%;top:0;height:100vh;')};
+        if (cover.tagName==='IFRAME') cover.src='https://ad.example.invalid/fixture-private-url';
+        // Put the cover above the main frame in the document hit stack.
+        document.documentElement.append(cover);
+        window.addEventListener('scroll',()=>{cover.style.visibility='visible';},{once:true});
+      </script>`;
+    }
     await route.fulfill({ contentType: 'text/html; charset=utf-8', body });
   });
   await page.goto(url); await page.frameLocator('#mainFrame').locator('a._deletePost').waitFor({ state: 'attached' });
@@ -56,6 +78,22 @@ async function fixture(changeOnHover = false, message = '삭제된 글은 복구
   const execution = new BlogExecution(plan, files, { host: { create: async () => surface, destroy: async () => {}, clearSession: async () => {} }, beforeSave: refuse, check() {}, progress() {}, verify: refuse });
   execution.surface = surface;
   return { surface, execution, page, title, presses: () => deletePresses, deleted: () => deleted };
+}
+
+function scrollTrace() {
+  const directory = mkdtempSync(join(tmpdir(), 'goltou-blog-delete-scroll-'));
+  const store = new JobLogStore(directory);
+  configureTrace(store);
+  cleanup.push(async () => { configureTrace(undefined); rmSync(directory, { recursive: true, force: true }); });
+  return {
+    run: <T>(work: () => Promise<T>) => traceJob('blog_delete', 'naver', work),
+    decisions() {
+      const upload = tracePayload(store, store.list()[0]!.jobId, 1, 'blog', 'synthetic')!;
+      expect(upload.log).not.toMatch(/fixture-private-|ad\.example\.invalid/);
+      const lines: TraceDetail[] = upload.log.trim().split('\n').map(line => JSON.parse(line));
+      return lines.filter(line => line.blogDeleteScroll).map(({ choice, counts, blogDeleteScroll }) => ({ choice, counts, ...blogDeleteScroll }));
+    },
+  };
 }
 
 describe.runIf(Boolean(executablePath))('PC post cleanup in mainFrame, with selector-method rejection', () => {
@@ -81,6 +119,55 @@ describe.runIf(Boolean(executablePath))('PC post cleanup in mainFrame, with sele
     expect(diagnostics.filter(d => d.item === 14).map(d => d.run)).toEqual([1, 2, 3]);
     expect(diagnostics.every(d => Object.values(d).every(v => typeof v === 'number'))).toBe(true);
     expect(f.presses()).toBe(1); expect(f.deleted()).toBe(true);
+  }, 25000);
+  it('WP50 finds an alternate body point after PageDown exposes a cross-origin ad', async () => {
+    const f = await fixture(false, undefined, true, false, false, 'ad-band');
+    const keys = vi.spyOn(f.surface, 'pressKey');
+    const clicks = vi.spyOn(f.surface, 'click');
+    const logs = scrollTrace();
+    await logs.run(() => deleteBlogPost(f.surface, { url, title: f.title }));
+    expect(keys.mock.calls.map(([input]) => input.key)).toEqual(['PageDown', 'PageDown']);
+    expect(clicks).toHaveBeenCalledTimes(1);
+    expect(f.presses()).toBe(1);
+    expect(f.deleted()).toBe(true);
+    expect(logs.decisions()).toEqual([
+      { choice: 'ok', counts: { step: 7, runs: 1, attempt: 1 }, x: 640, y: 450 },
+      ...[640, 192, 1088].map(x => ({
+        choice: 'retry', counts: { step: 7, runs: 1, attempt: 2 }, x, y: 450, tag: 'iframe', classes: ['se-component'], iframe: true,
+      })),
+      { choice: 'ok', counts: { step: 7, runs: 1, attempt: 2 }, x: 640, y: 270 },
+    ]);
+  }, 25000);
+  it.each(['ad-full', 'overlay'] as const)('WP50 refuses more input when the scroll path is covered (%s)', async cover => {
+    const f = await fixture(false, undefined, true, false, false, cover);
+    const keys = vi.spyOn(f.surface, 'pressKey');
+    const clicks = vi.spyOn(f.surface, 'click');
+    const logs = scrollTrace();
+    const diagnostics: DeleteDiagnostic[] = [];
+    await expect(logs.run(() => deleteBlogPost(f.surface, { url, title: f.title }, async item => { diagnostics.push(item); })))
+      .rejects.toThrow('BLOG_POST_DELETE_CHECK_7');
+    expect(keys.mock.calls.map(([input]) => input.key)).toEqual(['PageDown']);
+    expect(clicks).not.toHaveBeenCalled();
+    expect(f.presses()).toBe(0);
+    expect(diagnostics.at(-1)).toMatchObject({ item: 7, pass: 0 });
+    const points = cover === 'ad-full' ? [[640, 450], [192, 450], [1088, 450], [640, 270], [640, 630]] : [[640, 450]];
+    expect(logs.decisions().filter(d => d.counts?.attempt === 2)).toEqual(points.map(([x, y], index) => ({
+      choice: index === points.length - 1 ? 'fail' : 'retry',
+      counts: { step: 7, runs: 1, attempt: 2 }, x, y,
+      tag: cover === 'ad-full' ? 'iframe' : 'div', classes: ['se-component'], iframe: cover === 'ad-full',
+    })));
+  }, 25000);
+  it('WP50 still refuses a delete link covered by an ad after finding a scroll point', async () => {
+    const f = await fixture(false, undefined, true, false, false, 'ad-link');
+    const clicks = vi.spyOn(f.surface, 'click');
+    const logs = scrollTrace();
+    const diagnostics: DeleteDiagnostic[] = [];
+    await expect(logs.run(() => deleteBlogPost(f.surface, { url, title: f.title }, async item => { diagnostics.push(item); })))
+      .rejects.toThrow('BLOG_POST_DELETE_CHECK_7');
+    expect(logs.decisions().at(-1)).toMatchObject({ choice: 'ok', counts: { attempt: 2 }, x: 640, y: 270 });
+    expect(diagnostics.at(-1)).toMatchObject({ item: 7, pass: 0, x: expect.any(Number), y: expect.any(Number) });
+    expect(clicks).not.toHaveBeenCalled();
+    expect(f.presses()).toBe(0);
   }, 25000);
   it('reads and deletes with side-effect protection when the page wraps trim', async () => {
     const f = await fixture(false, '삭제된 글은 복구할 수 없습니다. 삭제하시겠습니까?', true);
